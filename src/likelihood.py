@@ -9,7 +9,7 @@ N=2
 T=128
 rng = jr.key(10)
 times=np.linspace(0, 1, T)
-parsfid,sig=test.sample_params_and_signal(rng, N, T)
+parsfid,sig,_=test.sample_params_and_signal(rng, N, T)
 parsfid=np.array(parsfid).flatten()
 
 def h_model(params, t):
@@ -47,6 +47,9 @@ plt.plot(parstest[:,0], likels)
 plt.show()
 '''
 
+
+
+
 import emcee
 # Set up MCMC sampling with emcee
 
@@ -67,8 +70,14 @@ print("Done.")
 
 # Example: get the samples
 samples = sampler.get_chain(flat=True)
-
+samples_reshaped=samples.reshape(samples.shape[0], -1, 3)
+'''
 # Plot the results
 import corner
 fig = corner.corner(samples, labels=[f"param {i}" for i in range(ndim)], truths=parsfid)
 plt.show()
+
+'''
+
+np.savez('cose', generated_samples=samples_reshaped,
+         datastream=sig, times=times, true_params=parsfid,noise_std=1.0)
