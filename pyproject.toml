@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "corner>=2.2.3",
-    "jax>=0.6.0",
+    "flax>=0.10.6",
+    "jax[cuda12]>=0.6.0",
     "jaxtyping>=0.3.2",
+    "optax>=0.2.4",
+    "tqdm>=4.67.1",
 ]
