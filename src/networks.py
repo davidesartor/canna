@@ -118,7 +118,6 @@ class MMDiT(LightningModule):
     def __init__(
         self,
         x_dim: int,
-        c_dim: int,
         hidden_dim: int,
         num_heads: int,
         num_blocks: int,
@@ -137,7 +136,7 @@ class MMDiT(LightningModule):
 
         self.c_pos_embed = SinusoidalEmbed(hidden_dim)
         self.c_embed = nn.Sequential(
-            nn.Linear(c_dim, hidden_dim),
+            nn.LazyLinear(hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )

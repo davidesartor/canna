@@ -1,11 +1,16 @@
 import numpy as np
+import scipy
 from torch.utils.data import DataLoader, Dataset
 from einops import rearrange
 
 
 class Sinusoids(Dataset):
     def __init__(
-        self, batch_size: int, n_sources: int, n_times: int, size: int = 1024_000
+        self,
+        batch_size: int,
+        n_sources: int,
+        n_times: int,
+        size: int = 1024_000,
     ):
         super().__init__()
         self.size = size
@@ -16,20 +21,20 @@ class Sinusoids(Dataset):
         self.n_times = n_times
         self.n_channels = 2
 
-        self.amplitude_range = (10**0, 10**1)
-        self.frequency_range = (10**0, 10**1)
-        self.times = np.linspace(0, 1, n_times)
+        self.amplitude_range = (1, 10)
+        self.frequency_range = (1, 10)
+        self.times = np.linspace(0, 10, n_times)
         self.noise_std = 1.0
 
     def __len__(self):
         return self.size // self.batch_size
 
     def __getitem__(self, idx):
-        params, datastream = self.sample_params_and_datastream()
-        return params.astype(np.float32), datastream.astype(np.float32)
+        params, datastream, datastream_stft = self.sample_params_and_datastream()
+        return params.astype(np.float32), datastream_stft.astype(np.float32)
 
-    def dataloader(self) -> DataLoader:
-        return DataLoader(self, batch_size=None, num_workers=1, persistent_workers=True)
+    def dataloader(self, **kwargs) -> DataLoader:
+        return DataLoader(self, batch_size=None, **kwargs)
 
     def sample_params_and_datastream(self) -> tuple[np.ndarray, np.ndarray]:
         # sample parameters
@@ -52,7 +57,14 @@ class Sinusoids(Dataset):
         # sample noise
         noise = np.random.normal(0, self.noise_std, signal.shape)
         datastream = signal + noise
-        return params, datastream
+
+        # time-frequency representation
+        _, _, datastream_stft = scipy.signal.stft(signal, nperseg=64 - 1, axis=-2)
+        datastream_stft = rearrange(datastream_stft, "... F C T -> ... T (C F)")
+        datastream_stft = np.concatenate(
+            [datastream_stft.real, datastream_stft.imag], axis=-1
+        )
+        return params, datastream, datastream_stft
 
     def log_posterior(
         self,
@@ -81,8 +93,10 @@ class Sinusoids(Dataset):
         mask_f = (self.frequency_range[0] < f) * (f < self.frequency_range[1])
         mask_phi = (0 < phi) * (phi < 2 * np.pi)
         log_prior = (
-            + np.where(mask_a, np.exp(-log_a.sum(-1)), -np.inf)
+            +np.where(mask_a, np.exp(-log_a.sum(-1)), -np.inf)
             + np.where(mask_f, np.exp(-log_f.sum(-1)), -np.inf)
             + np.where(mask_phi, np.exp(-phi.sum(-1)), -np.inf)
-        ).sum(-1) # sum over sources
+        ).sum(
+            -1
+        )  # sum over sources
         return log_likelihood + log_prior
