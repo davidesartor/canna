@@ -6,11 +6,11 @@ from datasets import Sinusoids
 
 if __name__ == "__main__":
     seed_everything(42)
-    dataset = Sinusoids(batch_size=256, n_sources=2, n_times=128, size=256)
+    dataset = Sinusoids(batch_size=256, n_sources=2, n_times=128)
 
     model = MMDiT(
-        x_shape=(dataset.n_sources, dataset.n_params),
-        c_shape=(dataset.n_times, dataset.n_channels),
+        x_dim=dataset.n_params,
+        c_dim=dataset.n_channels,
         hidden_dim=4 * 64,
         num_heads=4,
         num_blocks=8,

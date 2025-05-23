@@ -117,8 +117,8 @@ class SinusoidalEmbed(nn.Module):
 class MMDiT(LightningModule):
     def __init__(
         self,
-        x_shape: tuple[int, int],
-        c_shape: tuple[int, int],
+        x_dim: int,
+        c_dim: int,
         hidden_dim: int,
         num_heads: int,
         num_blocks: int,
@@ -128,19 +128,16 @@ class MMDiT(LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
-        self.x_shape = x_shape
-        self.c_shape = c_shape
-
         self.x_pos_embed = SinusoidalEmbed(hidden_dim)
         self.x_embed = nn.Sequential(
-            nn.Linear(x_shape[-1], hidden_dim),
+            nn.Linear(x_dim, hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )
 
         self.c_pos_embed = SinusoidalEmbed(hidden_dim)
         self.c_embed = nn.Sequential(
-            nn.Linear(c_shape[-1], hidden_dim),
+            nn.Linear(c_dim, hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )
@@ -157,7 +154,7 @@ class MMDiT(LightningModule):
         )
 
         self.out_modulation = Modulation(hidden_dim)
-        self.out_projection = nn.Linear(hidden_dim, x_shape[-1])
+        self.out_projection = nn.Linear(hidden_dim, x_dim)
 
     def forward(self, x: Tensor, t: Tensor, c: Tensor):
         # embeddings

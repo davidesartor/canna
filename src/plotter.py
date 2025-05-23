@@ -1,58 +1,55 @@
-from matplotlib import pyplot as plt
 import numpy as np
+import torch
+from emcee import EnsembleSampler
+from corner import corner
+from matplotlib import pyplot as plt
+import argparse
 
-def h_model(params, t):
-    A = params[0::3]
-    freqs = params[1::3]
-    phi = params[2::3]
+from datasets import Sinusoids
+from networks import MMDiT
 
-    phase = 2*np.pi*freqs[:,None]*t[None] + phi[:, None]  # shape: (N, T)
+RUNS = 10
+SAMPLES = 1024
+DIFFUSIONSTEPS = 16
+MCMCWALKERS = 32
+MCMCDISCARD = 300
 
-    sin_terms = (A[:, None] * np.sin(phase))  # shape: (N, T)
-    cos_terms = (A[:, None] * np.cos(phase))  # shape: (N, T)
-    
-    return np.array([sin_terms.sum(axis=0), cos_terms.sum(axis=0)]).T # shape: (T, 2)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Plotting script")
+    parser.add_argument("--ckpt", type=str)
+    args = parser.parse_args()
 
-def log_likelihood(params, t, data,sigma=1.0):
-    model = h_model(params, t) # shape: (T, 2)
-    residual = data - model
-    return -0.5 * np.sum(residual ** 2)/ sigma ** 2
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "mps" if torch.backends.mps.is_available() else device
 
-def log_prob(params, t, data, sigma):
-    return log_likelihood(params, t, data, sigma=sigma)
+    dataset = Sinusoids(n_sources=2, n_times=128, batch_size=1, size=RUNS)
+    model = MMDiT.load_from_checkpoint(args.ckpt, map_location=device)
 
-def plotter_from_npz(name):
-    cose_load=np.load(name+'.npz')
-    pars_plot=cose_load['generated_samples']
-    datastream_plot=cose_load['datastream']
-    times_plot=cose_load['times']
-    parsfid_plot=cose_load['true_params']
-    sigma_plot=cose_load['noise_std']
+    for run, (true_parameters, datastream) in enumerate(dataset.dataloader()):
+        true_parameters = true_parameters.squeeze(0)
+        datastream = datastream.squeeze(0)
 
-    import emcee
-    ndim = len(parsfid_plot)
-    nwalkers = 32
-    p0 = parsfid_plot + 1e-4 * np.random.randn(nwalkers, ndim)
+        # generate samples using the model
+        c = torch.broadcast_to(datastream, (SAMPLES, *datastream.shape)).to(device)
+        x0 = torch.randn((SAMPLES, *true_parameters.shape), device=device)
+        with torch.no_grad():
+            x1 = model.push(x0, c, n_steps=16)
+        generated_samples = x1.flatten(1).cpu().numpy()
 
-    sampler = emcee.EnsembleSampler(
-        nwalkers, ndim, log_prob, args=(times_plot, datastream_plot,sigma_plot)
-    )
+        # generate samples using mcmc
+        datastream = datastream.cpu().numpy()
+        flat_parameters = true_parameters.cpu().numpy().flatten()
+        p0 = flat_parameters + 1e-4 * np.random.randn(MCMCWALKERS, len(flat_parameters))
+        sampler = EnsembleSampler(
+            MCMCWALKERS, len(flat_parameters), dataset.log_posterior, args=(datastream,)
+        )
+        sampler.run_mcmc(p0, nsteps=SAMPLES // MCMCWALKERS + MCMCDISCARD, progress=True)
+        mcmc_samples = sampler.get_chain(flat=True, discard=MCMCDISCARD)
 
-    print("Running MCMC...")
-    sampler.run_mcmc(p0, 1000, progress=True)
-    print("Done.")
-
-    # Example: get the samples
-    samples = sampler.get_chain(flat=True)
-
-    # Plot the results
-    import corner
-    fig = corner.corner(samples, labels=[f"param {i}" for i in range(ndim)],
-                        truths=parsfid_plot,color='red')
-
-    pars_plot = pars_plot.reshape(pars_plot.shape[0], -1)
-    corner.corner(pars_plot, labels=[f"param {i}" for i in range(ndim)],
-                  truths=parsfid_plot,fig=fig,color='blue')
-    plt.show()
-
-plotter_from_npz('cose')
+        # plot the results
+        print("True parameters:", true_parameters.shape)
+        print("MCMC parameters:", mcmc_samples.shape)
+        print("Generated parameters:", generated_samples.shape)
+        fig = corner(mcmc_samples, labels=None, truths=flat_parameters, color="blue")
+        fig = corner(generated_samples, color="red", fig=fig)
+        plt.savefig(f"figures/{dataset.__class__.__name__}_run_{run}.pdf")
