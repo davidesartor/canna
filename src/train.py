@@ -6,12 +6,12 @@ from datasets import Sinusoids
 
 if __name__ == "__main__":
     seed_everything(42)
-    dataset = Sinusoids(batch_size=256, n_sources=2, n_times=1024)
-    dataloader = dataset.dataloader(num_workers=8, persistent_workers=True)
+    dataset = Sinusoids(batch_size=1024, n_sources=2, n_times=256)
+    dataloader = dataset.dataloader(num_workers=16, persistent_workers=True)
 
     model = MMDiT(
         x_dim=dataset.n_params,
-        hidden_dim=8 * 32,
+        hidden_dim=8 * 64,
         num_heads=8,
         num_blocks=8,
     )

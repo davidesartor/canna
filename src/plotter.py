@@ -26,11 +26,11 @@ if __name__ == "__main__":
     model = MMDiT.load_from_checkpoint(args.ckpt, map_location=device)
 
     for run in range(RUNS):
-        true_parameters, datastream, c = dataset.sample_params_and_datastream()
+        true_parameters, datastream = dataset.sample_params_and_datastream()
 
         # generate samples using the model
-        c = torch.broadcast_to(torch.from_numpy(c), (SAMPLES, *c.shape[1:]))
-        c = c.to(device=device, dtype=torch.float32)
+        c = torch.from_numpy(datastream).to(device=device, dtype=torch.float32)
+        c = torch.broadcast_to(c, (SAMPLES, *c.shape[1:]))
         x0 = torch.randn((SAMPLES, *true_parameters.shape[1:]), device=device)
         with torch.no_grad():
             x1 = model.push(x0, c, n_steps=16)

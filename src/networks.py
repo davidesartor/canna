@@ -39,10 +39,10 @@ class CrossAttention(nn.Module):
 
     def forward(self, x: Tensor, c: Tensor):
         h = torch.concat([self.qkv_proj_x(x), self.qkv_proj_c(c)], dim=-2)
-        qkv = rearrange(h, "B N (H D) -> B H N D", H=self.num_heads)
+        qkv = rearrange(h, "... N (H D) -> ... H N D", H=self.num_heads)
         q, k, v = qkv.chunk(3, dim=-1)
         h = scaled_dot_product_attention(q, k, v)
-        h = rearrange(h, "B H N D -> B N (H D)")
+        h = rearrange(h, "... H N D -> ... N (H D)")
         x, c = torch.split(h, [x.shape[-2], c.shape[-2]], dim=-2)
         x = self.out_proj_x(x)
         c = self.out_proj_c(c)
@@ -127,6 +127,7 @@ class MMDiT(LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
+        # x embeddings
         self.x_pos_embed = SinusoidalEmbed(hidden_dim)
         self.x_embed = nn.Sequential(
             nn.Linear(x_dim, hidden_dim),
@@ -134,6 +135,7 @@ class MMDiT(LightningModule):
             nn.Linear(hidden_dim, hidden_dim),
         )
 
+        self.c_patch_size = 32
         self.c_pos_embed = SinusoidalEmbed(hidden_dim)
         self.c_embed = nn.Sequential(
             nn.LazyLinear(hidden_dim),
@@ -159,8 +161,11 @@ class MMDiT(LightningModule):
         # embeddings
         x_pos = torch.linspace(0, 1, x.shape[-2], device=x.device)
         x = self.x_embed(x) + self.x_pos_embed(x_pos)
+
+        c = rearrange(c, "... (T P) C -> ... T (P C)", P=self.c_patch_size)
         c_pos = torch.linspace(0, 1, c.shape[-2], device=c.device)
         c = self.c_embed(c) + self.c_pos_embed(c_pos)
+
         y = self.y_embed(t)
 
         # cross attention blocks
@@ -196,10 +201,12 @@ class MMDiT(LightningModule):
 
     def training_step(self, batch, batch_idx):
         (x1, c) = batch
-        t = torch.sigmoid(torch.randn_like(x1[..., 0, 0]))
+        # t = torch.sigmoid(torch.randn_like(x1[..., 0, 0]))
+        t = torch.rand_like(x1[..., 0, 0])
         x0 = torch.randn_like(x1)
         xt = x1 * t[..., None, None] + x0 * (1 - t[..., None, None])
 
         loss = mse_loss(self(xt, t, c), x1 - x0)
         self.log("train/loss", loss, prog_bar=True)
         return loss
+        

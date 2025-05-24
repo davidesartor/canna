@@ -23,15 +23,15 @@ class Sinusoids(Dataset):
 
         self.amplitude_range = (1, 10)
         self.frequency_range = (1, 10)
-        self.times = np.linspace(0, 10, n_times)
+        self.times = np.linspace(0, 1, n_times)
         self.noise_std = 1.0
 
     def __len__(self):
         return self.size // self.batch_size
 
     def __getitem__(self, idx):
-        params, datastream, datastream_stft = self.sample_params_and_datastream()
-        return params.astype(np.float32), datastream_stft.astype(np.float32)
+        params, datastream = self.sample_params_and_datastream()
+        return params.astype(np.float32), datastream.astype(np.float32)
 
     def dataloader(self, **kwargs) -> DataLoader:
         return DataLoader(self, batch_size=None, **kwargs)
@@ -57,14 +57,7 @@ class Sinusoids(Dataset):
         # sample noise
         noise = np.random.normal(0, self.noise_std, signal.shape)
         datastream = signal + noise
-
-        # time-frequency representation
-        _, _, datastream_stft = scipy.signal.stft(signal, nperseg=64 - 1, axis=-2)
-        datastream_stft = rearrange(datastream_stft, "... F C T -> ... T (C F)")
-        datastream_stft = np.concatenate(
-            [datastream_stft.real, datastream_stft.imag], axis=-1
-        )
-        return params, datastream, datastream_stft
+        return params, datastream
 
     def log_posterior(
         self,
@@ -96,7 +89,5 @@ class Sinusoids(Dataset):
             +np.where(mask_a, np.exp(-log_a.sum(-1)), -np.inf)
             + np.where(mask_f, np.exp(-log_f.sum(-1)), -np.inf)
             + np.where(mask_phi, np.exp(-phi.sum(-1)), -np.inf)
-        ).sum(
-            -1
-        )  # sum over sources
+        ).sum(-1)  # sum over sources
         return log_likelihood + log_prior
