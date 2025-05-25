@@ -22,7 +22,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     device = "mps" if torch.backends.mps.is_available() else device
 
-    dataset = Sinusoids(n_sources=2, n_times=128, batch_size=1, size=RUNS)
+    dataset = Sinusoids(n_sources=1, n_times=1024, batch_size=1, size=RUNS)
     model = MMDiT.load_from_checkpoint(args.ckpt, map_location=device)
 
     for run in range(RUNS):

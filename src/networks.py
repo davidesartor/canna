@@ -127,7 +127,7 @@ class MMDiT(LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
-        # x embeddings
+
         self.x_pos_embed = SinusoidalEmbed(hidden_dim)
         self.x_embed = nn.Sequential(
             nn.Linear(x_dim, hidden_dim),
@@ -135,7 +135,7 @@ class MMDiT(LightningModule):
             nn.Linear(hidden_dim, hidden_dim),
         )
 
-        self.c_patch_size = 32
+        self.c_patch_size = 1
         self.c_pos_embed = SinusoidalEmbed(hidden_dim)
         self.c_embed = nn.Sequential(
             nn.LazyLinear(hidden_dim),
@@ -155,7 +155,11 @@ class MMDiT(LightningModule):
         )
 
         self.out_modulation = Modulation(hidden_dim)
-        self.out_projection = nn.Linear(hidden_dim, x_dim)
+        self.out_unembed = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, x_dim)
+        )
 
     def forward(self, x: Tensor, t: Tensor, c: Tensor):
         # embeddings
@@ -172,10 +176,10 @@ class MMDiT(LightningModule):
         for block in self.blocks:
             x, c = block(x, c, y)
 
-        # final projection
+        # unembedging
         alpha, beta, _, _, _, _ = self.out_modulation(y)
         x = modulate(x, alpha, beta)
-        x = self.out_projection(x)
+        x = self.out_unembed(x)
         return x
 
     def push(self, x: Tensor, c: Tensor, n_steps: int = 16):
@@ -200,13 +204,8 @@ class MMDiT(LightningModule):
         )
 
     def training_step(self, batch, batch_idx):
-        (x1, c) = batch
-        # t = torch.sigmoid(torch.randn_like(x1[..., 0, 0]))
-        t = torch.rand_like(x1[..., 0, 0])
-        x0 = torch.randn_like(x1)
-        xt = x1 * t[..., None, None] + x0 * (1 - t[..., None, None])
-
-        loss = mse_loss(self(xt, t, c), x1 - x0)
+        (xt, t, c, dx) = batch
+        loss = mse_loss(self(xt, t, c), dx)
         self.log("train/loss", loss, prog_bar=True)
         return loss
         
