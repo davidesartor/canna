@@ -8,8 +8,8 @@ dependencies = [
     "corner>=2.2.3",
     "einops>=0.8.1",
     "emcee>=3.1.6",
-    "lightning>=2.5.1",
-    "scipy>=1.15.3",
-    "torch>=2.7.0",
+    "flax>=0.10.6",
+    "jaxtyping>=0.3.2",
+    "jupyter>=1.1.1",
     "tqdm>=4.67.1",
 ]
