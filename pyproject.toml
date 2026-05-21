@@ -1,0 +1,17 @@
+[project]
+name = "canna"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "corner>=2.2.3",
+    "einops>=0.8.1",
+    "emcee>=3.1.6",
+    "flax>=0.10.6",
+    "jaxgb>=0.2.1",
+    "jaxtyping>=0.3.2",
+    "jupyter>=1.1.1",
+    "lisaorbits>=3.0.3",
+    "tqdm>=4.67.1",
+]
