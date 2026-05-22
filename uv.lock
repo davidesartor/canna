@@ -190,12 +190,14 @@ dependencies = [
     { name = "corner" },
     { name = "einops" },
     { name = "emcee" },
+    { name = "equinox" },
     { name = "flax" },
     { name = "jaxgb" },
     { name = "jaxtyping" },
     { name = "jupyter" },
     { name = "lisaorbits" },
     { name = "tqdm" },
+    { name = "wdm-transform" },
 ]
 
 [package.metadata]
@@ -203,12 +205,14 @@ requires-dist = [
     { name = "corner", specifier = ">=2.2.3" },
     { name = "einops", specifier = ">=0.8.1" },
     { name = "emcee", specifier = ">=3.1.6" },
+    { name = "equinox", specifier = ">=0.13.8" },
     { name = "flax", specifier = ">=0.10.6" },
     { name = "jaxgb", specifier = ">=0.2.1" },
     { name = "jaxtyping", specifier = ">=0.3.2" },
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "lisaorbits", specifier = ">=3.0.3" },
     { name = "tqdm", specifier = ">=4.67.1" },
+    { name = "wdm-transform", specifier = ">=0.3.0" },
 ]
 
 [[package]]
@@ -443,6 +447,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cb/53/1045ee878cb24281387079f8ee4f0ade1622c6aae1ed1fd91a53e4fa5b19/emcee-3.1.6.tar.gz", hash = "sha256:11af4daf6ab8f9ca69681e3c29054665db7bbd87fd4eb8e437d2c3a1248c637d", size = 2871117, upload-time = "2024-04-19T10:03:19.555Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/ef/2196b9bf88ffa1bde45853c72df021fbd07a8fa91a0f59a22d14a050dc04/emcee-3.1.6-py2.py3-none-any.whl", hash = "sha256:f2d63752023bdccf744461450e512a5b417ae7d28f18e12acd76a33de87580cb", size = 47351, upload-time = "2024-04-19T10:03:17.522Z" },
+]
+
+[[package]]
+name = "equinox"
+version = "0.13.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jax" },
+    { name = "jaxtyping" },
+    { name = "typing-extensions" },
+    { name = "wadler-lindig" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/19/ff/522336d2f8264f2ad97119710b76e2cddf66145d03a1e89899175d26b192/equinox-0.13.8.tar.gz", hash = "sha256:dd075050018e2dd02e252e9d29d3060f7e67f085622d8d27a8e89e24bb8523db", size = 145257, upload-time = "2026-05-05T10:03:43.258Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/d6/69a76c8ccdef14af687c497040292a46e59fc7a0ab24724b60e50ca61030/equinox-0.13.8-py3-none-any.whl", hash = "sha256:ca004348533cc30a63ebe8823d7dd4bb626dce17743d40bbddb89b402ef2a240", size = 185813, upload-time = "2026-05-05T10:03:41.673Z" },
 ]
 
 [[package]]
@@ -2387,6 +2406,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6c/63/53559446a878410fc5a5974feb13d31d78d752eb18aeba59c7fef1af7598/wcwidth-0.2.13.tar.gz", hash = "sha256:72ea0c06399eb286d978fdedb6923a9eb47e1c486ce63e9b4e64fc18303972b5", size = 101301, upload-time = "2024-01-06T02:10:57.829Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fd/84/fd2ba7aafacbad3c4201d395674fc6348826569da3c0937e75505ead3528/wcwidth-0.2.13-py2.py3-none-any.whl", hash = "sha256:3da69048e4540d84af32131829ff948f1e022c1c6bdb8d6102117aac784f6859", size = 34166, upload-time = "2024-01-06T02:10:55.763Z" },
+]
+
+[[package]]
+name = "wdm-transform"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/90/e2/80d696a08b343a11809cc3c4903bab1e7faf5a399bb5905267c08391cd25/wdm_transform-0.3.0.tar.gz", hash = "sha256:a1e0820bd7b46a89601269218c4e1791a17878a5193095b6f8c12f690ef2ba2e", size = 47967, upload-time = "2026-05-01T03:19:14.75Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/9b/d10b2f92e1b67877f57226da3f6e150c19aeebe686b7afe18f891c4cdaf3/wdm_transform-0.3.0-py3-none-any.whl", hash = "sha256:f9e475d10e5bb04930054cc1812a9e6fca8f1fc2fc8c1818728db6b2d49fb681", size = 40953, upload-time = "2026-05-01T03:19:13.574Z" },
 ]
 
 [[package]]
