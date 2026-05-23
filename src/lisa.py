@@ -1,7 +1,8 @@
 from typing import Literal, Callable
-from jaxtyping import Array, Float, Key
+from jaxtyping import Array, Float, Scalar, Key
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 import equinox as eqx
 
 import lisaorbits
@@ -9,8 +10,8 @@ from jaxgb import jaxgb
 
 from . import inverse_cdfs, noise_utils
 
-YEAR_s = 365 * 24 * 3600
-MONTH_s = 30 * 24 * 3600
+YEAR_s = 364 * 24 * 3600
+MONTH_s = 28 * 24 * 3600
 WEEK_s = 7 * 24 * 3600
 DAY_s = 24 * 3600
 
@@ -62,7 +63,7 @@ def clean_signal(
     t_obs: float = YEAR_s,
     dt: float = SAMPLING_STEP_s,
     n: int = 256,  # Number of points for slow response evaluation.
-) -> Float[Array, "3 F"]:
+) -> Float[Array, "F 3"]:
     """
     Compute the clean A/E/T TDI frequency-domain signal for a Galactic Binary.
     Parameters
@@ -76,7 +77,7 @@ def clean_signal(
 
     Returns
     -------
-    jnp.ndarray, shape (3, n_freqs), complex128
+    jnp.ndarray, shape (n_freqs, 3), complex128
         rFFT coefficients for channels A (0), E (1), T (2) on the full
         frequency grid ``jnp.fft.rfftfreq(int(t_obs/dt), dt)``.
     """
@@ -96,7 +97,7 @@ def clean_signal(
     # Index-add into (3, n_freqs); duplicates sum coherently. Drop sentinel.
     full = jnp.zeros((3, n_freqs), dtype=jnp.complex128)
     full = full.at[:, idx].add(segments, mode="drop")
-    return full
+    return full.T
 
 
 def noise_psd(
@@ -148,7 +149,7 @@ def noise_psd(
 @eqx.filter_jit
 def sample_noise(
     key: Key, t_obs: float = YEAR_s, dt: float = SAMPLING_STEP_s
-) -> Float[Array, "3 T"]:
+) -> Float[Array, "F 3"]:
     """
     Draw a time-domain instrumental noise realization for A, E, T channels.
 
@@ -173,10 +174,60 @@ def sample_noise(
 
     Returns
     -------
-    jnp.ndarray, shape (3, n_times)
+    jnp.ndarray, shape (n_freqs, 3)
         Time-domain noise for channels A (0), E (1), T (2).
     """
     noise_a = noise_utils.sample_noise(key, t_obs, dt, psd_function=noise_psd("A"))
     noise_e = noise_utils.sample_noise(key, t_obs, dt, psd_function=noise_psd("E"))
     noise_t = noise_utils.sample_noise(key, t_obs, dt, psd_function=noise_psd("T"))
-    return jnp.stack([noise_a, noise_e, noise_t], axis=0)
+
+    noise = jnp.stack([noise_a, noise_e, noise_t], axis=0)  # time domain
+    noise = jnp.fft.rfft(noise)  # convert to frequency domain
+    return noise.T
+
+
+@eqx.filter_jit
+def get_train_batch(
+    key: Key,
+    batch_size: int,
+    n_sources: int,
+    t_obs: float = YEAR_s,
+    dt: float = SAMPLING_STEP_s,
+) -> tuple[
+    Float[Array, "B S 8"],
+    Float[Array, "B S 8"],
+    Float[Array, "B F 3"],
+    Float[Array, "B"],
+]:
+    def geodesic(
+        t: Scalar, x0: Float[Array, "8"], x1: Float[Array, "8"]
+    ) -> Float[Array, "8"]:
+        # TODO make it depend on geometry
+        return x0 + t * (x1 - x0)
+
+    def train_sample(
+        rng: Key,
+    ) -> tuple[Float[Array, "S 8"], Scalar, Float[Array, "F 3"], Float[Array, "S 8"]]:
+        key_x1, key_y, key_x0, key_t = jr.split(rng, 4)
+        x1 = jr.uniform(key_x1, shape=(n_sources, 8))
+        x0 = jr.uniform(key_x0, x1.shape)  # TODO make it depend on geometry
+        t = jr.uniform(key_t, minval=0.0, maxval=1.0)
+        params = prior_inverse_cdf(x1)
+        signal = clean_signal(params, t_obs=t_obs, dt=dt)
+        noise = sample_noise(key_y, t_obs=t_obs, dt=dt)
+        datastream = signal + noise
+
+        # process the data to make it more digestible
+        # TODO replace this with wavelet
+        y = datastream
+        scale = jnp.abs(y) + 1e-5
+        y = y / scale * jnp.log(scale)
+        y = jnp.concat([y.real, y.imag])
+        y = y.reshape(-1, 12 * 19)
+
+        # flow matching loss
+        xt = geodesic(t, x0, x1)
+        dx = jax.jacobian(geodesic)(t, x0, x1)
+        return xt, dx, t, y
+
+    return jax.vmap(train_sample)(jr.split(key, batch_size))

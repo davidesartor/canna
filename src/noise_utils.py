@@ -1,5 +1,5 @@
 from typing import Callable, Optional
-from jaxtyping import Array, Float, Key
+from jaxtyping import Array, Float, Complex, Key
 import jax
 import jax.numpy as jnp
 
@@ -10,7 +10,7 @@ def sample_noise(
     dt: float,
     *,
     psd_function: Optional[Callable[[Float[Array, "F"]], Float[Array, "F"]]] = None,
-) -> Float[Array, "3 T"]:
+) -> Float[Array, "T"]:
     """
     Draw a time-domain instrumental noise realization with a given PSD.
 
