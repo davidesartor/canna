@@ -4,9 +4,11 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import equinox as eqx
+from einops import rearrange
 
 import lisaorbits
 from jaxgb import jaxgb
+from wdm_transform.transforms import from_freq_to_wdm
 
 from . import inverse_cdfs, noise_utils
 
@@ -63,6 +65,7 @@ def clean_signal(
     t_obs: float = YEAR_s,
     dt: float = SAMPLING_STEP_s,
     n: int = 256,  # Number of points for slow response evaluation.
+    ncrop: int = 32,  # Crop frequency-domain output to a multiple of this (for wavelet).
 ) -> Float[Array, "F 3"]:
     """
     Compute the clean A/E/T TDI frequency-domain signal for a Galactic Binary.
@@ -97,6 +100,10 @@ def clean_signal(
     # Index-add into (3, n_freqs); duplicates sum coherently. Drop sentinel.
     full = jnp.zeros((3, n_freqs), dtype=jnp.complex128)
     full = full.at[:, idx].add(segments, mode="drop")
+
+    # crop frequency-domain output to a multiple of 32
+    n_freqs_crop = n_freqs // ncrop * ncrop
+    full = full[:, :n_freqs_crop]
     return full.T
 
 
@@ -148,7 +155,7 @@ def noise_psd(
 
 @eqx.filter_jit
 def sample_noise(
-    key: Key, t_obs: float = YEAR_s, dt: float = SAMPLING_STEP_s
+    key: Key, t_obs: float = YEAR_s, dt: float = SAMPLING_STEP_s, ncrop: int = 32
 ) -> Float[Array, "F 3"]:
     """
     Draw a time-domain instrumental noise realization for A, E, T channels.
@@ -183,6 +190,11 @@ def sample_noise(
 
     noise = jnp.stack([noise_a, noise_e, noise_t], axis=0)  # time domain
     noise = jnp.fft.rfft(noise)  # convert to frequency domain
+
+    # crop frequency-domain output to a multiple of 32
+    n_freqs = noise.shape[-1]
+    n_freqs_crop = n_freqs // ncrop * ncrop
+    noise = noise[:, :n_freqs_crop]
     return noise.T
 
 
@@ -193,6 +205,7 @@ def get_train_batch(
     n_sources: int,
     t_obs: float = YEAR_s,
     dt: float = SAMPLING_STEP_s,
+    ncrop: int = 32,
 ) -> tuple[
     Float[Array, "B S 8"],
     Float[Array, "B S 8"],
@@ -213,17 +226,26 @@ def get_train_batch(
         x0 = jr.uniform(key_x0, x1.shape)  # TODO make it depend on geometry
         t = jr.uniform(key_t, minval=0.0, maxval=1.0)
         params = prior_inverse_cdf(x1)
-        signal = clean_signal(params, t_obs=t_obs, dt=dt)
-        noise = sample_noise(key_y, t_obs=t_obs, dt=dt)
+        signal = clean_signal(params, t_obs=t_obs, dt=dt, ncrop=ncrop)
+        noise = sample_noise(key_y, t_obs=t_obs, dt=dt, ncrop=ncrop)
         datastream = signal + noise
+
+        # crop frequency-domain output to a multiple of ncrop
+        n_freqs_crop = (datastream.shape[0] // ncrop) * ncrop
+        datastream = datastream[:n_freqs_crop]
 
         # process the data to make it more digestible
         # TODO replace this with wavelet
-        y = datastream
-        scale = jnp.abs(y) + 1e-5
-        y = y / scale * jnp.log(scale)
-        y = jnp.concat([y.real, y.imag])
-        y = y.reshape(-1, 12 * 19)
+        y = from_freq_to_wdm(
+            datastream.T,
+            nt = 32,
+            nf = len(datastream) // 32,
+            a=1.0 / 3.0,
+            d=1.0,
+            dt=SAMPLING_STEP_s,
+            backend="jax",
+        )
+        y = rearrange(y, "c t f -> f (t c)")
 
         # flow matching loss
         xt = geodesic(t, x0, x1)

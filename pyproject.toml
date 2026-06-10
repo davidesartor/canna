@@ -16,5 +16,5 @@ dependencies = [
     "lisaorbits>=3.0.3",
     "optax>=0.2.8",
     "tqdm>=4.67.1",
-    "wdm-transform>=0.3.0",
+    "wdm-transform>=0.4.2",
 ]

@@ -231,7 +231,7 @@ requires-dist = [
     { name = "lisaorbits", specifier = ">=3.0.3" },
     { name = "optax", specifier = ">=0.2.8" },
     { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "wdm-transform", specifier = ">=0.3.0" },
+    { name = "wdm-transform", specifier = ">=0.4.2" },
 ]
 
 [[package]]
@@ -2170,16 +2170,16 @@ wheels = [
 
 [[package]]
 name = "wdm-transform"
-version = "0.3.0"
+version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/90/e2/80d696a08b343a11809cc3c4903bab1e7faf5a399bb5905267c08391cd25/wdm_transform-0.3.0.tar.gz", hash = "sha256:a1e0820bd7b46a89601269218c4e1791a17878a5193095b6f8c12f690ef2ba2e", size = 47967, upload-time = "2026-05-01T03:19:14.75Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/51/54/0763005cf4f568d1aa4dc57c79c45c23354efe766021022cd3b8c488b1f0/wdm_transform-0.4.2.tar.gz", hash = "sha256:f9069ad18161d458a4adddb69645339893e53477559b8a39edcebc260d74a2ed", size = 48885, upload-time = "2026-06-05T19:42:02.709Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/9b/d10b2f92e1b67877f57226da3f6e150c19aeebe686b7afe18f891c4cdaf3/wdm_transform-0.3.0-py3-none-any.whl", hash = "sha256:f9e475d10e5bb04930054cc1812a9e6fca8f1fc2fc8c1818728db6b2d49fb681", size = 40953, upload-time = "2026-05-01T03:19:13.574Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/b1/79485a2daeb255d916cb143f8b0a4edbb38a1de604ba8b8f31ea83143283/wdm_transform-0.4.2-py3-none-any.whl", hash = "sha256:d9b676baf61cf52f4628a7a5ed7d74ce508b97905e6fc582b597788e87d721e5", size = 42059, upload-time = "2026-06-05T19:42:01.44Z" },
 ]
 
 [[package]]
