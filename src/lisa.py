@@ -245,7 +245,7 @@ def get_train_batch(
             dt=SAMPLING_STEP_s,
             backend="jax",
         )
-        y = rearrange(y, "c t f -> f (t c)")
+        y = rearrange(y, "c t f -> t (f c)")
 
         # flow matching loss
         xt = geodesic(t, x0, x1)
