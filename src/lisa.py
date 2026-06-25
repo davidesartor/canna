@@ -12,7 +12,7 @@ from wdm_transform.transforms import from_freq_to_wdm
 
 from . import inverse_cdfs, noise_utils
 
-YEAR_s = 364 * 24 * 3600
+YEAR_s = 360 * 24 * 3600
 MONTH_s = 28 * 24 * 3600
 WEEK_s = 7 * 24 * 3600
 DAY_s = 24 * 3600
@@ -148,7 +148,10 @@ def noise_psd(
             )
         else:
             raise ValueError(f"Invalid channel: {channel}. Must be 'A', 'E', or 'T'.")
-        return tdi15_factor * n_tilda
+
+        # TODO: temp, low noise for testing
+        return tdi15_factor * n_tilda / 1000.0
+        # return tdi15_factor * n_tilda
 
     return psd_f
 
@@ -238,14 +241,17 @@ def get_train_batch(
         # TODO replace this with wavelet
         y = from_freq_to_wdm(
             datastream.T,
-            nt = 32,
-            nf = len(datastream) // 32,
+            nt=32,
+            nf=len(datastream) // 32,
             a=1.0 / 3.0,
             d=1.0,
             dt=SAMPLING_STEP_s,
             backend="jax",
         )
         y = rearrange(y, "c t f -> t (f c)")
+
+        # log scale the data to make it more digestible
+        y = jnp.where(y == 0, 0.0, jnp.sign(y) * jnp.log(jnp.abs(y)))
 
         # flow matching loss
         xt = geodesic(t, x0, x1)

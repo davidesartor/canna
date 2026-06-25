@@ -1,4 +1,5 @@
 import time
+import functools
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -6,9 +7,6 @@ import equinox as eqx
 import optax
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-
-jax.config.update("jax_enable_x64", True)
-
 from src import lisa, networks
 
 # problem
@@ -18,7 +16,7 @@ T_OBS = lisa.MONTH_s
 
 # model
 HIDDEN_DIM = 512
-NUM_BLOCKS = 8
+NUM_BLOCKS = 4
 NUM_HEADS = 8
 
 # training
@@ -61,7 +59,7 @@ if __name__ == "__main__":
 
     ########################################
     # define the training/validation loop
-    @eqx.filter_jit
+    @functools.partial(eqx.filter_jit, donate="all")
     def train_step(flow, opt_state, batch):
         xt, dx, t, y = batch
 

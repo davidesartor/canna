@@ -267,6 +267,8 @@ class MMDiT(eqx.Module):
             k3 = self(x + k2 * dt / 2, y, t + dt / 2)
             k4 = self(x + k3 * dt, y, t + dt)
             x = x + (k1 + 2 * k2 + 2 * k3 + k4) * dt / 6
+            # TODO: quick hack to integrate on periodic domains
+            x = x % 1.0
             return x
 
         x = jax.lax.fori_loop(0, ode_steps, runge_kutta_4_step, x)
