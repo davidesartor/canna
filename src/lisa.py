@@ -226,7 +226,7 @@ def get_train_batch(
     ) -> tuple[Float[Array, "S 8"], Scalar, Float[Array, "F 3"], Float[Array, "S 8"]]:
         key_x1, key_y, key_x0, key_t = jr.split(rng, 4)
         x1 = jr.uniform(key_x1, shape=(n_sources, 8))
-        x0 = jr.uniform(key_x0, x1.shape)  # TODO make it depend on geometry
+        x0 = jr.uniform(key_x0, x1.shape) 
         t = jr.uniform(key_t, minval=0.0, maxval=1.0)
         params = prior_inverse_cdf(x1)
         signal = clean_signal(params, t_obs=t_obs, dt=dt, ncrop=ncrop)
@@ -256,6 +256,10 @@ def get_train_batch(
         # flow matching loss
         xt = geodesic(t, x0, x1)
         dx = jax.jacobian(geodesic)(t, x0, x1)
+
+        # TODO: simplified parameterization for testing
+        xt, dx = xt[:, :3], dx[:, :3] # only the log-uniform parameters for now
+        y = x1 + 1e-2 * jr.normal(key_y, shape=x1.shape)  # sanity check, condition on noisy params
         return xt, dx, t, y
 
     return jax.vmap(train_sample)(jr.split(key, batch_size))

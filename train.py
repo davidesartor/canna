@@ -7,6 +7,9 @@ import equinox as eqx
 import optax
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+
+jax.config.update("jax_enable_x64", True)
+
 from src import lisa, networks
 
 # problem
@@ -15,7 +18,7 @@ N_SOURCES = 2
 T_OBS = lisa.MONTH_s
 
 # model
-HIDDEN_DIM = 512
+HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 NUM_HEADS = 8
 
