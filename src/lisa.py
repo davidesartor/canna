@@ -150,7 +150,7 @@ def noise_psd(
             raise ValueError(f"Invalid channel: {channel}. Must be 'A', 'E', or 'T'.")
 
         # TODO: temp, low noise for testing
-        return tdi15_factor * n_tilda / 1000.0
+        return tdi15_factor * n_tilda #/ 1000.0
         # return tdi15_factor * n_tilda
 
     return psd_f
@@ -187,9 +187,14 @@ def sample_noise(
     jnp.ndarray, shape (n_freqs, 3)
         Time-domain noise for channels A (0), E (1), T (2).
     """
-    noise_a = noise_utils.sample_noise(key, t_obs, dt, psd_function=noise_psd("A"))
-    noise_e = noise_utils.sample_noise(key, t_obs, dt, psd_function=noise_psd("E"))
-    noise_t = noise_utils.sample_noise(key, t_obs, dt, psd_function=noise_psd("T"))
+    # Independent keys per channel: A, E, T are statistically independent noises.
+    # Reusing the same key gave all three channels the *same* white-noise draw
+    # (fully correlated across channels), violating the per-channel independence
+    # the likelihood assumes.
+    key_a, key_e, key_t = jr.split(key, 3)
+    noise_a = noise_utils.sample_noise(key_a, t_obs, dt, psd_function=noise_psd("A"))
+    noise_e = noise_utils.sample_noise(key_e, t_obs, dt, psd_function=noise_psd("E"))
+    noise_t = noise_utils.sample_noise(key_t, t_obs, dt, psd_function=noise_psd("T"))
 
     noise = jnp.stack([noise_a, noise_e, noise_t], axis=0)  # time domain
     noise = jnp.fft.rfft(noise)  # convert to frequency domain
