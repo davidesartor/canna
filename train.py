@@ -1,3 +1,4 @@
+import os
 import time
 import functools
 import jax
@@ -27,7 +28,11 @@ LEARNING_RATE = 1e-4
 BATCH_SIZE = 512
 EPOCH_TIME_BUDGET_s = 5 * 60  # 5 minutes per epoch
 EPOCHS = (48 * 60 * 60) // EPOCH_TIME_BUDGET_s  # 48h total
-CHECKPOINT_PATH = "checkpoint.eqx"
+# Output paths (env-overridable so parallel runs on different GPUs don't clobber
+# each other). Defaults preserve the original single-run behaviour.
+RUN_TAG = os.environ.get("RUN_TAG", "")
+CHECKPOINT_PATH = os.environ.get("CHECKPOINT_PATH", f"checkpoint{RUN_TAG}.eqx")
+LOSS_PLOT_PATH = os.environ.get("LOSS_PLOT_PATH", f"training_loss{RUN_TAG}.pdf")
 
 
 if __name__ == "__main__":
@@ -128,7 +133,7 @@ if __name__ == "__main__":
         plt.legend()
         plt.grid()
         plt.title("Training Loss Over Epochs")
-        plt.savefig("training_loss.pdf")
+        plt.savefig(LOSS_PLOT_PATH)
         plt.clf()
 
     ##########################################

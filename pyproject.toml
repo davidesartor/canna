@@ -12,8 +12,15 @@ dependencies = [
     "jax[cuda]>=0.10.1",
     "jaxgb>=0.2.1",
     "jaxtyping>=0.3.2",
+    "jexplore>=0.0.2",
     "lisaorbits>=3.0.3",
     "optax>=0.2.8",
     "tqdm>=4.67.1",
     "wdm-transform>=0.4.2",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.3.0",
+    "nbconvert>=7.17.1",
 ]

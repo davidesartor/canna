@@ -26,7 +26,7 @@ T_OBS = lisa.MONTH_s
 HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 NUM_HEADS = 8
-CHECKPOINT_PATH = "checkpoint.eqx"
+CHECKPOINT_PATH = os.environ.get("CHECKPOINT_PATH", "checkpoint.eqx")
 N_SAMPLES = 1024
 
 # --- Build the flow and load the checkpoint ---------------------------------
@@ -63,9 +63,10 @@ for i in range(10):
     xt, dx, t, y = lisa.get_train_batch(
         key_truth, batch_size=1, n_sources=N_SOURCES, t_obs=T_OBS
     )
-    # xt[0]: (N_SOURCES, PARAM_DIM) — ground-truth in unit-cube space [0, 1]
-    # y[0]:  (T, F)                 — WDM conditioning for the flow
-    true_params = np.asarray(y[0, ..., :xt.shape[-1]])  # (N_SOURCES, PARAM_DIM)
+    # Ground-truth unit-cube params are the t=1 endpoint of the geodesic:
+    # x1 = xt + (1 - t) * dx  (since dx = x1 - x0 and xt = x0 + t * dx).
+    x1_true = xt + (1.0 - t)[:, None, None] * dx
+    true_params = np.asarray(x1_true[0])  # (N_SOURCES, PARAM_DIM), unit cube [0, 1]
     y = y[0]  # remove batch dimension for flow conditioning
 
     key, key_flow, key_mcmc = jr.split(key, 3)

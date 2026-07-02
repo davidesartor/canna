@@ -148,10 +148,8 @@ def noise_psd(
             )
         else:
             raise ValueError(f"Invalid channel: {channel}. Must be 'A', 'E', or 'T'.")
-
-        # TODO: temp, low noise for testing
-        return tdi15_factor * n_tilda #/ 1000.0
-        # return tdi15_factor * n_tilda
+        
+        return tdi15_factor * n_tilda
 
     return psd_f
 
@@ -187,10 +185,6 @@ def sample_noise(
     jnp.ndarray, shape (n_freqs, 3)
         Time-domain noise for channels A (0), E (1), T (2).
     """
-    # Independent keys per channel: A, E, T are statistically independent noises.
-    # Reusing the same key gave all three channels the *same* white-noise draw
-    # (fully correlated across channels), violating the per-channel independence
-    # the likelihood assumes.
     key_a, key_e, key_t = jr.split(key, 3)
     noise_a = noise_utils.sample_noise(key_a, t_obs, dt, psd_function=noise_psd("A"))
     noise_e = noise_utils.sample_noise(key_e, t_obs, dt, psd_function=noise_psd("E"))
@@ -256,7 +250,7 @@ def get_train_batch(
         y = rearrange(y, "c t f -> t (f c)")
 
         # log scale the data to make it more digestible
-        y = jnp.where(y == 0, 0.0, jnp.sign(y) * jnp.log(jnp.abs(y)))
+        y = jnp.concat([jnp.log(jnp.abs(y)), jnp.sign(y)], axis=-1)
 
         # flow matching loss
         xt = geodesic(t, x0, x1)
@@ -264,7 +258,6 @@ def get_train_batch(
 
         # TODO: simplified parameterization for testing
         xt, dx = xt[:, :3], dx[:, :3] # only the log-uniform parameters for now
-        y = x1 + 1e-2 * jr.normal(key_y, shape=x1.shape)  # sanity check, condition on noisy params
         return xt, dx, t, y
 
     return jax.vmap(train_sample)(jr.split(key, batch_size))
