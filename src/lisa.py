@@ -1,3 +1,4 @@
+import os
 from typing import Literal, Callable
 from jaxtyping import Array, Float, Scalar, Key
 import jax
@@ -21,6 +22,11 @@ MAX_FREQUENCY_Hz = 3e-3  # top of the LISA analysis band
 SAMPLING_STEP_s = 1.0 / (2.0 * MAX_FREQUENCY_Hz)  # Nyquist sampling step (~167 s)
 ARM_LENGTH_m = 2.5e9
 SPEED_OF_LIGHT_m_s = 299792458.0
+
+# Instrumental-noise amplitude scale for get_train_batch (env-overridable).
+# Default 1.0 leaves the real noise level untouched (train.py behaviour); set
+# e.g. NOISE_SCALE=0.01 for a 100x quieter sanity-check problem.
+NOISE_SCALE = float(os.environ.get("NOISE_SCALE", "1.0"))
 
 
 @eqx.filter_jit
@@ -230,7 +236,7 @@ def get_train_batch(
         params = prior_inverse_cdf(x1)
         signal = clean_signal(params, t_obs=t_obs, dt=dt, ncrop=ncrop)
         noise = sample_noise(key_y, t_obs=t_obs, dt=dt, ncrop=ncrop)
-        datastream = signal + noise
+        datastream = signal + NOISE_SCALE * noise
 
         # crop frequency-domain output to a multiple of ncrop
         n_freqs_crop = (datastream.shape[0] // ncrop) * ncrop
@@ -255,9 +261,6 @@ def get_train_batch(
         # flow matching loss
         xt = geodesic(t, x0, x1)
         dx = jax.jacobian(geodesic)(t, x0, x1)
-
-        # TODO: simplified parameterization for testing
-        xt, dx = xt[:, :3], dx[:, :3] # only the log-uniform parameters for now
         return xt, dx, t, y
 
     return jax.vmap(train_sample)(jr.split(key, batch_size))
