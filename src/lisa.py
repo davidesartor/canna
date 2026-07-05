@@ -256,7 +256,7 @@ def get_train_batch(
         y = rearrange(y, "c t f -> t (f c)")
 
         # log scale the data to make it more digestible
-        y = jnp.concat([jnp.log(jnp.abs(y)), jnp.sign(y)], axis=-1)
+        y = jnp.concat([jnp.log(jnp.abs(y) + 1e-30), jnp.sign(y)], axis=-1)
 
         # flow matching loss
         xt = geodesic(t, x0, x1)
