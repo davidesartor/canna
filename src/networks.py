@@ -8,11 +8,16 @@ from einops import rearrange
 ACTIVATION = jax.nn.silu
 
 
+def rms_norm(x: Float[Array, "... D"], eps: float = 1e-8):
+    ms = jnp.mean(x**2, axis=-1, keepdims=True)
+    return x * jax.lax.rsqrt(ms + eps)
+
+
 def adaptive_norm(
     x: Float[Array, "... N D"],
     scale: Float[Array, "... 1 D"],
     shift: Float[Array, "... 1 D"],
-    eps: float = 1e-5,
+    eps: float = 1e-8,
 ):
     x = x - x.mean(axis=-1, keepdims=True)
     x = x / (x.std(axis=-1, keepdims=True) + eps)
@@ -61,7 +66,9 @@ class SinusoidalEmbed(eqx.Module):
         self.embed = FeedForward(2 * dim, dim, dim, key=key)
 
     def __call__(self, t: Scalar) -> Float[Array, "D"]:
-        freqs = jnp.exp(-jnp.log(self.period) * jnp.linspace(0, 1, self.dim))
+        freqs = jnp.exp(
+            -jnp.log(self.period) * jnp.linspace(0, 1, self.dim, dtype=t.dtype)
+        )
         angles = 2 * jnp.pi * freqs * t[..., None]
         x = jnp.concat([jnp.sin(angles), jnp.cos(angles)], axis=-1)
         x = self.embed(x)
@@ -98,6 +105,7 @@ class MultiStreamAttention(eqx.Module):
         h = jnp.concat([x, y], axis=-2)
         qkv = rearrange(h, "... N (H D) -> ... N H D", H=self.num_heads)
         q, k, v = jnp.split(qkv, 3, axis=-1)
+        q, k = rms_norm(q), rms_norm(k)
         h = jax.nn.dot_product_attention(q, k, v)
         h = rearrange(h, "... N H D -> ... N (H D)")
         x, y = jnp.split(h, [len(x)], axis=-2)
@@ -231,9 +239,9 @@ class MMDiT(eqx.Module):
         ), f"Expected y dim {self.y_dim}, got {y.shape[-1]}"
 
         # embedding
-        x_pos = jnp.linspace(0, 1, len(x))
+        x_pos = jnp.linspace(0, 1, len(x), dtype=x.dtype)
         x = eqx.filter_vmap(self.x_embed)(x) + eqx.filter_vmap(self.x_pos_embed)(x_pos)
-        y_pos = jnp.linspace(0, 1, len(y))
+        y_pos = jnp.linspace(0, 1, len(y), dtype=y.dtype)
         y = eqx.filter_vmap(self.y_embed)(y) + eqx.filter_vmap(self.y_pos_embed)(y_pos)
         c = self.c_embed(self.c_pos_embed(t))
 
@@ -252,7 +260,7 @@ class MMDiT(eqx.Module):
         x = adaptive_norm(x, scale, shift)
         x = eqx.filter_vmap(self.out_unembed)(x)
         return x
-
+    
     def push(
         self,
         x: Float[Array, "N D"],
@@ -261,7 +269,9 @@ class MMDiT(eqx.Module):
     ) -> Float[Array, "N D"]:
         def runge_kutta_4_step(i, x):
             dt = 1 / ode_steps
-            t = i * dt
+            # match x's dtype: under jax_enable_x64, ``i * dt`` is float64 and
+            # would promote the network's scan carry, mismatching an fp32 x.
+            t = (i * dt).astype(x.dtype)
             k1 = self(x, y, t)
             k2 = self(x + k1 * dt / 2, y, t + dt / 2)
             k3 = self(x + k2 * dt / 2, y, t + dt / 2)
