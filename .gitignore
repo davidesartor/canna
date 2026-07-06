@@ -1,7 +1,4 @@
 __pycache__
 .venv
-*.slurm
 *.err
 *.out
-lightning_logs
-figures

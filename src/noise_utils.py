@@ -2,6 +2,7 @@ from typing import Callable, Optional
 from jaxtyping import Array, Float, Complex, Key
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 
 
 def sample_noise(
@@ -12,7 +13,7 @@ def sample_noise(
     psd_function: Optional[Callable[[Float[Array, "F"]], Float[Array, "F"]]] = None,
 ) -> Float[Array, "T"]:
     """
-    Draw a time-domain instrumental noise realization with a given PSD.
+    Draw a time domain realization of instrumental noise with a given PSD.
 
     Parameters
     ----------
@@ -27,12 +28,12 @@ def sample_noise(
     Returns
     -------
     jnp.ndarray, shape (n_times,)
-        Time-domain noise for the channels
+        Time-domain noise with the given PSD. If ``psd_function`` is None, returns white noise.
     """
 
     n_times = int(t_obs / dt)
     f = jnp.fft.rfftfreq(n_times, dt)
-    real, imag = jax.random.normal(key, (2, len(f)))
+    real, imag = jr.normal(key, (2, len(f)))
     noise_f = real + 1j * imag  # white noise in frequency domain
     if psd_function is not None:
         psd = jnp.where(f > 0, psd_function(f), 0.0)

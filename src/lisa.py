@@ -23,12 +23,6 @@ SAMPLING_STEP_s = 1.0 / (2.0 * MAX_FREQUENCY_Hz)  # Nyquist sampling step (~167 
 ARM_LENGTH_m = 2.5e9
 SPEED_OF_LIGHT_m_s = 299792458.0
 
-# Instrumental-noise amplitude scale for get_train_batch (env-overridable).
-# Default 1.0 leaves the real noise level untouched (train.py behaviour); set
-# e.g. NOISE_SCALE=0.01 for a 100x quieter sanity-check problem.
-NOISE_SCALE = float(os.environ.get("NOISE_SCALE", "1.0"))
-
-
 @eqx.filter_jit
 def prior_inverse_cdf(u: Float[Array, "... 8"]) -> Float[Array, "... 8"]:
     """Inverse CDF of the Galactic Binary prior.
@@ -70,11 +64,9 @@ def clean_signal(
     params: Float[Array, "S 8"],
     t_obs: float = YEAR_s,
     dt: float = SAMPLING_STEP_s,
-    n: int = 256,  # Number of points for slow response evaluation.
-    ncrop: int = 32,  # Crop frequency-domain output to a multiple of this (for wavelet).
-) -> Float[Array, "F 3"]:
+) -> Float[Array, "T 3"]:
     """
-    Compute the clean A/E/T TDI frequency-domain signal for a Galactic Binary.
+    Compute the clean A/E/T TDI time-domain signal for a Galactic Binary.
     Parameters
     ----------
     params : array_like, shape (n_sources, 8)
@@ -86,31 +78,29 @@ def clean_signal(
 
     Returns
     -------
-    jnp.ndarray, shape (n_freqs, 3), complex128
-        rFFT coefficients for channels A (0), E (1), T (2) on the full
-        frequency grid ``jnp.fft.rfftfreq(int(t_obs/dt), dt)``.
+    jnp.ndarray, shape (n_times, 3), complex128
+        Time-domain signal for channels A (0), E (1), T (2).
     """
     n_samples = int(t_obs / dt)
     n_freqs = len(jnp.fft.rfftfreq(n_samples, dt))
 
     # logal segments of the TDI response
     orbit = lisaorbits.EqualArmlengthOrbits()
-    jgb = jaxgb.JaxGB(orbit, t_obs=t_obs, t0=0.0, n=n)
+    jgb = jaxgb.JaxGB(orbit, t_obs=t_obs, t0=0.0, n=256)
     segments = jgb.get_tdi(params, tdi_generation=1.5, tdi_combination="AET")
     segments = jnp.stack(segments, axis=0).astype(jnp.complex128)  # shape (S, 3, n)
 
     # insert each segment into the correct place in the full frequency array
     start_idx = jgb.get_kmin(params[:, 0])  # shape (S,)
-    idx = start_idx[:, None] + jnp.arange(n, dtype=jnp.int32)  # (S, n)
+    idx = start_idx[:, None] + jnp.arange(256, dtype=jnp.int32)  # (S, 256)
 
     # Index-add into (3, n_freqs); duplicates sum coherently. Drop sentinel.
     full = jnp.zeros((3, n_freqs), dtype=jnp.complex128)
     full = full.at[:, idx].add(segments, mode="drop")
 
-    # crop frequency-domain output to a multiple of 32
-    n_freqs_crop = n_freqs // ncrop * ncrop
-    full = full[:, :n_freqs_crop]
-    return full.T
+    # Inverse FFT to get time-domain signal
+    signal = jnp.fft.irfft(full, n=n_samples, axis=-1)
+    return signal.T  # (n_samples, 3)
 
 
 def noise_psd(
@@ -120,6 +110,7 @@ def noise_psd(
     L: float = ARM_LENGTH_m,
 ) -> Callable[[Float[Array, "..."]], Float[Array, "..."]]:
     # TODO: documentation for these parameters/formulas
+    @eqx.filter_jit
     def psd_f(f: Float[Array, "..."]) -> Float[Array, "..."]:
         fstar = 1.0 / (2.0 * jnp.pi * L / SPEED_OF_LIGHT_m_s)
         tdi15_factor = 4.0 * jnp.sin(f / fstar) * f / fstar
@@ -154,7 +145,7 @@ def noise_psd(
             )
         else:
             raise ValueError(f"Invalid channel: {channel}. Must be 'A', 'E', or 'T'.")
-        
+
         return tdi15_factor * n_tilda
 
     return psd_f
@@ -162,17 +153,15 @@ def noise_psd(
 
 @eqx.filter_jit
 def sample_noise(
-    key: Key, t_obs: float = YEAR_s, dt: float = SAMPLING_STEP_s, ncrop: int = 32
-) -> Float[Array, "F 3"]:
+    key: Key,
+    t_obs: float = YEAR_s,
+    dt: float = SAMPLING_STEP_s,
+) -> Float[Array, "T 3"]:
     """
     Draw a time-domain instrumental noise realization for A, E, T channels.
 
     Generates colored Gaussian noise whose rFFT power spectral density matches
-    the TDI 1.5 instrumental PSD (no galactic foreground), using the same
-    prescription as ``data_generation.py``:
-
-        noise_f = sqrt(psd) * (z_r + i z_i) / sqrt(2),   z ~ N(0,1)
-        noise_t = irfft(noise_f, n=n_samples)
+    the TDI 1.5 instrumental PSD (no galactic foreground).
 
     Parameters
     ----------
@@ -182,28 +171,63 @@ def sample_noise(
         Observation time in seconds (default: 1 year).
     dt : float
         Time step in seconds (default: ~167 s).
-    seed : int, optional
-        RNG seed (ignored when *rng* is given).
-    rng : jnp.random.Generator, optional
 
     Returns
     -------
-    jnp.ndarray, shape (n_freqs, 3)
+    jnp.ndarray, shape (n_times, 3)
         Time-domain noise for channels A (0), E (1), T (2).
     """
     key_a, key_e, key_t = jr.split(key, 3)
     noise_a = noise_utils.sample_noise(key_a, t_obs, dt, psd_function=noise_psd("A"))
     noise_e = noise_utils.sample_noise(key_e, t_obs, dt, psd_function=noise_psd("E"))
     noise_t = noise_utils.sample_noise(key_t, t_obs, dt, psd_function=noise_psd("T"))
+    noise = jnp.stack([noise_a, noise_e, noise_t], axis=-1)
+    return noise
 
-    noise = jnp.stack([noise_a, noise_e, noise_t], axis=0)  # time domain
-    noise = jnp.fft.rfft(noise)  # convert to frequency domain
 
-    # crop frequency-domain output to a multiple of 32
-    n_freqs = noise.shape[-1]
-    n_freqs_crop = n_freqs // ncrop * ncrop
-    noise = noise[:, :n_freqs_crop]
-    return noise.T
+@eqx.filter_jit
+def preprocess_datastream(
+    datastream: Float[Array, "T 3"],
+    t_obs: float = YEAR_s,
+    dt: float = SAMPLING_STEP_s,
+) -> Float[Array, "F T*C"]:
+    # convert to freq domain and crop the frequency axis to a multiple of 32 for the WDM grid
+    # TODO: make the 32 time bins configurable
+    freqs = jnp.fft.rfftfreq(int(t_obs / dt), dt)
+    freqs = freqs[: (len(freqs) // 32) * 32]
+    datastream = jnp.fft.rfft(datastream, axis=0)
+    datastream = datastream[: len(freqs)]
+
+    # whiten each channel of the datastream by its nominal PSD
+    for i, ch in enumerate("AET"):
+        psd = jnp.where(freqs > 0, noise_psd(ch)(freqs), 0.0)  # type: ignore
+        datastream = datastream.at[:, i].divide(
+            jnp.where(psd == 0.0, 1.0, jnp.sqrt(psd))
+        )
+
+    # process the data to make it more digestible
+    # TODO: make the 32 time bins configurable
+    y = from_freq_to_wdm(
+        datastream.T,
+        nt=32,
+        nf=len(datastream) // 32,
+        a=1.0 / 3.0,
+        d=1.0,
+        dt=SAMPLING_STEP_s,
+        backend="jax",
+    )
+    y = rearrange(y, "c t f -> t (f c)")
+    y = jnp.arcsinh(y)  # avoids grossly large values in the WDM transform
+    return y
+
+
+@eqx.filter_jit
+def geodesic(
+    t: Scalar, u0: Float[Array, "8"], u1: Float[Array, "8"]
+) -> Float[Array, "8"]:
+    """Probability path point at time ``t`` between base ``u0`` and target ``u1``."""
+    # TODO make it depend on geometry
+    return u0 + t * (u1 - u0)
 
 
 @eqx.filter_jit
@@ -213,54 +237,26 @@ def get_train_batch(
     n_sources: int,
     t_obs: float = YEAR_s,
     dt: float = SAMPLING_STEP_s,
-    ncrop: int = 32,
-) -> tuple[
-    Float[Array, "B S 8"],
-    Float[Array, "B S 8"],
-    Float[Array, "B F 3"],
-    Float[Array, "B"],
-]:
-    def geodesic(
-        t: Scalar, x0: Float[Array, "8"], x1: Float[Array, "8"]
-    ) -> Float[Array, "8"]:
-        # TODO make it depend on geometry
-        return x0 + t * (x1 - x0)
-
+    noise_scale: float = 1.0,
+) -> tuple[Float[Array, "S 8"], Float[Array, "S 8"], Scalar, Float[Array, "T F*C"]]:
     def train_sample(
-        rng: Key,
-    ) -> tuple[Float[Array, "S 8"], Scalar, Float[Array, "F 3"], Float[Array, "S 8"]]:
-        key_x1, key_y, key_x0, key_t = jr.split(rng, 4)
-        x1 = jr.uniform(key_x1, shape=(n_sources, 8))
-        x0 = jr.uniform(key_x0, x1.shape) 
+        key: Key,
+    ) -> tuple[Float[Array, "S 8"], Float[Array, "S 8"], Scalar, Float[Array, "T F*C"]]:
+        key_u1, key_u0, key_t, key_y = jr.split(key, 4)
+        u1 = jr.uniform(key_u1, shape=(n_sources, 8))
+        u0 = jr.uniform(key_u0, shape=(n_sources, 8))
         t = jr.uniform(key_t, minval=0.0, maxval=1.0)
-        params = prior_inverse_cdf(x1)
-        signal = clean_signal(params, t_obs=t_obs, dt=dt, ncrop=ncrop)
-        noise = sample_noise(key_y, t_obs=t_obs, dt=dt, ncrop=ncrop)
-        datastream = signal + NOISE_SCALE * noise
 
-        # crop frequency-domain output to a multiple of ncrop
-        n_freqs_crop = (datastream.shape[0] // ncrop) * ncrop
-        datastream = datastream[:n_freqs_crop]
+        # generate the conditioning signal
+        params = prior_inverse_cdf(u1)
+        signal = clean_signal(params, t_obs=t_obs, dt=dt)
+        noise = sample_noise(key_y, t_obs=t_obs, dt=dt)
+        datastream = signal + noise_scale * noise
+        y = preprocess_datastream(datastream, t_obs=t_obs, dt=dt)
 
-        # process the data to make it more digestible
-        # TODO replace this with wavelet
-        y = from_freq_to_wdm(
-            datastream.T,
-            nt=32,
-            nf=len(datastream) // 32,
-            a=1.0 / 3.0,
-            d=1.0,
-            dt=SAMPLING_STEP_s,
-            backend="jax",
-        )
-        y = rearrange(y, "c t f -> t (f c)")
-
-        # log scale the data to make it more digestible
-        y = jnp.concat([jnp.log(jnp.abs(y) + 1e-30), jnp.sign(y)], axis=-1)
-
-        # flow matching loss
-        xt = geodesic(t, x0, x1)
-        dx = jax.jacobian(geodesic)(t, x0, x1)
+        # conditional flow-matching target
+        xt = geodesic(t, u0, u1)
+        dx = jax.jacobian(geodesic)(t, u0, u1)
         return xt, dx, t, y
 
     return jax.vmap(train_sample)(jr.split(key, batch_size))
