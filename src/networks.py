@@ -220,17 +220,19 @@ class MMDiT(eqx.Module):
         init_block = lambda k: MMDiTBlock(hidden_dim, num_heads, key=k)
         self.blocks = eqx.filter_vmap(init_block)(jr.split(k_blocks, num_blocks))
 
-        # output layers
+        # output layers: projects to 2*x_dim, split into (dx, x_mle)
         k_out_mod, k_out_unembed = jr.split(k_out, 2)
         self.out_modulation = Modulation(hidden_dim, key=k_out_mod)
-        self.out_unembed = FeedForward(hidden_dim, hidden_dim, x_dim, key=k_out_unembed)
+        self.out_unembed = FeedForward(
+            hidden_dim, hidden_dim, 2 * x_dim, key=k_out_unembed
+        )
 
     def __call__(
         self,
         x: Float[Array, "N D"],
         y: Float[Array, "M C"],
         t: Scalar,
-    ) -> Float[Array, "N D"]:
+    ) -> tuple[Float[Array, "N D"], Float[Array, "N D"]]:
         assert (
             x.shape[-1] == self.x_dim
         ), f"Expected x dim {self.x_dim}, got {x.shape[-1]}"
@@ -259,26 +261,25 @@ class MMDiT(eqx.Module):
         shift, scale, _ = self.out_modulation(c)
         x = adaptive_norm(x, scale, shift)
         x = eqx.filter_vmap(self.out_unembed)(x)
-        return x
-    
+        dx, x = jnp.split(x, 2, axis=-1)
+        return dx, x
+
     def push(
         self,
         x: Float[Array, "N D"],
         y: Float[Array, "M C"],
         ode_steps: int = 16,
+        exponential_map=jnp.sum,
     ) -> Float[Array, "N D"]:
         def runge_kutta_4_step(i, x):
             dt = 1 / ode_steps
-            # match x's dtype: under jax_enable_x64, ``i * dt`` is float64 and
-            # would promote the network's scan carry, mismatching an fp32 x.
             t = (i * dt).astype(x.dtype)
-            k1 = self(x, y, t)
-            k2 = self(x + k1 * dt / 2, y, t + dt / 2)
-            k3 = self(x + k2 * dt / 2, y, t + dt / 2)
-            k4 = self(x + k3 * dt, y, t + dt)
-            x = x + (k1 + 2 * k2 + 2 * k3 + k4) * dt / 6
-            # TODO: quick hack to integrate on periodic domains
-            x = x % 1.0
+            k1, _ = self(x, y, t)
+            k2, _ = self(x + k1 * dt / 2, y, t + dt / 2)
+            k3, _ = self(x + k2 * dt / 2, y, t + dt / 2)
+            k4, _ = self(x + k3 * dt, y, t + dt)
+            dx = (k1 + 2 * k2 + 2 * k3 + k4) * dt / 6
+            x = exponential_map(x, dx)
             return x
 
         x = jax.lax.fori_loop(0, ode_steps, runge_kutta_4_step, x)

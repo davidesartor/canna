@@ -23,6 +23,10 @@ SAMPLING_STEP_s = 1.0 / (2.0 * MAX_FREQUENCY_Hz)  # Nyquist sampling step (~167 
 ARM_LENGTH_m = 2.5e9
 SPEED_OF_LIGHT_m_s = 299792458.0
 
+PARAMETER_NAMES = ["f0", "fdot", "A", "ra", "dec", "psi", "iota", "phi0"]
+PERIODIC = jnp.array([False, False, False, True, False, True, False, True])
+
+
 @eqx.filter_jit
 def prior_inverse_cdf(u: Float[Array, "... 8"]) -> Float[Array, "... 8"]:
     """Inverse CDF of the Galactic Binary prior.
@@ -222,12 +226,25 @@ def preprocess_datastream(
 
 
 @eqx.filter_jit
+def log_map(x0: Float[Array, "8"], x1: Float[Array, "8"]) -> Float[Array, "8"]:
+    """Tangent vector at ``x0`` pointing to ``x1`` (the flow-matching velocity)."""
+    d = x1 - x0
+    return jnp.where(PERIODIC, d - 2.0 * jnp.round(d / 2.0), d)
+
+
+@eqx.filter_jit
+def exp_map(x0: Float[Array, "8"], v: Float[Array, "8"]) -> Float[Array, "8"]:
+    """Move from ``x0`` along tangent ``v``."""
+    x = x0 + v
+    return jnp.where(PERIODIC, ((x + 1.0) % 2.0) - 1.0, x)
+
+
+@eqx.filter_jit
 def geodesic(
-    t: Scalar, u0: Float[Array, "8"], u1: Float[Array, "8"]
+    t: Scalar, x0: Float[Array, "8"], x1: Float[Array, "8"]
 ) -> Float[Array, "8"]:
-    """Probability path point at time ``t`` between base ``u0`` and target ``u1``."""
-    # TODO make it depend on geometry
-    return u0 + t * (u1 - u0)
+    """Probability path point at time ``t`` between base ``x0`` and target ``x1``."""
+    return exp_map(x0, t * log_map(x0, x1))
 
 
 @eqx.filter_jit
@@ -238,16 +255,35 @@ def get_train_batch(
     t_obs: float = YEAR_s,
     dt: float = SAMPLING_STEP_s,
     noise_scale: float = 1.0,
-) -> tuple[Float[Array, "S 8"], Float[Array, "S 8"], Scalar, Float[Array, "T F*C"]]:
+) -> tuple[
+    Float[Array, "S 8"],
+    Float[Array, "S 8"],
+    Scalar,
+    Float[Array, "T F*C"],
+    Float[Array, "S 8"],
+    Float[Array, "S 8"],
+    Float[Array, "S 8"],
+    Float[Array, "T 3"],
+]:
     def train_sample(
         key: Key,
-    ) -> tuple[Float[Array, "S 8"], Float[Array, "S 8"], Scalar, Float[Array, "T F*C"]]:
-        key_u1, key_u0, key_t, key_y = jr.split(key, 4)
-        u1 = jr.uniform(key_u1, shape=(n_sources, 8))
-        u0 = jr.uniform(key_u0, shape=(n_sources, 8))
+    ) -> tuple[
+        Float[Array, "S 8"],
+        Float[Array, "S 8"],
+        Scalar,
+        Float[Array, "T F*C"],
+        Float[Array, "S 8"],
+        Float[Array, "S 8"],
+        Float[Array, "S 8"],
+        Float[Array, "T 3"],
+    ]:
+        key_x1, key_x0, key_t, key_y = jr.split(key, 4)
+        x1 = jr.uniform(key_x1, shape=(n_sources, 8), minval=-1.0, maxval=1.0)
+        x0 = jr.uniform(key_x0, shape=(n_sources, 8), minval=-1.0, maxval=1.0)
         t = jr.uniform(key_t, minval=0.0, maxval=1.0)
 
         # generate the conditioning signal
+        u1 = (x1 + 1.0) / 2.0  # to U(0,1)
         params = prior_inverse_cdf(u1)
         signal = clean_signal(params, t_obs=t_obs, dt=dt)
         noise = sample_noise(key_y, t_obs=t_obs, dt=dt)
@@ -255,8 +291,8 @@ def get_train_batch(
         y = preprocess_datastream(datastream, t_obs=t_obs, dt=dt)
 
         # conditional flow-matching target
-        xt = geodesic(t, u0, u1)
-        dx = jax.jacobian(geodesic)(t, u0, u1)
-        return xt, dx, t, y
+        xt = geodesic(t, x0, x1)
+        dx = jax.jacobian(geodesic)(t, x0, x1)
+        return xt, dx, t, y, x0, x1, params, datastream
 
     return jax.vmap(train_sample)(jr.split(key, batch_size))

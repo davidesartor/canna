@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=regr_2src
+#SBATCH --job-name=flow_sanity
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 #SBATCH --nodes=1
@@ -11,29 +11,30 @@
 #SBATCH --partition=gpu
 
 # ---------------------------------------------------------------------------
-# Point-estimate regression, all 8 params supervised per source.
+# Full 8-param flow-matching sanity check, generative posterior p(x|y).
 # NOISE_SCALE=0.0 gives the noiseless case.
-# 24h run, eval every 15 min. Knobs come from the environment (set via
-# `sbatch --export`).
+# 24h run, checkpoint/eval/corner every CHECKPOINT_EVERY_s. Knobs come from the
+# environment (set via `sbatch --export`).
 # ---------------------------------------------------------------------------
 
 set -uo pipefail   # not -e: tolerate Python's nonzero teardown exit (120)
 
-export CHECKPOINT_EVERY_s=${CHECKPOINT_EVERY_s:-60}   # checkpoint/eval/plot every minute
+export CHECKPOINT_EVERY_s=${CHECKPOINT_EVERY_s:-300}
+RUN_SECONDS=${RUN_SECONDS:-86400}   # override for a short smoke test
 
 echo "============================================"
 echo "Job ID       : $SLURM_JOB_ID"
 echo "Node         : $SLURM_NODELIST"
 echo "Start time   : $(date)"
 echo "N_SOURCES     : ${N_SOURCES:-1}"
-echo "NOISE_SCALE   : ${NOISE_SCALE:-1.0}"
+echo "NOISE_SCALE   : ${NOISE_SCALE:-0.0}"
 echo "CHECK_EVERY   : ${CHECKPOINT_EVERY_s} s"
 echo "============================================"
 
 mkdir -p logs
 
-echo "Launching regression_sanity.py (24h) ..."
-uv run python regression_sanity.py --seconds 86400
+echo "Launching flow_sanity.py (${RUN_SECONDS}s) ..."
+uv run python flow_sanity.py --seconds "$RUN_SECONDS"
 echo "python exit code: $?"
 
 echo "============================================"
