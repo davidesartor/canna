@@ -21,7 +21,8 @@
 set -uo pipefail   # not -e: tolerate Python's nonzero teardown exit (120)
 
 export CHECKPOINT_INTERVAL=${CHECKPOINT_INTERVAL:-300}
-RUN_SECONDS=${RUN_SECONDS:-86400}   # override for a short smoke test
+export RUN_SECONDS=${RUN_SECONDS:-86400}   # override for a short smoke test
+export SIMPLIFIED=${SIMPLIFIED:-0}
 
 echo "============================================"
 echo "Job ID       : $SLURM_JOB_ID"
@@ -30,12 +31,13 @@ echo "Start time   : $(date)"
 echo "N_SOURCES     : ${N_SOURCES:-1}"
 echo "NOISE_SCALE   : ${NOISE_SCALE:-0.0}"
 echo "CHECK_EVERY   : ${CHECKPOINT_INTERVAL} s"
+echo "SIMPLIFIED    : ${SIMPLIFIED}"
 echo "============================================"
 
 mkdir -p logs
 
-echo "Launching flow_sanity.py (${RUN_SECONDS}s) ..."
-uv run python flow_sanity.py --seconds "$RUN_SECONDS"
+echo "Launching flow_sanity.py (${RUN_SECONDS}s) SIMPLIFIED=${SIMPLIFIED} ..."
+uv run python flow_sanity.py
 echo "python exit code: $?"
 
 echo "============================================"

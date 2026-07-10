@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import equinox as eqx
-from einops import rearrange
+import einops
 
 import lisaorbits
 from jaxgb import jaxgb
@@ -266,7 +266,7 @@ def preprocess_datastream(
         dt=SAMPLING_STEP,
         backend="jax",
     )
-    y = rearrange(y, "c t f -> t (f c)")
+    y = einops.rearrange(y, "c t f -> t (f c)")
     y = jnp.arcsinh(y)  # avoids grossly large values in the WDM transform
     return y
 

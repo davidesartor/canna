@@ -1,0 +1,132 @@
+from jaxtyping import Array, Float, Key, Scalar
+import jax
+import jax.numpy as jnp
+import jax.random as jr
+import equinox as eqx
+import  einops 
+from wdm_transform.transforms import from_freq_to_wdm
+
+from . import lisa
+
+# re-export constants used downstream
+from .lisa import DAY, MONTH, SAMPLING_STEP, WEEK, YEAR
+
+INFERRED_PARAMS = ["f0", "A", "fdot", "psi"]
+MASK = jnp.array([name in INFERRED_PARAMS for name in lisa.PARAMETER_NAMES])
+PARAMETER_NAMES = [name for name in lisa.PARAMETER_NAMES if name in INFERRED_PARAMS]
+
+
+def pad(v):
+    # back into full 8-param slots (zeros elsewhere)
+    padded = jnp.zeros(v.shape[:-1] + (8,), dtype=v.dtype)
+    return padded.at[..., MASK].set(v)
+
+
+def log_map(x0, x1):
+    """log_map restricted to the inferred dims."""
+    return lisa.log_map(pad(x0), pad(x1))[..., MASK]
+
+
+def exp_map(x0, v):
+    """exp_map restricted to the inferred dims."""
+    return lisa.exp_map(pad(x0), pad(v))[..., MASK]
+
+
+def match_sources(x0, x1):
+    """match_sources restricted to the inferred dims (nuisance slots contribute nothing)."""
+    x0_matched, cost = lisa.match_sources(pad(x0), pad(x1))
+    return x0_matched[..., MASK], cost
+
+
+@eqx.filter_jit
+def preprocess_datastream(
+    datastream: Float[Array, "T 3"],
+    t_obs: float = YEAR,
+    dt: float = SAMPLING_STEP,
+) -> Float[Array, "F T*C"]:
+    # convert to freq domain and crop the frequency axis to a multiple of 32 for the WDM grid
+    # TODO: make the 32 time bins configurable
+    n_samples = int(t_obs / dt)
+    freqs = jnp.fft.rfftfreq(n_samples, dt)
+    freqs = freqs[: (len(freqs) // 32) * 32]
+    datastream = jnp.fft.rfft(datastream, axis=0)
+    datastream = datastream[: len(freqs)]
+
+    # whiten each channel to unit variance per rfft bin
+    for i, ch in enumerate("AET"):
+        psd = jnp.where(freqs > 0, noise_psd(ch)(freqs), 0.0)  # type: ignore
+        var = psd * n_samples / (2.0 * dt)  # E[|rfft(noise)|^2] per bin
+        datastream = datastream.at[:, i].divide(
+            jnp.where(var == 0.0, 1.0, jnp.sqrt(var))
+        )
+
+    # process the data to make it more digestible
+    # TODO: make the 32 time bins configurable
+    y = from_freq_to_wdm(
+        datastream.T,
+        nt=32,
+        nf=len(datastream) // 32,
+        a=1.0 / 3.0,
+        d=1.0,
+        dt=SAMPLING_STEP,
+        backend="jax",
+    )
+    y = einops.rearrange(y, "c t f -> t (f c)")
+    y = jnp.arcsinh(y)  # avoids grossly large values in the WDM transform
+    return y
+
+
+@eqx.filter_jit
+def get_train_batch(
+    key: Key,
+    batch_size: int,
+    n_sources: int,
+    t_obs: float = YEAR,
+    dt: float = SAMPLING_STEP,
+    noise_scale: float = 1.0,
+) -> tuple[
+    Float[Array, "S 8"],
+    Float[Array, "S 8"],
+    Scalar,
+    Float[Array, "T F*C"],
+    Float[Array, "S 8"],
+    Float[Array, "S 8"],
+    Float[Array, "S 8"],
+    Float[Array, "T 3"],
+]:
+    def train_sample(
+        key: Key,
+    ) -> tuple[
+        Float[Array, "S 8"],
+        Float[Array, "S 8"],
+        Scalar,
+        Float[Array, "T F*C"],
+        Float[Array, "S 8"],
+        Float[Array, "S 8"],
+        Float[Array, "S 8"],
+        Float[Array, "T 3"],
+    ]:
+        key_x1, key_x0, key_t, key_y = jr.split(key, 4)
+        x1 = jr.uniform(key_x1, shape=(n_sources, 8), minval=-1.0, maxval=1.0)
+        x0 = jr.uniform(key_x0, shape=(n_sources, 8), minval=-1.0, maxval=1.0)
+        x0, _ = lisa.match_sources(x0, x1)  # align sources to minimize transport cost
+        t = jr.uniform(key_t, minval=0.0, maxval=1.0)
+
+        # generate the conditioning signal
+        u1 = (x1 + 1.0) / 2.0  # U(-1, 1) -> U(0,1)
+        params = lisa.prior_inverse_cdf(u1)
+        signal = lisa.clean_signal(params, t_obs=t_obs, dt=dt)
+        noise = lisa.sample_noise(key_y, t_obs=t_obs, dt=dt)
+        datastream = signal + noise_scale * noise
+        y = lisa.preprocess_datastream(datastream, t_obs=t_obs, dt=dt)
+
+        # conditional flow-matching target
+        xt = lisa.geodesic(t, x0, x1)
+        dx = jax.jacobian(lisa.geodesic)(t, x0, x1)
+        return xt, dx, t, y, x0, x1, params, datastream
+
+    xt, dx, t, y, x0, x1, params, datastream = jax.vmap(train_sample)(
+        jr.split(key, batch_size)
+    )
+    xt, dx, x0, x1, params = [el[..., MASK] for el in (xt, dx, x0, x1, params)]
+    return xt, dx, t, y, x0, x1, params, datastream
