@@ -22,6 +22,9 @@ MAX_FREQUENCY_Hz = 3e-3  # top of the LISA analysis band
 SAMPLING_STEP_s = 1.0 / (2.0 * MAX_FREQUENCY_Hz)  # Nyquist sampling step (~167 s)
 ARM_LENGTH_m = 2.5e9
 SPEED_OF_LIGHT_m_s = 299792458.0
+G_SI = 6.67430e-11  # m^3 kg^-1 s^-2
+SUN_MASS_kg = 1.98892e30
+
 
 PARAMETER_NAMES = ["f0", "fdot", "A", "ra", "dec", "psi", "iota", "phi0"]
 PERIODIC = jnp.array([False, False, False, True, False, True, False, True])
@@ -47,10 +50,18 @@ def prior_inverse_cdf(u: Float[Array, "... 8"]) -> Float[Array, "... 8"]:
     """
     u_f0, u_fdot, u_A, u_ra, u_dec, u_psi, u_iota, u_phi0 = jnp.split(u, 8, axis=-1)
 
-    # Log-uniform parameters: exp(log(lo) + u * (log(hi) - log(lo)))
-    f0 = inverse_cdfs.log_uniform(u_f0, range=(1e-4, 3e-3))
-    fdot = inverse_cdfs.log_uniform(u_fdot, range=(1e-22, 4e-18))
-    A = inverse_cdfs.log_uniform(u_A, range=(1e-25, 1.7e-23))
+    # f0: log-uniform over the analysis band. arXiv:2606.29039
+    f0 = inverse_cdfs.log_uniform(u_f0, range=(1e-4, MAX_FREQUENCY_Hz))
+
+    # A: log-uniform over the detectable strain range. arXiv:2402.13701, arXiv:2606.29039
+    A = inverse_cdfs.log_uniform(u_A, range=(1e-24, 1e-22))
+
+    # fdot: uniform on [0, fdot_max(f0)], with fdot_max (Mc = mc_max_msun) scaling as
+    # f0^(11/3) from GW radiation reaction. arXiv:2402.13701, arXiv:2606.29039
+    fdot_chirp_coeff = (96.0 / 5.0) * jnp.pi ** (8.0 / 3.0) * (G_SI * SUN_MASS_kg / SPEED_OF_LIGHT_m_s**3) ** (5.0 / 3.0)  # ~5.8e-7
+    mc_max_msun = 1.0  # heaviest chirp mass
+    fdot_max = fdot_chirp_coeff * mc_max_msun ** (5.0 / 3.0) * f0 ** (11.0 / 3.0)
+    fdot = inverse_cdfs.uniform(u_fdot, range=(0.0, fdot_max))
 
     # Uniform angles
     ra = inverse_cdfs.uniform(u_ra, range=(0.0, 2.0 * jnp.pi))
@@ -105,6 +116,32 @@ def clean_signal(
     # Inverse FFT to get time-domain signal
     signal = jnp.fft.irfft(full, n=n_samples, axis=-1)
     return signal.T  # (n_samples, 3)
+
+
+@eqx.filter_jit
+def optimal_snr(
+    params: Float[Array, "S 8"],
+    t_obs: float = YEAR_s,
+    dt: float = SAMPLING_STEP_s,
+) -> Scalar:
+    """Physical matched-filter optimal SNR of a GB signal against the LISA PSD.
+
+    Uses the standard one-sided convention
+    ``SNR^2 = 4 * df * sum_{f>0} |h~(f)|^2 / S(f)`` with the continuous FT
+    ``h~(f) = dt * rfft(h)`` and ``df = 1/(n_samples*dt)``, summed over A/E/T. This
+    is the ``noise_psd``-consistent counterpart of ``sample_noise``: for a source at
+    optimal SNR ``rho`` the whitened residual chi^2 exceeds the noise-only value by
+    ``rho^2``.
+    """
+    n_samples = int(t_obs / dt)
+    freqs = jnp.fft.rfftfreq(n_samples, dt)
+    h = jnp.fft.rfft(clean_signal(params, t_obs=t_obs, dt=dt), axis=0)  # (F, 3)
+    prefactor = 4.0 * dt / n_samples  # = 4 * df * dt**2
+    snr2 = 0.0
+    for i, ch in enumerate("AET"):
+        psd = jnp.where(freqs > 0, noise_psd(ch)(freqs), jnp.inf)  # type: ignore
+        snr2 = snr2 + jnp.sum(jnp.where(freqs > 0, jnp.abs(h[:, i]) ** 2 / psd, 0.0))
+    return jnp.sqrt(prefactor * snr2)
 
 
 def noise_psd(
@@ -197,16 +234,18 @@ def preprocess_datastream(
 ) -> Float[Array, "F T*C"]:
     # convert to freq domain and crop the frequency axis to a multiple of 32 for the WDM grid
     # TODO: make the 32 time bins configurable
-    freqs = jnp.fft.rfftfreq(int(t_obs / dt), dt)
+    n_samples = int(t_obs / dt)
+    freqs = jnp.fft.rfftfreq(n_samples, dt)
     freqs = freqs[: (len(freqs) // 32) * 32]
     datastream = jnp.fft.rfft(datastream, axis=0)
     datastream = datastream[: len(freqs)]
 
-    # whiten each channel of the datastream by its nominal PSD
+    # whiten each channel to unit variance per rfft bin
     for i, ch in enumerate("AET"):
         psd = jnp.where(freqs > 0, noise_psd(ch)(freqs), 0.0)  # type: ignore
+        var = psd * n_samples / (2.0 * dt)  # E[|rfft(noise)|^2] per bin
         datastream = datastream.at[:, i].divide(
-            jnp.where(psd == 0.0, 1.0, jnp.sqrt(psd))
+            jnp.where(var == 0.0, 1.0, jnp.sqrt(var))
         )
 
     # process the data to make it more digestible

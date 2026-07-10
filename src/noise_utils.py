@@ -34,9 +34,9 @@ def sample_noise(
     n_times = int(t_obs / dt)
     f = jnp.fft.rfftfreq(n_times, dt)
     real, imag = jr.normal(key, (2, len(f)))
-    noise_f = real + 1j * imag  # white noise in frequency domain
+    noise_f = real + 1j * imag
     if psd_function is not None:
         psd = jnp.where(f > 0, psd_function(f), 0.0)
-        noise_f = jnp.sqrt(psd) * noise_f / jnp.sqrt(2.0)
+        noise_f = jnp.sqrt(psd * n_times / (4.0 * dt)) * noise_f
     noise_t = jnp.fft.irfft(noise_f, n=n_times)
     return noise_t
