@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import equinox as eqx
-import  einops 
+import einops
 from wdm_transform.transforms import from_freq_to_wdm
 
 from . import lisa
@@ -44,28 +44,31 @@ def preprocess_datastream(
     t_obs: float = YEAR,
     dt: float = SAMPLING_STEP,
 ) -> Float[Array, "F T*C"]:
-    # convert to freq domain and crop the frequency axis to a multiple of 32 for the WDM grid
+    # crop the datastream so frequency axis is to a multiple of 32 for the WDM grid
     # TODO: make the 32 time bins configurable
     n_samples = int(t_obs / dt)
-    freqs = jnp.fft.rfftfreq(n_samples, dt)
-    freqs = freqs[: (len(freqs) // 32) * 32]
-    datastream = jnp.fft.rfft(datastream, axis=0)
-    datastream = datastream[: len(freqs)]
+    nt = 32
+    n_samples = (n_samples // (2 * nt)) * (2 * nt)  # keep FFT length a multiple of nt*2
+    nf = n_samples // nt  # guaranteed even since n_samples is a multiple of 2*nt
+    datastream = datastream[:n_samples]
 
-    # whiten each channel to unit variance per rfft bin
+    # convert to frequency domain for whitening and WDM transform
+    freqs = jnp.fft.fftfreq(n_samples, dt)
+    datastream = jnp.fft.fft(datastream, axis=0)
+
+    # whitening the datastream by the expected noise PSD
     for i, ch in enumerate("AET"):
-        psd = jnp.where(freqs > 0, noise_psd(ch)(freqs), 0.0)  # type: ignore
-        var = psd * n_samples / (2.0 * dt)  # E[|rfft(noise)|^2] per bin
+        psd = jnp.where(freqs != 0, lisa.noise_psd(ch)(jnp.abs(freqs)), 0.0)  # type: ignore
+        var = psd * n_samples / (2.0 * dt)  # E[|fft(noise)|^2] per bin
         datastream = datastream.at[:, i].divide(
             jnp.where(var == 0.0, 1.0, jnp.sqrt(var))
         )
 
     # process the data to make it more digestible
-    # TODO: make the 32 time bins configurable
     y = from_freq_to_wdm(
         datastream.T,
-        nt=32,
-        nf=len(datastream) // 32,
+        nt=nt,
+        nf=nf,
         a=1.0 / 3.0,
         d=1.0,
         dt=SAMPLING_STEP,
@@ -118,7 +121,7 @@ def get_train_batch(
         signal = lisa.clean_signal(params, t_obs=t_obs, dt=dt)
         noise = lisa.sample_noise(key_y, t_obs=t_obs, dt=dt)
         datastream = signal + noise_scale * noise
-        y = lisa.preprocess_datastream(datastream, t_obs=t_obs, dt=dt)
+        y = preprocess_datastream(datastream, t_obs=t_obs, dt=dt)
 
         # conditional flow-matching target
         xt = lisa.geodesic(t, x0, x1)
