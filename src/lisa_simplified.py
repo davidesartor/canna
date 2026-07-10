@@ -16,29 +16,34 @@ MASK = jnp.array([name in INFERRED_PARAMS for name in lisa.PARAMETER_NAMES])
 PARAMETER_NAMES = [name for name in lisa.PARAMETER_NAMES if name in INFERRED_PARAMS]
 
 
-def pad(v):
+def pad(v: Float[Array, "... 4"]) -> Float[Array, "... 8"]:
     # back into full 8-param slots (zeros elsewhere)
     padded = jnp.zeros(v.shape[:-1] + (8,), dtype=v.dtype)
     return padded.at[..., MASK].set(v)
 
 
-def log_map(x0, x1):
+def log_map(
+    x0: Float[Array, "... 4"], x1: Float[Array, "... 4"]
+) -> Float[Array, "... 4"]:
     """log_map restricted to the inferred dims."""
     return lisa.log_map(pad(x0), pad(x1))[..., MASK]
 
 
-def exp_map(x0, v):
+def exp_map(
+    x0: Float[Array, "... 4"], v: Float[Array, "... 4"]
+) -> Float[Array, "... 4"]:
     """exp_map restricted to the inferred dims."""
     return lisa.exp_map(pad(x0), pad(v))[..., MASK]
 
 
-def match_sources(x0, x1):
+def match_sources(x0: Float[Array, "... 4"], x1: Float[Array, "... 4"]):
     """match_sources restricted to the inferred dims (nuisance slots contribute nothing)."""
     x0_matched, cost = lisa.match_sources(pad(x0), pad(x1))
     return x0_matched[..., MASK], cost
 
+
 @eqx.filter_jit
-def prior_inverse_cdf(u):
+def prior_inverse_cdf(u: Float[Array, "... 4"]) -> Float[Array, "... 4"]:
     """prior_inverse_cdf restricted to the inferred dims."""
     return lisa.prior_inverse_cdf(pad(u))[..., MASK]
 
@@ -93,27 +98,16 @@ def get_train_batch(
     dt: float = SAMPLING_STEP,
     noise_scale: float = 1.0,
 ) -> tuple[
-    Float[Array, "S 8"],
-    Float[Array, "S 8"],
+    Float[Array, "S 4"],
+    Float[Array, "S 4"],
     Scalar,
     Float[Array, "T F*C"],
-    Float[Array, "S 8"],
-    Float[Array, "S 8"],
-    Float[Array, "S 8"],
+    Float[Array, "S 4"],
+    Float[Array, "S 4"],
+    Float[Array, "S 4"],
     Float[Array, "T 3"],
 ]:
-    def train_sample(
-        key: Key,
-    ) -> tuple[
-        Float[Array, "S 8"],
-        Float[Array, "S 8"],
-        Scalar,
-        Float[Array, "T F*C"],
-        Float[Array, "S 8"],
-        Float[Array, "S 8"],
-        Float[Array, "S 8"],
-        Float[Array, "T 3"],
-    ]:
+    def train_sample(key: Key):
         key_x1, key_x0, key_t, key_y = jr.split(key, 4)
         x1 = jr.uniform(key_x1, shape=(n_sources, 8), minval=-1.0, maxval=1.0)
         x0 = jr.uniform(key_x0, shape=(n_sources, 8), minval=-1.0, maxval=1.0)

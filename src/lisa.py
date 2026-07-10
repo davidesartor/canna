@@ -343,18 +343,7 @@ def get_train_batch(
     Float[Array, "S 8"],
     Float[Array, "T 3"],
 ]:
-    def train_sample(
-        key: Key,
-    ) -> tuple[
-        Float[Array, "S 8"],
-        Float[Array, "S 8"],
-        Scalar,
-        Float[Array, "T F*C"],
-        Float[Array, "S 8"],
-        Float[Array, "S 8"],
-        Float[Array, "S 8"],
-        Float[Array, "T 3"],
-    ]:
+    def train_sample(key: Key):
         key_x1, key_x0, key_t, key_y = jr.split(key, 4)
         x1 = jr.uniform(key_x1, shape=(n_sources, 8), minval=-1.0, maxval=1.0)
         x0 = jr.uniform(key_x0, shape=(n_sources, 8), minval=-1.0, maxval=1.0)

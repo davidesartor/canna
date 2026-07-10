@@ -143,24 +143,33 @@ if __name__ == "__main__":
                 )
                 post = sample_posterior(flow, x0, y[0])  # (N,S,x_dim)
                 x_dim = xt.shape[-1]
-                truth = x1[0]  # (S, x_dim)
-                # move to physical params
-                post = np.asarray(lisa.prior_inverse_cdf((post + 1.0) / 2.0))
-                truth = np.asarray(lisa.prior_inverse_cdf((truth + 1.0) / 2.0))
+                truth = np.array(params[0])  # (S, x_dim), physical params
+                # move posterior to physical params
+                post = np.array(lisa.prior_inverse_cdf((post + 1.0) / 2.0))
                 post_flat = post.reshape(N_POSTERIOR, -1)
 
                 labels = [
                     f"{n}_{s}" for s in range(N_SOURCES) for n in lisa.PARAMETER_NAMES
                 ]
 
+                # f0 and A are log-uniform in the prior: use a log axis scale for
+                # those dims so the corner marginals/contours aren't crushed into
+                # a sliver near 0
+                LOG_PARAMS = {"f0", "A"}
+                axes_scale = [
+                    "log" if n in LOG_PARAMS else "linear"
+                    for _ in range(N_SOURCES)
+                    for n in lisa.PARAMETER_NAMES
+                ]
+
                 fig = corner.corner(
                     post_flat,
                     labels=labels,
                     color="C1",
-                    range=[(-1, 1)] * (N_SOURCES * x_dim),
                     show_titles=True,
                     title_fmt=".2f",
                     hist_kwargs={"density": True},
+                    axes_scale=axes_scale,  # type: ignore
                 )
                 # the flow is permutation invariant across sources, so every
                 # relabelling of the truth is an equally valid posterior mode
