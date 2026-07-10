@@ -141,10 +141,12 @@ if __name__ == "__main__":
                     t_obs=T_OBS,
                     noise_scale=NOISE_SCALE,
                 )
-                post = np.asarray(sample_posterior(flow, x0, y[0]))  # (N,S,x_dim)
+                post = sample_posterior(flow, x0, y[0])  # (N,S,x_dim)
                 x_dim = xt.shape[-1]
-                truth = np.asarray(x1[0])  # (S, x_dim)
-
+                truth = x1[0]  # (S, x_dim)
+                # move to physical params
+                post = np.asarray(lisa.prior_inverse_cdf((post + 1.0) / 2.0))
+                truth = np.asarray(lisa.prior_inverse_cdf((truth + 1.0) / 2.0))
                 post_flat = post.reshape(N_POSTERIOR, -1)
 
                 labels = [

@@ -37,6 +37,11 @@ def match_sources(x0, x1):
     x0_matched, cost = lisa.match_sources(pad(x0), pad(x1))
     return x0_matched[..., MASK], cost
 
+@eqx.filter_jit
+def prior_inverse_cdf(u):
+    """prior_inverse_cdf restricted to the inferred dims."""
+    return lisa.prior_inverse_cdf(pad(u))[..., MASK]
+
 
 @eqx.filter_jit
 def preprocess_datastream(
