@@ -5,7 +5,11 @@ nuisances (via the lisa_simplified drop-in); otherwise the full 8-param problem.
 The two share this script: a single flag swaps the lisa interface and output tag.
 
 Knobs (env): N_SOURCES (>= 1, default 1), NOISE_SCALE (default 1.0), RUN_SECONDS,
-CHECKPOINT_INTERVAL, SIMPLIFIED, TAG_SUFFIX.
+CHECKPOINT_INTERVAL, SIMPLIFIED, TAG_SUFFIX, NOISE_WARMUP_FRAC.
+
+Noise is scheduled: it ramps (raised-cosine, so smoothly at both ends) from 0
+at the start of training up to NOISE_SCALE once NOISE_WARMUP_FRAC * RUN_SECONDS
+has elapsed, then holds.
 """
 
 import functools
@@ -32,7 +36,8 @@ from src import lisa
 # problem knobs (env)
 N_SOURCES = int(os.environ.get("N_SOURCES", "1"))
 NOISE_SCALE = float(os.environ.get("NOISE_SCALE", "1.0"))
-RUN_SECONDS = float(os.environ.get("RUN_SECONDS", "1800"))
+NOISE_WARMUP_FRAC = float(os.environ.get("NOISE_WARMUP_FRAC", "0.5"))
+RUN_SECONDS = float(os.environ.get("RUN_SECONDS", "86400"))
 T_OBS = lisa.MONTH
 CHECKPOINT_INTERVAL = float(os.environ.get("CHECKPOINT_INTERVAL", "1800"))  # [s]
 SIMPLIFIED = os.environ.get("SIMPLIFIED", "0") not in ("0", "", "false", "False")
@@ -67,10 +72,20 @@ LOSS_PLOT_PATH = f"training_loss_flow_{TAG}.pdf"
 CORNER_PATH = f"flow_corner_{TAG}.pdf"
 
 
+def noise_schedule(elapsed):
+    """Raised-cosine ramp: 0 at elapsed=0 up to NOISE_SCALE at NOISE_WARMUP_FRAC*RUN_SECONDS, then holds."""
+    warmup_seconds = NOISE_WARMUP_FRAC * RUN_SECONDS
+    if warmup_seconds <= 0:
+        return NOISE_SCALE
+    frac = min(max(elapsed / warmup_seconds, 0.0), 1.0)
+    return NOISE_SCALE * 0.5 * (1.0 - np.cos(np.pi * frac))
+
+
 if __name__ == "__main__":
     print(f"JAX backend: {jax.default_backend()}, devices: {jax.local_device_count()}")
     print(
-        f"N_SOURCES={N_SOURCES}  NOISE_SCALE={NOISE_SCALE:g}  SIMPLIFIED={SIMPLIFIED}"
+        f"N_SOURCES={N_SOURCES}  NOISE_SCALE={NOISE_SCALE:g} (ramped over "
+        f"{NOISE_WARMUP_FRAC:g} of RUN_SECONDS)  SIMPLIFIED={SIMPLIFIED}"
     )
     print(f"inferring {lisa.PARAMETER_NAMES}")
     key = jr.key(SEED)
@@ -129,17 +144,22 @@ if __name__ == "__main__":
         plt.savefig(LOSS_PLOT_PATH)
         plt.close()
 
-        print(f"[{elapsed/3600:.2f} h] loss={np.mean(losses[-200:]):.5f}", flush=True)
+        print(
+            f"[{elapsed/3600:.2f} h] loss={np.mean(losses[-200:]):.5f} "
+            f"noise_scale={noise_schedule(elapsed):.3f}",
+            flush=True,
+        )
 
         # one corner plot per injection, all pages in a single PDF
         with PdfPages(CORNER_PATH) as pdf:
             for j, key_eval in enumerate(jr.split(key, N_EVAL)):
+                noise_scale = noise_schedule(elapsed)
                 _, _, _, y, x0, x1, params, datastream = lisa.get_train_batch(
                     key_eval,
                     batch_size=N_POSTERIOR,
                     n_sources=N_SOURCES,
                     t_obs=T_OBS,
-                    noise_scale=NOISE_SCALE,
+                    noise_scale=noise_scale,
                 )
                 post = sample_posterior(flow, x0, y[0])  # (N,S,x_dim)
                 x_dim = xt.shape[-1]
@@ -171,6 +191,7 @@ if __name__ == "__main__":
                     hist_kwargs={"density": True},
                     axes_scale=axes_scale,  # type: ignore
                 )
+                fig.tight_layout()
                 # the flow is permutation invariant across sources, so every
                 # relabelling of the truth is an equally valid posterior mode
                 for sigma in itertools.permutations(range(N_SOURCES)):
@@ -201,19 +222,20 @@ if __name__ == "__main__":
     t0 = time.monotonic()
     last_save = t0
     pbar = tqdm(total=RUN_SECONDS, unit="s", desc="training")
-    while time.monotonic() - t0 < RUN_SECONDS:
+    while (elapsed := (time.monotonic() - t0)) < RUN_SECONDS:
         key, key_batch = jr.split(key)
+        noise_scale = noise_schedule(elapsed)
         xt, dx, t, y, x0, x1, params, datastream = lisa.get_train_batch(
             key_batch,
             batch_size=BATCH_SIZE,
             n_sources=N_SOURCES,
             t_obs=T_OBS,
-            noise_scale=NOISE_SCALE,
+            noise_scale=noise_scale,
         )
         flow, opt_state, loss = train_step(flow, opt_state, xt, dx, t, y, x1)
         losses.append(loss.item())
         pbar.update(int(time.monotonic() - t0 - pbar.n))
-        pbar.set_postfix(loss=f"{loss.item():.5f}")
+        pbar.set_postfix(loss=f"{loss.item():.5f}", noise=f"{noise_scale:.2f}")
         if time.monotonic() - last_save >= CHECKPOINT_INTERVAL:
             key, key_eval = jr.split(key)
             checkpoint_and_eval(key_eval, flow, losses, time.monotonic() - t0)
