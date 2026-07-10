@@ -1,4 +1,4 @@
-import os
+import itertools
 from typing import Literal, Callable
 from jaxtyping import Array, Float, Scalar, Key
 import jax
@@ -13,17 +13,17 @@ from wdm_transform.transforms import from_freq_to_wdm
 
 from . import inverse_cdfs, noise_utils
 
-YEAR_s = 360 * 24 * 3600
-MONTH_s = 28 * 24 * 3600
-WEEK_s = 7 * 24 * 3600
-DAY_s = 24 * 3600
+YEAR = 360 * 24 * 3600  # [s]
+MONTH = 28 * 24 * 3600  # [s]
+WEEK = 7 * 24 * 3600  # [s]
+DAY = 24 * 3600  # [s]
 
-MAX_FREQUENCY_Hz = 3e-3  # top of the LISA analysis band
-SAMPLING_STEP_s = 1.0 / (2.0 * MAX_FREQUENCY_Hz)  # Nyquist sampling step (~167 s)
-ARM_LENGTH_m = 2.5e9
-SPEED_OF_LIGHT_m_s = 299792458.0
-G_SI = 6.67430e-11  # m^3 kg^-1 s^-2
-SUN_MASS_kg = 1.98892e30
+MAX_FREQUENCY = 3e-3  # [Hz] top of the LISA analysis band
+SAMPLING_STEP = 1.0 / (2.0 * MAX_FREQUENCY)  # [s] Nyquist sampling step (~167 s)
+ARM_LENGTH = 2.5e9  # [m]
+SPEED_OF_LIGHT = 299792458.0  # [m/s]
+GRAVITATIONAL_CONSTANT = 6.67430e-11  # [m^3 kg^-1 s^-2]
+SUN_MASS = 1.98892e30  # [kg]
 
 
 PARAMETER_NAMES = ["f0", "fdot", "A", "ra", "dec", "psi", "iota", "phi0"]
@@ -51,14 +51,18 @@ def prior_inverse_cdf(u: Float[Array, "... 8"]) -> Float[Array, "... 8"]:
     u_f0, u_fdot, u_A, u_ra, u_dec, u_psi, u_iota, u_phi0 = jnp.split(u, 8, axis=-1)
 
     # f0: log-uniform over the analysis band. arXiv:2606.29039
-    f0 = inverse_cdfs.log_uniform(u_f0, range=(1e-4, MAX_FREQUENCY_Hz))
+    f0 = inverse_cdfs.log_uniform(u_f0, range=(1e-4, MAX_FREQUENCY))
 
     # A: log-uniform over the detectable strain range. arXiv:2402.13701, arXiv:2606.29039
     A = inverse_cdfs.log_uniform(u_A, range=(1e-24, 1e-22))
 
     # fdot: uniform on [0, fdot_max(f0)], with fdot_max (Mc = mc_max_msun) scaling as
     # f0^(11/3) from GW radiation reaction. arXiv:2402.13701, arXiv:2606.29039
-    fdot_chirp_coeff = (96.0 / 5.0) * jnp.pi ** (8.0 / 3.0) * (G_SI * SUN_MASS_kg / SPEED_OF_LIGHT_m_s**3) ** (5.0 / 3.0)  # ~5.8e-7
+    fdot_chirp_coeff = (
+        (96.0 / 5.0)
+        * jnp.pi ** (8.0 / 3.0)
+        * (GRAVITATIONAL_CONSTANT * SUN_MASS / SPEED_OF_LIGHT**3) ** (5.0 / 3.0)
+    )  # ~5.8e-7
     mc_max_msun = 1.0  # heaviest chirp mass
     fdot_max = fdot_chirp_coeff * mc_max_msun ** (5.0 / 3.0) * f0 ** (11.0 / 3.0)
     fdot = inverse_cdfs.uniform(u_fdot, range=(0.0, fdot_max))
@@ -77,8 +81,8 @@ def prior_inverse_cdf(u: Float[Array, "... 8"]) -> Float[Array, "... 8"]:
 @eqx.filter_jit
 def clean_signal(
     params: Float[Array, "S 8"],
-    t_obs: float = YEAR_s,
-    dt: float = SAMPLING_STEP_s,
+    t_obs: float = YEAR,
+    dt: float = SAMPLING_STEP,
 ) -> Float[Array, "T 3"]:
     """
     Compute the clean A/E/T TDI time-domain signal for a Galactic Binary.
@@ -121,17 +125,20 @@ def clean_signal(
 @eqx.filter_jit
 def optimal_snr(
     params: Float[Array, "S 8"],
-    t_obs: float = YEAR_s,
-    dt: float = SAMPLING_STEP_s,
+    t_obs: float = YEAR,
+    dt: float = SAMPLING_STEP,
 ) -> Scalar:
     """Physical matched-filter optimal SNR of a GB signal against the LISA PSD.
-
     Uses the standard one-sided convention
     ``SNR^2 = 4 * df * sum_{f>0} |h~(f)|^2 / S(f)`` with the continuous FT
-    ``h~(f) = dt * rfft(h)`` and ``df = 1/(n_samples*dt)``, summed over A/E/T. This
-    is the ``noise_psd``-consistent counterpart of ``sample_noise``: for a source at
-    optimal SNR ``rho`` the whitened residual chi^2 exceeds the noise-only value by
-    ``rho^2``.
+    ``h~(f) = dt * rfft(h)`` and ``df = 1/(n_samples*dt)``, summed over A/E/T.
+    ----------
+    params : array_like, shape (n_sources, 8)
+        ``[f0 (Hz), fdot (Hz/s), A, ra (rad), dec (rad), psi (rad), iota (rad), phi0 (rad)]`
+    t_obs : float
+        Observation time in seconds (default: 1 year).
+    dt : float
+        Time step in seconds (default: Nyquist for 3 mHz band, ~167 s).
     """
     n_samples = int(t_obs / dt)
     freqs = jnp.fft.rfftfreq(n_samples, dt)
@@ -148,12 +155,12 @@ def noise_psd(
     channel: Literal["A", "E", "T"],
     A: float = 3.0,
     P: float = 15.0,
-    L: float = ARM_LENGTH_m,
+    L: float = ARM_LENGTH,
 ) -> Callable[[Float[Array, "..."]], Float[Array, "..."]]:
     # TODO: documentation for these parameters/formulas
     @eqx.filter_jit
     def psd_f(f: Float[Array, "..."]) -> Float[Array, "..."]:
-        fstar = 1.0 / (2.0 * jnp.pi * L / SPEED_OF_LIGHT_m_s)
+        fstar = 1.0 / (2.0 * jnp.pi * L / SPEED_OF_LIGHT)
         tdi15_factor = 4.0 * jnp.sin(f / fstar) * f / fstar
         if channel in "AE":
             n_tilda = (
@@ -195,8 +202,8 @@ def noise_psd(
 @eqx.filter_jit
 def sample_noise(
     key: Key,
-    t_obs: float = YEAR_s,
-    dt: float = SAMPLING_STEP_s,
+    t_obs: float = YEAR,
+    dt: float = SAMPLING_STEP,
 ) -> Float[Array, "T 3"]:
     """
     Draw a time-domain instrumental noise realization for A, E, T channels.
@@ -229,8 +236,8 @@ def sample_noise(
 @eqx.filter_jit
 def preprocess_datastream(
     datastream: Float[Array, "T 3"],
-    t_obs: float = YEAR_s,
-    dt: float = SAMPLING_STEP_s,
+    t_obs: float = YEAR,
+    dt: float = SAMPLING_STEP,
 ) -> Float[Array, "F T*C"]:
     # convert to freq domain and crop the frequency axis to a multiple of 32 for the WDM grid
     # TODO: make the 32 time bins configurable
@@ -256,7 +263,7 @@ def preprocess_datastream(
         nf=len(datastream) // 32,
         a=1.0 / 3.0,
         d=1.0,
-        dt=SAMPLING_STEP_s,
+        dt=SAMPLING_STEP,
         backend="jax",
     )
     y = rearrange(y, "c t f -> t (f c)")
@@ -287,12 +294,41 @@ def geodesic(
 
 
 @eqx.filter_jit
+def match_sources(
+    x0: Float[Array, "S 8"], x1: Float[Array, "S 8"]
+) -> tuple[Float[Array, "S 8"], Scalar]:
+    """Reorder ``x0`` rows to minimize total pairwise cost against ``x1`` (rows align 1:1).
+    returns the reordered ``x0`` and the total cost. Brute-forces all permutations, since ``n_sources`` is small.
+    TODO: replace with an actual assignment algorithm (e.g. Hungarian) to support larger ``n_sources``.
+    """
+    n = x0.shape[0]
+
+    def cost(x0: Float[Array, "8"], x1: Float[Array, "8"]) -> Scalar:
+        return jnp.sum(log_map(x0, x1) ** 2)
+
+    cost = jax.vmap(cost, in_axes=(None, 0))  # vectorize over x1
+    cost = jax.vmap(cost, in_axes=(0, None))  # vectorize over x0
+    C = cost(x0, x1)
+
+    if n <= 4:
+        perms = jnp.array(list(itertools.permutations(range(n))))  # (P, S)
+        costs = jnp.sum(C[jnp.arange(n)[None, :], perms], axis=-1)  # (P,)
+        sigma = perms[jnp.argmin(costs)]
+        return x0[jnp.argsort(sigma)], jnp.min(costs)
+
+    raise NotImplementedError(
+        f"match_sources only brute-forces permutations for n_sources<=4, got {n}. "
+        "TODO: implement an assignment algorithm (e.g. Hungarian) for larger n_sources."
+    )
+
+
+@eqx.filter_jit
 def get_train_batch(
     key: Key,
     batch_size: int,
     n_sources: int,
-    t_obs: float = YEAR_s,
-    dt: float = SAMPLING_STEP_s,
+    t_obs: float = YEAR,
+    dt: float = SAMPLING_STEP,
     noise_scale: float = 1.0,
 ) -> tuple[
     Float[Array, "S 8"],
@@ -319,10 +355,11 @@ def get_train_batch(
         key_x1, key_x0, key_t, key_y = jr.split(key, 4)
         x1 = jr.uniform(key_x1, shape=(n_sources, 8), minval=-1.0, maxval=1.0)
         x0 = jr.uniform(key_x0, shape=(n_sources, 8), minval=-1.0, maxval=1.0)
+        x0, _ = match_sources(x0, x1)  # align sources to minimize transport cost
         t = jr.uniform(key_t, minval=0.0, maxval=1.0)
 
         # generate the conditioning signal
-        u1 = (x1 + 1.0) / 2.0  # to U(0,1)
+        u1 = (x1 + 1.0) / 2.0  # U(-1, 1) -> U(0,1)
         params = prior_inverse_cdf(u1)
         signal = clean_signal(params, t_obs=t_obs, dt=dt)
         noise = sample_noise(key_y, t_obs=t_obs, dt=dt)

@@ -5,10 +5,11 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1080_ti:1
+#SBATCH --gres=gpu:1
+#SBATCH --constraint=a100|h100|v100
 #SBATCH --mem=30G
 #SBATCH --time=24:00:00
-#SBATCH --partition=gpu
+#SBATCH --partition=gpu,gpu-preempt
 
 # ---------------------------------------------------------------------------
 # Full 8-param flow-matching sanity check, generative posterior p(x|y).
@@ -19,7 +20,7 @@
 
 set -uo pipefail   # not -e: tolerate Python's nonzero teardown exit (120)
 
-export CHECKPOINT_EVERY_s=${CHECKPOINT_EVERY_s:-300}
+export CHECKPOINT_INTERVAL=${CHECKPOINT_INTERVAL:-300}
 RUN_SECONDS=${RUN_SECONDS:-86400}   # override for a short smoke test
 
 echo "============================================"
@@ -28,7 +29,7 @@ echo "Node         : $SLURM_NODELIST"
 echo "Start time   : $(date)"
 echo "N_SOURCES     : ${N_SOURCES:-1}"
 echo "NOISE_SCALE   : ${NOISE_SCALE:-0.0}"
-echo "CHECK_EVERY   : ${CHECKPOINT_EVERY_s} s"
+echo "CHECK_EVERY   : ${CHECKPOINT_INTERVAL} s"
 echo "============================================"
 
 mkdir -p logs
