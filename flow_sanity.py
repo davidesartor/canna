@@ -4,28 +4,31 @@ SIMPLIFIED=1 restricts inference to [f0, fdot, A, psi], marginalizing the rest a
 nuisances (via the lisa_simplified drop-in); otherwise the full 8-param problem.
 The two share this script: a single flag swaps the lisa interface and output tag.
 
-Knobs (env): N_SOURCES (>= 1, default 1), NOISE_SCALE (default 1.0), RUN_SECONDS,
-CHECKPOINT_INTERVAL, SIMPLIFIED, TAG_SUFFIX, NOISE_WARMUP_FRAC.
+Knobs (env): N_SOURCES (>= 1, default 1), MIN_SNR (start, default 100.0),
+MIN_SNR_FINAL (end, default 1.0), RUN_SECONDS, CHECKPOINT_INTERVAL,
+SIMPLIFIED, TAG_SUFFIX, SNR_WARMUP_FRAC.
 
-Noise is scheduled: it ramps (raised-cosine, so smoothly at both ends) from 0
-at the start of training up to NOISE_SCALE once NOISE_WARMUP_FRAC * RUN_SECONDS
-has elapsed, then holds.
+Difficulty is scheduled via a minimum-SNR floor: weak injections are amplified
+up to this floor so early batches are easy (loud, well-detected signals). The
+floor ramps (raised-cosine in log-space, so smoothly at both ends) from
+MIN_SNR down to MIN_SNR_FINAL once SNR_WARMUP_FRAC * RUN_SECONDS has elapsed,
+then holds.
+
+This script only trains and checkpoints; it does not draw posteriors or plot
+corner plots (that batch is too big to fit alongside training state on most
+GPUs). Run eval_corner.py separately against a saved checkpoint for that.
 """
 
 import functools
-import itertools
 import os
 import time
 
-import corner
 import equinox as eqx
 import jax
 import jax.random as jr
-import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
-from matplotlib.backends.backend_pdf import PdfPages
 from tqdm import tqdm
 
 jax.config.update("jax_enable_x64", True)
@@ -35,8 +38,9 @@ from src import lisa
 
 # problem knobs (env)
 N_SOURCES = int(os.environ.get("N_SOURCES", "1"))
-NOISE_SCALE = float(os.environ.get("NOISE_SCALE", "1.0"))
-NOISE_WARMUP_FRAC = float(os.environ.get("NOISE_WARMUP_FRAC", "0.5"))
+MIN_SNR = float(os.environ.get("MIN_SNR", "100.0"))
+MIN_SNR_FINAL = float(os.environ.get("MIN_SNR_FINAL", "1.0"))
+SNR_WARMUP_FRAC = float(os.environ.get("SNR_WARMUP_FRAC", "1.0"))
 RUN_SECONDS = float(os.environ.get("RUN_SECONDS", "86400"))
 T_OBS = lisa.MONTH
 CHECKPOINT_INTERVAL = float(os.environ.get("CHECKPOINT_INTERVAL", "1800"))  # [s]
@@ -55,37 +59,36 @@ HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 NUM_HEADS = 8
 LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 1e-5
+WEIGHT_DECAY = 1e-4
 BATCH_SIZE = 512
 
-# eval parameters and pathnames
-ODE_STEPS = 16
-N_EVAL = 3  # number of injections corner-plotted each checkpoint
-N_POSTERIOR = 1024  # posterior draws per corner plot
+# checkpoint pathnames
 TAG = (
-    f"{N_SOURCES}src_all_noise{NOISE_SCALE:g}"
+    f"{N_SOURCES}src"
     + ("_simplified" if SIMPLIFIED else "")
     + os.environ.get("TAG_SUFFIX", "")
 )
 CHECKPOINT_PATH = f"checkpoint_flow_{TAG}.eqx"
 LOSS_PLOT_PATH = f"training_loss_flow_{TAG}.pdf"
-CORNER_PATH = f"flow_corner_{TAG}.pdf"
 
 
-def noise_schedule(elapsed):
-    """Raised-cosine ramp: 0 at elapsed=0 up to NOISE_SCALE at NOISE_WARMUP_FRAC*RUN_SECONDS, then holds."""
-    warmup_seconds = NOISE_WARMUP_FRAC * RUN_SECONDS
+def minimum_snr_schedule(elapsed):
+    """Log-space raised-cosine ramp: MIN_SNR at elapsed=0 down to MIN_SNR_FINAL at
+    SNR_WARMUP_FRAC*RUN_SECONDS, then holds."""
+    warmup_seconds = SNR_WARMUP_FRAC * RUN_SECONDS
     if warmup_seconds <= 0:
-        return NOISE_SCALE
+        return MIN_SNR_FINAL
     frac = min(max(elapsed / warmup_seconds, 0.0), 1.0)
-    return NOISE_SCALE * 0.5 * (1.0 - np.cos(np.pi * frac))
+    cos_frac = 0.5 * (1.0 + np.cos(np.pi * frac))
+    log_snr = np.log(MIN_SNR_FINAL) + (np.log(MIN_SNR) - np.log(MIN_SNR_FINAL)) * cos_frac
+    return np.exp(log_snr)
 
 
 if __name__ == "__main__":
     print(f"JAX backend: {jax.default_backend()}, devices: {jax.local_device_count()}")
     print(
-        f"N_SOURCES={N_SOURCES}  NOISE_SCALE={NOISE_SCALE:g} (ramped over "
-        f"{NOISE_WARMUP_FRAC:g} of RUN_SECONDS)  SIMPLIFIED={SIMPLIFIED}"
+        f"N_SOURCES={N_SOURCES}  MIN_SNR={MIN_SNR:g}->{MIN_SNR_FINAL:g} (log-space, "
+        f"ramped over {SNR_WARMUP_FRAC:g} of RUN_SECONDS)  SIMPLIFIED={SIMPLIFIED}"
     )
     print(f"inferring {lisa.PARAMETER_NAMES}")
     key = jr.key(SEED)
@@ -128,11 +131,7 @@ if __name__ == "__main__":
         flow = eqx.apply_updates(flow, updates)
         return flow, opt_state, loss
 
-    @eqx.filter_jit
-    def sample_posterior(flow, x0, y):
-        return jax.vmap(lambda xi: flow.push(xi, y, ODE_STEPS, lisa.exp_map))(x0)
-
-    def checkpoint_and_eval(key, flow, losses, elapsed):
+    def checkpoint(flow, losses, elapsed):
         eqx.tree_serialise_leaves(CHECKPOINT_PATH, flow)
 
         plt.figure()
@@ -146,77 +145,9 @@ if __name__ == "__main__":
 
         print(
             f"[{elapsed/3600:.2f} h] loss={np.mean(losses[-200:]):.5f} "
-            f"noise_scale={noise_schedule(elapsed):.3f}",
+            f"min_snr={minimum_snr_schedule(elapsed):.3f}",
             flush=True,
         )
-
-        # one corner plot per injection, all pages in a single PDF
-        with PdfPages(CORNER_PATH) as pdf:
-            for j, key_eval in enumerate(jr.split(key, N_EVAL)):
-                noise_scale = noise_schedule(elapsed)
-                _, _, _, y, x0, x1, params, datastream = lisa.get_train_batch(
-                    key_eval,
-                    batch_size=N_POSTERIOR,
-                    n_sources=N_SOURCES,
-                    t_obs=T_OBS,
-                    noise_scale=noise_scale,
-                )
-                post = sample_posterior(flow, x0, y[0])  # (N,S,x_dim)
-                x_dim = xt.shape[-1]
-                truth = np.array(params[0])  # (S, x_dim), physical params
-                # move posterior to physical params
-                post = np.array(lisa.prior_inverse_cdf((post + 1.0) / 2.0))
-                post_flat = post.reshape(N_POSTERIOR, -1)
-
-                labels = [
-                    f"{n}_{s}" for s in range(N_SOURCES) for n in lisa.PARAMETER_NAMES
-                ]
-
-                # f0 and A are log-uniform in the prior: use a log axis scale for
-                # those dims so the corner marginals/contours aren't crushed into
-                # a sliver near 0
-                LOG_PARAMS = {"f0", "A"}
-                axes_scale = [
-                    "log" if n in LOG_PARAMS else "linear"
-                    for _ in range(N_SOURCES)
-                    for n in lisa.PARAMETER_NAMES
-                ]
-
-                fig = corner.corner(
-                    post_flat,
-                    labels=labels,
-                    color="C1",
-                    show_titles=True,
-                    title_fmt=".2f",
-                    hist_kwargs={"density": True},
-                    axes_scale=axes_scale,  # type: ignore
-                )
-                fig.tight_layout()
-                # the flow is permutation invariant across sources, so every
-                # relabelling of the truth is an equally valid posterior mode
-                for sigma in itertools.permutations(range(N_SOURCES)):
-                    truth_perm = truth[list(sigma)].reshape(-1)
-                    corner.overplot_lines(fig, truth_perm, color="black")
-                    corner.overplot_points(
-                        fig,
-                        truth_perm[None, :],
-                        marker="s",
-                        color="black",
-                        markersize=4,
-                    )
-                fig.legend(
-                    handles=[
-                        mlines.Line2D([], [], color="C1", label="flow posterior"),
-                        mlines.Line2D([], [], color="black", label="truth (all perms)"),
-                    ],
-                    loc="upper right",
-                    fontsize=12,
-                    frameon=False,
-                )
-                title = f"flow posterior, injection {j} ({TAG}, {elapsed/3600:.1f}h)"
-                fig.suptitle(title, y=1.0)
-                pdf.savefig(fig, bbox_inches="tight")
-                plt.close(fig)
 
     losses = []
     t0 = time.monotonic()
@@ -224,24 +155,22 @@ if __name__ == "__main__":
     pbar = tqdm(total=RUN_SECONDS, unit="s", desc="training")
     while (elapsed := (time.monotonic() - t0)) < RUN_SECONDS:
         key, key_batch = jr.split(key)
-        noise_scale = noise_schedule(elapsed)
+        snr_threshold = minimum_snr_schedule(elapsed)
         xt, dx, t, y, x0, x1, params, datastream = lisa.get_train_batch(
             key_batch,
             batch_size=BATCH_SIZE,
             n_sources=N_SOURCES,
             t_obs=T_OBS,
-            noise_scale=noise_scale,
+            snr_threshold=snr_threshold,
         )
         flow, opt_state, loss = train_step(flow, opt_state, xt, dx, t, y, x1)
         losses.append(loss.item())
         pbar.update(int(time.monotonic() - t0 - pbar.n))
-        pbar.set_postfix(loss=f"{loss.item():.5f}", noise=f"{noise_scale:.2f}")
+        pbar.set_postfix(loss=f"{loss.item():.5f}", min_snr=f"{snr_threshold:.2f}")
         if time.monotonic() - last_save >= CHECKPOINT_INTERVAL:
-            key, key_eval = jr.split(key)
-            checkpoint_and_eval(key_eval, flow, losses, time.monotonic() - t0)
+            checkpoint(flow, losses, time.monotonic() - t0)
             last_save = time.monotonic()
     pbar.close()
 
-    checkpoint_and_eval(key, flow, losses, time.monotonic() - t0)
+    checkpoint(flow, losses, time.monotonic() - t0)
     print(f"[checkpoint] final saved -> {CHECKPOINT_PATH}")
-    print(f"saved {CORNER_PATH}")

@@ -49,6 +49,16 @@ def prior_inverse_cdf(u: Float[Array, "... 4"]) -> Float[Array, "... 4"]:
 
 
 @eqx.filter_jit
+def optimal_snr(
+    params: Float[Array, "S 4"],
+    t_obs: float = YEAR,
+    dt: float = SAMPLING_STEP,
+) -> Scalar:
+    """optimal_snr restricted to the inferred dims."""
+    return lisa.optimal_snr(pad(params), t_obs=t_obs, dt=dt)
+
+
+@eqx.filter_jit
 def preprocess_datastream(
     datastream: Float[Array, "T 3"],
     t_obs: float = YEAR,
@@ -57,7 +67,7 @@ def preprocess_datastream(
     # crop the datastream so frequency axis is to a multiple of 32 for the WDM grid
     # TODO: make the 32 time bins configurable
     n_samples = int(t_obs / dt)
-    nt = 32
+    nt = 64
     n_samples = (n_samples // (2 * nt)) * (2 * nt)  # keep FFT length a multiple of nt*2
     nf = n_samples // nt  # guaranteed even since n_samples is a multiple of 2*nt
     datastream = datastream[:n_samples]
@@ -96,7 +106,7 @@ def get_train_batch(
     n_sources: int,
     t_obs: float = YEAR,
     dt: float = SAMPLING_STEP,
-    noise_scale: float = 1.0,
+    snr_threshold: float = 0.0,
 ) -> tuple[
     Float[Array, "S 4"],
     Float[Array, "S 4"],
@@ -119,7 +129,14 @@ def get_train_batch(
         params = lisa.prior_inverse_cdf(u1)
         signal = lisa.clean_signal(params, t_obs=t_obs, dt=dt)
         noise = lisa.sample_noise(key_y, t_obs=t_obs, dt=dt)
-        datastream = signal + noise_scale * noise
+
+        # amplify signals that have low SNR, up to snr_threshold; louder signals
+        # are left untouched
+        signal = signal * jnp.maximum(
+            1.0, snr_threshold / lisa.optimal_snr(params, t_obs=t_obs, dt=dt)
+        )
+
+        datastream = signal + noise
         y = preprocess_datastream(datastream, t_obs=t_obs, dt=dt)
 
         # conditional flow-matching target

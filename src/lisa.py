@@ -324,7 +324,7 @@ def get_train_batch(
     n_sources: int,
     t_obs: float = YEAR,
     dt: float = SAMPLING_STEP,
-    noise_scale: float = 1.0,
+    snr_threshold: float = 0.0,
 ) -> tuple[
     Float[Array, "S 8"],
     Float[Array, "S 8"],
@@ -347,7 +347,14 @@ def get_train_batch(
         params = prior_inverse_cdf(u1)
         signal = clean_signal(params, t_obs=t_obs, dt=dt)
         noise = sample_noise(key_y, t_obs=t_obs, dt=dt)
-        datastream = signal + noise_scale * noise
+
+        # amplify signals that have low SNR, up to snr_threshold; louder signals
+        # are left untouched
+        signal = signal * jnp.maximum(
+            1.0, snr_threshold / optimal_snr(params, t_obs=t_obs, dt=dt)
+        )
+
+        datastream = signal + noise
         y = preprocess_datastream(datastream, t_obs=t_obs, dt=dt)
 
         # conditional flow-matching target

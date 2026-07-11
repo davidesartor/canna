@@ -12,10 +12,13 @@
 #SBATCH --partition=gpu,gpu-preempt
 
 # ---------------------------------------------------------------------------
-# Full 8-param flow-matching sanity check, generative posterior p(x|y).
-# NOISE_SCALE=0.0 gives the noiseless case.
-# 24h run, checkpoint/eval/corner every CHECKPOINT_EVERY_s. Knobs come from the
-# environment (set via `sbatch --export`).
+# Full 8-param (or SIMPLIFIED=1 4-param) flow-matching sanity check, generative
+# posterior p(x|y). MIN_SNR/MIN_SNR_FINAL bound the log-space SNR-floor
+# curriculum ramp.
+# 24h run, checkpointing every CHECKPOINT_INTERVAL_s (training only -- no
+# posterior/corner-plot eval; run eval_corner.slurm separately against a
+# checkpoint for that). Knobs come from the environment (set via
+# `sbatch --export`).
 # ---------------------------------------------------------------------------
 
 set -uo pipefail   # not -e: tolerate Python's nonzero teardown exit (120)
@@ -29,7 +32,7 @@ echo "Job ID       : $SLURM_JOB_ID"
 echo "Node         : $SLURM_NODELIST"
 echo "Start time   : $(date)"
 echo "N_SOURCES     : ${N_SOURCES:-1}"
-echo "NOISE_SCALE   : ${NOISE_SCALE:-0.0}"
+echo "MIN_SNR       : ${MIN_SNR:-100.0} -> ${MIN_SNR_FINAL:-1.0}"
 echo "CHECK_EVERY   : ${CHECKPOINT_INTERVAL} s"
 echo "SIMPLIFIED    : ${SIMPLIFIED}"
 echo "============================================"
