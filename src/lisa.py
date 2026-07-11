@@ -18,8 +18,8 @@ MONTH = 28 * 24 * 3600  # [s]
 WEEK = 7 * 24 * 3600  # [s]
 DAY = 24 * 3600  # [s]
 
-MAX_FREQUENCY = 3e-3  # [Hz] top of the LISA analysis band
-SAMPLING_STEP = 1.0 / (2.0 * MAX_FREQUENCY)  # [s] Nyquist sampling step (~167 s)
+MAX_FREQUENCY = 12.0e-3  # [Hz] top of the LISA analysis band
+SAMPLING_STEP = 1.0 / (2.0 * MAX_FREQUENCY)  # [s] Nyquist sampling step (~42 s)
 ARM_LENGTH = 2.5e9  # [m]
 SPEED_OF_LIGHT = 299792458.0  # [m/s]
 GRAVITATIONAL_CONSTANT = 6.67430e-11  # [m^3 kg^-1 s^-2]
@@ -56,16 +56,8 @@ def prior_inverse_cdf(u: Float[Array, "... 8"]) -> Float[Array, "... 8"]:
     # A: log-uniform over the detectable strain range. arXiv:2402.13701, arXiv:2606.29039
     A = inverse_cdfs.log_uniform(u_A, range=(1e-24, 1e-22))
 
-    # fdot: uniform on [0, fdot_max(f0)], with fdot_max (Mc = mc_max_msun) scaling as
-    # f0^(11/3) from GW radiation reaction. arXiv:2402.13701, arXiv:2606.29039
-    fdot_chirp_coeff = (
-        (96.0 / 5.0)
-        * jnp.pi ** (8.0 / 3.0)
-        * (GRAVITATIONAL_CONSTANT * SUN_MASS / SPEED_OF_LIGHT**3) ** (5.0 / 3.0)
-    )  # ~5.8e-7
-    mc_max_msun = 1.0  # heaviest chirp mass
-    fdot_max = fdot_chirp_coeff * mc_max_msun ** (5.0 / 3.0) * f0 ** (11.0 / 3.0)
-    fdot = inverse_cdfs.uniform(u_fdot, range=(0.0, fdot_max))
+    # fdot: log-uniform over the detectable frequency derivative range. arXiv:2606.29039
+    fdot = inverse_cdfs.log_uniform(u_fdot, range=(1e-22, 1e-18))
 
     # Uniform angles
     ra = inverse_cdfs.uniform(u_ra, range=(0.0, 2.0 * jnp.pi))
@@ -242,7 +234,7 @@ def preprocess_datastream(
     # crop the datastream so frequency axis is to a multiple of 32 for the WDM grid
     # TODO: make the 32 time bins configurable
     n_samples = int(t_obs / dt)
-    nt = 32
+    nt = 64
     n_samples = (n_samples // (2 * nt)) * (2 * nt)  # keep FFT length a multiple of nt*2
     nf = n_samples // nt  # guaranteed even since n_samples is a multiple of 2*nt
     datastream = datastream[:n_samples]
