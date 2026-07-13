@@ -119,6 +119,22 @@ def train_step(
     return var_ema, loss, sub_losses
 
 
+LOSS_COLORS = {"total": "#3d405b", "reg_u": "#81b29a", "reg_y": "#e0a458", "flow": "#e07a5f"}
+
+
+def ema(x: np.ndarray, span: int = 200) -> np.ndarray:
+    """Exponential moving average; span sets the smoothing window (in steps)."""
+    x = np.asarray(x, dtype=float)
+    if len(x) == 0:
+        return x
+    alpha = 2.0 / (span + 1.0)
+    out = np.empty_like(x)
+    out[0] = x[0]
+    for i in range(1, len(x)):
+        out[i] = alpha * x[i] + (1.0 - alpha) * out[i - 1]
+    return out
+
+
 if __name__ == "__main__":
     assert 1 <= lisa.N_SOURCES <= 4, "n_sources must be in [1, 4]"
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -184,17 +200,23 @@ if __name__ == "__main__":
         drain_losses()
 
         sub = np.asarray(sub_losses_log)  # (steps, 3): flow, reg_u, reg_y (var-normalized)
-        plt.figure()
-        plt.loglog(losses, "k", label="total")
-        for i, name in enumerate(("flow", "reg_u", "reg_y")):
-            plt.loglog(sub[:, i], label=name)
-        plt.xlabel("step")
-        plt.ylabel("loss / var_ema")
-        plt.legend()
-        plt.grid()
-        plt.title(f"flow p(x|y) ({tag})")
-        plt.savefig(loss_plot_path)
-        plt.close()
+        span = max(20, len(losses) // 100)
+        steps = np.arange(1, len(losses) + 1)
+
+        fig, ax = plt.subplots()
+        # auxiliary losses: smoothed and transparent, so the flow loss reads clearly on top
+        for name, y in (("total", np.asarray(losses)), ("reg_u", sub[:, 1]), ("reg_y", sub[:, 2])):
+            ax.loglog(steps, ema(y, span), color=LOSS_COLORS[name], alpha=0.5, lw=1.4, label=name)
+        # flow loss drawn last, opaque, over a faint raw trace
+        ax.loglog(steps, sub[:, 0], color=LOSS_COLORS["flow"], alpha=0.12, lw=0.8)
+        ax.loglog(steps, ema(sub[:, 0], span), color=LOSS_COLORS["flow"], lw=2.2, label="flow", zorder=5)
+        ax.set_xlabel("step")
+        ax.set_ylabel("loss / var_ema")
+        ax.grid(True, which="both", alpha=0.25)
+        ax.legend(frameon=False)
+        ax.set_title(f"flow p(x|y) ({tag})")
+        fig.savefig(loss_plot_path, bbox_inches="tight")
+        plt.close(fig)
 
         flow_l, reg_u_l, reg_y_l = sub[-200:].mean(axis=0)
         print(

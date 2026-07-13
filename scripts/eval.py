@@ -6,6 +6,7 @@ and tag always match the checkpoint. Two extra flags:
   FAST_PARAMS=1    restrict the corner to f0/fdot/A/psi (default: all inferred dims)
 """
 
+import gc
 import itertools
 import os
 import sys
@@ -237,8 +238,16 @@ if __name__ == "__main__":
 
             fig.legend(handles=legend_handles, loc="upper right", fontsize=12, frameon=False)
             fig.suptitle(f"flow posterior ({space}), SNR quantile {q:.1f}\nSNR={snr:.1f}", y=1.0)
-            pdf.savefig(fig, bbox_inches="tight")
+            # rasterize panel content: PdfPages buffers every page until close, and vector
+            # scatter/overplots (~N! * 136 panels) balloon RSS for many-source corners
+            for ax in fig.axes:
+                ax.set_rasterized(True)
+            pdf.savefig(fig, bbox_inches="tight", dpi=150)
             plt.close(fig)
+            # corner figures have circular refs; free them now so RSS doesn't climb
+            # each quantile and trip the cgroup OOM killer before Python's gc runs
+            del fig, samples, truth, post, post_chunks
+            gc.collect()
             print(f"[{j+1}/{N_QUANTILES}] quantile={q:.1f} SNR={snr:.1f}", flush=True)
 
     print(f"saved {corner_path}")
