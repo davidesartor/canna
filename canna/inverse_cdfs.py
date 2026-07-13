@@ -19,6 +19,6 @@ def log_uniform(
 def cosine_pdf(
     u: Float[Array, "..."], range: tuple[float, float]
 ) -> Float[Array, "..."]:
-    """Inverse CDF of cosine distribution. The pdf is proportional to cos(theta) stretched over the given range."""
+    """Inverse CDF of a cosine distribution (pdf proportional to cos over the range)."""
     lo, hi = range
     return lo + jnp.arccos(2.0 * u - 1.0) * (hi - lo) / jnp.pi

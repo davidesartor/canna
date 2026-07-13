@@ -2,3 +2,12 @@ __pycache__
 .venv
 *.err
 *.out
+CLAUDE.md
+
+# job logs and run artifacts (checkpoints, corner plots, loss curves)
+logs/
+outputs/
+checkpoints/
+
+# throwaway/scratch scripts and runtime job-id bookkeeping
+scratch/
