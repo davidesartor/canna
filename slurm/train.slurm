@@ -16,15 +16,14 @@
 # eval; run slurm/eval.slurm separately against a checkpoint for that.
 # SIMPLIFIED_PROBLEM=1 = reduced month/4-param problem; unset/0 = year/8-param.
 # N_SOURCES (separate axis, default 1) sets the GB source count in [1,4].
-# Knobs come from the environment (set via `sbatch --export`).
+# These two import-time toggles are the only env knobs; all other training
+# settings (run length, batch size, LR, ...) are hard-coded in scripts/train.py.
 # ---------------------------------------------------------------------------
 
 set -uo pipefail   # not -e: tolerate Python's nonzero teardown exit (120)
 
 export SIMPLIFIED_PROBLEM=${SIMPLIFIED_PROBLEM:-0}
 export N_SOURCES=${N_SOURCES:-1}
-export CHECKPOINT_INTERVAL=${CHECKPOINT_INTERVAL:-60}
-export RUN_SECONDS=${RUN_SECONDS:-86400}   # override for a short smoke test
 
 echo "============================================"
 echo "Job ID           : $SLURM_JOB_ID"
@@ -32,13 +31,11 @@ echo "Node             : $SLURM_NODELIST"
 echo "Start time       : $(date)"
 echo "SIMPLIFIED_PROBLEM: ${SIMPLIFIED_PROBLEM}"
 echo "N_SOURCES        : ${N_SOURCES}"
-echo "RUN_SECONDS      : ${RUN_SECONDS} s"
-echo "CHECK_EVERY      : ${CHECKPOINT_INTERVAL} s"
 echo "============================================"
 
 mkdir -p logs
 
-echo "Launching scripts/train.py (${RUN_SECONDS}s) SIMPLIFIED_PROBLEM=${SIMPLIFIED_PROBLEM} ..."
+echo "Launching scripts/train.py SIMPLIFIED_PROBLEM=${SIMPLIFIED_PROBLEM} N_SOURCES=${N_SOURCES} ..."
 uv run python scripts/train.py
 echo "python exit code: $?"
 

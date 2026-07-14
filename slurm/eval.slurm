@@ -13,15 +13,16 @@
 
 # ---------------------------------------------------------------------------
 # Evaluate a trained checkpoint: flow posterior corner plots across SNR
-# quantiles. Import-time toggles (SIMPLIFIED_PROBLEM, N_SOURCES, REMAT_LEVEL)
+# quantiles. Import-time toggles (SIMPLIFIED_PROBLEM, N_SOURCES)
 # must match the training run that produced the checkpoint, else the run tag /
-# model dims won't match. Knobs come from the environment (`sbatch --export`).
+# model dims won't match. All other eval knobs are hard-coded in scripts/eval.py.
 # ---------------------------------------------------------------------------
 
 set -uo pipefail   # not -e: tolerate Python's nonzero teardown exit (120)
 
 export SIMPLIFIED_PROBLEM=${SIMPLIFIED_PROBLEM:-0}
 export N_SOURCES=${N_SOURCES:-1}
+export PLOT_PHYSICAL=${PLOT_PHYSICAL:-1}
 
 echo "============================================"
 echo "Job ID           : $SLURM_JOB_ID"

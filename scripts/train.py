@@ -1,280 +1,218 @@
-"""Train the flow-matching posterior p(x | y) and checkpoint."""
+"""Train the flow-matching posterior p(x | y) for LISA Galactic Binaries and checkpoint.
 
-import functools
+Hard-coded for LISA; the only env knobs are the import-time toggles in canna.lisa
+(SIMPLIFIED_PROBLEM, N_SOURCES). Everything else lives in the config block below.
+"""
+
+from typing import NamedTuple
+from jaxtyping import Array, Float, Scalar
 import os
-import time
-from typing import Callable, Optional
 
 import jax
 import jax.numpy as jnp
-import jax.random as jr
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
-from flax import nnx
-from flax import serialization
+from flax import nnx, serialization
+
 from tqdm import tqdm
 
 jax.config.update("jax_enable_x64", True)
 
-from canna import networks
-from canna import lisa
-from canna import flow_utils
+from canna import lisa, networks
+
+SEED = 0
+TAG_SUFFIX = ""
+OUTPUT_DIR = "outputs"
+CHECKPOINT_DIR = "checkpoints"
+LOG_INTERVAL = 100
+CHECKPOINT_INTERVAL = 1000
 
 
-def env(name: str, default):
-    """Read config value ``NAME`` from the environment, cast to the default's type."""
-    raw = os.environ.get(name.upper())
-    return default if raw is None else type(default)(raw)
-
-
-# per-run knobs (overridden from the environment, e.g. via sbatch --export)
-SEED = env("seed", 0)
-NETWORK_DTYPE = env("network_dtype", "float32")  # net precision (data gen stays fp64)
-RUN_SECONDS = env("run_seconds", 86400.0)  # 24h
-CHECKPOINT_INTERVAL = env("checkpoint_interval", 60.0)
-TAG_SUFFIX = env("tag_suffix", "")
-OUTPUT_DIR = env("output_dir", "outputs")  # figures, tables, loss curves
-CKPT_DIR = env("ckpt_dir", "checkpoints")  # *.msgpack model checkpoints only
-
-# fixed hyperparameters (n_sources, t_obs live in lisa, set by SIMPLIFIED_PROBLEM)
 HIDDEN_DIM = 512
-NUM_BLOCKS = 4
+NUM_BLOCKS = 8
 NUM_HEADS = 8
-BATCH_SIZE = env("batch_size", 256)
+
+BATCH_SIZE = 256
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-5
-GRAD_CLIP = 1.0
-WARMUP_FRAC = 0.5  # flow-vs-aux weight ramps 0->1 over WARMUP_FRAC of the budget
-VAR_EMA_DECAY = 0.99  # smooths the per-target variance normalizers
+NETWORK_PARAM_DTYPE = jnp.float32
+NETWORK_COMPUTE_DTYPE = jnp.bfloat16
+
+TOTAL_TRAIN_STEPS = 100_000
+LR_WARMUP_STEPS = 1000
+MIN_LR_FRAC = 0.1  # cosine decays to MIN_LR_FRAC * peak
+WARMUP_FRAC = 0.5  # auxiliary loss weight decays 1->0 over this fraction of the run
+
+LOSS_COLORS = {"flow": "#e07a5f", "reg_u": "#81b29a", "reg_y": "#e0a458"}
 
 
-def loss_weight_schedule(elapsed: float) -> float:
-    """Raised-cosine ramp: 0 at elapsed=0 up to 1 at WARMUP_FRAC*RUN_SECONDS, then holds."""
-    warmup = max(WARMUP_FRAC * RUN_SECONDS, 1e-8)
-    frac = min(max(elapsed / warmup, 0.0), 1.0)
-    return 1.0 - 0.5 * (1.0 + np.cos(np.pi * frac))
-
-
-def make_tag() -> str:
-    problem = "simplified" if lisa.SIMPLIFIED_PROBLEM else "full"
-    return f"{lisa.N_SOURCES}src_{problem}{TAG_SUFFIX}"
-
-
-@functools.partial(jax.jit, static_argnums=(1, 2))
-def sample_physics_batch(key, batch_size: int, get_physics_sample: Callable):
-    """Vmap the injected physics simulator to draw a batch of targets + WDM conditioning."""
-    return jax.vmap(get_physics_sample)(jr.split(key, batch_size))
-
-
-@nnx.jit(
-    static_argnames=("ema_decay", "net_dtype", "geodesic", "match_sources"),
-    donate_argnames=("flow", "optimizer", "var_ema"),
-)
-def train_step(
-    flow,
-    optimizer,
-    var_ema,
-    key,
-    u_targ,
-    y,
-    y_targ,
-    loss_weight,
-    ema_decay: float,
-    net_dtype,
-    geodesic: Optional[Callable] = None,
-    match_sources: Optional[Callable] = None,
-):
-    """One EMA-variance-reweighted optimizer step (flow and optimizer are updated in place)."""
-    sample_flow = lambda k, u1: flow_utils.flow_train_sample(
-        k, u1, geodesic, match_sources
-    )
-    ut, du, t = jax.vmap(sample_flow)(jr.split(key, u_targ.shape[0]), u_targ)
-    # the network runs in net_dtype (y is pre-cast at batch fetch); loss targets
-    # (du, y_targ, u_targ) stay at LISA precision
-    ut, t = ut.astype(net_dtype), t.astype(net_dtype)
-
-    @nnx.vmap(in_axes=(None, 0, 0, 0))
-    def batched_flow(flow, ut, y, t):
-        return flow(ut, y, t)
-
-    def objective(flow):
-        du_pred, u1_pred, y_recon = batched_flow(flow, ut, y, t)
-        l_flow, v_flow = flow_utils.loss_flow_matching(du_pred, du)
-        l_reg_y, v_reg_y = flow_utils.loss_signal_regression(y_recon, y_targ)
-        l_reg_u, v_reg_u = flow_utils.loss_param_regression(
-            u1_pred, u_targ, match_sources
-        )
-        target_var = jnp.stack([v_flow, v_reg_u, v_reg_y])
-        # rescale each term by its running EMA variance, then weight flow vs auxiliaries
-        sub_losses = jnp.stack([l_flow, l_reg_u, l_reg_y]) / (var_ema + 1e-8)
-        weights = jnp.array([loss_weight, 1.0 - loss_weight, 1.0 - loss_weight])
-        return jnp.sum(sub_losses * weights), (sub_losses, target_var)
-
-    (loss, (sub_losses, target_var)), grads = nnx.value_and_grad(
-        objective, has_aux=True
-    )(flow)
-    optimizer.update(flow, grads)
-    var_ema = ema_decay * var_ema + (1.0 - ema_decay) * target_var
-    return var_ema, loss, sub_losses
-
-
-LOSS_COLORS = {"total": "#3d405b", "reg_u": "#81b29a", "reg_y": "#e0a458", "flow": "#e07a5f"}
-
-
-def ema(x: np.ndarray, span: int = 200) -> np.ndarray:
-    """Exponential moving average; span sets the smoothing window (in steps)."""
-    x = np.asarray(x, dtype=float)
-    if len(x) == 0:
-        return x
-    alpha = 2.0 / (span + 1.0)
-    out = np.empty_like(x)
-    out[0] = x[0]
-    for i in range(1, len(x)):
-        out[i] = alpha * x[i] + (1.0 - alpha) * out[i - 1]
-    return out
-
-
-if __name__ == "__main__":
-    assert 1 <= lisa.N_SOURCES <= 4, "n_sources must be in [1, 4]"
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    os.makedirs(CKPT_DIR, exist_ok=True)
-    tag = make_tag()
-    checkpoint_path = os.path.join(CKPT_DIR, f"checkpoint_flow_{tag}.msgpack")
-    loss_plot_path = os.path.join(OUTPUT_DIR, f"training_loss_flow_{tag}.pdf")
-
-    print(f"JAX backend: {jax.default_backend()}, devices: {jax.local_device_count()}")
-    print(f"inferring {lisa.PARAMETER_NAMES}")
-    key = jr.key(SEED)
-
-    key, key_mock = jr.split(key)
-    u1, params, datastream, signal, y, y_clean = sample_physics_batch(
-        key_mock, 2, lisa.get_physics_sample
-    )
-    print(f"{lisa.N_SOURCES} sources, shapes:")
-    for name, el in dict(u1=u1, y=y, y_clean=y_clean).items():
-        print(f"  {name}: {el.shape} {el.dtype} [{el.min():.3g}, {el.max():.3g}]")
-
-    # network runs in NETWORK_DTYPE (data generation stays fp64 for signal/WDM accuracy)
-    net_dtype = jnp.dtype(NETWORK_DTYPE)
-    key, key_init = jr.split(key)
+def setup() -> tuple[networks.MMDiT, nnx.Optimizer]:
+    """Build the flow network, its LR schedule, and the optimizer."""
     flow = networks.MMDiT(
-        x_dim=u1.shape[-1],
-        y_channels=y.shape[-1],
+        x_dim=len(lisa.PARAMETER_NAMES),
+        y_channels=len(lisa.CHANNEL_NAMES),
         hidden_dim=HIDDEN_DIM,
         num_blocks=NUM_BLOCKS,
         num_heads=NUM_HEADS,
-        rngs=nnx.Rngs(key_init),
-        dtype=net_dtype,
+        dtype=NETWORK_COMPUTE_DTYPE,
+        param_dtype=NETWORK_PARAM_DTYPE,
+        rngs=nnx.Rngs(SEED),
+    )
+    lr = optax.warmup_cosine_decay_schedule(
+        init_value=0.0,
+        peak_value=LEARNING_RATE,
+        warmup_steps=LR_WARMUP_STEPS,
+        decay_steps=TOTAL_TRAIN_STEPS,
+        end_value=LEARNING_RATE * MIN_LR_FRAC,
     )
     optimizer = nnx.Optimizer(
-        flow,
-        optax.chain(
-            optax.clip_by_global_norm(GRAD_CLIP),
-            optax.adamw(LEARNING_RATE, weight_decay=WEIGHT_DECAY),
+        model=flow,
+        tx=optax.chain(
+            optax.clip_by_global_norm(1.0),
+            optax.adamw(learning_rate=lr, weight_decay=WEIGHT_DECAY),
         ),
         wrt=nnx.Param,
     )
-    var_ema = jnp.ones(3)
+    return flow, optimizer
 
-    # loss history: scalars stay on-device in *_pending (no per-step host sync),
-    # drained to the host lists in bulk at each checkpoint
-    losses: list[float] = []
-    sub_losses_log: list[list[float]] = []
-    losses_pending: list = []
-    sub_losses_pending: list = []
 
-    def drain_losses():
-        if not losses_pending:
-            return
-        losses.extend(np.asarray(jax.device_get(losses_pending)).tolist())
-        sub_losses_log.extend(
-            np.asarray(jax.device_get(sub_losses_pending)).reshape(-1, 3).tolist()
-        )
-        losses_pending.clear()
-        sub_losses_pending.clear()
+class TrainBatch(NamedTuple):
+    ut: Float[Array, "B S P"]
+    du: Float[Array, "B S P"]
+    t: Float[Array, "B"]
+    y: Float[Array, "B T F C"]
+    u1: Float[Array, "B S P"]
+    y_clean: Float[Array, "B T F C"]
 
-    def checkpoint(elapsed: float):
-        with open(checkpoint_path, "wb") as f:
-            f.write(serialization.to_bytes(nnx.to_pure_dict(nnx.state(flow))))
-        drain_losses()
 
-        sub = np.asarray(sub_losses_log)  # (steps, 3): flow, reg_u, reg_y (var-normalized)
-        span = max(20, len(losses) // 100)
-        steps = np.arange(1, len(losses) + 1)
+@nnx.jit(static_argnames=("batch_size",))
+def sample_train_batch(rngs: nnx.Rngs, batch_size: int) -> TrainBatch:
+    """Sample a training batch."""
 
-        fig, ax = plt.subplots()
-        # auxiliary losses: smoothed and transparent, so the flow loss reads clearly on top
-        for name, y in (("total", np.asarray(losses)), ("reg_u", sub[:, 1]), ("reg_y", sub[:, 2])):
-            ax.loglog(steps, ema(y, span), color=LOSS_COLORS[name], alpha=0.5, lw=1.4, label=name)
-        # flow loss drawn last, opaque, over a faint raw trace
-        ax.loglog(steps, sub[:, 0], color=LOSS_COLORS["flow"], alpha=0.12, lw=0.8)
-        ax.loglog(steps, ema(sub[:, 0], span), color=LOSS_COLORS["flow"], lw=2.2, label="flow", zorder=5)
-        ax.set_xlabel("step")
-        ax.set_ylabel("loss / var_ema")
-        ax.grid(True, which="both", alpha=0.25)
-        ax.legend(frameon=False)
-        ax.set_title(f"flow p(x|y) ({tag})")
-        fig.savefig(loss_plot_path, bbox_inches="tight")
-        plt.close(fig)
+    @nnx.split_rngs(splits=batch_size)
+    @nnx.vmap(axis_size=batch_size)
+    def sample_single(rngs: nnx.Rngs):
+        u1, _, _, _, y, y_clean = lisa.get_physics_sample(rngs())
 
-        flow_l, reg_u_l, reg_y_l = sub[-200:].mean(axis=0)
+        # couple a base point to the target
+        u0 = rngs.uniform(u1.shape, u1.dtype)
+        u0, _ = lisa.match_sources(u0, u1)
+
+        # sample the conditional probability path
+        t = rngs.uniform(dtype=u1.dtype)
+        ut = lisa.geodesic(t, u0, u1)
+        du = jax.jacobian(lisa.geodesic)(t, u0, u1)
+        batch = ut, du, t, y, u1, y_clean
+
+        # cast to the network compute dtype
+        batch = tuple(el.astype(NETWORK_COMPUTE_DTYPE) for el in batch)
+        return batch
+
+    return TrainBatch(*sample_single(rngs))
+
+
+@nnx.jit(donate_argnames=("flow", "optimizer"))
+def train_step(
+    flow: networks.MMDiT,
+    optimizer: nnx.Optimizer,
+    batch: TrainBatch,
+    aux_weight: float,
+) -> Float[Array, "3"]:
+    """One optimizer step on `batch`; mutates flow/optimizer in place. Returns raw per-term losses."""
+
+    def train_loss(flow: networks.MMDiT) -> tuple[Scalar, Float[Array, "3"]]:
+        du_pred, u_pred, y_recon = flow(batch.ut, batch.y, batch.t)
+        u_pred, _ = jax.vmap(lisa.match_sources)(u_pred, batch.u1)
+        assert all(a == c for a, c in zip(y_recon.shape, batch.y_clean.shape))
+        l_flow = jnp.mean(optax.l2_loss(du_pred, batch.du))
+        l_reg_u = jnp.mean(optax.l2_loss(u_pred, batch.u1))
+        l_reg_y = jnp.mean(optax.l2_loss(y_recon, batch.y_clean))
+        losses = jnp.stack([l_flow, l_reg_u, l_reg_y])
+        return l_flow + aux_weight * (l_reg_u + l_reg_y), losses
+
+    (_, losses), grads = nnx.value_and_grad(train_loss, has_aux=True)(flow)
+    optimizer.update(flow, grads)
+    return losses
+
+
+def aux_loss_weight_schedule(step: int) -> float:
+    """Compute auxiliary loss weight, decaying from 1->0 over WARMUP_FRAC of the run."""
+    frac = min(step / (WARMUP_FRAC * TOTAL_TRAIN_STEPS), 1.0)
+    return 0.5 + 0.5 * np.cos(np.pi * frac)
+
+
+def save_checkpoint(flow: networks.MMDiT, ckpt_path: str):
+    """Save the flow weights and plot the loss curve so far."""
+    with open(ckpt_path, "wb") as f:
+        f.write(serialization.to_bytes(nnx.to_pure_dict(nnx.state(flow))))
+
+
+def plot_loss_curve(
+    loss_hist: list[tuple[float, float, float]], tag: str, loss_path: str
+):
+    hist = np.asarray(loss_hist)
+    xs = (np.arange(len(hist)) + 1) * LOG_INTERVAL
+    fig, ax = plt.subplots()
+    for name, col in (("flow", 0), ("reg_u", 1), ("reg_y", 2)):
+        ax.loglog(xs, hist[:, col], color=LOSS_COLORS[name], lw=1.6, label=name)
+    ax.set(xlabel="step", ylabel="loss", title=f"flow p(x|y) ({tag})")
+    ax.grid(True, which="both", alpha=0.25)
+    ax.legend(frameon=False)
+    fig.savefig(loss_path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    tag = f"{lisa.N_SOURCES}src_{"simplified" if lisa.SIMPLIFIED_PROBLEM else "full"}{TAG_SUFFIX}"
+    ckpt_path = os.path.join(CHECKPOINT_DIR, f"checkpoint_flow_{tag}.msgpack")
+    loss_path = os.path.join(OUTPUT_DIR, f"training_loss_flow_{tag}.pdf")
+
+    print(f"JAX backend: {jax.default_backend()}, devices: {jax.local_device_count()}")
+    print(f"inferring {lisa.PARAMETER_NAMES}")
+
+    rngs = nnx.Rngs(SEED)
+    flow, optimizer = setup()
+
+    # --- sample a batch and print its shapes, dtypes, and ranges ---
+    batch = sample_train_batch(rngs, BATCH_SIZE)
+    for name, x in batch._asdict().items():
         print(
-            f"[{elapsed/3600:.2f} h] loss={np.mean(losses[-200:]):.5f} "
-            f"(flow={flow_l:.5f} reg_u={reg_u_l:.5f} reg_y={reg_y_l:.5f}) "
-            f"w={loss_weight_schedule(elapsed):.3f} var_ema={np.asarray(var_ema)}",
-            flush=True,
+            f"  {name}: {x.shape} {x.dtype} [{float(x.min()):.3g}, {float(x.max()):.3g}]"
         )
 
-    LOG_INTERVAL = 20  # steps between live-loss refreshes (each forces one host sync)
-    t0 = time.monotonic()
-    last_save = t0
-    step = 0
-    pbar = tqdm(total=RUN_SECONDS, unit="s", desc="training")
-    while (elapsed := time.monotonic() - t0) < RUN_SECONDS:
-        key, key_phys, key_step = jr.split(key, 3)
-        u1, params, datastream, signal, y, y_clean = sample_physics_batch(
-            key_phys, BATCH_SIZE, lisa.get_physics_sample
-        )
-        # cast the network conditioning down to train precision at the boundary
-        # (avoids feeding the fp64 batch into the donated step; targets stay fp64)
-        y = y.astype(net_dtype)
-        loss_weight = jnp.float32(loss_weight_schedule(elapsed))
-        var_ema, loss, sub_losses = train_step(
-            flow,
-            optimizer,
-            var_ema,
-            key_step,
-            u1,
-            y,
-            y_clean,
-            loss_weight,
-            VAR_EMA_DECAY,
-            net_dtype,
-            lisa.geodesic,
-            lisa.match_sources,
-        )
-        # buffer the scalars on-device; no .item() here (a per-step host sync
-        # would serialize next-batch generation behind the current step)
-        losses_pending.append(loss)
-        sub_losses_pending.append(sub_losses)
-        step += 1
+    # --- training loop ---
+    loss_hist = []  # per-interval mean [flow, reg_u, reg_y] losses (host)
+    for step in (pbar := tqdm(range(0, TOTAL_TRAIN_STEPS, LOG_INTERVAL))):
+        buffer = []  # per-step losses since the last log point
+        aux_weight = aux_loss_weight_schedule(step)
 
-        pbar.update(int(time.monotonic() - t0 - pbar.n))
-        # refresh the live loss only occasionally -- each refresh forces one sync
-        if step % LOG_INTERVAL == 0:
-            loss_flow, loss_reg_x, loss_reg_y = (float(s) for s in sub_losses)
-            pbar.set_postfix(
-                loss=f"{float(loss):.5f}",
-                flow=f"{loss_flow:.5f}",
-                reg_x=f"{loss_reg_x:.5f}",
-                reg_y=f"{loss_reg_y:.5f}",
-                w=f"{loss_weight:.2f}",
+        for _ in range(LOG_INTERVAL):
+            batch = sample_train_batch(rngs, BATCH_SIZE)
+            losses = train_step(flow, optimizer, batch, aux_weight)
+            buffer.append(losses)
+
+        # ---- log the interval-mean loss point ----
+        buffer = jnp.mean(jnp.stack(buffer), axis=0)
+        flow_l, reg_u_l, reg_y_l = jax.device_get(buffer)
+        loss_hist.append((flow_l, reg_u_l, reg_y_l))
+        pbar.set_postfix(
+            flow=f"{flow_l:.5f}", reg_u=f"{reg_u_l:.5f}", reg_y=f"{reg_y_l:.5f}"
+        )
+
+        # ---- checkpoint + loss curve every CHECKPOINT_INTERVAL steps ----
+        if (step + LOG_INTERVAL) % CHECKPOINT_INTERVAL == 0:
+            save_checkpoint(flow, ckpt_path)
+            plot_loss_curve(loss_hist, tag, loss_path)
+            print(
+                f"[step {step + LOG_INTERVAL}/{TOTAL_TRAIN_STEPS}] flow={flow_l:.5f} reg_u={reg_u_l:.5f} reg_y={reg_y_l:.5f}"
             )
-        if time.monotonic() - last_save >= CHECKPOINT_INTERVAL:
-            checkpoint(time.monotonic() - t0)
-            last_save = time.monotonic()
-    pbar.close()
+    save_checkpoint(flow, ckpt_path)
+    plot_loss_curve(loss_hist, tag, loss_path)
+    print(f"[checkpoint] final saved -> {ckpt_path}")
 
-    checkpoint(time.monotonic() - t0)
-    print(f"[checkpoint] final saved -> {checkpoint_path}")
+
+if __name__ == "__main__":
+    main()
