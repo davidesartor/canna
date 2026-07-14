@@ -33,7 +33,8 @@ N_SOURCES = int(os.environ.get("N_SOURCES", 1))
 T_OBS = YEAR
 
 SIMPLIFIED_PROBLEM = os.environ.get("SIMPLIFIED_PROBLEM", "0")
-if SIMPLIFIED_PROBLEM not in ("0", "", "false", "False"):
+SIMPLIFIED_PROBLEM = SIMPLIFIED_PROBLEM not in ("0", "", "false", "False")
+if SIMPLIFIED_PROBLEM:
     MASK = jnp.array([0, 1, 2, 5])  # f0, fdot, A, psi
     PARAMETER_NAMES = ["f0", "fdot", "A", "psi"]
     PERIODIC: Bool[Array, "P"] = jnp.array([False, False, False, True])
@@ -244,11 +245,14 @@ def preprocess_datastream(
     scale = jnp.where(avg_noise_power > 0.0, jnp.sqrt(avg_noise_power), 1.0)
     spectra = spectra / scale
 
-    # from_freq_to_wdm is batch-first: (C, F) -> (C, T, F)
+    # from_freq_to_wdm is batch-first: (C, F) -> (C, T, nf)
     y = from_freq_to_wdm(
         spectra, nt=nt, nf=nf, a=1.0 / 3.0, d=1.0, dt=SAMPLING_STEP, backend="jax"
     )
-    return rearrange(jnp.arcsinh(y), "c t f -> t f c")  # compress + channel-last
+
+    # compress range and drop the zero-frequency band
+    y = jnp.arcsinh(y)[..., 1:]
+    return rearrange(y, "c t f -> t f c")
 
 
 @eqx.filter_jit
