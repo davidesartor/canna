@@ -6,7 +6,7 @@ SIMPLIFIED_PROBLEM; run once per problem to cover both.
 """
 
 import jax.numpy as jnp
-import jax.random as jr
+from flax import nnx
 
 from canna import lisa, networks
 
@@ -17,7 +17,7 @@ NF_CHOICES = [256, 512, 1024, 2048]
 
 def test_wdm_dims():
     channels = len(lisa.CHANNEL_NAMES)
-    patchify = networks.Patchify(channels=channels, dim=64, key=jr.key(0))
+    patchify = networks.Patchify(channels=channels, dim=64, rngs=nnx.Rngs(0))
     mock = jnp.zeros((lisa.N_SAMPLES, channels))
 
     header = f"{'nf':>6} {'nt':>8} {'(T, F, C)':>18} {'patch (n_t,n_f)':>16} {'y_tokens':>10}"

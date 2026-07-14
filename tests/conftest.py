@@ -7,6 +7,10 @@ Runs JAX numerical code, so launch on a compute node
 import os
 from types import SimpleNamespace
 
+# pytest holds a JAX backend for the whole session; preallocating the default 75%
+# of the GPU here leaves the bench worker subprocesses unable to init one at all.
+os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+
 import jax
 
 jax.config.update("jax_enable_x64", True)
@@ -36,7 +40,9 @@ def batch():
 
     @jax.jit
     def gen(chunk_keys):
-        u, params, datastream, signal, y, y_clean = jax.vmap(lisa.get_physics_sample)(chunk_keys)
+        u, params, datastream, signal, y, y_clean = jax.vmap(lisa.get_physics_sample)(
+            chunk_keys
+        )
         snr = jax.vmap(snr_of_signal)(signal)
         return u, params, datastream, signal, y, y_clean, snr
 

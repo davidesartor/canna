@@ -8,7 +8,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint=a100|h100
 #SBATCH --mem=60G
-#SBATCH --time=00:30:00
+#SBATCH --time=02:00:00
 #SBATCH --partition=gpu,gpu-preempt
 
 # ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ echo "============================================"
 
 mkdir -p logs
 
-uv run pytest tests/ -v
+uv run pytest ${PYTEST_ARGS:-tests/} -v
 echo "pytest exit code: $?"
 
 echo "Job finished : $(date)"
