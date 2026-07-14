@@ -18,12 +18,12 @@ MONTH = 30 * 24 * 3600  # [s]
 WEEK = 7 * 24 * 3600  # [s]
 DAY = 24 * 3600  # [s]
 
-MAX_FREQUENCY = 12.0e-3  # [Hz] top of the LISA analysis band
-SAMPLING_STEP = 1.0 / (2.0 * MAX_FREQUENCY)  # [s] Nyquist sampling step (~42 s)
 ARM_LENGTH = 2.5e9  # [m]
 SPEED_OF_LIGHT = 299792458.0  # [m/s]
 GRAVITATIONAL_CONSTANT = 6.67430e-11  # [m^3 kg^-1 s^-2]
 SUN_MASS = 1.98892e30  # [kg]
+MAX_FREQUENCY = 12.0e-3  # [Hz] top of the LISA analysis band
+SAMPLING_STEP = 1.0 / (2.0 * MAX_FREQUENCY)  # [s] Nyquist sampling step (~42 s)
 
 CHANNEL_NAMES = ["A", "E", "T"]
 PARAMETER_NAMES = ["f0", "fdot", "A", "ra", "dec", "psi", "iota", "phi0"]
@@ -32,31 +32,31 @@ PERIODIC = jnp.array([False, False, False, True, False, True, False, True])
 N_SOURCES = int(os.environ.get("N_SOURCES", 1))
 T_OBS = YEAR
 
-if SIMPLIFIED_PROBLEM := os.environ.get("SIMPLIFIED_PROBLEM", "0") not in (
-    "0",
-    "",
-    "false",
-    "False",
-):
+SIMPLIFIED_PROBLEM = os.environ.get("SIMPLIFIED_PROBLEM", "0")
+if SIMPLIFIED_PROBLEM not in ("0", "", "false", "False"):
     MASK = jnp.array([0, 1, 2, 5])  # f0, fdot, A, psi
     PARAMETER_NAMES = ["f0", "fdot", "A", "psi"]
     PERIODIC: Bool[Array, "P"] = jnp.array([False, False, False, True])
     T_OBS = MONTH
 
 # fixed sampling grid: round n_samples down to a power of two, then re-derive T_OBS
-N_SAMPLES = 1 << (int(T_OBS / SAMPLING_STEP).bit_length() - 1)
+N_SAMPLES = 1 << int(T_OBS / SAMPLING_STEP).bit_length()
 T_OBS = N_SAMPLES * SAMPLING_STEP
 
 
 @eqx.filter_jit
-def logarithmic_map(u0: Float[Array, "P"], u1: Float[Array, "P"]) -> Float[Array, "P"]:
+def logarithmic_map(
+    u0: Float[Array, "... P"], u1: Float[Array, "... P"]
+) -> Float[Array, "... P"]:
     """Tangent vector at ``u0`` pointing to ``u1`` (the flow-matching velocity)."""
     d = u1 - u0
     return jnp.where(PERIODIC, d - jnp.round(d), d)
 
 
 @eqx.filter_jit
-def exponential_map(u0: Float[Array, "P"], v: Float[Array, "P"]) -> Float[Array, "P"]:
+def exponential_map(
+    u0: Float[Array, "... P"], v: Float[Array, "... P"]
+) -> Float[Array, "... P"]:
     """Move from ``u0`` along tangent ``v`` (wrapping the periodic dims)."""
     x = u0 + v
     return jnp.where(PERIODIC, x % 1.0, x)
@@ -64,8 +64,8 @@ def exponential_map(u0: Float[Array, "P"], v: Float[Array, "P"]) -> Float[Array,
 
 @eqx.filter_jit
 def geodesic(
-    t: Scalar, u0: Float[Array, "P"], u1: Float[Array, "P"]
-) -> Float[Array, "P"]:
+    t: Scalar, u0: Float[Array, "... P"], u1: Float[Array, "... P"]
+) -> Float[Array, "... P"]:
     """Probability path point at time ``t`` between base ``u0`` and target ``u1``."""
     return exponential_map(u0, t * logarithmic_map(u0, u1))
 
@@ -90,9 +90,27 @@ def match_sources(
         best = jnp.argmin(costs)
         return u0[perms[best]], costs[best]
 
-    raise NotImplementedError(
-        f"match_sources brute-forces permutations for n_sources <= 4, got {n_sources}."
-    )
+    # Hungarian is O(n^3) and GPU-hostile, so for many sources use randomized
+    # local search: align both by SNR, then each round pair targets at random
+    # and apply every beneficial pairwise swap. Cost decreases monotonically.
+    idx = jnp.arange(n_sources)
+    order0, order1 = jnp.argsort(u0[:, 2]), jnp.argsort(u1[:, 2])  # amplitude ~ SNR
+    a = jnp.zeros(n_sources, dtype=jnp.int32).at[order1].set(order0.astype(jnp.int32))
+
+    # targets to pair each round: drop the lowest-SNR one when the count is odd
+    pool = order1[n_sources % 2 :]
+    key = jr.key(0)
+
+    def sweep(i: int, a: Float[Array, "S"]) -> Float[Array, "S"]:
+        perm = jr.permutation(jr.fold_in(key, i), pool)
+        p, q = perm[::2], perm[1::2]  # disjoint target pairs
+        ap, aq = a[p], a[q]
+        gain = C[ap, p] + C[aq, q] - C[aq, p] - C[ap, q]
+        swap = gain > 0.0
+        return a.at[p].set(jnp.where(swap, aq, ap)).at[q].set(jnp.where(swap, ap, aq))
+
+    a = jax.lax.fori_loop(0, 8 * n_sources.bit_length(), sweep, a)
+    return u0[a], jnp.sum(C[a, idx])
 
 
 @eqx.filter_jit
@@ -238,8 +256,8 @@ def get_physics_sample(
     key: Key,
     n_sources: int = N_SOURCES,
 ) -> tuple[
-    Float[Array, "S 8"],
-    Float[Array, "S 8"],
+    Float[Array, "S P"],
+    Float[Array, "S P"],
     Float[Array, "T C"],
     Float[Array, "T C"],
     Float[Array, "T F C"],
