@@ -37,14 +37,13 @@ BATCH_SIZE = 256
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-5
 NETWORK_PARAM_DTYPE = jnp.float32
-NETWORK_COMPUTE_DTYPE = jnp.bfloat16
+NETWORK_COMPUTE_DTYPE = jnp.float32  # TODO: mixedprecision training
 
-TOTAL_TRAIN_STEPS = 100_000
+TOTAL_TRAIN_STEPS = 500_000
 LR_WARMUP_STEPS = 1000
-MIN_LR_FRAC = 0.1  # cosine decays to MIN_LR_FRAC * peak
 WARMUP_FRAC = 0.5  # auxiliary loss weight decays 1->0 over this fraction of the run
 
-LOSS_COLORS = {"flow": "#e07a5f", "reg_u": "#81b29a", "reg_y": "#e0a458"}
+LOSS_COLORS = {"flow": "#2a78d6", "reg_u": "#199e70", "reg_y": "#4a3aa7"}
 
 
 def setup() -> tuple[networks.MMDiT, nnx.Optimizer]:
@@ -59,18 +58,11 @@ def setup() -> tuple[networks.MMDiT, nnx.Optimizer]:
         param_dtype=NETWORK_PARAM_DTYPE,
         rngs=nnx.Rngs(SEED),
     )
-    lr = optax.warmup_cosine_decay_schedule(
-        init_value=0.0,
-        peak_value=LEARNING_RATE,
-        warmup_steps=LR_WARMUP_STEPS,
-        decay_steps=TOTAL_TRAIN_STEPS,
-        end_value=LEARNING_RATE * MIN_LR_FRAC,
-    )
     optimizer = nnx.Optimizer(
         model=flow,
         tx=optax.chain(
             optax.clip_by_global_norm(1.0),
-            optax.adamw(learning_rate=lr, weight_decay=WEIGHT_DECAY),
+            optax.adamw(LEARNING_RATE, weight_decay=WEIGHT_DECAY),
         ),
         wrt=nnx.Param,
     )
@@ -154,8 +146,9 @@ def plot_loss_curve(
     hist = np.asarray(loss_hist)
     xs = (np.arange(len(hist)) + 1) * LOG_INTERVAL
     fig, ax = plt.subplots()
-    for name, col in (("flow", 0), ("reg_u", 1), ("reg_y", 2)):
-        ax.loglog(xs, hist[:, col], color=LOSS_COLORS[name], lw=1.6, label=name)
+    ax.loglog(xs, hist[:, 0], color=LOSS_COLORS["flow"], lw=2, label="flow")
+    ax.loglog(xs, hist[:, 1], color=LOSS_COLORS["reg_u"], label="reg_u", alpha=0.3)
+    ax.loglog(xs, hist[:, 2], color=LOSS_COLORS["reg_y"], label="reg_y", alpha=0.3)
     ax.set(xlabel="step", ylabel="loss", title=f"flow p(x|y) ({tag})")
     ax.grid(True, which="both", alpha=0.25)
     ax.legend(frameon=False)
