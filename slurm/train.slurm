@@ -6,9 +6,9 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
-#SBATCH --constraint=a100|h100|v100
+#SBATCH --constraint=a100
 #SBATCH --mem=30G
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --partition=gpu,gpu-preempt
 
 # ---------------------------------------------------------------------------
@@ -32,8 +32,6 @@ echo "Start time       : $(date)"
 echo "SIMPLIFIED_PROBLEM: ${SIMPLIFIED_PROBLEM}"
 echo "N_SOURCES        : ${N_SOURCES}"
 echo "============================================"
-
-mkdir -p logs
 
 echo "Launching scripts/train.py SIMPLIFIED_PROBLEM=${SIMPLIFIED_PROBLEM} N_SOURCES=${N_SOURCES} ..."
 uv run python scripts/train.py

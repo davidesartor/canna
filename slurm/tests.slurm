@@ -33,8 +33,6 @@ echo "N_SOURCES         : ${N_SOURCES}"
 echo "N_PROBE           : ${N_PROBE} (chunk ${PROBE_CHUNK})"
 echo "============================================"
 
-mkdir -p logs
-
 uv run pytest ${PYTEST_ARGS:-tests/} -v
 echo "pytest exit code: $?"
 

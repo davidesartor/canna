@@ -28,7 +28,6 @@ CHECKPOINT_DIR = "checkpoints"
 LOG_INTERVAL = 100
 CHECKPOINT_INTERVAL = 1000
 
-
 HIDDEN_DIM = 512
 NUM_BLOCKS = 8
 NUM_HEADS = 8
@@ -40,7 +39,6 @@ NETWORK_PARAM_DTYPE = jnp.float32
 NETWORK_COMPUTE_DTYPE = jnp.float32  # TODO: mixedprecision training
 
 TOTAL_TRAIN_STEPS = 500_000
-LR_WARMUP_STEPS = 1000
 WARMUP_FRAC = 0.5  # auxiliary loss weight decays 1->0 over this fraction of the run
 
 LOSS_COLORS = {"flow": "#2a78d6", "reg_u": "#199e70", "reg_y": "#4a3aa7"}

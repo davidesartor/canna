@@ -32,8 +32,6 @@ echo "SIMPLIFIED_PROBLEM: ${SIMPLIFIED_PROBLEM}"
 echo "N_SOURCES        : ${N_SOURCES}"
 echo "============================================"
 
-mkdir -p logs
-
 echo "Launching scripts/eval.py SIMPLIFIED_PROBLEM=${SIMPLIFIED_PROBLEM} N_SOURCES=${N_SOURCES} ..."
 uv run python scripts/eval.py
 echo "python exit code: $?"
