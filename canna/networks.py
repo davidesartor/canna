@@ -223,34 +223,40 @@ class MMDiT(nnx.Module):
         num_heads: int,
         num_blocks: int,
         expand: int = 2,
+        *,
+        rngs: nnx.Rngs,
         **kwargs,
     ):
         # embeddings
         self.x_embed = nnx.Sequential(
-            FeedForward(x_dim, hidden_dim, hidden_dim, **kwargs),
+            FeedForward(x_dim, hidden_dim, hidden_dim, rngs=rngs, **kwargs),
             # NOTE: no positional embedding => permutation-invariant
-            # PositionalEmbed(hidden_dim, axis=-2, **kwargs)
+            # PositionalEmbed(hidden_dim, axis=-2, rngs=rngs, **kwargs)
         )
         self.y_embed = nnx.Sequential(
-            Patchify(y_channels, hidden_dim, **kwargs),
-            PositionalEmbed(hidden_dim, axis=-3, **kwargs),
-            PositionalEmbed(hidden_dim, axis=-2, **kwargs),
+            Patchify(y_channels, hidden_dim, rngs=rngs, **kwargs),
+            PositionalEmbed(hidden_dim, axis=-3, rngs=rngs, **kwargs),
+            PositionalEmbed(hidden_dim, axis=-2, rngs=rngs, **kwargs),
         )
         self.c_embed = nnx.Sequential(
-            SinusoidalEmbed(hidden_dim, **kwargs),
-            FeedForward(hidden_dim, hidden_dim, hidden_dim, **kwargs),
+            SinusoidalEmbed(hidden_dim, rngs=rngs, **kwargs),
+            FeedForward(hidden_dim, hidden_dim, hidden_dim, rngs=rngs, **kwargs),
         )
 
-        # transformer blocks
-        self.blocks = nnx.List(
-            MMDiTBlock(hidden_dim, num_heads, expand=expand, **kwargs)
-            for _ in range(num_blocks)
-        )
+        # blocks stacked along a leading axis so __call__ can scan over them
+        @nnx.scan(in_axes=nnx.Carry, length=num_blocks)
+        def make_block(rngs: nnx.Rngs) -> tuple[nnx.Rngs, MMDiTBlock]:
+            block = MMDiTBlock(hidden_dim, num_heads, expand, rngs=rngs, **kwargs)
+            return rngs, block
+
+        _, self.blocks = make_block(rngs)
 
         # output heads
-        self.x_modulation = Modulation(hidden_dim, **kwargs)
-        self.x_unembed = FeedForward(hidden_dim, hidden_dim, 2 * x_dim, **kwargs)
-        self.y_unembed = UnPatchify(y_channels, hidden_dim, **kwargs)
+        self.x_modulation = Modulation(hidden_dim, rngs=rngs, **kwargs)
+        self.x_unembed = FeedForward(
+            hidden_dim, hidden_dim, 2 * x_dim, rngs=rngs, **kwargs
+        )
+        self.y_unembed = UnPatchify(y_channels, hidden_dim, rngs=rngs, **kwargs)
 
     def __call__(
         self,
@@ -267,13 +273,21 @@ class MMDiT(nnx.Module):
         c = c[..., None, :]  # (... D) -> (... 1 D)
         x = self.x_embed(x)  # (... N F) -> (... N D)
         y = self.y_embed(y)  # (... H W C) -> (... h w D)
-        # save y shape for unembedding, then flatten to M = (h w) tokens
-        *_, H, W, D = y.shape
+        *_, H, W, D = y.shape  # save y shape for unembedding
         y = rearrange(y, "... h w d -> ... (h w) d")
 
-        # transformer blocks
-        for block in self.blocks:
-            x, y = block(x, y, c)
+        # scan the stacked blocks, use remat to avoid OOM
+        @nnx.scan(in_axes=(0, nnx.Carry, None), out_axes=nnx.Carry)
+        @nnx.remat
+        def scan_blocks(
+            block: MMDiTBlock,
+            carry: tuple[Float[Array, "... N D"], Float[Array, "... M D"]],
+            c: Float[Array, "... 1 D"],
+        ) -> tuple[Float[Array, "... N D"], Float[Array, "... M D"]]:
+            x, y = carry
+            return block(x, y, c)
+
+        x, y = scan_blocks(self.blocks, (x, y), c)
 
         # x output head
         x, _ = self.x_modulation(x, c)
