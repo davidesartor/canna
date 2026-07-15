@@ -4,12 +4,15 @@ Hard-coded for LISA; the only env knobs are the import-time toggles in canna.lis
 (SIMPLIFIED_PROBLEM, N_SOURCES). Everything else lives in the config block below.
 """
 
+from collections.abc import Callable
 from typing import NamedTuple
 from jaxtyping import Array, Float, Scalar
 import os
+import signal
 
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
@@ -42,6 +45,19 @@ TOTAL_TRAIN_STEPS = 500_000
 WARMUP_FRAC = 0.5  # auxiliary loss weight decays 1->0 over this fraction of the run
 
 LOSS_COLORS = {"flow": "#2a78d6", "reg_u": "#199e70", "reg_y": "#4a3aa7"}
+
+
+def install_walltime_stop() -> Callable[[], bool]:
+    """Arm SIGUSR1 -- slurm sends it before the walltime -- as a request to stop; returns a predicate."""
+    stop_requested = False
+
+    def request_stop(signum, frame):
+        nonlocal stop_requested
+        stop_requested = True
+        print("\n[signal] SIGUSR1: stopping at the next log point", flush=True)
+
+    signal.signal(signal.SIGUSR1, request_stop)
+    return lambda: stop_requested
 
 
 class TrainBatch(NamedTuple):
@@ -84,8 +100,11 @@ class TargetStats(nnx.MultiMetric):
         return jnp.stack([stat.mean for stat in self.compute().values()])
 
 
-def setup() -> tuple[networks.MMDiT, nnx.Optimizer, TargetStats]:
-    """Build the flow network, its LR schedule, the optimizer, and the target stats."""
+def setup(ckpt_path: str) -> tuple[networks.MMDiT, nnx.Optimizer, TargetStats, int]:
+    """Build the flow, optimizer, and target stats, resuming from `ckpt_path` if it exists.
+
+    Returns the step to resume from: 0 unless a checkpoint was restored.
+    """
     flow = networks.MMDiT(
         x_dim=len(lisa.PARAMETER_NAMES),
         y_channels=len(lisa.CHANNEL_NAMES),
@@ -104,7 +123,10 @@ def setup() -> tuple[networks.MMDiT, nnx.Optimizer, TargetStats]:
         ),
         wrt=nnx.Param,
     )
-    return flow, optimizer, TargetStats()
+    stats = TargetStats()
+    if not os.path.exists(ckpt_path):
+        return flow, optimizer, stats, 0
+    return flow, optimizer, stats, restore_checkpoint(flow, optimizer, stats, ckpt_path)
 
 
 @nnx.jit(static_argnames=("batch_size",))
@@ -170,10 +192,66 @@ def aux_loss_weight_schedule(step: int) -> float:
     return 0.5 + 0.5 * np.cos(np.pi * frac)
 
 
-def save_checkpoint(flow: networks.MMDiT, ckpt_path: str):
-    """Save the flow weights and plot the loss curve so far."""
-    with open(ckpt_path, "wb") as f:
-        f.write(serialization.to_bytes(nnx.to_pure_dict(nnx.state(flow))))
+def save_checkpoint(
+    flow: networks.MMDiT,
+    optimizer: nnx.Optimizer,
+    stats: TargetStats,
+    ckpt_path: str,
+):
+    """Save flow weights plus optimizer state (which carries the step count) and target stats."""
+    ckpt = {
+        "flow": nnx.to_pure_dict(nnx.state(flow)),
+        "opt": nnx.to_pure_dict(nnx.state(optimizer)),
+        "stats": nnx.to_pure_dict(nnx.state(stats)),
+    }
+    # rename onto the path so a concurrent reader never sees a half-written file
+    tmp_path = f"{ckpt_path}.tmp"
+    with open(tmp_path, "wb") as f:
+        f.write(serialization.to_bytes(ckpt))
+    os.replace(tmp_path, ckpt_path)
+
+
+def restore_checkpoint(
+    flow: networks.MMDiT,
+    optimizer: nnx.Optimizer,
+    stats: TargetStats,
+    ckpt_path: str,
+) -> int:
+    """Restore flow, optimizer, and target stats in place from `ckpt_path`; returns the step to resume from."""
+    with open(ckpt_path, "rb") as f:
+        ckpt = serialization.msgpack_restore(f.read())
+    if not {"flow", "opt", "stats"} <= set(ckpt):
+        raise ValueError(
+            f"{ckpt_path} predates the current checkpoint format and has no optimizer or "
+            f"target-stats state to resume from; move it aside to train from scratch"
+        )
+
+    for module, pure_dict in (
+        (flow, ckpt["flow"]),
+        (optimizer, ckpt["opt"]),
+        (stats, ckpt["stats"]),
+    ):
+        state = nnx.state(module)
+        nnx.replace_by_pure_dict(state, pure_dict)
+        nnx.update(module, state)
+    return int(optimizer.step[...])
+
+
+def save_loss_history(loss_hist: list[tuple[float, float, float]], path: str):
+    """Persist the loss curve so a requeued attempt plots the whole run and not just its own slice."""
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "wb") as f:
+        np.save(f, np.asarray(loss_hist))
+    os.replace(tmp_path, path)
+
+
+def load_loss_history(path: str, start_step: int) -> list[tuple[float, float, float]]:
+    """Loss points from earlier attempts, trimmed to the step the checkpoint resumed at."""
+    if start_step == 0 or not os.path.exists(path):
+        return []
+    with open(path, "rb") as f:
+        hist = np.load(f)
+    return [tuple(point) for point in hist[: start_step // LOG_INTERVAL]]
 
 
 def plot_loss_curve(
@@ -198,23 +276,40 @@ def main():
     tag = f"{lisa.N_SOURCES}src_{"simplified" if lisa.SIMPLIFIED_PROBLEM else "full"}{TAG_SUFFIX}"
     ckpt_path = os.path.join(CHECKPOINT_DIR, f"checkpoint_flow_{tag}.msgpack")
     loss_path = os.path.join(OUTPUT_DIR, f"training_loss_flow_{tag}.pdf")
+    hist_path = os.path.join(OUTPUT_DIR, f"loss_history_flow_{tag}.npy")
+    walltime_reached = install_walltime_stop()
 
-    print(f"JAX backend: {jax.default_backend()}, devices: {jax.local_device_count()}")
-    print(f"inferring {lisa.PARAMETER_NAMES}")
+    print(
+        f"JAX backend: {jax.default_backend()}, devices: {jax.local_device_count()}",
+        flush=True,
+    )
+    print(f"inferring {lisa.PARAMETER_NAMES}", flush=True)
 
-    rngs = nnx.Rngs(SEED)
-    flow, optimizer, stats = setup()
+    flow, optimizer, stats, start_step = setup(ckpt_path)
+    # fold the resume point into the seed, or a requeued run replays the data it already saw
+    rngs = nnx.Rngs(jr.fold_in(jr.key(SEED), start_step))
+    if start_step:
+        print(f"[checkpoint] resuming {ckpt_path} at step {start_step}", flush=True)
 
     # --- sample a batch and print its shapes, dtypes, and ranges ---
     batch = sample_train_batch(rngs, BATCH_SIZE)
     for name, x in batch._asdict().items():
         print(
-            f"  {name}: {x.shape} {x.dtype} [{float(x.min()):.3g}, {float(x.max()):.3g}]"
+            f"  {name}: {x.shape} {x.dtype} [{float(x.min()):.3g}, {float(x.max()):.3g}]",
+            flush=True,
         )
 
     # --- training loop ---
-    loss_hist = []  # per-interval mean [flow, reg_u, reg_y] losses (host)
-    for step in (pbar := tqdm(range(0, TOTAL_TRAIN_STEPS, LOG_INTERVAL))):
+    # per-interval mean [flow, reg_u, reg_y] losses (host), carried across requeues
+    loss_hist = load_loss_history(hist_path, start_step)
+    steps = range(start_step, TOTAL_TRAIN_STEPS, LOG_INTERVAL)
+    for step in (
+        pbar := tqdm(
+            steps,
+            initial=start_step // LOG_INTERVAL,
+            total=TOTAL_TRAIN_STEPS // LOG_INTERVAL,
+        )
+    ):
         buffer = []  # per-step losses since the last log point
         aux_weight = aux_loss_weight_schedule(step)
 
@@ -233,14 +328,25 @@ def main():
 
         # ---- checkpoint + loss curve every CHECKPOINT_INTERVAL steps ----
         if (step + LOG_INTERVAL) % CHECKPOINT_INTERVAL == 0:
-            save_checkpoint(flow, ckpt_path)
+            save_checkpoint(flow, optimizer, stats, ckpt_path)
+            save_loss_history(loss_hist, hist_path)
             plot_loss_curve(loss_hist, tag, loss_path)
             print(
-                f"[step {step + LOG_INTERVAL}/{TOTAL_TRAIN_STEPS}] flow={flow_l:.5f} reg_u={reg_u_l:.5f} reg_y={reg_y_l:.5f}"
+                f"[step {step + LOG_INTERVAL}/{TOTAL_TRAIN_STEPS}] flow={flow_l:.5f} reg_u={reg_u_l:.5f} reg_y={reg_y_l:.5f}",
+                flush=True,
             )
-    save_checkpoint(flow, ckpt_path)
+
+        # train.slurm requeues the job when we stop here; the save below is what it resumes from
+        if walltime_reached():
+            break
+
+    save_checkpoint(flow, optimizer, stats, ckpt_path)
+    save_loss_history(loss_hist, hist_path)
     plot_loss_curve(loss_hist, tag, loss_path)
-    print(f"[checkpoint] final saved -> {ckpt_path}")
+    print(
+        f"[checkpoint] saved at step {int(optimizer.step[...])} -> {ckpt_path}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":
