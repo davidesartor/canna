@@ -44,8 +44,48 @@ WARMUP_FRAC = 0.5  # auxiliary loss weight decays 1->0 over this fraction of the
 LOSS_COLORS = {"flow": "#2a78d6", "reg_u": "#199e70", "reg_y": "#4a3aa7"}
 
 
-def setup() -> tuple[networks.MMDiT, nnx.Optimizer]:
-    """Build the flow network, its LR schedule, and the optimizer."""
+class TrainBatch(NamedTuple):
+    ut: Float[Array, "B S P"]
+    du: Float[Array, "B S P"]
+    t: Float[Array, "B"]
+    y: Float[Array, "B T F C"]
+    u1: Float[Array, "B S P"]
+    y_clean: Float[Array, "B T F C"]
+
+
+# insertion order fixes the variance() stacking order
+TARGET_NAMES = ("flow", "reg_u", "reg_y")
+
+
+class TargetStats(nnx.MultiMetric):
+    """Running variance of each loss target, accumulated over batches with Welford's algorithm."""
+
+    def __init__(self):
+        # each Welford reads its own argname out of the broadcast update kwargs
+        super().__init__(
+            **{name: nnx.metrics.Welford(argname=name) for name in TARGET_NAMES}
+        )
+
+    def update(self, batch: TrainBatch):
+        """Fold each target's per-batch variance into its running estimate."""
+        targets = (batch.du, batch.u1, batch.y_clean)
+        super().update(
+            **{
+                name: jnp.var(target).astype(jnp.float32)
+                for name, target in zip(TARGET_NAMES, targets)
+            }
+        )
+
+    def variance(self) -> Float[Array, "3"]:
+        """Target variance per loss term, in TARGET_NAMES order.
+
+        Each Welford is fed one variance per batch, so its running *mean* is the variance estimate.
+        """
+        return jnp.stack([stat.mean for stat in self.compute().values()])
+
+
+def setup() -> tuple[networks.MMDiT, nnx.Optimizer, TargetStats]:
+    """Build the flow network, its LR schedule, the optimizer, and the target stats."""
     flow = networks.MMDiT(
         x_dim=len(lisa.PARAMETER_NAMES),
         y_channels=len(lisa.CHANNEL_NAMES),
@@ -64,16 +104,7 @@ def setup() -> tuple[networks.MMDiT, nnx.Optimizer]:
         ),
         wrt=nnx.Param,
     )
-    return flow, optimizer
-
-
-class TrainBatch(NamedTuple):
-    ut: Float[Array, "B S P"]
-    du: Float[Array, "B S P"]
-    t: Float[Array, "B"]
-    y: Float[Array, "B T F C"]
-    u1: Float[Array, "B S P"]
-    y_clean: Float[Array, "B T F C"]
+    return flow, optimizer, TargetStats()
 
 
 @nnx.jit(static_argnames=("batch_size",))
@@ -106,10 +137,14 @@ def sample_train_batch(rngs: nnx.Rngs, batch_size: int) -> TrainBatch:
 def train_step(
     flow: networks.MMDiT,
     optimizer: nnx.Optimizer,
+    stats: TargetStats,
     batch: TrainBatch,
     aux_weight: float,
 ) -> Float[Array, "3"]:
-    """One optimizer step on `batch`; mutates flow/optimizer in place. Returns raw per-term losses."""
+    """One optimizer step on `batch`; mutates flow/optimizer/stats in place. Returns raw per-term losses."""
+    # fold in this batch before reading, so step 0 already has a variance estimate
+    stats.update(batch)
+    target_var = stats.variance()
 
     def train_loss(flow: networks.MMDiT) -> tuple[Scalar, Float[Array, "3"]]:
         du_pred, u_pred, y_recon = flow(batch.ut, batch.y, batch.t)
@@ -119,7 +154,10 @@ def train_step(
         l_reg_u = jnp.mean(optax.l2_loss(u_pred, batch.u1))
         l_reg_y = jnp.mean(optax.l2_loss(y_recon, batch.y_clean))
         losses = jnp.stack([l_flow, l_reg_u, l_reg_y])
-        return l_flow + aux_weight * (l_reg_u + l_reg_y), losses
+
+        # normalize by target variance so the three terms are comparable before weighting
+        weights = jnp.array([1.0, aux_weight, aux_weight])
+        return jnp.sum(weights * losses / (target_var + 1e-8)), losses
 
     (_, losses), grads = nnx.value_and_grad(train_loss, has_aux=True)(flow)
     optimizer.update(flow, grads)
@@ -165,7 +203,7 @@ def main():
     print(f"inferring {lisa.PARAMETER_NAMES}")
 
     rngs = nnx.Rngs(SEED)
-    flow, optimizer = setup()
+    flow, optimizer, stats = setup()
 
     # --- sample a batch and print its shapes, dtypes, and ranges ---
     batch = sample_train_batch(rngs, BATCH_SIZE)
@@ -182,7 +220,7 @@ def main():
 
         for _ in range(LOG_INTERVAL):
             batch = sample_train_batch(rngs, BATCH_SIZE)
-            losses = train_step(flow, optimizer, batch, aux_weight)
+            losses = train_step(flow, optimizer, stats, batch, aux_weight)
             buffer.append(losses)
 
         # ---- log the interval-mean loss point ----
