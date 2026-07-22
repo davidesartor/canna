@@ -132,3 +132,51 @@ class LogUniform(Prior):
         scale = 2 / (log_high - log_low)
         shift = -scale * (log_low + log_high) / 2
         return charts.LogAffine(shift=shift, scale=scale)
+
+
+class Cosine(Prior):
+    """Prior with density proportional to cos over [-pi/2, pi/2] (declination).
+    Embeds to the box [-1, 1]^d with Bounded geometry.
+    Uses an Affine chart to rescale the distribution.
+    """
+
+    dim: int = eqx.field(static=True, default=1)
+
+    def __call__(self, key: Key[Array, ""]) -> Float[Array, "D"]:
+        sine = jr.uniform(key, (self.dim,), minval=-1.0, maxval=1.0)
+        return jnp.arcsin(sine)
+
+    @property
+    def geometry(self) -> geometries.Bounded:
+        return geometries.Bounded()
+
+    @property
+    def chart(self) -> charts.Affine:
+        return charts.Affine(
+            shift=jnp.zeros(self.dim),
+            scale=2 / jnp.pi * jnp.ones(self.dim),
+        )
+
+
+class Sine(Prior):
+    """Prior with density proportional to sin over [0, pi] (inclination).
+    Embeds to the box [-1, 1]^d with Reflected geometry.
+    Uses an Affine chart to to rescale the distribution.
+    """
+
+    dim: int = eqx.field(static=True, default=1)
+
+    def __call__(self, key: Key[Array, ""]) -> Float[Array, "D"]:
+        cosine = jr.uniform(key, (self.dim,), minval=-1.0, maxval=1.0)
+        return jnp.arccos(cosine)
+
+    @property
+    def geometry(self) -> geometries.Reflected:
+        return geometries.Reflected()
+
+    @property
+    def chart(self) -> charts.Affine:
+        return charts.Affine(
+            shift=-jnp.ones(self.dim),
+            scale=2 / jnp.pi * jnp.ones(self.dim),
+        )

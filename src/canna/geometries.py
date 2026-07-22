@@ -45,3 +45,18 @@ class Bounded(Geometry):
         self, x0: Float[Array, "... D"], dx: Float[Array, "... D"]
     ) -> Float[Array, "... D"]:
         return jnp.clip(x0 + dx, -1.0, 1.0)
+
+
+class Reflected(Geometry):
+    """Flat box [-1, 1]^D with reflecting boundaries: steps fold back at the edges."""
+
+    def log_map(
+        self, x0: Float[Array, "... D"], x1: Float[Array, "... D"]
+    ) -> Float[Array, "... D"]:
+        return x1 - x0
+
+    def exp_map(
+        self, x0: Float[Array, "... D"], dx: Float[Array, "... D"]
+    ) -> Float[Array, "... D"]:
+        folded = jnp.mod(x0 + dx + 1.0, 4.0)
+        return jnp.where(folded > 2.0, 4.0 - folded, folded) - 1.0
