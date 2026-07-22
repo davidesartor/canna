@@ -5,9 +5,11 @@ description = "Conditional flow-matching neural posterior estimation for inverse
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "einops>=0.8.2",
     "equinox>=0.13.8",
     "jax>=0.10.1",
     "jaxtyping>=0.3.2",
+    "optax>=0.2.8",
 ]
 
 [project.optional-dependencies]

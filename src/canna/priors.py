@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from typing import Callable, Optional
 from jaxtyping import Array, Float, Key
 import jax.numpy as jnp
 import jax.random as jr
@@ -10,16 +11,11 @@ from . import geometries, charts
 class Prior[Physical: Array](eqx.Module):
     """A distribution over one parameter block, carrying its own geometry and chart."""
 
+    geometry: eqx.AbstractVar[geometries.Geometry]
+    chart: eqx.AbstractVar[charts.Chart]
+
     @abstractmethod
     def __call__(self, key: Key[Array, ""]) -> Physical: ...
-
-    @property
-    @abstractmethod
-    def geometry(self) -> geometries.Geometry: ...
-
-    @property
-    @abstractmethod
-    def chart(self) -> charts.Chart: ...
 
 
 class Normal(Prior):
@@ -41,7 +37,7 @@ class Normal(Prior):
 
     @property
     def geometry(self) -> geometries.Euclidean:
-        return geometries.Euclidean()
+        return geometries.Euclidean(self.mean.shape[-1])
 
     @property
     def chart(self) -> charts.Affine:
@@ -73,7 +69,7 @@ class LogNormal(Prior):
 
     @property
     def geometry(self) -> geometries.Euclidean:
-        return geometries.Euclidean()
+        return geometries.Euclidean(self.mean.shape[-1])
 
     @property
     def chart(self) -> charts.LogAffine:
@@ -100,7 +96,7 @@ class Uniform(Prior):
 
     @property
     def geometry(self) -> geometries.Bounded:
-        return geometries.Bounded()
+        return geometries.Bounded(self.low.shape[-1])
 
     @property
     def chart(self) -> charts.Affine:
@@ -124,7 +120,7 @@ class LogUniform(Prior):
 
     @property
     def geometry(self) -> geometries.Bounded:
-        return geometries.Bounded()
+        return geometries.Bounded(self.low.shape[-1])
 
     @property
     def chart(self) -> charts.LogAffine:
@@ -148,7 +144,7 @@ class Cosine(Prior):
 
     @property
     def geometry(self) -> geometries.Bounded:
-        return geometries.Bounded()
+        return geometries.Bounded(self.dim)
 
     @property
     def chart(self) -> charts.Affine:
@@ -172,7 +168,7 @@ class Sine(Prior):
 
     @property
     def geometry(self) -> geometries.Reflected:
-        return geometries.Reflected()
+        return geometries.Reflected(self.dim)
 
     @property
     def chart(self) -> charts.Affine:
@@ -180,3 +176,94 @@ class Sine(Prior):
             shift=-jnp.ones(self.dim),
             scale=2 / jnp.pi * jnp.ones(self.dim),
         )
+
+
+class PeriodicUniform(Prior):
+    """Uniform prior over angles [0, period).
+    Embeds to a torus of (cos, sin) pairs with Toroidal geometry.
+    Uses a Periodic chart keeping the distribution uniform.
+    """
+
+    period: Float[Array, "D"] = eqx.field(converter=jnp.atleast_1d, default=2 * jnp.pi)
+
+    def __call__(self, key: Key[Array, ""]) -> Float[Array, "D"]:
+        return jr.uniform(key, self.period.shape, maxval=self.period)
+
+    @property
+    def geometry(self) -> geometries.Toroidal:
+        return geometries.Toroidal(2 * self.period.shape[-1])
+
+    @property
+    def chart(self) -> charts.Periodic:
+        return charts.Periodic(self.period)
+
+
+class Isotropic(Prior):
+    """Uniform prior over the surface of a sphere in R^{dim+1}.
+    Embeds to that sphere with Spherical geometry.
+    Uses a Spherical chart mapping physical angles to Cartesian coordinates.
+    """
+
+    dim: int = eqx.field(static=True, default=1)
+    radius: Float[Array, ""] = eqx.field(converter=jnp.asarray, default=1.0)
+
+    def __call__(self, key: Key[Array, ""]) -> Float[Array, "D"]:
+        v = jr.normal(key, (self.dim + 1,))
+        embedded = self.radius * v / jnp.linalg.norm(v)
+        return self.chart.backward(embedded)
+
+    @property
+    def geometry(self) -> geometries.Spherical:
+        return geometries.Spherical(self.dim + 1)
+
+    @property
+    def chart(self) -> charts.Spherical:
+        return charts.Spherical(self.dim, self.radius)
+
+
+class Product(Prior):
+    """Independent priors over consecutive parameter blocks, drawn jointly.
+    Embeds to the product of their geometries.
+    Uses a Product chart applying each block's chart to its own slice.
+    """
+
+    local_priors: tuple[Prior, ...]
+
+    def __init__(self, *priors: Prior, **named: Prior):
+        self.local_priors = (*priors, *named.values())
+
+    def __call__(self, key: Key[Array, ""]) -> Float[Array, "D"]:
+        keys = jr.split(key, len(self.local_priors))
+        return jnp.concat([p(k) for p, k in zip(self.local_priors, keys)], axis=-1)
+
+    @property
+    def geometry(self) -> geometries.Product:
+        return geometries.Product(*(p.geometry for p in self.local_priors))
+
+    @property
+    def chart(self) -> charts.Product:
+        return charts.Product(*(p.chart for p in self.local_priors))
+
+
+class Set(Prior):
+    """Interchangeable draws from one prior, stacked along a set axis.
+    Embeds to the Set geometry over that prior's geometry.
+    Reuses the local chart, which acts on the trailing axis of every element.
+    """
+
+    local_prior: Prior
+    size: int = eqx.field(static=True, default=1)
+    rank: Optional[Callable[[Float[Array, "... X"]], Float[Array, "..."]]] = eqx.field(
+        static=True, default=None
+    )
+
+    def __call__(self, key: Key[Array, ""]) -> Float[Array, "S D"]:
+        return eqx.filter_vmap(self.local_prior)(jr.split(key, self.size))
+
+    @property
+    def geometry(self) -> geometries.Set:
+        return geometries.Set(self.local_prior.geometry, self.rank)
+
+    @property
+    def chart(self) -> charts.Chart:
+        return self.local_prior.chart
