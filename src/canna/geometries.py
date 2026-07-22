@@ -16,3 +16,17 @@ class Geometry[Point: Array, Tangent: Array](eqx.Module):
         # NOTE: dx is still in the tangent space
         dx: Tangent = t * self.log_map(x0, x1)  # type: ignore
         return self.exp_map(x0, dx)
+
+
+class Euclidean(Geometry):
+    """Flat space: geodesics are straight lines."""
+
+    def log_map(
+        self, x0: Float[Array, "... D"], x1: Float[Array, "... D"]
+    ) -> Float[Array, "... D"]:
+        return x1 - x0
+
+    def exp_map(
+        self, x0: Float[Array, "... D"], dx: Float[Array, "... D"]
+    ) -> Float[Array, "... D"]:
+        return x0 + dx
