@@ -84,3 +84,51 @@ class LogNormal(Prior):
             scale = jnp.linalg.inv(jnp.linalg.cholesky(self.cov))
             shift = -scale @ self.mean
         return charts.LogAffine(shift=shift, scale=scale)
+
+
+class Uniform(Prior):
+    """Uniform prior over a box [low, high].
+    Embeds to the box [-1, 1]^d with Bounded geometry.
+    Uses an Affine chart keeping the distribution uniform.
+    """
+
+    low: Float[Array, "D"] = eqx.field(converter=jnp.atleast_1d, default=0.0)
+    high: Float[Array, "D"] = eqx.field(converter=jnp.atleast_1d, default=1.0)
+
+    def __call__(self, key: Key[Array, ""]) -> Float[Array, "D"]:
+        return jr.uniform(key, self.low.shape, minval=self.low, maxval=self.high)
+
+    @property
+    def geometry(self) -> geometries.Bounded:
+        return geometries.Bounded()
+
+    @property
+    def chart(self) -> charts.Affine:
+        scale = 2 / (self.high - self.low)
+        shift = -scale * (self.low + self.high) / 2
+        return charts.Affine(shift=shift, scale=scale)
+
+
+class LogUniform(Prior):
+    """Log-uniform prior over a box [low, high].
+    Embeds to the box [-1, 1]^d with Bounded geometry.
+    Uses a LogAffine chart keeping the distribution log-uniform.
+    """
+
+    low: Float[Array, "D"] = eqx.field(converter=jnp.atleast_1d)
+    high: Float[Array, "D"] = eqx.field(converter=jnp.atleast_1d)
+
+    def __call__(self, key: Key[Array, ""]) -> Float[Array, "D"]:
+        log_low, log_high = jnp.log(self.low), jnp.log(self.high)
+        return jnp.exp(jr.uniform(key, self.low.shape, minval=log_low, maxval=log_high))
+
+    @property
+    def geometry(self) -> geometries.Bounded:
+        return geometries.Bounded()
+
+    @property
+    def chart(self) -> charts.LogAffine:
+        log_low, log_high = jnp.log(self.low), jnp.log(self.high)
+        scale = 2 / (log_high - log_low)
+        shift = -scale * (log_low + log_high) / 2
+        return charts.LogAffine(shift=shift, scale=scale)

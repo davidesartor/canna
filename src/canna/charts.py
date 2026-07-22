@@ -52,3 +52,25 @@ class LogAffine(Chart):
         return jnp.exp(
             jnp.linalg.solve(self.scale, (x - self.shift)[..., None])[..., 0]
         )
+
+
+
+class Squash(Chart):
+    """Squash chart: maps the box [low, high] onto R via arctanh."""
+
+    low: Float[Array, "D"] = eqx.field(converter=jnp.atleast_1d, default=-1.0)
+    high: Float[Array, "D"] = eqx.field(converter=jnp.atleast_1d, default=1.0)
+
+    @property
+    def physical_dim(self) -> int:
+        return jnp.broadcast_shapes(self.low.shape, self.high.shape)[-1]
+
+    @property
+    def flow_dim(self) -> int:
+        return jnp.broadcast_shapes(self.low.shape, self.high.shape)[-1]
+
+    def forward(self, p: Float[Array, "... D"]) -> Float[Array, "... D"]:
+        return jnp.arctanh(2 * (p - self.low) / (self.high - self.low) - 1)
+
+    def backward(self, x: Float[Array, "... D"]) -> Float[Array, "... D"]:
+        return self.low + (self.high - self.low) * (jnp.tanh(x) + 1) / 2

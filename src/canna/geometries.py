@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from jaxtyping import Array, Float
+import jax.numpy as jnp
 import equinox as eqx
 
 
@@ -30,3 +31,17 @@ class Euclidean(Geometry):
         self, x0: Float[Array, "... D"], dx: Float[Array, "... D"]
     ) -> Float[Array, "... D"]:
         return x0 + dx
+
+
+class Bounded(Geometry):
+    """Flat box [-1, 1]^D: geodesics are straight lines clipped to the box."""
+
+    def log_map(
+        self, x0: Float[Array, "... D"], x1: Float[Array, "... D"]
+    ) -> Float[Array, "... D"]:
+        return x1 - x0
+
+    def exp_map(
+        self, x0: Float[Array, "... D"], dx: Float[Array, "... D"]
+    ) -> Float[Array, "... D"]:
+        return jnp.clip(x0 + dx, -1.0, 1.0)
