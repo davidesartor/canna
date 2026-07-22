@@ -1,0 +1,30 @@
+problem:
+  class: LisaGB
+  init_args:
+    n_sources: 4
+    t_obs: 2592000.0  # 30 days 
+    sampling_step: 0.25
+    wdm_freq_bands: 16384
+    patch_downsample: 16
+    response_points: 256
+    oms_noise: 15.0
+    acceleration_noise: 3.0
+    f0_range: [1.0e-4, 12.0e-3]
+    fdot_range: [1.0e-18, 1.0e-15]
+    a_range: [1.0e-24, 1.0e-22]
+
+network:
+  class: MMDiTFlow
+  init_args:
+    hidden_dim: 512
+    num_blocks: 8
+    num_heads: 8
+    patch_stages: 4
+
+batch_size: 256
+learning_rate: 1.0e-4
+weight_decay: 0.0
+total_steps: 500000
+log_interval: 100
+warmup_frac: 0.5
+seed: 0
