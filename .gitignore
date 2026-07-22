@@ -13,3 +13,6 @@ dist/
 
 # local assistant instructions, not part of the package
 CLAUDE.md
+
+# training runs and local plots
+outputs/
