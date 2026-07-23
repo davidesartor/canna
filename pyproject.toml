@@ -5,6 +5,7 @@ description = "Conditional flow-matching neural posterior estimation for inverse
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "corner>=2.3.0",
     "einops>=0.8.2",
     "equinox>=0.13.8",
     "flax>=0.12.8",
@@ -39,7 +40,7 @@ packages = ["src/canna"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-s -m 'not bench'"
+addopts = "-s -m 'not bench' --dist loadfile"
 markers = [
     "bench: heavy GPU throughput/peak-memory sweeps, deselected by default; run with -m bench",
 ]
