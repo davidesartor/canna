@@ -1,24 +1,37 @@
 """Shared config ladder + builders for the size / throughput benchmarks (GPU)."""
 
+import argparse
+import csv
 import json
 import os
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import yaml
 from flax import nnx, serialization
 
+import canna
 from canna import networks
-from canna.problems import LisaGB, TrainSample
+from canna.problems import LisaGB
 
 BATCH_SIZES = [64, 128, 256]
 PEAK_BUDGET_MB = 40_000
 TESTS_DIR = os.path.dirname(__file__)
 WORKER = os.path.join(TESTS_DIR, "_bench_worker.py")
 OUTPUT_DIR = os.path.join("outputs", "bench")
+CONFIG_ROOT = Path(canna.__file__).parent / "configs"
+CSV_NAME = (
+    "{device}_stage_bench.csv"  # per device: jobs on different GPUs run concurrently
+)
+
+# the stages one training epoch is made of, in the order train.py runs them
+STAGES = ["gen", "metrics", "train", "ckpt", "plot"]
+RUN_CONFIGS = ["NoisyPoint-MLP-B", "NoisySinusoid-MMDiT-B"]
 
 OOM_MARKERS = ("RESOURCE_EXHAUSTED", "out of memory", "Out of memory", "OutOfMemory")
 
@@ -57,20 +70,6 @@ def build_model(cfg: Config, problem: LisaGB, seed: int = 0) -> networks.MMDiTFl
         num_heads=cfg.num_heads,
         num_blocks=cfg.num_blocks,
         rngs=nnx.Rngs(seed),
-    )
-
-
-def synthetic_batch(problem: LisaGB, batch: int) -> TrainSample:
-    sample = problem.train_sample(jr.key(0))
-    keys = jr.split(jr.key(1), 6)
-    shape = lambda field: (batch, *field.shape)
-    return TrainSample(
-        xt=jr.normal(keys[0], shape(sample.xt)),
-        dx=jr.normal(keys[1], shape(sample.dx)),
-        t=jr.uniform(keys[2], (batch,)),
-        y=jr.normal(keys[3], shape(sample.y)),
-        x_target=jr.normal(keys[4], shape(sample.x_target)),
-        y_target=jr.normal(keys[5], shape(sample.y_target)),
     )
 
 
@@ -120,6 +119,65 @@ def try_worker(
     raise AssertionError(
         f"{cfg_name}/batch={batch}/{phase} worker failed (non-OOM):\n{proc.stderr[-2000:]}"
     )
+
+
+def run_config_args(name: str, batch: int | None = None) -> argparse.Namespace:
+    """Rebuild train.py's argparse.Namespace from a run config, as TrainState wants it."""
+    defaults = dict(
+        seed=0,
+        dtype="bfloat16",
+        muon=True,
+        learning_rate=1e-4,
+        weight_decay=0.0,
+        batch_size=256,
+        total_steps=500_000,
+        log_interval=100,
+        warmup_frac=0.5,
+    )
+    with open(CONFIG_ROOT / f"{name}.yaml") as f:
+        defaults.update(yaml.safe_load(f))
+    if batch is not None:
+        defaults["batch_size"] = batch
+    return argparse.Namespace(**defaults)
+
+
+def device_kind() -> str:
+    try:
+        return jax.devices()[0].device_kind.replace(" ", "_")
+    except Exception:
+        return "unknown"
+
+
+def run_stage_worker(run_config: str, batch: int, stage: str) -> dict:
+    """Time one epoch stage of one run config, in its own process."""
+    env = {
+        **os.environ,
+        "RUN_CONFIG": run_config,
+        "BATCH_SIZE": str(batch),
+        "PHASE": stage,
+        "MPLBACKEND": "Agg",
+    }
+    proc = subprocess.run(
+        [sys.executable, WORKER], cwd=TESTS_DIR, env=env, capture_output=True, text=True
+    )
+    assert (
+        proc.returncode == 0
+    ), f"{run_config}/batch={batch}/{stage} worker failed:\n{proc.stderr[-2000:]}"
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def append_csv(rows: list[dict]) -> None:
+    """Append measurements to this device's csv, so repeated runs accumulate."""
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    path = os.path.join(OUTPUT_DIR, CSV_NAME.format(device=device_kind()))
+    fields = ["device", "backend", "config", "batch", "phase", "n_timed"]
+    fields += ["compile_ms", "step_ms", "peak_mb"]
+    is_new = not os.path.exists(path)
+    with open(path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        if is_new:
+            writer.writeheader()
+        writer.writerows({k: r.get(k, "") for k in fields} for r in rows)
 
 
 def max_batch(cfg_name: str, phase: str, start: int = 256, cap: int = 1 << 16) -> int:
