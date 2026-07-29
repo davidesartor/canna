@@ -59,17 +59,18 @@ def test_clean_signal_frequency_axis_independent_of_sampling_step():
 
 
 def test_sample_physical_columns_respect_declared_ranges_and_angle_domains():
-    # Product(f0, fdot, amp, sky, orientation, phi0) fixes physical columns 0..7, and
-    # Isotropic's chart.backward emits (azimuth in [0, 2pi), latitude in [-pi/2, pi/2])
-    # per 2-angle block.
+    # Product(f0, chirp_mass, amp, sky, orientation, phi0) fixes physical columns 0..7,
+    # and Isotropic's chart.backward emits (azimuth in [0, 2pi), latitude in
+    # [-pi/2, pi/2]) per 2-angle block.
     problem = LisaGB(n_sources=8)
     p = problem.sample_physical(jr.key(44))
-    f0, fdot, amp = p[..., 0], p[..., 1], p[..., 2]
+    f0, chirp_mass, amp = p[..., 0], p[..., 1], p[..., 2]
     sky_azimuth, sky_latitude = p[..., 3], p[..., 4]
     orient_azimuth, orient_latitude = p[..., 5], p[..., 6]
     phi0 = p[..., 7]
+    mc_lo, mc_hi = problem.chirp_mass_range
     assert jnp.all((f0 >= problem.f0_range[0]) & (f0 <= problem.f0_range[1]))
-    assert jnp.all((fdot >= problem.fdot_range[0]) & (fdot <= problem.fdot_range[1]))
+    assert jnp.all((chirp_mass >= mc_lo) & (chirp_mass <= mc_hi))
     assert jnp.all((amp >= problem.a_range[0]) & (amp <= problem.a_range[1]))
     assert jnp.all((sky_azimuth >= 0) & (sky_azimuth < 2 * jnp.pi))
     assert jnp.all((sky_latitude >= -jnp.pi / 2) & (sky_latitude <= jnp.pi / 2))

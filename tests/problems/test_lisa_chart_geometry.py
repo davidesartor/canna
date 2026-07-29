@@ -91,7 +91,7 @@ def test_prior_blocks_are_in_the_jaxgb_order():
     problem = LisaGB(n_sources=2)
     assert [type(p).__name__ for p in problem.prior.local_prior.local_priors] == [
         "LogUniform",
-        "LogUniform",
+        "ChirpMass",
         "LogUniform",
         "Isotropic",
         "Isotropic",

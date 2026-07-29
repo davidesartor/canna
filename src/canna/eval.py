@@ -51,8 +51,8 @@ def sample_posterior(
 # should own the names and scales too, and a new problem should not need an entry here
 PARAM_PRESENTATION = {
     "LisaGB": (
-        ["f_0", "\\dot{f}", "A", "\\lambda", "\\beta", "\\psi", "\\iota", "\\phi_0"],
-        [True, True, True, False, False, False, False, False],
+        ["f_0", "\\mathcal{M}", "A", "\\lambda", "\\beta", "\\psi", "\\iota", "\\phi_0"],
+        [True, False, True, False, False, False, False, False],
     ),
     "NoisySinusoid": (["A", "f", "\\phi_0"], [True, True, False]),
     "NoisyPoint": (["x_0", "x_1"], [False, False]),

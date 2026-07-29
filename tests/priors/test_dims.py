@@ -11,6 +11,7 @@ from canna.charts import Affine, LogAffine, Periodic
 from canna.charts import Spherical as SphericalChart
 from canna.charts import Product as ProductChart
 from canna.priors import Normal, LogNormal, Uniform, LogUniform, Cosine, Sine
+from canna.priors import ChirpMass
 from canna.priors import PeriodicUniform, Isotropic
 from canna.priors import Product as ProductPrior
 from canna.priors import Set as SetPrior
@@ -25,6 +26,7 @@ KEY = jr.key(0)
         LogNormal(mean=jnp.zeros(2)),
         Uniform(low=jnp.zeros(2), high=jnp.ones(2)),
         LogUniform(low=jnp.ones(2), high=2 * jnp.ones(2)),
+        ChirpMass(),
         Cosine(),
         Sine(),
         PeriodicUniform(period=jnp.array([1.0, 2.0])),
@@ -42,6 +44,7 @@ def test_leaf_prior_chart_flow_dim_matches_geometry_dim(prior):
         (LogNormal(mean=jnp.zeros(2)), 2),
         (Uniform(low=jnp.zeros(2), high=jnp.ones(2)), 2),
         (LogUniform(low=jnp.ones(4), high=2 * jnp.ones(4)), 4),
+        (ChirpMass(), 1),
         (Cosine(dim=1), 1),
         (Sine(dim=1), 1),
         (PeriodicUniform(period=jnp.array([1.0, 2.0, 3.0])), 3),

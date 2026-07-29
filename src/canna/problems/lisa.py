@@ -1,4 +1,4 @@
-from functools import partial
+from typing import Optional
 import math
 
 from jaxtyping import Array, Complex, Float, Key
@@ -9,14 +9,41 @@ import equinox as eqx
 
 import lisaorbits
 from jaxgb import jaxgb
-from wdm_transform.transforms import from_freq_to_wdm_band
-
+from ..wdm import from_freq_to_wdm_band
 from .. import charts, geometries, priors
 from .base import Problem
 
 SPEED_OF_LIGHT = 299792458.0  # [m/s]
 SUN_MASS = 1.98892e30  # [kg]
 GRAVITATIONAL_CONSTANT = 6.67430e-11  # [m^3 kg^-1 s^-2]
+SUN_MASS_TIME = GRAVITATIONAL_CONSTANT * SUN_MASS / SPEED_OF_LIGHT**3  # [s]
+EARTH_ORBIT_SPEED = 29785.0  # [m/s]
+MIN_RESPONSE_POINTS = 256  # enough time samples to resolve the orbital modulation
+
+
+def fdot_from_chirp_mass(
+    chirp_mass: Float[Array, "..."], f0: Float[Array, "..."]
+) -> Float[Array, "..."]:
+    """Radiation-reaction chirp of a circular binary, for chirp mass in solar masses.
+
+    Detached double white dwarfs are driven purely by gravitational-wave emission, so
+    their chirp is not free: it is fixed by the frequency and the chirp mass.
+    """
+    return (
+        96.0
+        / 5.0
+        * jnp.pi ** (8 / 3)
+        * (SUN_MASS_TIME * chirp_mass) ** (5 / 3)
+        * f0 ** (11 / 3)
+    )
+
+
+def chirp_mass_from_fdot(
+    fdot: Float[Array, "..."], f0: Float[Array, "..."]
+) -> Float[Array, "..."]:
+    """Inverse of `fdot_from_chirp_mass`, in solar masses."""
+    ratio = 5.0 / 96.0 * jnp.pi ** (-8 / 3) * fdot * f0 ** (-11 / 3)
+    return ratio ** (3 / 5) / SUN_MASS_TIME
 
 
 class LisaGB(Problem):
@@ -32,19 +59,22 @@ class LisaGB(Problem):
     orbit: lisaorbits.Orbits = eqx.field(
         static=True, default=lisaorbits.EqualArmlengthOrbits()
     )
-    response_points: int = eqx.field(static=True, default=256)
+    # None sizes the response window from t_obs and the priors; see needed_response_points
+    response_points: Optional[int] = eqx.field(static=True, default=None)
     oms_noise: float = eqx.field(static=True, default=15.0)
     acceleration_noise: float = eqx.field(static=True, default=3.0)
 
-    # realistic priors from #TODO: add reference
+    # white dwarf component masses, from which the chirp mass prior is built
+    mass_range: tuple[float, float] = eqx.field(static=True, default=(0.15, 1.4))
     f0_range: tuple[float, float] = eqx.field(static=True, default=(1e-4, 12.0e-3))
-    fdot_range: tuple[float, float] = eqx.field(static=True, default=(1e-18, 1e-15))
     a_range: tuple[float, float] = eqx.field(static=True, default=(1e-24, 1e-22))
 
     # static too: JaxGB is a plain object, not a pytree, so it cannot be traced
     response: jaxgb.JaxGB = eqx.field(init=False, static=True)
 
     def __post_init__(self):
+        if self.response_points is None:
+            self.response_points = self.needed_response_points
         self.response = jaxgb.JaxGB(
             self.orbit,
             t_obs=self.t_obs,
@@ -59,12 +89,47 @@ class LisaGB(Problem):
             f"Need t_obs >= {self.response_points / 2 / self.f0_range[0]:.3e}s."
         )
 
+        needed = self.needed_response_points
+        assert needed <= self.response_points, (
+            f"response_points={self.response_points} too narrow for a "
+            f"Mc={self.chirp_mass_range[1]:.2f}Msun source at "
+            f"f0_max={self.f0_range[1]:.1e}Hz over t_obs={self.t_obs:.3e}s: "
+            f"it needs {needed} bins. "
+            f"Raise response_points, or lower f0_range[1]/mass_range[1]."
+        )
+
+    @property
+    def needed_response_points(self) -> int:
+        # the response is response_points bins wide and centred on f0, so half of it
+        # has to hold the annual doppler sideband plus the whole (upward) chirp drift.
+        # the DC-straddle bound above caps it from the other side, and the two cross
+        # over at short baselines, so this cannot be a fixed default
+        drift = self.fdot_range[1] * self.t_obs
+        doppler = self.f0_range[1] * EARTH_ORBIT_SPEED / SPEED_OF_LIGHT
+        span = 2 * math.ceil((doppler + drift) * self.t_obs)
+        return 1 << (max(span, MIN_RESPONSE_POINTS) - 1).bit_length()
+
+    @property
+    def chirp_mass_prior(self) -> priors.ChirpMass:
+        return priors.ChirpMass(m_min=self.mass_range[0], m_max=self.mass_range[1])
+
+    @property
+    def chirp_mass_range(self) -> tuple[float, float]:
+        return self.chirp_mass_prior.support
+
+    @property
+    def fdot_range(self) -> tuple[float, float]:
+        # fdot is not sampled: it is what the chirp mass and f0 priors imply
+        low = fdot_from_chirp_mass(self.chirp_mass_range[0], self.f0_range[0])
+        high = fdot_from_chirp_mass(self.chirp_mass_range[1], self.f0_range[1])
+        return float(low), float(high)
+
     @property
     def prior(self) -> priors.Set:
         return priors.Set(
             priors.Product(
                 f0=priors.LogUniform(*self.f0_range),
-                fdot=priors.LogUniform(*self.fdot_range),
+                chirp_mass=self.chirp_mass_prior,
                 amp=priors.LogUniform(*self.a_range),
                 sky=priors.Isotropic(2),
                 orientation=priors.Isotropic(2),
@@ -95,6 +160,9 @@ class LisaGB(Problem):
         return self.chart.forward(self.sample_physical(key))
 
     def clean_signal(self, p: Float[Array, "... S 8"]) -> Complex[Array, "... F 3"]:
+        # column 1 carries the chirp mass; jaxgb wants the chirp it drives
+        p = p.at[..., 1].set(fdot_from_chirp_mass(p[..., 1], p[..., 0]))
+
         # flip iota from latitude [-pi/2, pi/2] to colatitude [0, pi] for jaxgb
         p = p.at[..., 6].set(jnp.pi / 2 - p[..., 6])
 
@@ -180,15 +248,10 @@ class LisaGB(Problem):
         power = self.noise_psd(freqs) * self.t_obs / (4.0 * self.sampling_step**2)
         o = jnp.where(freqs[..., None] > 0.0, o * jax.lax.rsqrt(power), o)
 
-        # tile the grid: nt time rows (multiple of patch_downsample), nf full freq
-        # channels; keep wdm_freq_bands channels of nt//2 bins spanning the band
-        n = int(self.t_obs // self.sampling_step)
         band_bins = fmax - fmin + 1
         pd = self.patch_downsample
         nt = pd * math.ceil(2 * band_bins / (self.wdm_freq_bands * pd))
         half = nt // 2
-        nf = (n // nt) - (n // nt) % 2
-        nfreqs_fourier = nt * nf // 2 + 1
 
         # center the kept block on the band, aligned to a channel boundary; the
         # data spans only the band, so zero-fill the block around it
@@ -199,23 +262,14 @@ class LisaGB(Problem):
         pad = [(0, 0)] * (o.ndim - 2) + [(left, block - band_bins - left), (0, 0)]
         o = jnp.pad(o, pad)
 
-        # convert the one-sided frequency-domain data to WDM bands
-        @partial(jnp.vectorize, signature="(w,c)->(t,f,c)")
-        @partial(jax.vmap, in_axes=-1, out_axes=-1)
-        def to_wdm(channel: Complex[Array, "w"]) -> Float[Array, "t f"]:
-            return from_freq_to_wdm_band(
-                channel,
-                df=1.0 / self.t_obs,
-                nfreqs_fourier=nfreqs_fourier,
-                kmin=kmin,
-                nfreqs_wdm=nf,
-                ntimes_wdm=nt,
-                mmin=mmin,
-                nf_sub_wdm=self.wdm_freq_bands,
-                a=1.0 / 3.0,
-                d=1.0,
-                backend="jax",
-            )
+        # convert the one-sided frequency-domain data to WDM bands; the transform
+        # runs on the last axis, so the tdi channels ride along as a batch axis
+        wdm = from_freq_to_wdm_band(
+            jnp.moveaxis(o, -1, -2),
+            ntimes=nt,
+            nfreq_bands=self.wdm_freq_bands,
+            mmin=mmin,
+        )
 
         # compress dynamic range for better training stability
-        return jnp.arcsinh(to_wdm(o))
+        return jnp.arcsinh(jnp.moveaxis(wdm, -3, -1))

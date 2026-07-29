@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from typing import Callable, Optional
 from jaxtyping import Array, Float, Key
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import equinox as eqx
@@ -125,6 +126,65 @@ class LogUniform(Prior):
     @property
     def chart(self) -> charts.LogAffine:
         log_low, log_high = jnp.log(self.low), jnp.log(self.high)
+        scale = 2 / (log_high - log_low)
+        shift = -scale * (log_low + log_high) / 2
+        return charts.LogAffine(shift=shift, scale=scale)
+
+
+class ChirpMass(Prior):
+    """Chirp mass of a double white dwarf, drawn through its two component masses.
+
+    This is the observationally driven Galactic DWD model of Korol et al. 2022
+    (MNRAS 511, 5936; arXiv:2109.10972). The heavier component follows the
+    single-white-dwarf mass function of Kepler et al. 2015 (MNRAS 446, 4078), a
+    Gaussian mixture here truncated to [m_min, m_max]; the lighter one is uniform on
+    [m_min, m1], the flat mass ratio close binaries are observed to follow (Moe &
+    Di Stefano 2017). The induced chirp mass peaks near 0.45 Msun, with a median
+    around 0.43 and a tail out to ~0.9. Korol et al. also swap the secondary for a
+    uniform draw on [0.2, 1.2] when m1 falls in the ELM regime below 0.25 Msun; the
+    default mixture never gets there, so that branch is left out.
+    Embeds to the box [-1, 1] with Bounded geometry.
+    Uses a LogAffine chart spanning the chirp masses the mixture can reach.
+    """
+
+    weights: Float[Array, "K"] = eqx.field(
+        converter=jnp.asarray, default=(0.81, 0.14, 0.05)
+    )
+    means: Float[Array, "K"] = eqx.field(
+        converter=jnp.asarray, default=(0.65, 0.57, 0.81)
+    )
+    stds: Float[Array, "K"] = eqx.field(
+        converter=jnp.asarray, default=(0.044, 0.097, 0.187)
+    )
+    m_min: float = eqx.field(static=True, default=0.15)
+    m_max: float = eqx.field(static=True, default=1.4)
+
+    def __call__(self, key: Key[Array, ""]) -> Float[Array, "1"]:
+        key_component, key_primary, key_secondary = jr.split(key, 3)
+
+        # truncation leaves each component a different share of the mixture
+        low = (self.m_min - self.means) / self.stds
+        high = (self.m_max - self.means) / self.stds
+        kept = jax.scipy.stats.norm.cdf(high) - jax.scipy.stats.norm.cdf(low)
+        k = jr.choice(key_component, self.weights.size, p=self.weights * kept)
+
+        z = jr.truncated_normal(key_primary, low[k], high[k])
+        m1 = self.means[k] + self.stds[k] * z
+        m2 = jr.uniform(key_secondary, minval=self.m_min, maxval=m1)
+        return jnp.atleast_1d((m1 * m2) ** 0.6 / (m1 + m2) ** 0.2)
+
+    @property
+    def support(self) -> tuple[float, float]:
+        # both extremes are equal-mass pairs, where the chirp mass is m / 2^(1/5)
+        return self.m_min * 2**-0.2, self.m_max * 2**-0.2
+
+    @property
+    def geometry(self) -> geometries.Bounded:
+        return geometries.Bounded(1)
+
+    @property
+    def chart(self) -> charts.LogAffine:
+        log_low, log_high = (jnp.log(jnp.atleast_1d(m)) for m in self.support)
         scale = 2 / (log_high - log_low)
         shift = -scale * (log_low + log_high) / 2
         return charts.LogAffine(shift=shift, scale=scale)
