@@ -1,0 +1,26 @@
+problem:
+  n_sources: 4
+  t_obs: 63115200.0  # 2 years
+  sampling_step: 0.25
+  wdm_freq_bands: 256
+  wdm_times: 32
+  patch_downsample: 2  # == 2**patch_stages below
+  oms_noise: 15.0
+  acceleration_noise: 3.0
+  mass_range: [0.15, 1.4]
+  f0_range: [1.0e-4, 12.0e-3]
+  a_range: [1.0e-24, 1.0e-22]
+
+network:
+  hidden_dim: 512
+  num_blocks: 8
+  num_heads: 8
+  patch_stages: 1
+
+batch_size: 256
+learning_rate: 1.0e-4
+weight_decay: 0.0
+total_steps: 500000
+log_interval: 1000
+warmup_frac: 0.5
+seed: 0
