@@ -60,7 +60,7 @@ def test_config_problem_and_network_agree_on_the_conditioning_shape(package, pat
     # shape error the first time the flow is actually called
     train = importlib.import_module(f"canna.{package}.train")
     state = train.TrainState.from_config(args(path))
-    sample = state.problem.train_sample(state.key)
+    sample = train.train_sample(state.problem, state.key)
     outs = state.flow(*(sample.xt, sample.t, sample.y, *sample[6:]))
 
     # point has no reconstruction heads, so its flow returns the velocity alone

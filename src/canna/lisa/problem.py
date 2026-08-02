@@ -1,4 +1,4 @@
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 import math
 
 from jaxtyping import Array, Complex, Float, Int, Key
@@ -6,9 +6,6 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import equinox as eqx
-
-if TYPE_CHECKING:
-    from .train import TrainSample
 
 import lisaorbits
 from jaxgb import jaxgb
@@ -380,23 +377,3 @@ class LisaGB(eqx.Module):
 
         # compress dynamic range for better training stability
         return jnp.arcsinh(jnp.moveaxis(wdm, -3, -1))
-
-    def train_sample(self, key: Key[Array, ""]) -> "TrainSample":
-        # deferred: train.py owns TrainSample and imports this module
-        from .train import TrainSample
-
-        key_c, key_p, key_o, key_x0, key_t = jr.split(key, 5)
-        f = self.sample_f(key_c)
-        p = self.sample_physical(key_p, f)
-
-        # noisy observation to condition on, clean one to reconstruct
-        y = self.preprocess(self.sample_observation(key_o, p, f), f)
-        y_target = self.preprocess(self.clean_signal(p, f), f)
-
-        # sample and process flow quantities
-        x0 = self.sample_point(key_x0, f)
-        x1 = self.physical_to_flow(p, f)
-        t = jr.uniform(key_t, ())
-        xt = self.geodesic(t, x0, x1)
-        dx = jax.jacobian(self.geodesic)(t, x0, x1)
-        return TrainSample(xt=xt, dx=dx, t=t, y=y, x_target=x1, y_target=y_target, f=f)

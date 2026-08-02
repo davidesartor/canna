@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import pytest
 
-from canna.sinusoid import NoisySinusoid
+from canna.sinusoid import NoisySinusoid, train_sample
 
 
 @pytest.fixture
@@ -250,7 +250,7 @@ def test_batched_leading_dim_clean_signal(problem, key):
 
 
 def test_train_sample_shapes(problem, key):
-    sample = problem.train_sample(key)
+    sample = train_sample(problem, key)
     assert sample.xt.shape == (problem.n_sources, 4)
     assert sample.x_target.shape == (problem.n_sources, 4)
     assert sample.dx.shape == sample.xt.shape
@@ -258,21 +258,21 @@ def test_train_sample_shapes(problem, key):
 
 
 def test_train_sample_t_in_unit_interval(problem, key):
-    """Base Problem.train_sample draws t = jr.uniform(key, ()), half-open [0,1);
+    """train_sample draws t = jr.uniform(key, ()), half-open [0,1);
     already pinned down precisely for the generic case in test_base.py, kept loose here.
     """
-    sample = problem.train_sample(key)
+    sample = train_sample(problem, key)
     assert 0.0 <= float(sample.t) <= 1.0
 
 
 def test_train_sample_y_y_target_shape_match(problem, key):
-    sample = problem.train_sample(key)
+    sample = train_sample(problem, key)
     assert sample.y.shape == sample.y_target.shape
 
 
 def test_train_sample_deterministic_given_key(problem, key):
-    a = problem.train_sample(key)
-    b = problem.train_sample(key)
+    a = train_sample(problem, key)
+    b = train_sample(problem, key)
     # NoisySinusoid carries no context, so that field is None on both samples
     for field_a, field_b in zip(a, b):
         if field_a is not None:
@@ -281,8 +281,8 @@ def test_train_sample_deterministic_given_key(problem, key):
 
 def test_train_sample_varies_with_key(problem, key):
     key2 = jr.key(999)
-    a = problem.train_sample(key)
-    b = problem.train_sample(key2)
+    a = train_sample(problem, key)
+    b = train_sample(problem, key2)
     assert not jnp.array_equal(a.xt, b.xt)
 
 
@@ -290,13 +290,13 @@ def test_train_sample_x_target_on_manifold(problem, key):
     """Point layout is [logAffine(amp), logAffine(freq), cos(phase), sin(phase)]
     (confirmed from physical_to_flow's amp/freq/phase block order); the last 2 dims
     are the (cos,sin) pair, unit-norm."""
-    sample = problem.train_sample(key)
+    sample = train_sample(problem, key)
     norm_sq = jnp.sum(sample.x_target[..., -2:] ** 2, axis=-1)
     assert jnp.allclose(norm_sq, 1.0, atol=1e-3)
 
 
 def test_train_sample_xt_on_manifold_for_all_t(problem, key):
-    sample = problem.train_sample(key)
+    sample = train_sample(problem, key)
     norm_sq = jnp.sum(sample.xt[..., -2:] ** 2, axis=-1)
     assert jnp.allclose(norm_sq, 1.0, atol=1e-3)
 
@@ -306,14 +306,14 @@ def test_train_sample_y_equals_y_target_when_noiseless(key):
     at noise_level=0, where the noise term is scaled by
     sqrt(noise_level/(2*sampling_step)) == 0."""
     problem = NoisySinusoid(n_sources=2, noise_level=0.0)
-    sample = problem.train_sample(key)
+    sample = train_sample(problem, key)
     assert jnp.allclose(sample.y, sample.y_target, atol=1e-4)
 
 
 def test_y_is_noisy_and_y_target_clean_through_wdm_conditioning(problem):
     """Through NoisySinusoid's nonlinear, WDM-transform-based preprocess: with
     noise_level > 0, y carries noise the clean y_target does not, so they differ."""
-    sample = problem.train_sample(jr.key(3))
+    sample = train_sample(problem, jr.key(3))
     assert not jnp.allclose(sample.y, sample.y_target, atol=1e-6)
 
 
@@ -332,7 +332,7 @@ def test_geodesic_t1_endpoint_can_differ_from_raw_x_target(problem):
         # mirrors train_sample's split; unpacked in full so a change here breaks loudly
         key_p, key_o, key_x0, key_t = jr.split(key, 4)
         x0 = problem.sample_point(key_x0)
-        sample = problem.train_sample(key)
+        sample = train_sample(problem, key)
         # x0 is the one train_sample actually drew, else the rest is vacuous
         assert jnp.allclose(
             problem.geodesic(sample.t, x0, sample.x_target),

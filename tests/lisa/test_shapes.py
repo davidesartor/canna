@@ -1,11 +1,13 @@
 """Shape contracts for LisaGB's public surface."""
 
+from functools import partial
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from canna.lisa import LisaGB
+from canna.lisa import LisaGB, train_sample
 from ._helpers import window
 
 
@@ -125,7 +127,7 @@ def test_preprocess_time_axis_divisible_by_patch_downsample():
 def test_train_sample_shapes_line_up():
     problem = LisaGB(n_sources=3)
     width = 11
-    sample = problem.train_sample(jr.key(50))
+    sample = train_sample(problem, jr.key(50))
     assert sample.xt.shape == (3, width)
     assert sample.dx.shape == (3, width)
     assert sample.t.shape == ()
@@ -134,7 +136,7 @@ def test_train_sample_shapes_line_up():
 
 def test_train_sample_is_finite():
     problem = LisaGB(n_sources=2)
-    sample = eqx.filter_jit(problem.train_sample)(jr.key(51))
+    sample = eqx.filter_jit(partial(train_sample, problem))(jr.key(51))
     assert jnp.all(jnp.isfinite(sample.xt))
     assert jnp.all(jnp.isfinite(sample.dx))
     assert jnp.isfinite(sample.t)
@@ -142,8 +144,8 @@ def test_train_sample_is_finite():
 
 def test_train_sample_same_key_gives_same_sample():
     problem = LisaGB(n_sources=2)
-    a = problem.train_sample(jr.key(52))
-    b = problem.train_sample(jr.key(52))
+    a = train_sample(problem, jr.key(52))
+    b = train_sample(problem, jr.key(52))
     assert jnp.allclose(a.xt, b.xt)
     assert jnp.allclose(a.dx, b.dx)
     assert jnp.allclose(a.t, b.t)

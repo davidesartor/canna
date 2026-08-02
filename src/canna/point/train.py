@@ -1,3 +1,4 @@
+from functools import partial
 from typing import NamedTuple, Self
 from jaxtyping import Array, Float, Key
 from pathlib import Path
@@ -24,6 +25,21 @@ class TrainSample(NamedTuple):
     dx: Float[Array, "D"]
     t: Float[Array, ""]
     y: Float[Array, "D"]
+
+
+def train_sample(problem: NoisyPoint, key: Key[Array, ""]) -> TrainSample:
+    """Draw one training example: conditioning, a point on the geodesic, its velocity."""
+    key_p, key_o, key_x0, key_t = jr.split(key, 4)
+    p = problem.sample_physical(key_p)
+    y = problem.preprocess(problem.sample_observation(key_o, p))
+
+    # sample and process flow quantities
+    x0 = problem.sample_point(key_x0)
+    x1 = problem.physical_to_flow(p)
+    t = jr.uniform(key_t, ())
+    xt = problem.geodesic(t, x0, x1)
+    dx = jax.jacobian(problem.geodesic)(t, x0, x1)
+    return TrainSample(xt=xt, dx=dx, t=t, y=y)
 
 
 class Welford(NamedTuple):
@@ -73,7 +89,7 @@ class TrainState(NamedTuple):
         problem = NoisyPoint(**args.problem)
 
         # the network is shaped by one sample of the problem
-        sample = problem.train_sample(key_sample)
+        sample = train_sample(problem, key_sample)
         flow = PointFlow(
             **args.network,
             x_shape=sample.xt.shape,
@@ -133,7 +149,7 @@ class TrainState(NamedTuple):
         def scan_step(dynamic: Self, _) -> tuple[Self, Float[Array, ""]]:
             state = eqx.combine(dynamic, static)
             key, key_batch = jr.split(state.key)
-            batch = jax.vmap(state.problem.train_sample)(
+            batch = jax.vmap(partial(train_sample, state.problem))(
                 jr.split(key_batch, batch_size)
             )
             state, losses = state._replace(key=key).train_step(batch)
