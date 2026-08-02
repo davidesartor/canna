@@ -132,7 +132,7 @@ class LisaGB(Problem):
     orbit: lisaorbits.Orbits = eqx.field(
         static=True, default=lisaorbits.EqualArmlengthOrbits()
     )
-    # None sizes the response window from t_obs and the priors; see needed_response_points
+    # None sizes the response window from t_obs and the priors
     response_points: Optional[int] = eqx.field(static=True, default=None)
     oms_noise: float = eqx.field(static=True, default=15.0)
     acceleration_noise: float = eqx.field(static=True, default=3.0)
@@ -146,8 +146,25 @@ class LisaGB(Problem):
     response: jaxgb.JaxGB = eqx.field(init=False, static=True)
 
     def __post_init__(self):
+        # the response is response_points bins wide and centred on f0, so half of it
+        # has to hold the annual doppler sideband plus the whole (upward) chirp drift.
+        # the DC-straddle bound below caps it from the other side, and the two cross
+        # over at short baselines, so this cannot be a fixed default
+        drift = self.fdot_range[1] * self.t_obs
+        doppler = self.f0_range[1] * EARTH_ORBIT_SPEED / SPEED_OF_LIGHT
+        span = 2 * math.ceil((doppler + drift) * self.t_obs)
+        needed = 1 << (max(span, MIN_RESPONSE_POINTS) - 1).bit_length()
+
         if self.response_points is None:
-            self.response_points = self.needed_response_points
+            self.response_points = needed
+
+        assert needed <= self.response_points, (
+            f"response_points={self.response_points} too narrow for a "
+            f"Mc={self.chirp_mass_range[1]:.2f}Msun source at "
+            f"f0_max={self.f0_range[1]:.1e}Hz over t_obs={self.t_obs:.3e}s: "
+            f"it needs {needed} bins. "
+            f"Raise response_points, or lower f0_range[1]/mass_range[1]."
+        )
         self.response = jaxgb.JaxGB(
             self.orbit,
             t_obs=self.t_obs,
@@ -161,26 +178,6 @@ class LisaGB(Problem):
             f"band straddles DC (kmin={kmin}). "
             f"Need t_obs >= {self.response_points / 2 / self.f0_range[0]:.3e}s."
         )
-
-        needed = self.needed_response_points
-        assert needed <= self.response_points, (
-            f"response_points={self.response_points} too narrow for a "
-            f"Mc={self.chirp_mass_range[1]:.2f}Msun source at "
-            f"f0_max={self.f0_range[1]:.1e}Hz over t_obs={self.t_obs:.3e}s: "
-            f"it needs {needed} bins. "
-            f"Raise response_points, or lower f0_range[1]/mass_range[1]."
-        )
-
-    @property
-    def needed_response_points(self) -> int:
-        # the response is response_points bins wide and centred on f0, so half of it
-        # has to hold the annual doppler sideband plus the whole (upward) chirp drift.
-        # the DC-straddle bound above caps it from the other side, and the two cross
-        # over at short baselines, so this cannot be a fixed default
-        drift = self.fdot_range[1] * self.t_obs
-        doppler = self.f0_range[1] * EARTH_ORBIT_SPEED / SPEED_OF_LIGHT
-        span = 2 * math.ceil((doppler + drift) * self.t_obs)
-        return 1 << (max(span, MIN_RESPONSE_POINTS) - 1).bit_length()
 
     @property
     def chirp_mass_prior(self) -> ChirpMass:
