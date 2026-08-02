@@ -31,13 +31,13 @@ from _bench import (
     device_kind,
     reference_problem,
     run_config_args,
-    synthetic_batch,
 )
 
 ODE_STEPS = int(os.environ.get("ODE_STEPS", "4"))
 N_TIMED = 10
-# the host-side stages are slow and low-variance, so a few repeats is plenty
-N_TIMED_BY_PHASE = {"ckpt": 3, "plot": 3}
+# the host-side stages are slow and low-variance, so a few repeats is plenty;
+# a fused epoch already averages over log_interval steps in one call
+N_TIMED_BY_PHASE = {"ckpt": 3, "plot": 3, "train_fused": 3}
 
 
 def peak_mb() -> float:
@@ -86,9 +86,8 @@ def _state(cfg, problem) -> TrainState:
 
 def train_probe(cfg, problem, batch):
     state = _state(cfg, problem)
-    data = synthetic_batch(problem, batch)
-    weights = jnp.ones(3)
-    return lambda: state.train_step(data, weights)
+    data = sample_batch(problem, state.rngs, batch)
+    return lambda: state.train_step(data, jnp.asarray(1.0))
 
 
 def gen_probe(cfg, problem, batch):
@@ -114,15 +113,14 @@ def stage_gen(state, args):
     return lambda: sample_batch(state.problem, state.rngs, args.batch_size)
 
 
-def stage_metrics(state, args):
-    data = sample_batch(state.problem, state.rngs, args.batch_size)
-    return lambda: state.update_metrics(data)
-
-
 def stage_train(state, args):
-    data = sample_batch(state.problem, state.rngs, args.batch_size)
-    weights = jnp.ones(3)
-    return lambda: state.train_step(data, weights)
+    batch = sample_batch(state.problem, state.rngs, args.batch_size)
+    return lambda: state.train_step(batch, jnp.asarray(1.0))
+
+
+def stage_train_fused(state, args):
+    n_steps = args.log_interval
+    return lambda: state.train_epoch(jnp.asarray(1.0), args.batch_size, n_steps)
 
 
 def stage_ckpt(state, args):
@@ -167,8 +165,8 @@ def stage_plot(state, args):
 
 STAGE_PROBES = {
     "gen": stage_gen,
-    "metrics": stage_metrics,
     "train": stage_train,
+    "train_fused": stage_train_fused,
     "ckpt": stage_ckpt,
     "plot": stage_plot,
 }
@@ -189,6 +187,8 @@ def main():
 
     n_timed = N_TIMED_BY_PHASE.get(phase, N_TIMED)
     compile_ms, step_ms = time_ms(fn, n_timed)
+    if phase == "train_fused":
+        step_ms /= args.log_interval
 
     print(
         json.dumps(

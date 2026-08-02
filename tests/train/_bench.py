@@ -29,8 +29,9 @@ CSV_NAME = (
     "{device}_stage_bench.csv"  # per device: jobs on different GPUs run concurrently
 )
 
-# the stages one training epoch is made of, in the order train.py runs them
-STAGES = ["gen", "metrics", "train", "ckpt", "plot"]
+# the stages one training epoch is made of, in the order train.py runs them;
+# train_fused times the scan-fused train.py epoch loop for comparison
+STAGES = ["gen", "train", "train_fused", "ckpt", "plot"]
 RUN_CONFIGS = ["NoisyPoint-MLP-B", "NoisySinusoid-MMDiT-B"]
 
 OOM_MARKERS = ("RESOURCE_EXHAUSTED", "out of memory", "Out of memory", "OutOfMemory")

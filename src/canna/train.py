@@ -72,13 +72,11 @@ class TrainState(NamedTuple):
             rngs=rngs,
         )
 
-    @nnx.jit(static_argnames=("batch_size",))
+    @nnx.jit
     def train_step(
-        self, aux_weight: Float[Array, ""], batch_size: int
+        self, batch: TrainSample, aux_weight: Float[Array, ""]
     ) -> Float[Array, "3"]:
-        """Sample a batch, take one variance-reweighted optimizer step, update running metrics."""
-        batch = jax.vmap(self.problem.train_sample)(jr.split(self.rngs(), batch_size))
-
+        """Take one variance-reweighted optimizer step on a batch, update running metrics."""
         # variance as of the previous step's metrics; barely moves step to step
         target_var = jnp.array(
             [
@@ -107,6 +105,23 @@ class TrainState(NamedTuple):
         self.x_metrics.update(values=batch.x_target.astype(jnp.float32))
         self.y_metrics.update(values=batch.y_target.astype(jnp.float32))
 
+        return losses
+
+    @nnx.jit(static_argnames=("batch_size", "n_steps"))
+    def train_epoch(
+        self, aux_weight: Float[Array, ""], batch_size: int, n_steps: int
+    ) -> Float[Array, "S 3"]:
+        """Fuse n_steps (gen + train_step) pairs into one XLA dispatch via nnx.scan."""
+
+        @nnx.scan(in_axes=(nnx.Carry,), out_axes=(nnx.Carry, 0), length=n_steps)
+        def scan_step(state: TrainState) -> tuple[Self, Float[Array, "3"]]:
+            batch = jax.vmap(state.problem.train_sample)(
+                jr.split(state.rngs(), batch_size)
+            )
+            losses = state.train_step(batch, aux_weight)
+            return state, losses
+
+        _, losses = scan_step(self)
         return losses
 
     def save_to(
@@ -191,7 +206,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dtype",
         default="bfloat16",
-        choices=("bfloat16", "float16", "float32"),
+        choices=("bfloat16", "float32"),
         help="compute dtype for the network; params are kept in float32",
     )
     parser.add_argument("--muon", action=argparse.BooleanOptionalAction, default=True)
@@ -224,12 +239,9 @@ if __name__ == "__main__":
     for epoch in pbar:
         aux_weight = aux_weight_schedule(epoch, epochs, args.warmup_frac)
 
-        # the losses stay on device for the whole epoch, then come back in one transfer
-        epoch_losses = [
-            state.train_step(aux_weight, args.batch_size)
-            for _ in range(args.log_interval)
-        ]
-        loss_history[epoch] = jax.device_get(jnp.stack(epoch_losses))
+        # one fused XLA dispatch for the whole epoch, instead of log_interval separate ones
+        epoch_losses = state.train_epoch(aux_weight, args.batch_size, args.log_interval)
+        loss_history[epoch] = jax.device_get(epoch_losses)
 
         # save a checkpoint and log the median of the epoch's losses
         state.save_to(checkpoints, epoch + 1, loss_history)
