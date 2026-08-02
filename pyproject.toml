@@ -1,0 +1,45 @@
+[project]
+name = "canna"
+version = "0.1.0"
+description = "Conditional flow-matching neural posterior estimation for inverse problems"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "corner>=2.3.0",
+    "einops>=0.8.2",
+    "equinox>=0.13.8",
+    "jax>=0.10.1",
+    "jaxgb>=0.2.1",
+    "jaxtyping>=0.3.2",
+    "lisaorbits>=3.1.0",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.1",
+    "optax>=0.2.8",
+    "orbax-checkpoint>=0.12.1",
+    "pyyaml>=6.0.3",
+    "tqdm>=4.69.0",
+    "wdm-transform>=0.5.0",
+]
+
+[project.optional-dependencies]
+cuda = ["jax[cuda]>=0.10.1"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/canna"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-s -m 'not bench' --dist loadfile"
+markers = [
+    "bench: heavy GPU throughput/peak-memory sweeps, deselected by default; run with -m bench",
+]
