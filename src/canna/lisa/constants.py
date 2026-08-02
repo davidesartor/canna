@@ -1,0 +1,7 @@
+"""Physical constants, SI unless noted."""
+
+SPEED_OF_LIGHT = 299792458.0  # [m/s]
+SUN_MASS = 1.98892e30  # [kg]
+GRAVITATIONAL_CONSTANT = 6.67430e-11  # [m^3 kg^-1 s^-2]
+EARTH_ORBIT_SPEED = 29785.0  # [m/s]
+SUN_MASS_TIME = GRAVITATIONAL_CONSTANT * SUN_MASS / SPEED_OF_LIGHT**3  # [s]
