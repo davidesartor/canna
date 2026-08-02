@@ -11,7 +11,7 @@ from canna.charts import Affine, LogAffine, Periodic
 from canna.charts import Spherical as SphericalChart
 from canna.charts import Product as ProductChart
 from canna.priors import Normal, LogNormal, Uniform, LogUniform, Cosine, Sine
-from canna.priors import ChirpMass
+from canna.problems.lisa import ChirpMass
 from canna.priors import PeriodicUniform, Isotropic
 from canna.priors import Product as ProductPrior
 from canna.priors import Set as SetPrior
