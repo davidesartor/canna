@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import pytest
 
-from canna.sinusoid import NoisySinusoid
+from canna.sinusoid import NoisySinusoid, train_sample
 
 
 @pytest.fixture(scope="module")
@@ -55,7 +55,7 @@ def test_y_matches_second_subkey_key_o(problem, key):
     key_p, key_o, *_ = jr.split(key, 4)
     p = problem.sample_physical(key_p)
     expected_y = problem.preprocess(problem.sample_observation(key_o, p))
-    assert jnp.allclose(problem.train_sample(key).y, expected_y, atol=1e-4)
+    assert jnp.allclose(train_sample(problem, key).y, expected_y, atol=1e-4)
 
 
 def test_y_target_matches_clean_signal_of_key_p(problem, key):
@@ -63,5 +63,5 @@ def test_y_target_matches_clean_signal_of_key_p(problem, key):
     p = problem.sample_physical(key_p)
     expected_y_target = problem.preprocess(problem.clean_signal(p))
     assert jnp.allclose(
-        problem.train_sample(key).y_target, expected_y_target, atol=1e-4
+        train_sample(problem, key).y_target, expected_y_target, atol=1e-4
     )

@@ -12,7 +12,7 @@ sample along a geodesic.
 Each problem is a **self-contained package** — `point/`, `sinusoid/`, `lisa/` —
 owning its `problem.py`, `network.py`, `train.py`, `eval.py` and `configs/`.
 There is no abstract problem base and no shared trainer: a new inverse problem
-is a new package, copied and edited. Only `networks/` (the reusable `nnx` blocks
+is a new package, copied and edited. Only `networks/` (the reusable `eqx` blocks
 and the `MLP`/`MMDiT` backbones) is shared.
 
 - **The problem** (`problem.py`) — an `eqx.Module` holding the priors to draw

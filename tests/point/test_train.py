@@ -1,5 +1,7 @@
 """The point trainer: running metrics, one step, one epoch, resume."""
 
+from functools import partial
+
 import argparse
 from pathlib import Path
 
@@ -13,7 +15,7 @@ import pytest
 import yaml
 
 import canna.point as point
-from canna.point import TrainSample
+from canna.point import TrainSample, train_sample
 from canna.point.train import TrainState, parse_args
 
 CONFIG_ROOT = Path(point.__file__).parent / "configs"
@@ -36,7 +38,7 @@ def args(**overrides):
 
 
 def batch(problem, key, n=4):
-    return jax.vmap(problem.train_sample)(jr.split(key, n))
+    return jax.vmap(partial(train_sample, problem))(jr.split(key, n))
 
 
 def param_leaves(module):

@@ -1,10 +1,12 @@
 """Shape-signature contracts for NoisySinusoid."""
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 import pytest
 
-from canna.sinusoid import NoisySinusoid
+from canna.sinusoid import NoisySinusoid, train_sample
 
 
 def small(n_sources: int = 2):
@@ -48,7 +50,7 @@ def test_preprocess_produces_time_freq_image():
 
 def test_train_sample_field_shapes():
     problem = small()
-    s = problem.train_sample(jax.random.key(0))
+    s = train_sample(problem, jax.random.key(0))
     assert s._fields == ("xt", "dx", "t", "y", "x_target", "y_target")
     assert s.xt.shape == (2, 4)
     assert s.dx.shape == (2, 4)
@@ -60,7 +62,7 @@ def test_train_sample_field_shapes():
 
 def test_train_sample_vmaps_to_a_leading_batch_axis():
     problem = small()
-    s = jax.vmap(problem.train_sample)(jax.random.split(jax.random.key(0), 3))
+    s = jax.vmap(partial(train_sample, problem))(jax.random.split(jax.random.key(0), 3))
     assert s.xt.shape == (3, 2, 4)
     assert s.t.shape == (3,)
     assert s.y.shape[0] == 3

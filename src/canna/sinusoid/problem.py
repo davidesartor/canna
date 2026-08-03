@@ -1,14 +1,11 @@
 from functools import partial
 import math
-from typing import TYPE_CHECKING
 from jaxtyping import Array, Complex, Float, Key
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import equinox as eqx
 
-if TYPE_CHECKING:
-    from .train import TrainSample
 from wdm_transform.transforms import from_freq_to_wdm_band
 
 from . import geometries
@@ -160,22 +157,3 @@ class NoisySinusoid(eqx.Module):
             )
 
         return jnp.arcsinh(to_wdm(band))  # tame extreme values
-
-    def train_sample(self, key: Key[Array, ""]) -> "TrainSample":
-        # deferred: train.py owns TrainSample and imports this module
-        from .train import TrainSample
-
-        key_p, key_o, key_x0, key_t = jr.split(key, 4)
-        p = self.sample_physical(key_p)
-
-        # noisy observation to condition on, clean one to reconstruct
-        y = self.preprocess(self.sample_observation(key_o, p))
-        y_target = self.preprocess(self.clean_signal(p))
-
-        # sample and process flow quantities
-        x0 = self.sample_point(key_x0)
-        x1 = self.physical_to_flow(p)
-        t = jr.uniform(key_t, ())
-        xt = self.geodesic(t, x0, x1)
-        dx = jax.jacobian(self.geodesic)(t, x0, x1)
-        return TrainSample(xt=xt, dx=dx, t=t, y=y, x_target=x1, y_target=y_target)
