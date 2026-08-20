@@ -1,5 +1,5 @@
 from functools import partial
-from typing import NamedTuple, Self
+from typing import NamedTuple
 from jaxtyping import Array, Float, Key
 from pathlib import Path
 import os
@@ -11,7 +11,6 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import optax
-import orbax.checkpoint as ocp
 import equinox as eqx
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -19,204 +18,34 @@ import matplotlib.pyplot as plt
 from .problem import NoisyPoint
 from .network import PointFlow
 
+if __name__ == "__main__":
 
-class TrainSample(NamedTuple):
-    xt: Float[Array, "D"]
-    dx: Float[Array, "D"]
-    t: Float[Array, ""]
-    y: Float[Array, "D"]
+    class TrainSample(NamedTuple):
+        xt: Float[Array, "D"]
+        dx: Float[Array, "D"]
+        t: Float[Array, ""]
+        y: Float[Array, "D"]
 
+    def train_sample(problem: NoisyPoint, key: Key[Array, ""]) -> TrainSample:
+        """Draw one training example: conditioning, a point on the geodesic, its velocity."""
+        key_p, key_o, key_x0, key_t = jr.split(key, 4)
+        p = problem.sample_physical(key_p)
+        y = problem.preprocess(problem.sample_observation(key_o, p))
 
-def train_sample(problem: NoisyPoint, key: Key[Array, ""]) -> TrainSample:
-    """Draw one training example: conditioning, a point on the geodesic, its velocity."""
-    key_p, key_o, key_x0, key_t = jr.split(key, 4)
-    p = problem.sample_physical(key_p)
-    y = problem.preprocess(problem.sample_observation(key_o, p))
+        # sample and process flow quantities
+        x0 = problem.sample_flow(key_x0)
+        x1 = problem.physical_to_flow(p)
+        t = jr.uniform(key_t, ())
 
-    # sample and process flow quantities
-    x0 = problem.sample_point(key_x0)
-    x1 = problem.physical_to_flow(p)
-    t = jr.uniform(key_t, ())
-    xt = problem.geodesic(t, x0, x1)
-    dx = jax.jacobian(problem.geodesic)(t, x0, x1)
-    return TrainSample(xt=xt, dx=dx, t=t, y=y)
+        # geodesic and its velocity at t, in flow coordinates
+        def geodesic(t: Float[Array, ""]):
+            return problem.exp_map(x0, t * problem.log_map(x0, x1))
 
+        xt = geodesic(t)
+        dx = jax.jacobian(geodesic)(t)
+        return TrainSample(xt=xt, dx=dx, t=t, y=y)
 
-class Welford(NamedTuple):
-    """Running count/mean/sum-of-squares over every value ever passed to update."""
-
-    count: Float[Array, ""]
-    mean: Float[Array, ""]
-    m2: Float[Array, ""]
-
-    @classmethod
-    def empty(cls) -> Self:
-        zero = jnp.zeros((), jnp.float32)
-        return cls(count=zero, mean=zero, m2=zero)
-
-    def update(self, values: Float[Array, "..."]) -> Self:
-        batch_count = jnp.asarray(values.size, jnp.float32)
-        batch_mean = jnp.mean(values)
-        batch_m2 = jnp.sum(jnp.square(values - batch_mean))
-
-        delta = batch_mean - self.mean
-        count = self.count + batch_count
-        return Welford(
-            count=count,
-            mean=self.mean + delta * batch_count / count,
-            m2=self.m2
-            + batch_m2
-            + jnp.square(delta) * self.count * batch_count / count,
-        )
-
-    @property
-    def variance(self) -> Float[Array, ""]:
-        return self.m2 / self.count
-
-
-class TrainState(NamedTuple):
-    problem: NoisyPoint
-    flow: PointFlow
-    tx: optax.GradientTransformation
-    opt_state: optax.OptState
-    flow_metrics: Welford
-    key: Key[Array, ""]
-
-    @classmethod
-    def from_config(cls, args: argparse.Namespace) -> Self:
-        """Build a fresh state from the problem and network in the run config."""
-        key_sample, key_network, key_train = jr.split(jr.key(args.seed), 3)
-        problem = NoisyPoint(**args.problem)
-
-        # the network is shaped by one sample of the problem
-        sample = train_sample(problem, key_sample)
-        flow = PointFlow(
-            **args.network,
-            x_shape=sample.xt.shape,
-            y_shape=sample.y.shape,
-            dtype=jnp.dtype(args.dtype),
-            param_dtype=jnp.float32,
-            key=key_network,
-        )
-
-        tx = optax.chain(
-            optax.clip_by_global_norm(1.0),
-            (optax.contrib.muon if args.muon else optax.adamw)(
-                args.learning_rate, weight_decay=args.weight_decay
-            ),
-        )
-
-        return cls(
-            problem=problem,
-            flow=flow,
-            tx=tx,
-            opt_state=tx.init(eqx.filter(flow, eqx.is_inexact_array)),
-            flow_metrics=Welford.empty(),
-            key=key_train,
-        )
-
-    @eqx.filter_jit
-    def train_step(self, batch: TrainSample) -> tuple[Self, Float[Array, ""]]:
-        """Take one variance-normalized optimizer step on a batch, update running metrics."""
-        flow_metrics = self.flow_metrics.update(batch.dx.astype(jnp.float32))
-
-        # running variance, this batch included -- undefined on an empty Welford
-        weight = 1.0 / jnp.maximum(flow_metrics.variance, 1e-12)
-
-        def train_loss(flow: PointFlow) -> tuple[Float[Array, ""], Float[Array, ""]]:
-            du_pred = jax.vmap(flow)(batch.xt, batch.t, batch.y)
-            flow_loss = jnp.mean(jnp.square(du_pred - batch.dx))
-            return weight * flow_loss, flow_loss
-
-        (_, loss), grads = eqx.filter_value_and_grad(train_loss, has_aux=True)(
-            self.flow
-        )
-        updates, opt_state = self.tx.update(
-            grads, self.opt_state, eqx.filter(self.flow, eqx.is_inexact_array)
-        )
-        flow = eqx.apply_updates(self.flow, updates)
-
-        state = self._replace(flow=flow, opt_state=opt_state, flow_metrics=flow_metrics)
-        return state, loss
-
-    @eqx.filter_jit
-    def train_epoch(
-        self, batch_size: int, n_steps: int
-    ) -> tuple[Self, Float[Array, "S"]]:
-        """Fuse n_steps (gen + train_step) pairs into one XLA dispatch via lax.scan."""
-        dynamic, static = eqx.partition(self, eqx.is_array)
-
-        def scan_step(dynamic: Self, _) -> tuple[Self, Float[Array, ""]]:
-            state = eqx.combine(dynamic, static)
-            key, key_batch = jr.split(state.key)
-            batch = jax.vmap(partial(train_sample, state.problem))(
-                jr.split(key_batch, batch_size)
-            )
-            state, losses = state._replace(key=key).train_step(batch)
-            return eqx.filter(state, eqx.is_array), losses
-
-        dynamic, losses = jax.lax.scan(scan_step, dynamic, length=n_steps)
-        return eqx.combine(dynamic, static), losses
-
-    def save_to(
-        self,
-        checkpoints: ocp.CheckpointManager,
-        epoch: int,
-        loss_hist: Float[Array, "E S"],
-    ) -> None:
-        """Save each array-carrying field, plus the losses, as its own named checkpoint item."""
-        checkpoints.save(
-            epoch,
-            args=ocp.args.Composite(
-                loss_hist=ocp.args.ArraySave(loss_hist),
-                # a bare key array is not a pytree StandardSave will take
-                key=ocp.args.ArraySave(jr.key_data(self.key)),
-                **{
-                    name: ocp.args.StandardSave(eqx.filter(field, eqx.is_array))
-                    for name, field in zip(self._fields, self)
-                    if name not in ("problem", "tx", "key")
-                },
-            ),
-        )
-
-    def restore_from(
-        self, checkpoints: ocp.CheckpointManager
-    ) -> tuple[Self, int, Float[Array, "E S"] | None]:
-        """Return the state, epoch and losses to resume from, or self at epoch 0."""
-        latest_epoch = checkpoints.latest_step()
-        if latest_epoch is None:
-            return self, 0, None
-
-        skeleton = {
-            name: eqx.filter(field, eqx.is_array)
-            for name, field in zip(self._fields, self)
-            if name not in ("problem", "tx", "key")
-        }
-        restored = checkpoints.restore(
-            latest_epoch,
-            args=ocp.args.Composite(
-                loss_hist=ocp.args.ArrayRestore(),
-                key=ocp.args.ArrayRestore(),
-                **{
-                    name: ocp.args.StandardRestore(tree)
-                    for name, tree in skeleton.items()
-                },
-            ),
-        )
-
-        state = self._replace(
-            key=jr.wrap_key_data(restored["key"]),
-            **{
-                name: eqx.combine(restored[name], getattr(self, name))
-                for name in skeleton
-            },
-        )
-        print(f"[checkpoint] resuming at epoch {latest_epoch}", flush=True)
-        return state, latest_epoch, restored["loss_hist"]
-
-
-def parse_args() -> argparse.Namespace:
-    """Read the named run .yaml as argparse defaults, so any CLI flag overrides it."""
+    # the named run .yaml sets the argparse defaults, so any CLI flag overrides it
     config_parser = argparse.ArgumentParser(add_help=False)
     config_parser.add_argument("--config", default="B", help="name of a run .yaml")
     config_parser.add_argument(
@@ -242,39 +71,89 @@ def parse_args() -> argparse.Namespace:
 
     with open(config_args.config_root / f"{config_args.config}.yaml") as f:
         parser.set_defaults(**yaml.safe_load(f))
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    args = parse_args()
+    args = parser.parse_args()
 
     # housekeeping
     run_id = f"point-{args.config}"
     out_dir: Path = args.output_dir / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    checkpoints = ocp.CheckpointManager(
-        (out_dir / "checkpoints").absolute(),
-        options=ocp.CheckpointManagerOptions(max_to_keep=1),
-    )
+    checkpoint = out_dir / "checkpoint.eqx"
     print(f"JAX backend: {jax.default_backend()}", flush=True)
     print(f"devices: {jax.local_device_count()}", flush=True)
     print(f"run {run_id} -> {out_dir}", flush=True)
 
-    # setup the training state
-    state = TrainState.from_config(args)
-    state, start_epoch, loss_history = state.restore_from(checkpoints)
+    key_sample, key_network, key_train = jr.split(jr.key(args.seed), 3)
+    problem = NoisyPoint(**args.problem)
+
+    # the network is shaped by one sample of the problem
+    sample = train_sample(problem, key_sample)
+    flow = PointFlow(
+        **args.network,
+        x_shape=sample.xt.shape,
+        y_shape=sample.y.shape,
+        dtype=jnp.dtype(args.dtype),
+        param_dtype=jnp.float32,
+        key=key_network,
+    )
+
+    tx = optax.chain(
+        optax.clip_by_global_norm(1.0),
+        (optax.contrib.muon if args.muon else optax.adamw)(
+            args.learning_rate, weight_decay=args.weight_decay
+        ),
+    )
+    opt_state = tx.init(eqx.filter(flow, eqx.is_inexact_array))
+
     epochs = args.total_steps // args.log_interval
-    if loss_history is None:
-        loss_history = np.full((epochs, args.log_interval), jnp.nan)
+    loss_history = np.full((epochs, args.log_interval), np.nan)
+    if checkpoint.exists():
+        flow, opt_state, loss_history = eqx.tree_deserialise_leaves(
+            checkpoint, (flow, opt_state, loss_history)
+        )
+
+    # every finished epoch left its losses behind, so they count the epochs already done
+    start_epoch = int(np.sum(np.isfinite(loss_history[:, 0])))
+    if start_epoch:
+        print(f"[checkpoint] resuming at epoch {start_epoch}", flush=True)
+
+    @eqx.filter_jit
+    def train_epoch(flow: PointFlow, opt_state: optax.OptState, key: Key[Array, ""]):
+        """Fuse log_interval (draw + train step) pairs into one XLA dispatch via lax.scan."""
+        params, static = eqx.partition(flow, eqx.is_array)
+
+        def train_step(carry, key_batch: Key[Array, ""]):
+            params, opt_state = carry
+            flow = eqx.combine(params, static)
+            batch = jax.vmap(partial(train_sample, problem))(
+                jr.split(key_batch, args.batch_size)
+            )
+
+            def train_loss(flow: PointFlow) -> Float[Array, ""]:
+                du_pred = jax.vmap(flow)(batch.xt, batch.t, batch.y)
+                return jnp.mean(jnp.square(du_pred - batch.dx))
+
+            loss, grads = eqx.filter_value_and_grad(train_loss)(flow)
+            updates, opt_state = tx.update(
+                grads, opt_state, eqx.filter(flow, eqx.is_inexact_array)
+            )
+            flow = eqx.apply_updates(flow, updates)
+            return (eqx.filter(flow, eqx.is_array), opt_state), loss
+
+        (params, opt_state), losses = jax.lax.scan(
+            train_step, (params, opt_state), jr.split(key, args.log_interval)
+        )
+        return eqx.combine(params, static), opt_state, losses
 
     pbar = tqdm(range(start_epoch, epochs), initial=start_epoch, total=epochs)
     for epoch in pbar:
-        # one fused XLA dispatch for the whole epoch, instead of log_interval separate ones
-        state, epoch_losses = state.train_epoch(args.batch_size, args.log_interval)
+        # the epoch's key is folded from the seed, so a resume never redraws old batches
+        flow, opt_state, epoch_losses = train_epoch(
+            flow, opt_state, jr.fold_in(key_train, epoch)
+        )
         loss_history[epoch] = jax.device_get(epoch_losses)
 
         # save a checkpoint and log the median of the epoch's losses
-        state.save_to(checkpoints, epoch + 1, loss_history)
+        eqx.tree_serialise_leaves(checkpoint, (flow, opt_state, loss_history))
         flow_l = np.median(loss_history[epoch])
         pbar.set_postfix(flow=f"{flow_l:.5f}")
         print(f"[epoch {epoch + 1}/{epochs}] flow={flow_l:.5f}", flush=True)
@@ -293,6 +172,4 @@ if __name__ == "__main__":
         fig.savefig(os.path.join(out_dir, "losses.pdf"), bbox_inches="tight")
         plt.close(fig)
 
-    # orbax saves in a background thread: the last one has to land before we exit
-    checkpoints.close()
     print(f"[done] {run_id} -> {out_dir}", flush=True)

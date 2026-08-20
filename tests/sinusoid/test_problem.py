@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import pytest
 
-from canna.sinusoid import NoisySinusoid, train_sample
+from canna.sinusoid import NoisySinusoid, geodesic, train_sample
 
 
 @pytest.fixture
@@ -25,16 +25,16 @@ def test_sample_physical_shape(problem, key):
     assert p.shape == (problem.n_sources, 3)
 
 
-def test_sample_point_shape(problem, key):
-    x = problem.sample_point(key)
+def test_sample_flow_shape(problem, key):
+    x = problem.sample_flow(key)
     assert x.shape == (problem.n_sources, 4)
 
 
-def test_sample_point_matches_physical_to_flow_of_physical(problem, key):
-    """sample_point(key) == chart.forward(sample_physical(key)); confirmed in
-    sinusoid.py: sample_point calls sample_physical(key) with the same key, no split."""
+def test_sample_flow_matches_physical_to_flow_of_physical(problem, key):
+    """sample_flow(key) == chart.forward(sample_physical(key)); confirmed in
+    sinusoid.py: sample_flow calls sample_physical(key) with the same key, no split."""
     p = problem.sample_physical(key)
-    x_direct = problem.sample_point(key)
+    x_direct = problem.sample_flow(key)
     x_via_chart = problem.physical_to_flow(p)
     assert jnp.allclose(x_direct, x_via_chart, atol=1e-4)
 
@@ -331,15 +331,15 @@ def test_geodesic_t1_endpoint_can_differ_from_raw_x_target(problem):
         key = jr.key(seed)
         # mirrors train_sample's split; unpacked in full so a change here breaks loudly
         key_p, key_o, key_x0, key_t = jr.split(key, 4)
-        x0 = problem.sample_point(key_x0)
+        x0 = problem.sample_flow(key_x0)
         sample = train_sample(problem, key)
         # x0 is the one train_sample actually drew, else the rest is vacuous
         assert jnp.allclose(
-            problem.geodesic(sample.t, x0, sample.x_target),
+            geodesic(problem, sample.t, x0, sample.x_target),
             sample.xt,
             atol=1e-4,
         )
-        g1 = problem.geodesic(jnp.array(1.0), x0, sample.x_target)
+        g1 = geodesic(problem, jnp.array(1.0), x0, sample.x_target)
         matched = problem.geometry.assign(x0, sample.x_target)
         assert jnp.allclose(g1, matched, atol=1e-4)
         if not jnp.allclose(g1, sample.x_target, atol=1e-4):

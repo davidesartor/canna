@@ -31,6 +31,15 @@ class TrainSample(NamedTuple):
     f: Float[Array, ""]
 
 
+def geodesic(
+    problem: LisaGB,
+    t: Float[Array, ""],
+    x0: Float[Array, "S 11"],
+    x1: Float[Array, "S 11"],
+) -> Float[Array, "S 11"]:
+    return problem.exp_map(x0, t * problem.log_map(x0, x1))
+
+
 def train_sample(problem: LisaGB, key: Key[Array, ""]) -> TrainSample:
     """Draw one training example: conditioning, a point on the geodesic, its velocity."""
     key_c, key_p, key_o, key_x0, key_t = jr.split(key, 5)
@@ -42,11 +51,12 @@ def train_sample(problem: LisaGB, key: Key[Array, ""]) -> TrainSample:
     y_target = problem.preprocess(problem.clean_signal(p, f), f)
 
     # sample and process flow quantities
-    x0 = problem.sample_point(key_x0, f)
+    x0 = problem.sample_flow(key_x0, f)
     x1 = problem.physical_to_flow(p, f)
     t = jr.uniform(key_t, ())
-    xt = problem.geodesic(t, x0, x1)
-    dx = jax.jacobian(problem.geodesic)(t, x0, x1)
+    path = partial(geodesic, problem)
+    xt = path(t, x0, x1)
+    dx = jax.jacobian(path)(t, x0, x1)
     return TrainSample(xt=xt, dx=dx, t=t, y=y, x_target=x1, y_target=y_target, f=f)
 
 

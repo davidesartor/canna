@@ -119,7 +119,7 @@ if __name__ == "__main__":
         # inject, sample the flow, and map back to physical units
         o = problem.sample_observation(key_n, latent, f)
         y = problem.preprocess(o, f)
-        u0 = jax.vmap(problem.sample_point, in_axes=(0, None))(
+        u0 = jax.vmap(problem.sample_flow, in_axes=(0, None))(
             jr.split(key_n, N_POSTERIOR), f
         )
         post = sample_posterior(problem, flow, u0, y, f)

@@ -9,45 +9,54 @@ class NoisyPoint(eqx.Module):
 
     seed: int = eqx.field(static=True, default=0)
     dim: int = eqx.field(static=True, default=2)
-    noise_std: float = eqx.field(static=True, default=0.1)
 
-    cov: Float[Array, "D D"] = eqx.field(init=False)
-    whitening: Float[Array, "D D"] = eqx.field(init=False)
+    prior_chol: Float[Array, "D D"] = eqx.field(init=False)
+    noise_chol: Float[Array, "D D"] = eqx.field(init=False)
 
     def __post_init__(self):
-        A = jr.normal(jr.key(self.seed), (self.dim, self.dim))
-        self.cov = A @ A.T + 1e-3 * jnp.eye(self.dim)
-        self.whitening = jnp.linalg.inv(jnp.linalg.cholesky(self.cov))
+        key_prior, key_noise = jr.split(jr.key(self.seed))
+        A = jr.normal(key_prior, (self.dim, self.dim))
+        self.prior_chol = jnp.linalg.cholesky(A @ A.T + 1e-3 * jnp.eye(self.dim))
+
+        # unit diagonal, so the noise stays narrow next to the prior
+        B = jr.normal(key_noise, (self.dim, self.dim))
+        C = B @ B.T + 1e-3 * jnp.eye(self.dim)
+        self.noise_chol = jnp.linalg.cholesky(
+            C / jnp.sqrt(jnp.outer(jnp.diag(C), jnp.diag(C)))
+        )
+
+    @property
+    def cov(self) -> Float[Array, "D D"]:
+        return self.prior_chol @ self.prior_chol.T
+
+    @property
+    def noise_cov(self) -> Float[Array, "D D"]:
+        return self.noise_chol @ self.noise_chol.T
 
     def physical_to_flow(self, p: Float[Array, "D"]) -> Float[Array, "D"]:
-        return self.whitening @ p
+        return jnp.linalg.solve(self.prior_chol, p)
 
     def flow_to_physical(self, x: Float[Array, "D"]) -> Float[Array, "D"]:
-        return jnp.linalg.solve(self.whitening, x)
-
-    def exp_map(self, x: Float[Array, "D"], v: Float[Array, "D"]) -> Float[Array, "D"]:
-        return x + v
+        return self.prior_chol @ x
 
     def log_map(
         self, x0: Float[Array, "D"], x1: Float[Array, "D"]
     ) -> Float[Array, "D"]:
         return x1 - x0
 
-    def geodesic(
-        self, t: Float[Array, ""], x0: Float[Array, "D"], x1: Float[Array, "D"]
-    ) -> Float[Array, "D"]:
-        return self.exp_map(x0, t * self.log_map(x0, x1))
+    def exp_map(self, x: Float[Array, "D"], v: Float[Array, "D"]) -> Float[Array, "D"]:
+        return x + v
 
     def sample_physical(self, key: Key[Array, ""]) -> Float[Array, "D"]:
-        return jr.multivariate_normal(key, jnp.zeros(self.dim), self.cov)
+        return self.prior_chol @ jr.normal(key, (self.dim,))
 
-    def sample_point(self, key: Key[Array, ""]) -> Float[Array, "D"]:
-        return self.physical_to_flow(self.sample_physical(key))
+    def sample_flow(self, key: Key[Array, ""]) -> Float[Array, "D"]:
+        return jr.normal(key, (self.dim,))
 
     def sample_observation(
         self, key: Key[Array, ""], p: Float[Array, "D"]
     ) -> Float[Array, "D"]:
-        return p + self.noise_std * jr.normal(key, p.shape)
+        return p + self.noise_chol @ jr.normal(key, (self.dim,))
 
     def preprocess(self, o: Float[Array, "D"]) -> Float[Array, "D"]:
         return self.physical_to_flow(o)
@@ -55,4 +64,5 @@ class NoisyPoint(eqx.Module):
     def log_likelihood(
         self, p: Float[Array, "D"], o: Float[Array, "D"]
     ) -> Float[Array, ""]:
-        return -0.5 * jnp.sum((o - p) ** 2) / self.noise_std**2
+        residual = jnp.linalg.solve(self.noise_chol, o - p)
+        return -0.5 * residual @ residual

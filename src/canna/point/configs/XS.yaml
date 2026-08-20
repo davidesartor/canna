@@ -1,5 +1,5 @@
 problem:
-  noise_std: 0.1
+  dim: 2
 
 network:
   hidden_dim: 128

@@ -245,11 +245,6 @@ class LisaGB(eqx.Module):
     ) -> Float[Array, "S 11"]:
         return self.geometry.log_map(x0, x1)
 
-    def geodesic(
-        self, t: Float[Array, ""], x0: Float[Array, "S 11"], x1: Float[Array, "S 11"]
-    ) -> Float[Array, "S 11"]:
-        return self.exp_map(x0, t * self.log_map(x0, x1))
-
     def sample_physical(
         self, key: Key[Array, ""], f: Float[Array, ""]
     ) -> Float[Array, "S 8"]:
@@ -270,7 +265,7 @@ class LisaGB(eqx.Module):
         phi0 = jr.uniform(keys[7], shape, maxval=2 * jnp.pi)
         return jnp.concat([f0, mc, amp, sky_lon, sky_lat, psi, iota, phi0], axis=-1)
 
-    def sample_point(
+    def sample_flow(
         self, key: Key[Array, ""], f: Float[Array, ""]
     ) -> Float[Array, "S 11"]:
         return self.physical_to_flow(self.sample_physical(key, f), f)

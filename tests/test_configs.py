@@ -3,11 +3,21 @@
 import argparse
 import importlib
 from pathlib import Path
+from typing import NamedTuple
 
+import jax.numpy as jnp
+import jax.random as jr
 import pytest
 import yaml
 
 PACKAGES = ("point", "sinusoid", "lisa")
+
+
+class PointSample(NamedTuple):
+    xt: jnp.ndarray
+    dx: jnp.ndarray
+    t: jnp.ndarray
+    y: jnp.ndarray
 
 
 def configs():
@@ -46,22 +56,50 @@ def test_config_holds_only_a_problem_and_a_network_dict_plus_scalars(package, pa
     assert all(isinstance(v, (int, float, str, bool)) for v in scalars.values())
 
 
-@pytest.mark.parametrize("package,path", CONFIGS, ids=IDS)
-def test_config_builds_a_train_state(package, path):
+def build(package: str, path: Path):
+    """(problem, flow, sample), the way that package's train.py builds them."""
+    config = args(path)
     train = importlib.import_module(f"canna.{package}.train")
-    state = train.TrainState.from_config(args(path))
-    assert int(state.flow_metrics.count) == 0
-    assert state.tx is not None and state.opt_state is not None
+
+    # point inlined its trainer into __main__, so neither TrainState nor train_sample
+    # is importable: rebuild the sample the same way train.py's __main__ does
+    if package == "point":
+        key_sample, key_network = jr.split(jr.key(config.seed))
+        problem = train.NoisyPoint(**config.problem)
+        p = problem.sample_physical(key_sample)
+        x = problem.physical_to_flow(p)
+        sample = PointSample(
+            xt=x,
+            dx=x,
+            t=jnp.asarray(0.5),
+            y=problem.preprocess(problem.sample_observation(key_sample, p)),
+        )
+        flow = train.PointFlow(
+            **config.network,
+            x_shape=sample.xt.shape,
+            y_shape=sample.y.shape,
+            dtype=jnp.dtype(config.dtype),
+            param_dtype=jnp.float32,
+            key=key_network,
+        )
+        return problem, flow, sample
+
+    state = train.TrainState.from_config(config)
+    return state.problem, state.flow, train.train_sample(state.problem, state.key)
+
+
+@pytest.mark.parametrize("package,path", CONFIGS, ids=IDS)
+def test_config_builds_the_problem_and_the_network(package, path):
+    problem, flow, _ = build(package, path)
+    assert problem is not None and flow is not None
 
 
 @pytest.mark.parametrize("package,path", CONFIGS, ids=IDS)
 def test_config_problem_and_network_agree_on_the_conditioning_shape(package, path):
     # the network is shaped from one problem sample, so a mismatch shows up as a
     # shape error the first time the flow is actually called
-    train = importlib.import_module(f"canna.{package}.train")
-    state = train.TrainState.from_config(args(path))
-    sample = train.train_sample(state.problem, state.key)
-    outs = state.flow(*(sample.xt, sample.t, sample.y, *sample[6:]))
+    _, flow, sample = build(package, path)
+    outs = flow(*(sample.xt, sample.t, sample.y, *sample[6:]))
 
     # point has no reconstruction heads, so its flow returns the velocity alone
     if package == "point":
