@@ -23,7 +23,7 @@ def small(n_sources: int = 2):
 def test_sample_physical_and_point_shapes(S):
     problem = small(n_sources=S)
     assert problem.sample_physical(jax.random.key(0)).shape == (S, 3)
-    assert problem.sample_point(jax.random.key(0)).shape == (S, 4)
+    assert problem.sample_flow(jax.random.key(0)).shape == (S, 4)
 
 
 @pytest.mark.parametrize("batch_shape", [(), (4,)])

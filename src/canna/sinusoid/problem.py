@@ -65,11 +65,6 @@ class NoisySinusoid(eqx.Module):
     ) -> Float[Array, "S 4"]:
         return self.geometry.log_map(x0, x1)
 
-    def geodesic(
-        self, t: Float[Array, ""], x0: Float[Array, "S 4"], x1: Float[Array, "S 4"]
-    ) -> Float[Array, "S 4"]:
-        return self.exp_map(x0, t * self.log_map(x0, x1))
-
     def sample_physical(self, key: Key[Array, ""]) -> Float[Array, "S 3"]:
         key_amp, key_freq, key_phase = jr.split(key, 3)
         shape = (self.n_sources, 1)
@@ -83,7 +78,7 @@ class NoisySinusoid(eqx.Module):
         phase = jr.uniform(key_phase, shape, maxval=2 * jnp.pi)
         return jnp.concat([amp, freq, phase], axis=-1)
 
-    def sample_point(self, key: Key[Array, ""]) -> Float[Array, "S 4"]:
+    def sample_flow(self, key: Key[Array, ""]) -> Float[Array, "S 4"]:
         return self.physical_to_flow(self.sample_physical(key))
 
     def clean_signal(self, p: Float[Array, "... S 3"]) -> Float[Array, "... T 2"]:

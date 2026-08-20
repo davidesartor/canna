@@ -17,9 +17,12 @@ and the `MLP`/`MMDiT` backbones) is shared.
 
 - **The problem** (`problem.py`) — an `eqx.Module` holding the priors to draw
   parameters from, the simulator that turns them into an observation, and the
-  preprocessing that makes it a network input. `train_sample(key)` draws
+  preprocessing that makes it a network input.
+- **The training draw** (`train.py`) — `train_sample(problem, key)` draws
   `(p, o)`, forms the conditioning `y`, walks a geodesic from a base point to
   the whitened parameters, and returns the point and the velocity to match.
+  `point/` keeps it inside its trainer script, so only `sinusoid`/`lisa`
+  export it.
 - **The geometry** (`geometries.py`, per package) — where the parameters live.
   Supplies `log_map` / `exp_map`, so the flow steps along the manifold rather
   than through the coordinates. Angles ride a circle (`Spherical(2)`), sky

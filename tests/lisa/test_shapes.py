@@ -34,9 +34,9 @@ def test_sample_physical_shape_multi_source():
     assert p.shape == (5, 8)
 
 
-def test_sample_point_shape_is_eleven_coords():
+def test_sample_flow_shape_is_eleven_coords():
     problem = LisaGB(n_sources=3)
-    x = problem.sample_point(jr.key(0), window(problem))
+    x = problem.sample_flow(jr.key(0), window(problem))
     assert x.shape == (3, 11)
 
 

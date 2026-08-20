@@ -1,11 +1,12 @@
 from jaxtyping import Array
 from pathlib import Path
+import argparse
+import yaml
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
-import orbax.checkpoint as ocp
 import matplotlib
 
 matplotlib.use("Agg")
@@ -15,7 +16,6 @@ import equinox as eqx
 
 from .problem import NoisyPoint
 from .network import PointFlow
-from .train import TrainState, parse_args
 
 ODE_STEPS = 4
 N_POSTERIOR = 1024
@@ -49,20 +49,46 @@ def sample_posterior(
 
 
 if __name__ == "__main__":
-    args = parse_args()
+    # same run .yaml as the trainer, so the flow skeleton comes out identical
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--config", default="B", help="name of a run .yaml")
+    config_parser.add_argument(
+        "--config_root", type=Path, default=Path(__file__).parent / "configs"
+    )
+    config_args, _ = config_parser.parse_known_args()
+
+    parser = argparse.ArgumentParser(parents=[config_parser])
+    parser.add_argument("--output_dir", type=Path, default=Path("outputs"))
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--dtype",
+        default="bfloat16",
+        choices=("bfloat16", "float32"),
+        help="compute dtype for the network; params are kept in float32",
+    )
+
+    with open(config_args.config_root / f"{config_args.config}.yaml") as f:
+        parser.set_defaults(**yaml.safe_load(f))
+    args = parser.parse_args()
 
     out_dir: Path = args.output_dir / f"point-{args.config}"
     corner_dir = out_dir / "corner"
     corner_dir.mkdir(parents=True, exist_ok=True)
 
-    # rebuild the state skeleton, then overwrite its params from the checkpoint
-    state = TrainState.from_config(args)
-    checkpoints = ocp.CheckpointManager(
-        (out_dir / "checkpoints").absolute(),
-        options=ocp.CheckpointManagerOptions(max_to_keep=1),
+    # rebuild the flow skeleton exactly as train.py did, then read its leaves back
+    key_sample, key_network, _ = jr.split(jr.key(args.seed), 3)
+    problem = NoisyPoint(**args.problem)
+    p = problem.sample_physical(key_sample)
+    flow = PointFlow(
+        **args.network,
+        x_shape=problem.physical_to_flow(p).shape,
+        y_shape=problem.preprocess(problem.sample_observation(key_sample, p)).shape,
+        dtype=jnp.dtype(args.dtype),
+        param_dtype=jnp.float32,
+        key=key_network,
     )
-    state, *_ = state.restore_from(checkpoints)
-    problem, flow = state.problem, state.flow
+    # the flow is serialised first, so a flow-only skeleton reads just its leaves
+    flow = eqx.tree_deserialise_leaves(out_dir / "checkpoint.eqx", flow)
 
     labels = [f"$x_{i}$" for i in range(problem.dim)]
     key_pick, key_noise = jr.split(jr.key(args.seed))
@@ -79,7 +105,7 @@ if __name__ == "__main__":
         # inject, sample the flow, and map back to physical units
         o = problem.sample_observation(key_n, latent)
         y = problem.preprocess(o)
-        u0 = jax.vmap(problem.sample_point)(jr.split(key_n, N_POSTERIOR))
+        u0 = jax.vmap(problem.sample_flow)(jr.split(key_n, N_POSTERIOR))
         post = sample_posterior(problem, flow, u0, y)
         samples = np.asarray(jax.vmap(problem.flow_to_physical)(post))
 
