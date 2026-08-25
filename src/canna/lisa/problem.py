@@ -347,9 +347,13 @@ class LisaGB(eqx.Module):
     def snr(
         self, p: Float[Array, "... S 8"], f: Float[Array, ""]
     ) -> Float[Array, "..."]:
+        """Matched-filter snr, rho = sqrt(<h|h>)."""
+        # the noise inner product is <x|y> = 4 Re sum_k x_k y_k^* / (S_k t_obs), so with
+        # power = S_k t_obs / 2 the sum below is <h|h>/2 and needs the factor 2 back.
+        # equivalently rho^2 = 2 [log_likelihood(h) - log_likelihood(0)]
         spectra = self.clean_signal(p, f)
         power = self.noise_psd(self.window_freqs(f)) * self.t_obs / 2.0
-        integrand = jnp.abs(spectra) ** 2 / power
+        integrand = 2.0 * jnp.abs(spectra) ** 2 / power
         return jnp.sqrt(jnp.sum(integrand, axis=(-2, -1)))
 
     def log_likelihood(

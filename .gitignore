@@ -16,3 +16,6 @@ CLAUDE.md
 
 # training runs and local plots
 outputs/
+
+# python 3.13 venv for the jexplore cross-check (jexplore needs >=3.13)
+.venv313/

@@ -62,12 +62,12 @@ def test_log_likelihood_preserves_leading_batch_axis():
 
 
 def test_log_likelihood_gap_to_the_null_model_is_snr_squared():
-    # at o = clean_signal(p): ll(p, o) = 0, and ll(p_silent, o) = -sum|o|^2/power =
-    # -snr(p)**2 because a zero-amplitude source radiates nothing. The gap pins the
-    # matched-filter relationship independent of the shared power normalisation.
+    # at o = clean_signal(p): ll(p, o) = 0, and ll(p_silent, o) = -sum|o|^2/power because
+    # a zero-amplitude source radiates nothing. So the gap is <h|h>/2 and the canonical
+    # rho^2 = 2 [ll(h) - ll(0)] pins snr against the shared power normalisation.
     problem = LisaGB(**SMALL)
     p = problem.sample_physical(jr.key(5), window(problem))
     o = problem.clean_signal(p, window(problem))
     p_silent = p.at[..., 2].set(0.0)
     gap = problem.log_likelihood(p, o, window(problem)) - problem.log_likelihood(p_silent, o, window(problem))
-    assert jnp.allclose(gap, problem.snr(p, window(problem)) ** 2, rtol=1e-4)
+    assert jnp.allclose(2.0 * gap, problem.snr(p, window(problem)) ** 2, rtol=1e-4)
