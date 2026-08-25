@@ -298,18 +298,28 @@ class LisaGB(eqx.Module):
     def noise_psd(self, f: Float[Array, "..."]) -> Float[Array, "... 3"]:
         # first-generation TDI (1.5) noise PSD, stacked A/E/T on the last axis
         # Babak, Hewitson & Petiteau 2021, arXiv:2108.01167
+        #
+        # Fractional frequency, which is what jaxgb's get_tdi returns: a link
+        # measures a doppler shift, so a displacement noise enters it as
+        # (2 pi f / c)^2 in power and an acceleration noise picks up a further
+        # 1/(2 pi f)^4. Writing these as fractional lengths instead (dividing by
+        # the arm rather than by c/2 pi f) leaves the whitening out by
+        # (2 pi f L / c)^2 -- an f^2 tilt across the band, not a constant, so it
+        # would silently re-weight low-frequency sources against high-frequency ones.
         arm_length = self.response.arm_length
         f = jnp.abs(f)
         arm_phase = 2.0 * jnp.pi * arm_length / SPEED_OF_LIGHT * f
         transfer = jnp.cos(arm_phase)
+        doppler = (2.0 * jnp.pi * f / SPEED_OF_LIGHT) ** 2
         optical_metrology = (
-            (self.oms_noise / arm_length) ** 2 * 1e-24 * (1.0 + (0.002 / f) ** 4)
+            self.oms_noise**2 * 1e-24 * (1.0 + (0.002 / f) ** 4) * doppler
         )
         test_mass_acceleration = (
-            (self.acceleration_noise / arm_length) ** 2
+            self.acceleration_noise**2
             * 1e-30
             * (1.0 + (0.0004 / f) ** 2)
             * (1.0 + (f / 0.008) ** 4)
+            * doppler
             / (2.0 * jnp.pi * f) ** 4
         )
         n_ae = 2.0 * test_mass_acceleration * (
@@ -320,7 +330,7 @@ class LisaGB(eqx.Module):
         ) ** 2 + optical_metrology * (1.0 - transfer)
 
         n = jnp.stack([n_ae, n_ae, n_t], axis=-1)
-        tdi15_factor = 4.0 * jnp.sin(arm_phase) ** 2
+        tdi15_factor = 16.0 * jnp.sin(arm_phase) ** 2
         return n * tdi15_factor[..., None]
 
     def sample_observation(
