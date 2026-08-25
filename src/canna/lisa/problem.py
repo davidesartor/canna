@@ -16,6 +16,15 @@ from .constants import EARTH_ORBIT_SPEED, SPEED_OF_LIGHT
 
 MIN_RESPONSE_POINTS = 256  # enough time samples to resolve the orbital modulation
 
+# rho^2 = SKY_AVERAGED_SNR_SQUARED * amplitude^2 * t_obs / sky_averaged_sensitivity(f) for a
+# monochromatic source averaged over sky, polarisation, inclination and initial phase. The
+# frequency dependence is carried by the sensitivity; this constant is the leftover O(1) that
+# depends on how the response and the sensitivity are each normalised, so it is measured against
+# our own `snr` rather than taken from a paper -- see tests/lisa/test_amplitude_prior.py, which
+# re-derives it by Monte Carlo. It is flat to 0.1% below ~1.5 mHz and drifts ~7% by 12 mHz, which
+# is the Robson-Cornish-Liu (1 + 0.6 x^2) approximation running out, not the response.
+SKY_AVERAGED_SNR_SQUARED = 3.225
+
 
 class LisaGB(eqx.Module):
     """Galactic binaries seen by LISA in one sliding frequency window, as an unordered set."""
@@ -39,7 +48,11 @@ class LisaGB(eqx.Module):
     # white dwarf component masses, from which the chirp mass prior is built
     mass_range: tuple[float, float] = eqx.field(static=True, default=(0.15, 1.4))
     f0_range: tuple[float, float] = eqx.field(static=True, default=(1e-4, 12.0e-3))
-    a_range: tuple[float, float] = eqx.field(static=True, default=(1e-24, 1e-22))
+    # the amplitude prior is a matched-filter snr range, not a fixed amplitude box: the same
+    # amplitude is a very different source at 0.1 and at 10 mHz, so a fixed box would train on
+    # undetectable sources at one end of the band and skip the loud ones at the other. This is
+    # how Strub et al. 2022 (arXiv:2204.04467) set their amplitude search box too.
+    snr_range: tuple[float, float] = eqx.field(static=True, default=(7.0, 1000.0))
 
     # built once here: its whitening quadrature must not be re-run under every trace
     chirp_mass_prior: ChirpMass = eqx.field(init=False)
@@ -184,7 +197,7 @@ class LisaGB(eqx.Module):
     ) -> Float[Array, "... S 11"]:
         f0, mc, amp, sky_lon, sky_lat, psi, iota, phi0 = jnp.split(p, 8, axis=-1)
         log_f = jnp.log(jnp.stack(self.f0_window(f)))
-        log_a = jnp.log(jnp.asarray(self.a_range))
+        log_a = jnp.log(jnp.stack(self.a_window(f)))
 
         # whiten each log block, lift the two angle pairs onto their spheres and
         # the initial phase onto its circle
@@ -214,7 +227,7 @@ class LisaGB(eqx.Module):
         self, x: Float[Array, "... S 11"], f: Float[Array, ""]
     ) -> Float[Array, "... S 8"]:
         log_f = jnp.log(jnp.stack(self.f0_window(f)))
-        log_a = jnp.log(jnp.asarray(self.a_range))
+        log_a = jnp.log(jnp.stack(self.a_window(f)))
         f, m, a, sx, sy, sz, ox, oy, oz, cos, sin = jnp.split(x, 11, axis=-1)
 
         f0 = jnp.exp((f * (log_f[1] - log_f[0]) + log_f.sum()) / 2)
@@ -251,7 +264,7 @@ class LisaGB(eqx.Module):
         keys = jr.split(key, 8)
         shape = (self.n_sources, 1)
         log_f = jnp.log(jnp.stack(self.f0_window(f)))
-        log_a = jnp.log(jnp.asarray(self.a_range))
+        log_a = jnp.log(jnp.stack(self.a_window(f)))
 
         f0 = jnp.exp(jr.uniform(keys[0], shape, minval=log_f[0], maxval=log_f[1]))
         mc = eqx.filter_vmap(self.chirp_mass_prior)(jr.split(keys[1], self.n_sources))
@@ -295,6 +308,58 @@ class LisaGB(eqx.Module):
 
         return jnp.vectorize(combine, signature="(s,d)->(f,c)")(p)
 
+    def single_link_noise(
+        self, f: Float[Array, "..."]
+    ) -> tuple[Float[Array, "..."], Float[Array, "..."]]:
+        """Displacement noises of one link: optical metrology and test-mass acceleration.
+
+        In m^2/Hz and m^2 s^-4/Hz respectively, before any interferometric response. Both
+        `noise_psd` and `sky_averaged_sensitivity` are built from these, so the two cannot
+        drift apart when `oms_noise` or `acceleration_noise` change.
+        """
+        f = jnp.abs(f)
+        optical_metrology = self.oms_noise**2 * 1e-24 * (1.0 + (0.002 / f) ** 4)
+        test_mass_acceleration = (
+            self.acceleration_noise**2
+            * 1e-30
+            * (1.0 + (0.0004 / f) ** 2)
+            * (1.0 + (f / 0.008) ** 4)
+        )
+        return optical_metrology, test_mass_acceleration
+
+    def sky_averaged_sensitivity(self, f: Float[Array, "..."]) -> Float[Array, "..."]:
+        """One-sided sky-averaged strain sensitivity, Robson, Cornish & Liu 2019 eq. 13.
+
+        arXiv:1803.01944. This is the response-divided-out companion to `noise_psd`: the
+        latter whitens the data, this one says how loud a source of a given amplitude is,
+        and it is only ever used to set the amplitude prior. Its `1 + 0.6 (f/f_*)^2`
+        approximation is what makes `SKY_AVERAGED_SNR_SQUARED` drift above ~5 mHz.
+        """
+        arm_length = self.response.arm_length
+        f = jnp.abs(f)
+        f_star = SPEED_OF_LIGHT / (2.0 * jnp.pi * arm_length)
+        p_oms, p_acc = self.single_link_noise(f)
+        return (
+            (10.0 / (3.0 * arm_length**2))
+            * (p_oms + 4.0 * p_acc / (2.0 * jnp.pi * f) ** 4)
+            * (1.0 + 0.6 * (f / f_star) ** 2)
+        )
+
+    def a_window(
+        self, f: Float[Array, ""]
+    ) -> tuple[Float[Array, ""], Float[Array, ""]]:
+        """Amplitude bounds that `snr_range` implies at the window's centre frequency.
+
+        The window is narrow enough that the sensitivity is flat across it, so the bound is
+        taken at the centre rather than at each source's own f0 -- which also keeps the flow
+        whitening a function of the conditioning window alone.
+        """
+        scale = jnp.sqrt(
+            self.sky_averaged_sensitivity(f)
+            / (SKY_AVERAGED_SNR_SQUARED * self.t_obs)
+        )
+        return self.snr_range[0] * scale, self.snr_range[1] * scale
+
     def noise_psd(self, f: Float[Array, "..."]) -> Float[Array, "... 3"]:
         # first-generation TDI (1.5) noise PSD, stacked A/E/T on the last axis
         # Babak, Hewitson & Petiteau 2021, arXiv:2108.01167
@@ -311,17 +376,9 @@ class LisaGB(eqx.Module):
         arm_phase = 2.0 * jnp.pi * arm_length / SPEED_OF_LIGHT * f
         transfer = jnp.cos(arm_phase)
         doppler = (2.0 * jnp.pi * f / SPEED_OF_LIGHT) ** 2
-        optical_metrology = (
-            self.oms_noise**2 * 1e-24 * (1.0 + (0.002 / f) ** 4) * doppler
-        )
-        test_mass_acceleration = (
-            self.acceleration_noise**2
-            * 1e-30
-            * (1.0 + (0.0004 / f) ** 2)
-            * (1.0 + (f / 0.008) ** 4)
-            * doppler
-            / (2.0 * jnp.pi * f) ** 4
-        )
+        p_oms, p_acc = self.single_link_noise(f)
+        optical_metrology = p_oms * doppler
+        test_mass_acceleration = p_acc * doppler / (2.0 * jnp.pi * f) ** 4
         n_ae = 2.0 * test_mass_acceleration * (
             1.0 + transfer + transfer**2
         ) + 0.5 * optical_metrology * (2.0 + transfer)
