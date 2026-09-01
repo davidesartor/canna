@@ -34,7 +34,7 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
 # the CNES egress proxy re-signs TLS, so uv's bundled roots reject it; this points
 # uv at the system trust store, which carries the CNES CA
-export UV_NATIVE_TLS=1
+export UV_SYSTEM_CERTS=1   # UV_NATIVE_TLS on uv < 0.12
 
 echo "host      : $(hostname)"
 echo "job       : ${SLURM_JOB_ID:-none}"
