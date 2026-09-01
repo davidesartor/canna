@@ -52,9 +52,18 @@ class MultiStreamAttention(eqx.Module):
         )
         q, k = q * rms(q), k * rms(k)
 
+        # cuDNN flash attention tiles the softmax instead of materialising the N x N
+        # logits, and that matrix -- batch * heads * tokens^2, in f32 whatever the
+        # compute dtype -- is what caps the batch size. It only accepts fp16/bf16 on a
+        # gpu, and implementation=None still falls back to xla, so choose explicitly.
+        flash = jax.default_backend() == "gpu" and q.dtype in (
+            jnp.bfloat16,
+            jnp.float16,
+        )
+
         # dot_product_attention wants a leading batch axis
         h = jax.nn.dot_product_attention(
-            q[None], k[None], v[None], implementation="xla"
+            q[None], k[None], v[None], implementation="cudnn" if flash else "xla"
         )[0]
         h = rearrange(h, "n h d -> n (h d)")
 
