@@ -15,6 +15,9 @@ import optax
 import orbax.checkpoint as ocp
 import equinox as eqx
 from tqdm import tqdm
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from .problem import LisaGB
@@ -315,16 +318,28 @@ if __name__ == "__main__":
     state = TrainState.from_config(args)
     state, start_epoch, loss_history = state.restore_from(checkpoints)
     epochs = args.total_steps // args.log_interval
-    if loss_history is None:
-        loss_history = np.full((epochs, args.log_interval, 3), jnp.nan)
+
+    # the checkpoint carries the (epochs, log_interval) grid it was written on, and
+    # total_steps or log_interval may well have changed since -- extending a run is how
+    # you spend more wall time -- so re-allocate at the current shape and copy the
+    # overlap in, rather than indexing off the end of the restored array
+    restored, loss_history = loss_history, np.full(
+        (epochs, args.log_interval, 3), np.nan
+    )
+    if restored is not None:
+        rows = min(restored.shape[0], epochs)
+        cols = min(restored.shape[1], args.log_interval)
+        loss_history[:rows, :cols] = restored[:rows, :cols]
 
     pbar = tqdm(range(start_epoch, epochs), initial=start_epoch, total=epochs)
     for epoch in pbar:
         aux_weight = aux_weight_schedule(epoch, epochs, args.warmup_frac)
 
-        # one fused XLA dispatch for the whole epoch, instead of log_interval separate ones
+        # one fused XLA dispatch for the whole epoch, instead of log_interval separate
+        # ones. aux_weight goes in as an array, not a python float: filter_jit treats
+        # non-arrays as static, so a float re-traces the whole epoch every time it changes
         state, epoch_losses = state.train_epoch(
-            aux_weight, args.batch_size, args.log_interval
+            jnp.asarray(aux_weight), args.batch_size, args.log_interval
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
 

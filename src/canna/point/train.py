@@ -13,6 +13,9 @@ import numpy as np
 import optax
 import equinox as eqx
 from tqdm import tqdm
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from .problem import NoisyPoint
