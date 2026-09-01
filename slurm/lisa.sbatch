@@ -32,6 +32,13 @@ CONFIG="${1:-B}"
 # one JAX process, one GPU; let it grow into the card rather than preallocating
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
+# XLA folds the cuDNN attention kernel into a CUDA graph, and on these nodes building
+# that graph fails outright -- cudaGraphAddMemsetNode returns "invalid argument", which
+# killed job 10876803 two minutes in. An empty list switches command buffers off; the
+# same kernels still run, they are just launched one at a time instead of replayed as a
+# graph, and at batch 256 the launch overhead is lost in the noise.
+export XLA_FLAGS="--xla_gpu_enable_command_buffer="
+
 # the CNES egress proxy re-signs TLS, so uv's bundled roots reject it; this points
 # uv at the system trust store, which carries the CNES CA
 export UV_SYSTEM_CERTS=1   # UV_NATIVE_TLS on uv < 0.12
@@ -39,7 +46,7 @@ export UV_SYSTEM_CERTS=1   # UV_NATIVE_TLS on uv < 0.12
 echo "host      : $(hostname)"
 echo "job       : ${SLURM_JOB_ID:-none}"
 echo "config    : ${CONFIG}"
-nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
+nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader || true
 
 # --extra cuda: without it uv resolves plain jax and this trains on the CPU.
 # --frozen: use the lockfile as-is, so the job never needs to reach the network --
