@@ -33,4 +33,8 @@ echo "job       : ${SLURM_JOB_ID:-none}"
 echo "config    : ${CONFIG}"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
-srun uv run python -m canna.lisa.train --config "${CONFIG}"
+# --extra cuda: without it uv resolves plain jax and this trains on the CPU.
+# --frozen: use the lockfile as-is, so the job never needs to reach the network --
+# compute nodes commonly cannot. Run `uv sync --extra cuda` once on a login/visu
+# node first, so the venv is already built when the job starts.
+srun uv run --extra cuda --frozen python -m canna.lisa.train --config "${CONFIG}"
