@@ -16,6 +16,10 @@
 #SBATCH --gres=gpu:1
 #SBATCH --partition=gpu_a100
 #SBATCH --account=lisa
+# the default QOS (cpu_2022_1280) is rejected by the GPU partitions, which take
+# only normal or gpu_all; check `sacctmgr show assoc user=$USER format=qos` if
+# gpu_all is refused too
+#SBATCH --qos=gpu_all
 # gpu_a100 / gpu_h100 cap at 1 day; gpu_std at 3; gpu_aivip_max at 10 on the same
 # A100 nodes. Resuming works, so a 1-day chunk plus re-submission is equivalent to a
 # long allocation -- switch to gpu_aivip_max only if you are entitled to it.
@@ -27,6 +31,10 @@ CONFIG="${1:-B}"
 
 # one JAX process, one GPU; let it grow into the card rather than preallocating
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
+
+# the CNES egress proxy re-signs TLS, so uv's bundled roots reject it; this points
+# uv at the system trust store, which carries the CNES CA
+export UV_NATIVE_TLS=1
 
 echo "host      : $(hostname)"
 echo "job       : ${SLURM_JOB_ID:-none}"
