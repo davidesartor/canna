@@ -2,8 +2,14 @@ problem:
   n_sources: 4
   t_obs: 63115200.0  # 2 years
   sampling_step: 0.25
-  wdm_freq_bands: 256
-  wdm_times: 32
+  # a galactic binary is compact in frequency and spread over the whole baseline, so
+  # the conditioning image is almost all frequency: 2 is the fewest time rows the WDM
+  # lattice allows (its time step is wdm_times//2 bins, and the transform rejects an
+  # odd count). window_bins = wdm_freq_bands * wdm_times//2 counts complex rfft bins,
+  # so the image is 2 x 4096 real pixels over 4096 complex ones -- the same 8192 real
+  # numbers a 32 x 256 image carried, laid out as a spectrum instead of a spectrogram
+  wdm_freq_bands: 4096
+  wdm_times: 2
   patch_downsample: 2  # == 2**patch_stages below
   oms_noise: 15.0
   acceleration_noise: 3.0
