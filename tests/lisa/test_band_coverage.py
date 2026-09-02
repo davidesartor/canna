@@ -1,11 +1,14 @@
 """The sliding window covers the f0 it draws from, and response_points covers a source."""
 
+import math
+
 import jax
 import jax.numpy as jnp
 import pytest
 
 from canna.lisa import LisaGB
 from canna.lisa.priors import fdot_from_chirp_mass
+from canna.lisa.problem import response_span
 from ._helpers import window
 
 
@@ -78,11 +81,46 @@ def test_response_points_covers_the_annual_doppler_and_the_fdot_drift():
     assert problem.response_points / 2.0 > doppler_bins + drift_bins
 
 
-def test_a_too_narrow_response_window_for_the_chirp_is_rejected_at_init():
+def test_a_response_window_narrower_than_the_chirp_caps_the_f0_prior():
     # the loudest chirp the prior allows sits at the top of the f0 band with the
-    # heaviest pair; at a two-year baseline it needs far more than 256 bins
-    with pytest.raises(AssertionError, match="response_points"):
-        LisaGB(n_sources=1, t_obs=TWO_YEARS, response_points=256)
+    # heaviest pair; at a two-year baseline it needs far more than 256 bins, so a
+    # 256-bin budget lowers f0_range[1] to the band it can hold instead of failing
+    asked = (1e-4, 12.0e-3)
+    with pytest.warns(UserWarning, match="response_points=256"):
+        problem = LisaGB(
+            n_sources=1, t_obs=TWO_YEARS, response_points=256, f0_range=asked
+        )
+
+    assert problem.f0_range[0] == asked[0]
+    assert problem.f0_range[1] < asked[1]
+    assert problem.response_points == 256
+
+    # the cap is tight: the top of the capped band fills the window exactly, and the
+    # next representable f0 above it would already overrun it
+    mc, hi = problem.chirp_mass_range[1], problem.f0_range[1]
+    assert response_span(hi, mc, TWO_YEARS) == 256
+    assert response_span(math.nextafter(hi, 1.0), mc, TWO_YEARS) > 256
+
+
+def test_a_budget_leaving_no_band_at_all_is_rejected_at_init():
+    # capping can only lower f0_range[1]; if it lands under f0_range[0] there is no
+    # prior left to sample, and that is an error rather than a warning
+    with pytest.raises(AssertionError, match="no band at all"):
+        LisaGB(
+            n_sources=1,
+            t_obs=TWO_YEARS,
+            response_points=256,
+            f0_range=(9.0e-3, 12.0e-3),
+        )
+
+
+def test_an_ample_response_window_leaves_the_f0_prior_alone():
+    # the budget only ever binds from above: one wider than the band asks for nothing
+    asked = (1e-4, 12.0e-3)
+    problem = LisaGB(
+        n_sources=1, t_obs=TWO_YEARS, response_points=1024, f0_range=asked
+    )
+    assert problem.f0_range == asked
 
 
 def test_the_local_response_segment_decays_to_its_edges():

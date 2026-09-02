@@ -1,5 +1,6 @@
 from typing import Optional
 import math
+import warnings
 
 from jaxtyping import Array, Complex, Float, Int, Key
 import jax
@@ -26,6 +27,59 @@ MIN_RESPONSE_POINTS = 256  # enough time samples to resolve the orbital modulati
 SKY_AVERAGED_SNR_SQUARED = 3.225
 
 
+def response_span(f0: float, chirp_mass: float, t_obs: float) -> int:
+    """Bins the response of a source at f0 covers.
+
+    The window is centred on f0, so half of it has to hold the annual doppler sideband
+    plus the whole (upward) chirp drift, and the span is twice that.
+    """
+    drift = float(fdot_from_chirp_mass(chirp_mass, f0)) * t_obs
+    doppler = f0 * EARTH_ORBIT_SPEED / SPEED_OF_LIGHT
+    return 2 * math.ceil((doppler + drift) * t_obs)
+
+
+def max_f0(response_points: int, chirp_mass: float, t_obs: float) -> float:
+    """Highest f0 whose `response_span` still fits in a `response_points` window.
+
+    The inverse of `response_span` at fixed chirp mass. Writing the chirp as
+    fdot = K Mc^(5/3) f0^(11/3) and the doppler as beta f0, a budget of N bins asks for
+    the root of
+
+        beta f0 + K Mc^(5/3) t_obs f0^(11/3) = N / (2 t_obs)
+
+    which in u = f0^(1/3) is a degree-11 trinomial, so it has no solution in radicals and
+    is taken numerically here. Each term alone does invert, giving the doppler-only root
+    N c / (2 t_obs v) and the chirp-only root (N / 2 K Mc^(5/3) t_obs^2)^(3/11). The true
+    root sits below both, and the left side is convex and increasing, so Newton started at
+    the smaller of the two descends monotonically onto it.
+
+    Note how differently the two scale: the doppler root is linear in N, the chirp one goes
+    as N^(3/11), so once the chirp dominates -- which it does across most of the LISA band --
+    quadrupling the window buys only 45% more bandwidth.
+    """
+    # `needed` rounds the span up to a power of two, so a budget that is not one buys
+    # nothing above the power of two below it
+    budget = 1 << (response_points.bit_length() - 1)
+    beta = EARTH_ORBIT_SPEED / SPEED_OF_LIGHT
+    a = float(fdot_from_chirp_mass(chirp_mass, 1.0)) * t_obs
+    b = (budget // 2) / t_obs
+
+    f0 = min(b / beta, (b / a) ** (3 / 11))
+    for _ in range(64):
+        step = (beta * f0 + a * f0 ** (11 / 3) - b) / (
+            beta + (11 / 3) * a * f0 ** (8 / 3)
+        )
+        f0 -= step
+        if abs(step) <= 1e-14 * f0:
+            break
+
+    # the span lands exactly on the budget at the root, so the last ulp of the solve is
+    # what decides which side of the ceil() it falls on. Walk down until it agrees.
+    while response_span(f0, chirp_mass, t_obs) > budget:
+        f0 = math.nextafter(f0, 0.0)
+    return f0
+
+
 class LisaGB(eqx.Module):
     """Galactic binaries seen by LISA in one sliding frequency window, as an unordered set."""
 
@@ -40,13 +94,16 @@ class LisaGB(eqx.Module):
     orbit: lisaorbits.Orbits = eqx.field(
         static=True, default=lisaorbits.EqualArmlengthOrbits()
     )
-    # None sizes the response window from t_obs and the priors
+    # None sizes the response window from t_obs and the priors; giving it instead makes
+    # the window the budget and caps f0_range[1] at the band it can hold
     response_points: Optional[int] = eqx.field(static=True, default=None)
     oms_noise: float = eqx.field(static=True, default=15.0)
     acceleration_noise: float = eqx.field(static=True, default=3.0)
 
     # white dwarf component masses, from which the chirp mass prior is built
     mass_range: tuple[float, float] = eqx.field(static=True, default=(0.15, 1.4))
+    # the upper end is a request, not a promise: a given response_points lowers it to
+    # whatever the doppler sideband and the chirp drift leave room for
     f0_range: tuple[float, float] = eqx.field(static=True, default=(1e-4, 12.0e-3))
     # the amplitude prior is a matched-filter snr range, not a fixed amplitude box: the same
     # amplitude is a very different source at 0.1 and at 10 mHz, so a fixed box would train on
@@ -77,24 +134,58 @@ class LisaGB(eqx.Module):
             )
         )
 
-        # the response is response_points bins wide and centred on f0, so half of it
-        # has to hold the annual doppler sideband plus the whole (upward) chirp drift.
-        # the DC-straddle bound below caps it from the other side, and the two cross
-        # over at short baselines, so this cannot be a fixed default
-        drift = self.fdot_range[1] * self.t_obs
-        doppler = self.f0_range[1] * EARTH_ORBIT_SPEED / SPEED_OF_LIGHT
-        span = 2 * math.ceil((doppler + drift) * self.t_obs)
-        needed = 1 << (max(span, MIN_RESPONSE_POINTS) - 1).bit_length()
-
+        # the window and the band it can hold determine each other, and which way round
+        # depends on which one is actually free. Left to itself the window follows the
+        # priors; pinned to what a GPU can afford, the priors follow the window instead
         if self.response_points is None:
-            self.response_points = needed
+            span = response_span(
+                self.f0_range[1], self.chirp_mass_range[1], self.t_obs
+            )
+            self.response_points = 1 << (
+                max(span, MIN_RESPONSE_POINTS) - 1
+            ).bit_length()
+        else:
+            if self.response_points < MIN_RESPONSE_POINTS:
+                # the floor is what the auto-sizing picks, not a hard bound: a window
+                # this narrow still carries the right total power, but it samples the
+                # response's own modulation FFT critically rather than generously, so
+                # per-bin amplitudes pick up aliasing -- ~10-25% at the top of the band
+                # a 16-bin window can hold, against a 1024-bin reference
+                warnings.warn(
+                    f"response_points={self.response_points} is below the "
+                    f"{MIN_RESPONSE_POINTS}-bin floor the auto-sizing would pick, so "
+                    f"the orbital modulation is critically sampled and per-bin "
+                    f"amplitudes are only approximate. Total power is unaffected.",
+                    stacklevel=2,
+                )
+            ceiling = max_f0(self.response_points, self.chirp_mass_range[1], self.t_obs)
+            if ceiling < self.f0_range[1]:
+                warnings.warn(
+                    f"response_points={self.response_points} holds a "
+                    f"Mc={self.chirp_mass_range[1]:.2f}Msun source only up to "
+                    f"{ceiling:.4e}Hz over t_obs={self.t_obs:.3e}s, so the f0 prior "
+                    f"stops there rather than at {self.f0_range[1]:.4e}Hz. "
+                    f"Raise response_points to train on the whole band.",
+                    stacklevel=2,
+                )
+                self.f0_range = (self.f0_range[0], ceiling)
+            assert self.f0_range[0] < self.f0_range[1], (
+                f"response_points={self.response_points} leaves no band at all: it "
+                f"holds a Mc={self.chirp_mass_range[1]:.2f}Msun source only up to "
+                f"{ceiling:.4e}Hz over t_obs={self.t_obs:.3e}s, at or below "
+                f"f0_range[0]={self.f0_range[0]:.4e}Hz."
+            )
 
+        # whichever way round it went, the window has to hold the band it ended up with.
+        # the floor is deliberately not applied here: it picks a default, and an
+        # explicit budget below it is the caller's call, warned about above
+        span = response_span(self.f0_range[1], self.chirp_mass_range[1], self.t_obs)
+        needed = 1 << (max(span, 1) - 1).bit_length()
         assert needed <= self.response_points, (
             f"response_points={self.response_points} too narrow for a "
             f"Mc={self.chirp_mass_range[1]:.2f}Msun source at "
             f"f0_max={self.f0_range[1]:.1e}Hz over t_obs={self.t_obs:.3e}s: "
-            f"it needs {needed} bins. "
-            f"Raise response_points, or lower f0_range[1]/mass_range[1]."
+            f"it needs {needed} bins."
         )
         self.response = jaxgb.JaxGB(
             self.orbit,
