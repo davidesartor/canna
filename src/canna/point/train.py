@@ -13,15 +13,19 @@ import numpy as np
 import optax
 import equinox as eqx
 from tqdm import tqdm
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
 from .problem import NoisyPoint
 from .network import PointFlow
 
 if __name__ == "__main__":
+    # headless: these run on cluster nodes with no display. Selecting the backend at
+    # module level instead would hijack it for anything that merely imports the package
+    # -- canna.lisa re-exports train_sample from here, so `from canna.lisa import LisaGB`
+    # was silently switching notebooks to Agg and swallowing their figures.
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
 
     class TrainSample(NamedTuple):
         xt: Float[Array, "D"]
