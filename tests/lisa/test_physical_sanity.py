@@ -44,13 +44,12 @@ def test_clean_signal_frequency_axis_is_even_and_wdm_aligned():
     o = problem.clean_signal(p, window(problem))
     n_freq = o.shape[-2]
     assert n_freq % 2 == 0
-    block = problem.wdm_freq_bands * problem.patch_downsample
-    assert (n_freq // 2) % block == 0
+    assert n_freq == problem.wdm_freq_bands * (problem.wdm_times // 2)
 
 
 def test_clean_signal_frequency_axis_independent_of_sampling_step():
-    # the F axis is sized in clean_signal from f0_range/t_obs/response_points/
-    # wdm_freq_bands/patch_downsample; sampling_step is never referenced there.
+    # the F axis is sized in clean_signal from f0_range/t_obs/response_points;
+    # sampling_step is never referenced there.
     p_key = jr.key(43)
     fine = LisaGB(n_sources=1, sampling_step=1.0)
     coarse = LisaGB(n_sources=1, sampling_step=20.0)
@@ -130,7 +129,7 @@ def test_orientation_is_uniform_on_the_sphere():
 
 def test_clean_signal_sums_over_its_sources():
     problem = LisaGB(
-        n_sources=3, t_obs=1.0e6, wdm_freq_bands=128, f0_range=(3.0e-3, 3.2e-3)
+        n_sources=3, t_obs=1.0e6, f0_range=(3.0e-3, 3.2e-3)
     )
     p = problem.sample_physical(jr.key(12), window(problem))
     total = problem.clean_signal(p, window(problem))
