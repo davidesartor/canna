@@ -72,7 +72,8 @@ def test_sample_physical_columns_respect_declared_ranges_and_angle_domains():
     mc_lo, mc_hi = problem.chirp_mass_range
     assert jnp.all((f0 >= problem.f0_range[0]) & (f0 <= problem.f0_range[1]))
     assert jnp.all((chirp_mass >= mc_lo) & (chirp_mass <= mc_hi))
-    assert jnp.all((amp >= problem.a_range[0]) & (amp <= problem.a_range[1]))
+    amp_lo, amp_hi = problem.a_window(window(problem))
+    assert jnp.all((amp >= amp_lo) & (amp <= amp_hi))
     assert jnp.all((sky_azimuth >= 0) & (sky_azimuth < 2 * jnp.pi))
     assert jnp.all((sky_latitude >= -jnp.pi / 2) & (sky_latitude <= jnp.pi / 2))
     assert jnp.all((orient_azimuth >= 0) & (orient_azimuth < 2 * jnp.pi))

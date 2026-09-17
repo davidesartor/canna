@@ -19,7 +19,7 @@ SHIPPED = dict(
     wdm_times=32,
     patch_downsample=2,
     f0_range=(1.0e-4, 12.0e-3),
-    a_range=(1.0e-24, 1.0e-22),
+    snr_range=(7.0, 1000.0),
 )
 
 
