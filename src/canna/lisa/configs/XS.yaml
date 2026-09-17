@@ -2,11 +2,11 @@ problem:
   n_sources: 4
   t_obs: 63115200.0
   sampling_step: 0.25
-  # response_points autosizes to 1024 based on full f0 range
+  response_points: 16
   oms_noise: 15.0
   acceleration_noise: 3.0
   mass_range: [0.15, 1.4]
-  f0_range: [1.0e-4, 12.0e-3]
+  f0_range: [1.0e-4, 12.0e-3] # 16 response points truncate it to [1.0e-4, 1.3e-3]
   snr_range: [7.0, 1000.0]
 
 network:

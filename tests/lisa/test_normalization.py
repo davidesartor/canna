@@ -1,6 +1,5 @@
 """With the noise variance normalised as psd * t_obs / 2.0 (no sampling_step factor),
-snr, sample_observation, and preprocess are all exactly invariant to sampling_step, and
-snr is additionally invariant to how wide a window wdm_freq_bands makes."""
+snr, sample_observation, and preprocess are all exactly invariant to sampling_step."""
 
 import jax.numpy as jnp
 import jax.random as jr
@@ -17,23 +16,6 @@ def test_snr_invariant_to_sampling_step():
     p = fine.sample_physical(p_key, f)
     assert float(fine.snr(p, f)) > 0.0
     assert jnp.allclose(fine.snr(p, f), coarse.snr(p, f), atol=1e-6, rtol=1e-6)
-
-
-def test_snr_invariant_to_the_window_width():
-    # snr sums |clean_signal|**2 / var over the whole window; a wider window only adds
-    # bins the source writes nothing into (clean_signal only ever fills response_points
-    # bins around each source's kmin), so it must not move the sum. both windows start
-    # at the same index, so the wide one strictly contains the narrow one
-    common = dict(n_sources=1, t_obs=1.0e6, f0_range=(3.0e-3, 3.2e-3))
-    narrow = LisaGB(wdm_freq_bands=64, **common)
-    wide = LisaGB(wdm_freq_bands=128, **common)
-    f_narrow, f_wide = window(narrow), window(wide)
-    assert int(narrow.window_start(f_narrow)) == int(wide.window_start(f_wide))
-
-    p = jnp.array([[3.1e-3, 0.3, 1e-22, 1.0, 0.3, 2.0, 0.5, 0.0]])
-    assert narrow.clean_signal(p, f_narrow).shape != wide.clean_signal(p, f_wide).shape
-    assert float(narrow.snr(p, f_narrow)) > 0.0
-    assert jnp.allclose(narrow.snr(p, f_narrow), wide.snr(p, f_wide), rtol=1e-6)
 
 
 def test_sample_observation_noisy_invariant_to_sampling_step():

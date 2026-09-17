@@ -16,8 +16,6 @@ SMALL = dict(
     n_sources=2,
     t_obs=1.0e6,
     sampling_step=0.25,
-    wdm_freq_bands=64,
-    patch_downsample=4,
     f0_range=(3.0e-3, 3.2e-3),
 )
 
@@ -114,14 +112,14 @@ def test_preprocess_preserves_leading_batch_axis():
     assert img.shape[-1] == 3
 
 
-def test_preprocess_time_axis_divisible_by_patch_downsample():
-    # the window is wdm_freq_bands * wdm_times // 2 bins wide, so the image time axis is
-    # wdm_times, which __post_init__ forces to be a multiple of patch_downsample
+def test_preprocess_time_axis_is_two_rows():
+    # the image is wdm_times x wdm_freq_bands, and wdm_times is pinned at 2: the one
+    # patch stage of LisaFlow folds it into a single token row
     problem = LisaGB(n_sources=1)
     p = problem.sample_physical(jr.key(48), window(problem))
     o = problem.clean_signal(p, window(problem))
     img = problem.preprocess(o, window(problem))
-    assert img.shape[-3] % problem.patch_downsample == 0
+    assert img.shape[-3] == 2
 
 
 def test_train_sample_shapes_line_up():

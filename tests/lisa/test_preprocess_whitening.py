@@ -14,7 +14,7 @@ def test_whitening_flattens_the_noise_to_unit_variance():
     # the whitening power is noise_psd(f) * t_obs / 2, so dividing the injected
     # noise by its sqrt leaves a unit-variance field
     problem = LisaGB(
-        n_sources=3, t_obs=1.0e6, wdm_freq_bands=64, f0_range=(3.0e-3, 3.2e-3)
+        n_sources=3, t_obs=1.0e6, f0_range=(3.0e-3, 3.2e-3)
     )
     p = problem.sample_physical(jr.key(0), window(problem))
     clean = problem.clean_signal(p, window(problem))

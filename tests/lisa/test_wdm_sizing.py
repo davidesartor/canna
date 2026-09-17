@@ -15,9 +15,6 @@ SHIPPED = dict(
     n_sources=1,
     t_obs=63115200.0,
     sampling_step=0.25,
-    wdm_freq_bands=256,
-    wdm_times=32,
-    patch_downsample=2,
     f0_range=(1.0e-4, 12.0e-3),
     snr_range=(7.0, 1000.0),
 )
@@ -56,26 +53,24 @@ def test_wdm_shape_invariants_hold_across_a_range_of_observation_baselines():
             problem.clean_signal(p, window(problem)), window(problem)
         )
         assert img.shape == (problem.wdm_times, problem.wdm_freq_bands, 3)
-        assert img.shape[-3] % problem.patch_downsample == 0
+        assert img.shape[-3] == 2
 
 
 def test_conditioning_image_shape_at_the_shipped_two_year_config():
-    # regression pin for LisaGB-MMDiT-B.yaml: t_obs=2yr, wdm_times=32,
-    # wdm_freq_bands=256, patch_downsample=2, response_points auto-sized
+    # regression pin for B.yaml: t_obs=2yr, response_points auto-sized to 1024, so
+    # the window is 4096 bins and the image 2 x 4096
     problem = LisaGB(**SHIPPED)
     p = problem.sample_physical(jr.key(60), window(problem))
     o = problem.clean_signal(p, window(problem))
     img = problem.preprocess(o, window(problem))
     assert problem.response_points == 1024
     assert o.shape == (4096, 3)
-    assert img.shape[-3] == 32
-    assert img.shape[-2] == 256
+    assert img.shape[-3] == 2
+    assert img.shape[-2] == 4096
 
 
 def test_conditioning_frequency_axis_is_divisible_by_mmdit_b_patch_stages():
-    # LisaGB-MMDiT-B.yaml sets patch_stages=1, so Patchify's single Fold2d halving needs
-    # both image axes divisible by 2. The frequency axis is wdm_freq_bands (256) and the
-    # time axis is wdm_times (32) -- both clear multiples of 2.
+    # LisaFlow's single Fold2d halving needs both image axes divisible by 2
     problem = LisaGB(**SHIPPED)
     p = problem.sample_physical(jr.key(61), window(problem))
     o = problem.clean_signal(p, window(problem))

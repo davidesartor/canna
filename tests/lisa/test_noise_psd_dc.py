@@ -8,7 +8,7 @@ from canna.lisa import LisaGB
 from ._helpers import window
 
 
-CONFIG = dict(n_sources=1, t_obs=2.0e6, f0_range=(5.0e-3, 1.0e-2), wdm_freq_bands=128)
+CONFIG = dict(n_sources=1, t_obs=2.0e6, f0_range=(5.0e-3, 1.0e-2))
 
 
 def test_the_window_never_reaches_dc():

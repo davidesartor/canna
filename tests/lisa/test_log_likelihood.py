@@ -14,8 +14,6 @@ SMALL = dict(
     n_sources=2,
     t_obs=1.0e6,
     sampling_step=0.25,
-    wdm_freq_bands=64,
-    patch_downsample=4,
     f0_range=(3.0e-3, 3.2e-3),
 )
 

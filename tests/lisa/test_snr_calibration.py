@@ -38,8 +38,6 @@ def test_snr_converges_as_the_response_grid_is_refined():
         n_sources=1,
         t_obs=1.0e6,
         sampling_step=0.25,
-        wdm_freq_bands=128,
-        patch_downsample=4,
         f0_range=(3.0e-3, 3.2e-3),
     )
     coarse = LisaGB(response_points=256, **common)
@@ -100,7 +98,7 @@ def test_snr_is_the_signal_norm_in_noise_units():
     # the 2 is the one in <x|y> = 4 Re sum x y^* / (S t_obs) that `power` halves away.
     # noise_psd is finite and positive everywhere the window reaches, so no mask is needed
     problem = LisaGB(
-        n_sources=3, t_obs=1.0e6, wdm_freq_bands=64, f0_range=(3.0e-3, 3.2e-3)
+        n_sources=3, t_obs=1.0e6, f0_range=(3.0e-3, 3.2e-3)
     )
     p = problem.sample_physical(jr.key(9), window(problem))
     clean = problem.clean_signal(p, window(problem))

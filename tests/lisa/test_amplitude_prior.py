@@ -40,7 +40,7 @@ def test_sky_averaged_snr_constant_matches_the_response():
     # sky-averaged source is that constant times t_obs / sensitivity. Re-derive it rather
     # than trusting the literal, and pin it where the RCL approximation is still good
     for f0 in (3.0e-4, 1.0e-3, 1.40457e-3):
-        problem = LisaGB(n_sources=1, wdm_freq_bands=64, f0_range=(f0 * 0.9, f0 * 1.1))
+        problem = LisaGB(n_sources=1, f0_range=(f0 * 0.9, f0 * 1.1))
         measured = sky_averaged_snr(problem, f0) ** 2
         predicted = (
             SKY_AVERAGED_SNR_SQUARED
@@ -52,7 +52,7 @@ def test_sky_averaged_snr_constant_matches_the_response():
 
 def test_amplitude_window_delivers_the_requested_snr():
     # the point of the prior: a source drawn at the faint edge really is an snr ~7 source
-    problem = LisaGB(n_sources=1, wdm_freq_bands=64, f0_range=(1.2e-3, 1.6e-3))
+    problem = LisaGB(n_sources=1, f0_range=(1.2e-3, 1.6e-3))
     f = window(problem)
     f0 = float(jnp.sqrt(jnp.prod(jnp.stack(problem.f0_window(f)))))
     low, high = problem.a_window(f)

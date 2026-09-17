@@ -86,11 +86,6 @@ class LisaGB(eqx.Module):
     n_sources: int = eqx.field(static=True, default=4)
     t_obs: float = eqx.field(static=True, default=2 * 365.25 * 24 * 60 * 60)  # 2yr [s]
     sampling_step: float = eqx.field(static=True, default=0.25)  # [s]
-    # the conditioning image is exactly wdm_times x wdm_freq_bands pixels
-    wdm_freq_bands: int = eqx.field(static=True, default=256)
-    wdm_times: int = eqx.field(static=True, default=32)
-    patch_downsample: int = eqx.field(static=True, default=2)
-
     orbit: lisaorbits.Orbits = eqx.field(
         static=True, default=lisaorbits.EqualArmlengthOrbits()
     )
@@ -201,23 +196,6 @@ class LisaGB(eqx.Module):
             f"Need t_obs >= {self.response_points / 2 / self.f0_range[0]:.3e}s."
         )
 
-        assert (
-            self.wdm_times % 2 == 0 and self.wdm_times % self.patch_downsample == 0
-        ), (
-            f"wdm_times={self.wdm_times} must be even and a multiple of "
-            f"patch_downsample={self.patch_downsample}."
-        )
-        assert self.wdm_freq_bands % self.patch_downsample == 0, (
-            f"wdm_freq_bands={self.wdm_freq_bands} must be a multiple of "
-            f"patch_downsample={self.patch_downsample}."
-        )
-        # the window has to hold a whole response plus room to slide it around
-        assert self.window_bins > 2 * self.response_points, (
-            f"window is {self.window_bins} bins "
-            f"(wdm_freq_bands={self.wdm_freq_bands} * wdm_times//2), too narrow for a "
-            f"response_points={self.response_points} source. "
-            f"Raise wdm_freq_bands or wdm_times."
-        )
         lo, hi = self.window_index_range
         assert lo <= hi, (
             f"no valid window position: index range is [{lo}, {hi}]. "
@@ -235,6 +213,17 @@ class LisaGB(eqx.Module):
         low = fdot_from_chirp_mass(self.chirp_mass_range[0], self.f0_range[0])
         high = fdot_from_chirp_mass(self.chirp_mass_range[1], self.f0_range[1])
         return float(low), float(high)
+
+    # the conditioning image is wdm_times x wdm_freq_bands pixels: two time rows, the
+    # fewest the WDM lattice allows, over a window holding a whole response plus room
+    # to slide it around
+    @property
+    def wdm_times(self) -> int:
+        return 2
+
+    @property
+    def wdm_freq_bands(self) -> int:
+        return 4 * self.response_points
 
     @property
     def window_bins(self) -> int:
