@@ -15,8 +15,6 @@ import optax
 import orbax.checkpoint as ocp
 import equinox as eqx
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-
 from .problem import NoisySinusoid
 from .network import SinusoidFlow
 
@@ -295,6 +293,15 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
+    # headless: these run on cluster nodes with no display. Selecting the backend at
+    # module level instead would hijack it for anything that merely imports the package
+    # -- canna.lisa re-exports train_sample from here, so `from canna.lisa import LisaGB`
+    # was silently switching notebooks to Agg and swallowing their figures.
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
     args = parse_args()
 
     # housekeeping
@@ -313,6 +320,7 @@ if __name__ == "__main__":
     state = TrainState.from_config(args)
     state, start_epoch, loss_history = state.restore_from(checkpoints)
     epochs = args.total_steps // args.log_interval
+
     if loss_history is None:
         loss_history = np.full((epochs, args.log_interval, 3), jnp.nan)
 
