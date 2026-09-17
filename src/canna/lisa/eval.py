@@ -106,15 +106,18 @@ if __name__ == "__main__":
     snrs = np.asarray(jax.lax.map(lambda pc: problem.snr(*pc), (latents, windows)))
     quantiles = np.linspace(1.0 / N_QUANTILES, 1.0, N_QUANTILES)
     chosen = np.argsort(snrs)[np.round(quantiles * (N_CANDIDATES - 1)).astype(int)]
+    # keep the latents on device: clean_signal writes the chirp in with .at[].set(),
+    # which a numpy array does not have, and both the injection and the Fisher
+    # replicas below go through it. jax indexes fine with numpy integer arrays
     latents, snrs, windows = (
-        np.asarray(latents)[chosen],
+        latents[chosen],
         snrs[chosen],
         windows[chosen],
     )
 
     for j, key_n in enumerate(jr.split(key_noise, N_QUANTILES)):
         latent, f = latents[j], windows[j]
-        truth = latent.reshape(n_sources, len(PARAM_LABELS))
+        truth = np.asarray(latent).reshape(n_sources, len(PARAM_LABELS))
 
         # inject, sample the flow, and map back to physical units
         o = problem.sample_observation(key_n, latent, f)

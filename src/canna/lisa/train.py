@@ -15,8 +15,6 @@ import optax
 import orbax.checkpoint as ocp
 import equinox as eqx
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-
 from .problem import LisaGB
 from .network import LisaFlow
 
@@ -159,7 +157,7 @@ class TrainState(NamedTuple):
                 batch.xt, batch.t, batch.y, batch.f
             )
             flow_loss = jnp.mean(jnp.square(du_pred - batch.dx))
-            x_loss = jnp.mean(jnp.square(self.problem.log_map(u_pred, batch.x_target)))
+            x_loss = jnp.mean(jnp.square(self.problem.log_map(batch.x_target, u_pred)))
             y_loss = jnp.mean(jnp.square(y_recon - batch.y_target))
 
             losses = jnp.stack([flow_loss, x_loss, y_loss])
@@ -297,6 +295,15 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
+    # headless: these run on cluster nodes with no display. Selecting the backend at
+    # module level instead would hijack it for anything that merely imports the package
+    # -- canna.lisa re-exports train_sample from here, so `from canna.lisa import LisaGB`
+    # was silently switching notebooks to Agg and swallowing their figures.
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
     args = parse_args()
 
     # housekeeping
@@ -315,18 +322,40 @@ if __name__ == "__main__":
     state = TrainState.from_config(args)
     state, start_epoch, loss_history = state.restore_from(checkpoints)
     epochs = args.total_steps // args.log_interval
-    if loss_history is None:
-        loss_history = np.full((epochs, args.log_interval, 3), jnp.nan)
+
+    # the checkpoint carries the (epochs, log_interval) grid it was written on, and
+    # total_steps or log_interval may well have changed since -- extending a run is how
+    # you spend more wall time -- so re-allocate at the current shape and copy the
+    # overlap in, rather than indexing off the end of the restored array
+    restored, loss_history = loss_history, np.full(
+        (epochs, args.log_interval, 3), np.nan
+    )
+    if restored is not None:
+        rows = min(restored.shape[0], epochs)
+        cols = min(restored.shape[1], args.log_interval)
+        loss_history[:rows, :cols] = restored[:rows, :cols]
 
     pbar = tqdm(range(start_epoch, epochs), initial=start_epoch, total=epochs)
     for epoch in pbar:
         aux_weight = aux_weight_schedule(epoch, epochs, args.warmup_frac)
 
-        # one fused XLA dispatch for the whole epoch, instead of log_interval separate ones
+        # one fused XLA dispatch for the whole epoch, instead of log_interval separate
+        # ones. aux_weight goes in as an array, not a python float: filter_jit treats
+        # non-arrays as static, so a float re-traces the whole epoch every time it changes
         state, epoch_losses = state.train_epoch(
-            aux_weight, args.batch_size, args.log_interval
+            jnp.asarray(aux_weight), args.batch_size, args.log_interval
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
+
+        # a non-finite loss has already poisoned the weights: stop, and leave the last
+        # finite checkpoint in place instead of saving over it
+        finite = np.isfinite(loss_history[epoch]).all(axis=-1)
+        if not finite.all():
+            checkpoints.close()
+            raise SystemExit(
+                f"[epoch {epoch + 1}] non-finite loss at step"
+                f" {epoch * args.log_interval + int(np.argmin(finite))}, stopping"
+            )
 
         # save a checkpoint and log the median of the epoch's losses
         state.save_to(checkpoints, epoch + 1, loss_history)
