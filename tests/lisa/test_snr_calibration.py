@@ -96,7 +96,8 @@ def test_conditioning_image_of_pure_noise_has_order_unity_pixels():
 
 
 def test_snr_is_the_signal_norm_in_noise_units():
-    # monte-carlo: snr == sqrt(sum |clean|^2 / measured noise variance) over the window.
+    # monte-carlo: snr == sqrt(2 * sum |clean|^2 / measured noise variance) over the window;
+    # the 2 is the one in <x|y> = 4 Re sum x y^* / (S t_obs) that `power` halves away.
     # noise_psd is finite and positive everywhere the window reaches, so no mask is needed
     problem = LisaGB(
         n_sources=3, t_obs=1.0e6, wdm_freq_bands=64, f0_range=(3.0e-3, 3.2e-3)
@@ -116,6 +117,6 @@ def test_snr_is_the_signal_norm_in_noise_units():
     var = summed / 4096
     assert jnp.allclose(
         problem.snr(p, window(problem)),
-        jnp.sqrt(jnp.sum(jnp.abs(clean) ** 2 / var)),
+        jnp.sqrt(2.0 * jnp.sum(jnp.abs(clean) ** 2 / var)),
         rtol=0.03,
     )
