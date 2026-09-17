@@ -157,7 +157,7 @@ class TrainState(NamedTuple):
                 batch.xt, batch.t, batch.y, batch.f
             )
             flow_loss = jnp.mean(jnp.square(du_pred - batch.dx))
-            x_loss = jnp.mean(jnp.square(self.problem.log_map(u_pred, batch.x_target)))
+            x_loss = jnp.mean(jnp.square(self.problem.log_map(batch.x_target, u_pred)))
             y_loss = jnp.mean(jnp.square(y_recon - batch.y_target))
 
             losses = jnp.stack([flow_loss, x_loss, y_loss])
@@ -346,6 +346,16 @@ if __name__ == "__main__":
             jnp.asarray(aux_weight), args.batch_size, args.log_interval
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
+
+        # a non-finite loss has already poisoned the weights: stop, and leave the last
+        # finite checkpoint in place instead of saving over it
+        finite = np.isfinite(loss_history[epoch]).all(axis=-1)
+        if not finite.all():
+            checkpoints.close()
+            raise SystemExit(
+                f"[epoch {epoch + 1}] non-finite loss at step"
+                f" {epoch * args.log_interval + int(np.argmin(finite))}, stopping"
+            )
 
         # save a checkpoint and log the median of the epoch's losses
         state.save_to(checkpoints, epoch + 1, loss_history)
