@@ -2,6 +2,7 @@
 # Train the LISA galactic-binary flow. Submit from the repo root:
 #     sbatch slurm/lisa.sbatch            # config B
 #     sbatch slurm/lisa.sbatch XS         # some other config
+#     sbatch slurm/lisa.sbatch XS --total_steps 1000000   # flags after it go to train
 # Resuming is automatic: the run picks up from the latest checkpoint in
 # outputs/lisa-<config>/checkpoints, so re-submitting after a time limit
 # continues rather than restarting.
@@ -52,4 +53,4 @@ nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader ||
 # --frozen: use the lockfile as-is, so the job never needs to reach the network --
 # compute nodes commonly cannot. Run `uv sync --extra cuda` once on a login/visu
 # node first, so the venv is already built when the job starts.
-srun uv run --extra cuda --frozen python -m canna.lisa.train --config "${CONFIG}"
+srun uv run --extra cuda --frozen python -m canna.lisa.train --config "${CONFIG}" "${@:2}"

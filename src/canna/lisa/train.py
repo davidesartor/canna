@@ -233,11 +233,17 @@ class TrainState(NamedTuple):
             for name, field in zip(self._fields, self)
             if name not in ("problem", "tx", "key")
         }
+        # loss_hist and key are bare arrays, with no skeleton to take a sharding from, so
+        # orbax would fall back to the one recorded at save time -- a device that need
+        # not exist here, e.g. a GPU checkpoint read back on a CPU. Place them locally.
+        local = ocp.ArrayRestoreArgs(
+            sharding=jax.sharding.SingleDeviceSharding(jax.devices()[0])
+        )
         restored = checkpoints.restore(
             latest_epoch,
             args=ocp.args.Composite(
-                loss_hist=ocp.args.ArrayRestore(),
-                key=ocp.args.ArrayRestore(),
+                loss_hist=ocp.args.ArrayRestore(restore_args=local),
+                key=ocp.args.ArrayRestore(restore_args=local),
                 **{
                     name: ocp.args.StandardRestore(tree)
                     for name, tree in skeleton.items()

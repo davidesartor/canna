@@ -18,7 +18,10 @@ from .problem import LisaGB
 from .network import LisaFlow
 from .train import TrainState, parse_args
 
-ODE_STEPS = 4
+# the velocity field is stiff near t=1, and too few steps smear the posterior out: on
+# the trained XS model the loudest source's f0 width is 0.76/0.42/0.27/0.22/0.21 bins
+# at 4/8/16/32/64 steps, so by 32 what is left is the network's own resolution
+ODE_STEPS = 32
 N_POSTERIOR = 1024
 N_CANDIDATES = 1024
 N_QUANTILES = 10
@@ -46,21 +49,60 @@ def sample_posterior(
     f: Array,
     ode_steps: int = ODE_STEPS,
 ) -> Array:
-    """RK4 transport of prior draws u along the learned velocity field, on the manifold."""
+    """RK4 transport of prior draws u along the learned velocity field, on the manifold.
+
+    The steps run in a fori_loop, not a python loop: unrolled, every step inlines four
+    copies of the network into the graph, and compile time grows with ode_steps.
+    """
 
     @eqx.filter_vmap(in_axes=(None, 0))
     def push(flow: LisaFlow, u: Array) -> Array:
         dt = jnp.asarray(1.0 / ode_steps, u.dtype)
-        for i in range(ode_steps):
+
+        def step(i: Array, u: Array) -> Array:
             t = i * dt
             k1 = flow(u, t, y, f)[0]
             k2 = flow(u + k1 * dt / 2, t + dt / 2, y, f)[0]
             k3 = flow(u + k2 * dt / 2, t + dt / 2, y, f)[0]
             k4 = flow(u + k3 * dt, t + dt, y, f)[0]
-            u = problem.exp_map(u, (k1 + 2 * k2 + 2 * k3 + k4) * dt / 6)
-        return u
+            return problem.exp_map(u, (k1 + 2 * k2 + 2 * k3 + k4) * dt / 6)
+
+        return jax.lax.fori_loop(0, ode_steps, step, u)
 
     return push(flow, u)
+
+
+def scaled_inverse(m: Array) -> Array:
+    """Inverse of a symmetric matrix over parameters that live on very different scales.
+
+    In physical units the diagonal of a precision or covariance over the source
+    parameters spans ~45 orders of magnitude (amplitude ~1e-21 against O(1) angles),
+    far past what float64 can invert directly. Inverting in the unit-diagonal frame and
+    scaling back leaves only the conditioning the physics actually sets.
+    """
+    d = jnp.sqrt(jnp.abs(jnp.diag(m)))
+    return jnp.linalg.inv(m / jnp.outer(d, d)) / jnp.outer(d, d)
+
+
+def fisher_draws(
+    key: Array, mean: Array, precision: Array, prior_precision: Array, n: int
+) -> Array:
+    """n draws from a Gaussian with the given precision, sampled in the unit-diagonal frame.
+
+    The precision is diagonalised after Jacobi scaling, so the ill-conditioned covariance
+    is never formed. Along any direction the true precision is at least the prior's --
+    the Fisher information it adds is positive semi-definite -- but the Hessian averaged
+    over a finite set of noise realisations can undershoot that, or go negative, along
+    directions the data leave unconstrained (amplitude against inclination near face-on).
+    Such a direction is held at the prior's precision.
+    """
+    precision = (precision + precision.T) / 2
+    d = jnp.sqrt(jnp.abs(jnp.diag(precision)))
+    w, v = jnp.linalg.eigh(precision / jnp.outer(d, d))
+    prior_w = jnp.einsum("ik,ij,jk->k", v, prior_precision / jnp.outer(d, d), v)
+    w = jnp.maximum(w, prior_w)
+    z = jr.normal(key, (n, mean.size), mean.dtype)
+    return mean + (z / jnp.sqrt(w)) @ v.T / d
 
 
 if __name__ == "__main__":
@@ -100,7 +142,7 @@ if __name__ == "__main__":
     )
 
     # Gaussian-approx prior precision, in physical units
-    prior_prec_p = jnp.linalg.inv(jnp.cov(latents.reshape(N_CANDIDATES, -1).T))
+    prior_prec_p = scaled_inverse(jnp.cov(latents.reshape(N_CANDIDATES, -1).T))
 
     # spread the injections over the SNR distribution
     snrs = np.asarray(jax.lax.map(lambda pc: problem.snr(*pc), (latents, windows)))
@@ -143,9 +185,7 @@ if __name__ == "__main__":
             + prior_prec_p
         )
         fisher_samples = np.asarray(
-            jr.multivariate_normal(
-                jr.fold_in(key_n, 1), p0, jnp.linalg.inv(prec_p), (N_POSTERIOR,)
-            )
+            fisher_draws(jr.fold_in(key_n, 1), p0, prec_p, prior_prec_p, N_POSTERIOR)
         )
 
         # the Fisher is centred on one labelling, the posterior on all of them

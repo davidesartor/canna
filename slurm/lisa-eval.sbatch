@@ -2,6 +2,7 @@
 # Evaluate a trained LISA flow against its latest checkpoint. Submit from the repo root:
 #     sbatch slurm/lisa-eval.sbatch            # config B
 #     sbatch slurm/lisa-eval.sbatch XS         # some other config
+#     sbatch slurm/lisa-eval.sbatch XS --output_dir outputs/500k   # flags go to eval
 # Writes ten corner plots -- one per SNR decile, flow against a Fisher approximation --
 # to outputs/lisa-<config>/corner.
 #
@@ -41,4 +42,4 @@ echo "job       : ${SLURM_JOB_ID:-none}"
 echo "config    : ${CONFIG}"
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader || true
 
-srun uv run --extra cuda --frozen python -m canna.lisa.eval --config "${CONFIG}"
+srun uv run --extra cuda --frozen python -m canna.lisa.eval --config "${CONFIG}" "${@:2}"
