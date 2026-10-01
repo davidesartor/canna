@@ -74,6 +74,51 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 4. Findings
 
+### F12 (2026-10-01): E0 posterior readout — more training helps a little, and accuracy may slip
+
+Method: the same 10 injections, keys, 256 draws and 32 RK4 steps as F4, run on the laptop
+CPU (`widths_ckpt.py`, output `samples1M/`, comparison in `compare_500k_1M.npy`).
+
+| | 500k | 1M |
+|---|---|---|
+| localised (< 0.8 bin), SNR 15–40 | 8 / 13 | 10 / 13 |
+| localised, SNR ≥ 40 | 21 / 21 | 21 / 21 |
+| median f₀ width, SNR ≥ 60 | 0.177 bins (92× Fisher) | 0.156 bins (76× Fisher) |
+| width ratio 1M / 500k, sources localised in both | — | median 0.78 (IQR 0.72–0.87); narrower in 27 of 29 |
+| sky widths / Fisher, SNR ≥ 20 (λ, β) | 10.9, 10.2 | 8.1, 8.5 |
+| truth within ±1 own width of the median | 90% | 72% |
+| median f₀ offset, localised SNR ≥ 20 | −0.045 bins (19 of 29 low) | −0.083 bins (23 of 31 low) |
+
+- **F6's prediction for E0 was partly wrong.**
+  - Training on did shrink every width, by about 22% for 2× the compute, and found 2 more
+    moderate-SNR sources.
+  - The loud-source floor still moved only from 92× to 76× Fisher. It is not a practical
+    route to Fisher-level widths.
+- **Accuracy may be slipping as the widths shrink.** f₀ medians sit low of the truth, and
+  the shift grew from 500k to 1M.
+  - **It is not physical.** The chirp drift over T_obs is about 10⁻⁴ bins (at most
+    5×10⁻³), so an f₀–ḟ trade-off cannot shift f₀ by 0.08 bins. The offset does not
+    correlate with the flow's chirp-mass error (r = −0.06).
+  - **It is not a pull towards the window centre** (15 of 31 point that way, Spearman 0.00),
+    so it is not samples stopping short of their target. It is a uniform shift to lower f₀.
+  - **Its significance is modest.** Sources in one injection share noise and conditioning.
+    At injection level, 8 of 10 have a negative median offset (p = 0.11). It needs ~100+
+    injections to settle.
+- **One collapse.** q0.40, source 3 (SNR 32.5) went from 0.060 bins to 0.009 bins, which is
+  *narrower than its Fisher width* (0.02), and sits 9 widths off the truth. Over-confidence
+  is the failure mode to watch as the widths shrink, and it matters most for XS-late.
+
+### F11 (2026-10-01): E0 training readout — the loss forecast held
+- **The 1M run completed** (13378657, 5 h 25 min). The final flow loss is 0.4061; the mean
+  of epochs 991–1000 is 0.4064.
+- **The forecast was accurate.** The power law fitted on epochs 300–681 predicted 0.4070.
+  Its rms residual over epochs 682–1000 is 7×10⁻⁴, about the epoch scatter.
+- **The 500k → 1M doubling bought −0.0137.**
+- **Refit on epochs 300–1000:** L∞ = 0.378, α = 0.56. That gives L(2M) = 0.392–0.397, i.e.
+  −0.009 to −0.014 for one more doubling.
+- **Open:** whether the posteriors improved. The eval and the per-source widths of the 1M
+  model are still to come.
+
 ### F10 (2026-10-01, 02:34 CEST): E1 early readout — no jump when the aux weight crosses 0.2
 
 E1 is job 13395354: `--warmup_frac 0.1`, otherwise identical to the baseline, same seed. In
@@ -305,9 +350,9 @@ attribution.
 
 | id | what | answers | new GPU cost | status |
 |---|---|---|---|---|
-| E0 | XS 500k → 1M, then its eval | Q2: does more training move A or B? | eval only (~15 min) | training done (0.4061); eval not yet run |
+| E0 | XS 500k → 1M, then its eval | Q2: does more training move A or B? | eval only (~15 min) | done; width table F12 (A 92× → 76×, B 8 → 10 of 13); cluster corner plots not yet run |
 | E1 | XS, `warmup_frac 0.1` | Q3, and what triggers the jump (F10) | — | stopped at epoch ~60; only F10 survives |
-| **E2** | **one combined run**: XS-late, 1M steps (details below) | Does the recipe fix the floor (A) and the misses (B)? | ~10.8 h + eval | first attempt failed (code not on the cluster); code pushed to `fml` on 2026-10-01 |
+| **E2** | **one combined run**: XS-late, 1M steps (details below) | Does the recipe fix the floor (A) and the misses (B)? | ~10.8 h + eval | **running**: job 13474448 on trexgpu02 since 16:22 CEST on 1 Oct, ~39.6 s per epoch, ETA ~03:30 CEST on 2 Oct |
 | E3 | S with the E2 recipe | the wider band | ~15 h | only if E2 succeeds |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
