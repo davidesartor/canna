@@ -19,3 +19,6 @@ outputs/
 
 # python 3.13 venv for the jexplore cross-check (jexplore needs >=3.13)
 .venv313/
+
+# figures for docs/lisa-research-log.md, regenerated locally by outputs/lisa-XS/eval-tools/figs.py
+docs/figures/

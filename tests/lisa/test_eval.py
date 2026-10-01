@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -119,3 +120,25 @@ def test_fori_loop_transport_matches_the_unrolled_rk4(small_flow, ode_steps):
     assert post.shape == u0.shape and jnp.all(jnp.isfinite(post))
     assert not jnp.allclose(post, u0)  # the perturbed field moves the draws
     assert jnp.allclose(post, unrolled_rk4(problem, flow, u0, y, f, ode_steps), atol=1e-5)
+
+
+class ConstantVelocity(eqx.Module):
+    """A stand-in flow whose velocity along the path is a fixed tangent."""
+
+    v: jax.Array
+
+    def __call__(self, x, t, y, f):
+        return jnp.broadcast_to(self.v, x.shape).astype(x.dtype), x, y
+
+
+@pytest.mark.parametrize("time_power", [1.0, 2.0, 3.0])
+def test_the_warped_clock_still_covers_the_whole_path(small_flow, time_power):
+    """With ds/dt folded into the ODE, a constant path velocity must move every draw by
+    exactly that velocity, whatever the warp: RK4 integrates ds/dt = p (1 - t)^(p-1),
+    a polynomial of degree <= 2 here, exactly."""
+    problem, _, u0, y, f = small_flow
+    # column 1 is log chirp mass, the one Euclidean coordinate: no clipping, no sphere
+    v = jnp.zeros(u0.shape[-1]).at[1].set(0.7)
+    post = sample_posterior(problem, ConstantVelocity(v), u0, y, f, 8, time_power)
+    assert jnp.allclose(post[..., 1], u0[..., 1] + 0.7, atol=1e-10)
+    assert jnp.allclose(post[..., 0], u0[..., 0])

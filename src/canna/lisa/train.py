@@ -38,7 +38,28 @@ def geodesic(
     return problem.exp_map(x0, t * problem.log_map(x0, x1))
 
 
-def train_sample(problem: LisaGB, key: Key[Array, ""]) -> TrainSample:
+def path_position(t: Float[Array, ""], time_power: float) -> Float[Array, ""]:
+    """How far along the geodesic the flow is at time t: s = 1 - (1 - t)^time_power.
+
+    The fine structure of a posterior of width sigma lives at 1 - s < sigma / (prior
+    width), the last ~1% of a uniform clock for the 0.2-bin f0 floor and the last ~3e-5
+    for a loud source's true width, so a uniform clock barely trains it. Warping the clock
+    with time_power > 1 keeps t uniform but spends more of it near the end of the path.
+    The network is still conditioned on t, which stretches 1 - s by the same power, and
+    the velocity it learns is the one along the path, d/ds, whose size does not shrink
+    as s -> 1; the ODE multiplies it back by ds/dt (`path_speed`).
+    """
+    return t if time_power == 1 else 1 - (1 - t) ** time_power
+
+
+def path_speed(t: Float[Array, ""], time_power: float) -> Float[Array, ""]:
+    """ds/dt of `path_position`."""
+    return jnp.ones_like(t) if time_power == 1 else time_power * (1 - t) ** (time_power - 1)
+
+
+def train_sample(
+    problem: LisaGB, key: Key[Array, ""], time_power: float = 1.0
+) -> TrainSample:
     """Draw one training example: conditioning, a point on the geodesic, its velocity."""
     key_c, key_p, key_o, key_x0, key_t = jr.split(key, 5)
     f = problem.sample_f(key_c)
@@ -48,13 +69,15 @@ def train_sample(problem: LisaGB, key: Key[Array, ""]) -> TrainSample:
     y = problem.preprocess(problem.sample_observation(key_o, p, f), f)
     y_target = problem.preprocess(problem.clean_signal(p, f), f)
 
-    # sample and process flow quantities
+    # sample and process flow quantities: t is uniform, the point sits at s(t) along the
+    # path, and the target is the velocity along the path at s
     x0 = problem.sample_flow(key_x0, f)
     x1 = problem.physical_to_flow(p, f)
     t = jr.uniform(key_t, ())
+    s = path_position(t, time_power)
     path = partial(geodesic, problem)
-    xt = path(t, x0, x1)
-    dx = jax.jacobian(path)(t, x0, x1)
+    xt = path(s, x0, x1)
+    dx = jax.jacobian(path)(s, x0, x1)
     return TrainSample(xt=xt, dx=dx, t=t, y=y, x_target=x1, y_target=y_target, f=f)
 
 
@@ -182,7 +205,11 @@ class TrainState(NamedTuple):
 
     @eqx.filter_jit
     def train_epoch(
-        self, aux_weight: Float[Array, ""], batch_size: int, n_steps: int
+        self,
+        aux_weight: Float[Array, ""],
+        batch_size: int,
+        n_steps: int,
+        time_power: float = 1.0,
     ) -> tuple[Self, Float[Array, "S 3"]]:
         """Fuse n_steps (gen + train_step) pairs into one XLA dispatch via lax.scan."""
         dynamic, static = eqx.partition(self, eqx.is_array)
@@ -190,7 +217,7 @@ class TrainState(NamedTuple):
         def scan_step(dynamic: Self, _) -> tuple[Self, Float[Array, "3"]]:
             state = eqx.combine(dynamic, static)
             key, key_batch = jr.split(state.key)
-            batch = jax.vmap(partial(train_sample, state.problem))(
+            batch = jax.vmap(partial(train_sample, state.problem, time_power=time_power))(
                 jr.split(key_batch, batch_size)
             )
             state, losses = state._replace(key=key).train_step(batch, aux_weight)
@@ -286,6 +313,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--total_steps", type=int, default=500_000)
     parser.add_argument("--log_interval", type=int, default=1000)
     parser.add_argument("--warmup_frac", type=float, default=0.5)
+    parser.add_argument(
+        "--time_power",
+        type=float,
+        default=1.0,
+        help="flow clock warp, s = 1 - (1 - t)^p; 1 is the plain uniform clock",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--dtype",
@@ -349,7 +382,7 @@ if __name__ == "__main__":
         # ones. aux_weight goes in as an array, not a python float: filter_jit treats
         # non-arrays as static, so a float re-traces the whole epoch every time it changes
         state, epoch_losses = state.train_epoch(
-            jnp.asarray(aux_weight), args.batch_size, args.log_interval
+            jnp.asarray(aux_weight), args.batch_size, args.log_interval, args.time_power
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
 

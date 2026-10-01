@@ -16,7 +16,7 @@ import equinox as eqx
 
 from .problem import LisaGB
 from .network import LisaFlow
-from .train import TrainState, parse_args
+from .train import TrainState, parse_args, path_speed
 
 # the velocity field is stiff near t=1, and too few steps smear the posterior out: on
 # the trained XS model the loudest source's f0 width is 0.76/0.42/0.27/0.22/0.21 bins
@@ -48,23 +48,32 @@ def sample_posterior(
     y: Array,
     f: Array,
     ode_steps: int = ODE_STEPS,
+    time_power: float = 1.0,
 ) -> Array:
     """RK4 transport of prior draws u along the learned velocity field, on the manifold.
 
     The steps run in a fori_loop, not a python loop: unrolled, every step inlines four
     copies of the network into the graph, and compile time grows with ode_steps.
+
+    The network gives the velocity along the path, d/ds; on the warped clock the ODE is
+    in t, so each evaluation is scaled by ds/dt. Steps uniform in t then crowd towards
+    the end of the path: with time_power 3 the last of 32 ends at 1 - s = 3e-5.
     """
 
     @eqx.filter_vmap(in_axes=(None, 0))
     def push(flow: LisaFlow, u: Array) -> Array:
         dt = jnp.asarray(1.0 / ode_steps, u.dtype)
 
+        def velocity(u: Array, t: Array) -> Array:
+            v = flow(u, t, y, f)[0]
+            return v if time_power == 1 else path_speed(t, time_power) * v
+
         def step(i: Array, u: Array) -> Array:
             t = i * dt
-            k1 = flow(u, t, y, f)[0]
-            k2 = flow(u + k1 * dt / 2, t + dt / 2, y, f)[0]
-            k3 = flow(u + k2 * dt / 2, t + dt / 2, y, f)[0]
-            k4 = flow(u + k3 * dt, t + dt, y, f)[0]
+            k1 = velocity(u, t)
+            k2 = velocity(u + k1 * dt / 2, t + dt / 2)
+            k3 = velocity(u + k2 * dt / 2, t + dt / 2)
+            k4 = velocity(u + k3 * dt, t + dt)
             return problem.exp_map(u, (k1 + 2 * k2 + 2 * k3 + k4) * dt / 6)
 
         return jax.lax.fori_loop(0, ode_steps, step, u)
@@ -167,7 +176,9 @@ if __name__ == "__main__":
         u0 = jax.vmap(problem.sample_flow, in_axes=(0, None))(
             jr.split(key_n, N_POSTERIOR), f
         )
-        post = sample_posterior(problem, flow, u0, y, f)
+        post = sample_posterior(
+            problem, flow, u0, y, f, time_power=args.time_power
+        )
         samples = np.asarray(
             jax.vmap(problem.flow_to_physical, in_axes=(0, None))(post, f)
         ).reshape(N_POSTERIOR, -1)
