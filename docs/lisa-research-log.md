@@ -5,7 +5,17 @@ Scope: the LISA galactic-binary flow (`src/canna/lisa`), all runs on TREX to dat
 slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-XS/`
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 
-## 1. Summary (2026-10-01)
+## 1. Summary (2026-10-01, updated 2026-10-02)
+
+- **Update, 2026-10-02.** Both 1M-step runs are done.
+  - **Uniform clock (E0):** about 22% narrower than 500k and 2 more sources found. The floor
+    barely moved, and there is a hint of a low f₀ bias (F12).
+  - **Warped clock with aux 10% (E2, XS-late):** trained cleanly, with its loss drop at
+    epoch ~60 instead of ~190. Its corner plots look like E0's, but they cannot show the
+    floor (F13).
+  - **Next:** two short scorecard jobs (T1), which decide whether the warp helped and
+    whether either model is calibrated. Then pick the one next training run.
+  - **Separately:** do not use the laptop GPU for evals yet (F14).
 
 - **Where XS stands (500k steps).** The posteriors are centred on the truth and capture the
   ψ + kπ/2, φ₀ + π and A–ι degeneracies. They have two problems:
@@ -71,8 +81,50 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **13378657** | E0: XS continuation 500k → 1M (aux stays 0) | **Completed** at 04:58 CEST on 1 Oct (5 h 25 min). Final flow loss **0.4061** at 1M steps, inside the 0.403–0.408 forecast (F8). Not yet evaluated. |
 | 13395354 | E1: XS, `--warmup_frac 0.1`, 500k steps, `outputs/aux10` | **Stopped by hand** around epoch 60 (about 02:40 CEST on 1 Oct) to save compute. Its last checkpoint stays in `outputs/aux10`. See F10. |
 | 13399477, 13473447 | E2 (XS-late) training, then its eval | **Both failed at start** (24 s and a few s): `configs/XS-late.yaml` and the time-warp code had not been copied to the cluster, so no XS-late training happened. Fix: push, then pull on TREX, then resubmit. |
+| **13474448** | E2: XS-late training, 1M steps | **Completed** at 03:18 CEST on 2 Oct (10 h 57 min, trexgpu02, 39.6 s per epoch), no NaN. See F13. |
+| 13578013 | eval of the 1M model (E0) | Completed in 14 min. Corner plots in `outputs/lisa-XS/corner` on TREX, copied to `outputs/1M/lisa-XS/corner`. |
+| 13579022 | eval of XS-late | Completed in 13 min, `time_power 3` read from its config. Corner plots in `outputs/lisa-XS-late/corner`, copied locally to the same path. See F13. |
 
 ## 4. Findings
+
+### F14 (2026-10-02): on the laptop GPU, compiled code disagrees with eager code
+- **The failing test.** `test_fori_loop_transport_matches_the_unrolled_rk4` fails on the
+  laptop's RTX 2000 Ada (after the driver fix) and passes on the CPU.
+- **Bisection, on the tiny float32 test network.**
+  - Eager evaluation on the GPU matches the CPU to 3×10⁻⁴.
+  - *Any* jit-compiled version, the eval's `fori_loop` or a jitted copy of the unrolled
+    RK4, is off by 0.63 in flow units, about 2/3 of the whole transport.
+  - Matmul precision `highest` does not change it.
+  - The network takes the xla attention path here (float32), not cuDNN.
+- **TREX is not affected, at least not visibly.** In the A100 corner plots, loud-source f₀
+  and sky marginals are sharp spikes on the truth. An error that size would smear f₀ by
+  ~15 bins.
+- **Consequence:** do not trust laptop-GPU evals or training until this is understood.
+  - Running `scorecard.py` on the 1M model on TREX also checks the A100. Its ten eval rows
+    use the same keys and draws as F12's CPU table, so they must reproduce it.
+- **Open:** a minimal reproducer on the laptop, then a JAX/XLA version check.
+
+### F13 (2026-10-02): XS-late training and eval, first look (no numbers yet)
+
+**Training.**
+- 1M steps took 10 h 57 min, with no NaN.
+- The loss has a fast drop at **epoch ~60** (−3×10⁻³ per epoch, aux weight 0.35). The
+  500k baseline's came at ~190, and E1 (aux 10%, uniform clock) had none by epoch 57.
+  - So the drop is not set by the aux schedule.
+  - It fits it being the network learning the late-path (fine-scale) structure, which the
+    warp gives more weight to.
+- The 500k → 1M doubling lowered the loss by 0.014, the same pace as E0.
+- The loss values are not comparable to E0's, because the warp re-weights the objective.
+
+**Eval (corner plots only).**
+- Side by side with the 1M model on q0.30, q0.60 and q1.00 the two look alike:
+  - posteriors sit on the truth;
+  - nothing visibly collapses;
+  - the same sources are found;
+  - XS-late's 2D sky contours are somewhat more scattered.
+- **The corner plots cannot answer the question E2 asks.** Each f₀ axis spans the whole
+  48-bin window, so a 0.15-bin and a 0.03-bin posterior both draw as a spike. The verdict
+  on the floor (A), detection (B) and calibration (C) waits for `scorecard.py` (T1).
 
 ### F12 (2026-10-01): E0 posterior readout — more training helps a little, and accuracy may slip
 
@@ -350,10 +402,11 @@ attribution.
 
 | id | what | answers | new GPU cost | status |
 |---|---|---|---|---|
-| E0 | XS 500k → 1M, then its eval | Q2: does more training move A or B? | eval only (~15 min) | done; width table F12 (A 92× → 76×, B 8 → 10 of 13); cluster corner plots not yet run |
+| E0 | XS 500k → 1M, then its eval | Q2: does more training move A or B? | eval only (~15 min) | done: width table F12 (A 92× → 76×, B 8 → 10 of 13), corner plots 13578013 |
 | E1 | XS, `warmup_frac 0.1` | Q3, and what triggers the jump (F10) | — | stopped at epoch ~60; only F10 survives |
-| **E2** | **one combined run**: XS-late, 1M steps (details below) | Does the recipe fix the floor (A) and the misses (B)? | ~10.8 h + eval | **running**: job 13474448 on trexgpu02 since 16:22 CEST on 1 Oct, ~39.6 s per epoch, ETA ~03:30 CEST on 2 Oct |
+| **E2** | **one combined run**: XS-late, 1M steps (details below) | Does the recipe fix the floor (A) and the misses (B)? | ~10.8 h + eval | training and corner plots done (F13); **scorecard pending** |
 | E3 | S with the E2 recipe | the wider band | ~15 h | only if E2 succeeds |
+| **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~10 min each) | code ready (2026-10-02), to submit |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
@@ -416,6 +469,8 @@ On TREX, from `~/canna`, which is at dff3ef2:
 sbatch slurm/lisa-eval.sbatch XS                              # E0 (1M model, outputs/lisa-XS)
 sbatch slurm/lisa.sbatch XS-late                             # E2 -> outputs/lisa-XS-late, ~10.8 h
 sbatch slurm/lisa-eval.sbatch XS-late                        # its eval, after [done]
+sbatch slurm/lisa-scorecard.sbatch XS                        # T1 on the 1M model -> outputs/lisa-XS/scorecard.npz
+sbatch slurm/lisa-scorecard.sbatch XS-late                   # T1 on XS-late
 ```
 
 ## 8. Provenance

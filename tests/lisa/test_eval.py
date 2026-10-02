@@ -1,16 +1,11 @@
 """eval.py's numerics: the Fisher forecast across 45 decades of scale, and RK4 transport."""
 
-from pathlib import Path
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import pytest
-import yaml
 
-import canna.lisa as lisa
-from canna.lisa import LisaFlow, LisaGB, train_sample
 from canna.lisa.eval import fisher_draws, sample_posterior, scaled_inverse
 
 # the physical parameters run from O(1) angles down to ~1e-21 amplitudes
@@ -63,37 +58,6 @@ def test_an_unconstrained_direction_is_held_at_the_prior():
     # the well-constrained directions are left alone
     other = (draws / SCALES) @ v[:, -1]
     assert jnp.isclose(jnp.var(other), 1 / 10.0, rtol=0.05)
-
-
-@pytest.fixture(scope="module")
-def small_flow():
-    """The XS problem with a deliberately tiny network: the integrator is under test."""
-    with open(Path(lisa.__file__).parent / "configs" / "XS.yaml") as f:
-        problem = LisaGB(**yaml.safe_load(f)["problem"])
-    sample = train_sample(problem, jr.key(0))
-    flow = LisaFlow(
-        x_shape=sample.xt.shape,
-        y_shape=sample.y.shape,
-        hidden_dim=32,
-        num_heads=2,
-        num_blocks=1,
-        dtype=jnp.float32,
-        param_dtype=jnp.float32,
-        key=jr.key(1),
-    )
-    # a fresh MMDiT is zero-initialised into the identity transport; perturb it so the
-    # velocity field actually depends on x, t and y
-    params, static = jax.tree_util.tree_flatten(flow)
-    keys = jr.split(jr.key(2), len(params))
-    params = [
-        p + 0.05 * jr.normal(k, p.shape, p.dtype)
-        if isinstance(p, jax.Array) and jnp.issubdtype(p.dtype, jnp.floating)
-        else p
-        for p, k in zip(params, keys)
-    ]
-    flow = jax.tree_util.tree_unflatten(static, params)
-    u0 = jax.vmap(problem.sample_flow, in_axes=(0, None))(jr.split(jr.key(3), 8), sample.f)
-    return problem, flow, u0, sample.y, sample.f
 
 
 def unrolled_rk4(problem, flow, u, y, f, ode_steps):
