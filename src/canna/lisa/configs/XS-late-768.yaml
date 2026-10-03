@@ -29,3 +29,6 @@ warmup_frac: 0.1
 # a loud source's posterior is resolved (see path_position in train.py)
 time_power: 3.0
 seed: 0
+# checkpoints without the optimizer state (0.6 GB instead of 1.7 GB): the TREX home
+# quota does not hold two full 768-wide checkpoints, and orbax keeps the old one while saving
+save_opt_state: false

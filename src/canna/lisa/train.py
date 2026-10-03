@@ -231,8 +231,16 @@ class TrainState(NamedTuple):
         checkpoints: ocp.CheckpointManager,
         epoch: int,
         loss_hist: Float[Array, "E S 3"],
+        save_opt_state: bool = True,
     ) -> None:
-        """Save each array-carrying field, plus the losses, as its own named checkpoint item."""
+        """Save each array-carrying field, plus the losses, as its own named checkpoint item.
+
+        The optimizer state is about two thirds of a checkpoint, and the manager holds the
+        old checkpoint until the new one lands. save_opt_state=False leaves it out, so a
+        quota that fits barely two full checkpoints still fits the run; a resume then
+        restarts the optimizer's moments, which only matters at a job boundary.
+        """
+        skip = ("problem", "tx", "key") + (() if save_opt_state else ("opt_state",))
         checkpoints.save(
             epoch,
             args=ocp.args.Composite(
@@ -242,7 +250,7 @@ class TrainState(NamedTuple):
                 **{
                     name: ocp.args.StandardSave(eqx.filter(field, eqx.is_array))
                     for name, field in zip(self._fields, self)
-                    if name not in ("problem", "tx", "key")
+                    if name not in skip
                 },
             ),
         )
@@ -255,10 +263,14 @@ class TrainState(NamedTuple):
         if latest_epoch is None:
             return self, 0, None
 
+        # a checkpoint saved with save_opt_state=False has no optimizer state: keep the
+        # fresh one this state was built with
+        has_opt_state = (checkpoints.directory / str(latest_epoch) / "opt_state").exists()
+        skip = ("problem", "tx", "key") + (() if has_opt_state else ("opt_state",))
         skeleton = {
             name: eqx.filter(field, eqx.is_array)
             for name, field in zip(self._fields, self)
-            if name not in ("problem", "tx", "key")
+            if name not in skip
         }
         # loss_hist and key are bare arrays, with no skeleton to take a sharding from, so
         # orbax would fall back to the one recorded at save time -- a device that need
@@ -285,7 +297,11 @@ class TrainState(NamedTuple):
                 for name in skeleton
             },
         )
-        print(f"[checkpoint] resuming at epoch {latest_epoch}", flush=True)
+        print(
+            f"[checkpoint] resuming at epoch {latest_epoch}"
+            + ("" if has_opt_state else " (no optimizer state saved: starting it afresh)"),
+            flush=True,
+        )
         return state, latest_epoch, restored["loss_hist"]
 
 
@@ -333,6 +349,12 @@ def parse_args() -> argparse.Namespace:
         help="compute dtype for the network; params are kept in float32",
     )
     parser.add_argument("--muon", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--save_opt_state",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="include the optimizer state in checkpoints (about 2/3 of their size)",
+    )
 
     with open(config_args.config_root / f"{config_args.config}.yaml") as f:
         parser.set_defaults(**yaml.safe_load(f))
@@ -403,7 +425,7 @@ if __name__ == "__main__":
             )
 
         # save a checkpoint and log the median of the epoch's losses
-        state.save_to(checkpoints, epoch + 1, loss_history)
+        state.save_to(checkpoints, epoch + 1, loss_history, args.save_opt_state)
         flow_l, x_l, y_l = np.median(loss_history[epoch], axis=0)
         pbar.set_postfix(flow=f"{flow_l:.5f}", x=f"{x_l:.5f}", y=f"{y_l:.5f}")
         print(

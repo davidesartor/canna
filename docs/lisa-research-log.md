@@ -95,6 +95,28 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 4. Findings
 
+### F17 (2026-10-03): E3' relaunch hit the quota again; checkpoints drop the optimizer state
+
+**What happened.** After the cleanup, job 13645445 saved epoch 1 (`checkpoints/1`), then
+failed writing epoch 2's `2.orbax-checkpoint-tmp` (`RESOURCE_EXHAUSTED`).
+- The quota holds one 1.7 GB checkpoint, but not the two that orbax keeps during a save.
+
+**Measured speed.**
+- Compile takes ~2 min, then **60 s per 1000-step epoch** (epoch 1 at 2:05, epoch 2 at
+  3:05).
+- So 1M steps is about **17 h**, inside one 24 h job.
+- The 57 ms/step estimate held.
+
+**Fix (2026-10-03).** `--save_opt_state/--no-save_opt_state`, set to false in
+`XS-late-768.yaml`.
+- The optimizer state is 64% of a checkpoint (483 of 771 MB at XS), so a 768-wide
+  checkpoint drops from ~1.7 GB to ~0.6 GB.
+- `restore_from` notices a checkpoint without optimizer state and keeps a fresh one. It
+  prints so in the log.
+- `tests/lisa/test_checkpoint.py` covers both ways.
+- The cost: a resume restarts muon's momentum and Adam's moments. That only matters at a
+  24 h boundary, which this run should not reach.
+
 ### F16 (2026-10-03): the integrator is converged, and E3' died on the home-directory quota
 
 **T2: XS-late scorecards at 64 and 128 RK4 steps** (jobs 13641220, 13641221) agree with the
@@ -565,7 +587,7 @@ attribution.
 | E3 | S with the E2 recipe | the wider band | ~15 h | only if E2 succeeds |
 | **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~4 min each) | done (13626493, 13626496), F15 |
 | T2 | XS-late scorecard again at 64 and 128 RK4 steps (`--ode_steps`, eval only; writes `scorecard_ode<N>.npz`) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | done (13641220, 13641221): no, the integrator is converged (F16) |
-| **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | first attempt 13641222 died on the home quota after epoch 1 (F16); resubmit after freeing space |
+| **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | 13641222 and 13645445 died on the home quota (F16, F17); relaunch with `save_opt_state: false`, 60 s per epoch, ~17 h |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
