@@ -63,7 +63,7 @@ def test_a_whole_injection_scores_end_to_end(small_flow, time_power, capsys):
 
     problem, flow, _, _, f = small_flow
     latent = problem.sample_physical(jr.key(5), f)
-    rows = score_injection(problem, flow, latent, f, jr.key(6), time_power, n_draws=8)
+    rows = score_injection(problem, flow, latent, f, jr.key(6), time_power, n_draws=8, ode_steps=2)
     assert all(len(v) == problem.n_sources for v in rows.values())
     assert all(np.all(np.isfinite(rows[k])) for k in ("snr", "width", "ideal", "offset", "rank"))
     summary(rows, np.ones(problem.n_sources, bool), "test")

@@ -467,8 +467,8 @@ attribution.
 | **E2** | **one combined run**: XS-late, 1M steps (details below) | Does the recipe fix the floor (A) and the misses (B)? | ~10.8 h + eval | done (F13, F15): 1.6× narrower, bias removed, detection slightly worse; the floor is still ~60× ideal |
 | E3 | S with the E2 recipe | the wider band | ~15 h | only if E2 succeeds |
 | **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~4 min each) | done (13626493, 13626496), F15 |
-| T2 | XS-late scorecard again at 64 and 128 RK4 steps (eval only; needs an `--ode_steps` flag) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | proposed |
-| **E3'** | XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step) | proposed, the one next training run |
+| T2 | XS-late scorecard again at 64 and 128 RK4 steps (`--ode_steps`, eval only; writes `scorecard_ode<N>.npz`) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | prepared 2026-10-03 |
+| **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | prepared 2026-10-03, the one next training run |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
@@ -533,6 +533,12 @@ sbatch slurm/lisa.sbatch XS-late                             # E2 -> outputs/lis
 sbatch slurm/lisa-eval.sbatch XS-late                        # its eval, after [done]
 sbatch slurm/lisa-scorecard.sbatch XS                        # T1 on the 1M model -> outputs/lisa-XS/scorecard.npz
 sbatch slurm/lisa-scorecard.sbatch XS-late                   # T1 on XS-late
+sbatch slurm/lisa-scorecard.sbatch XS-late --ode_steps 64    # T2 -> outputs/lisa-XS-late/scorecard_ode64.npz
+sbatch slurm/lisa-scorecard.sbatch XS-late --ode_steps 128   # T2 -> scorecard_ode128.npz
+sbatch slurm/lisa.sbatch XS-late-768                         # E3' -> outputs/lisa-XS-late-768, ~16 h
+# after E3' prints [done]:
+sbatch slurm/lisa-scorecard.sbatch XS-late-768               # compare with XS-late's scorecard (F15)
+sbatch slurm/lisa-eval.sbatch XS-late-768                    # corner plots
 ```
 
 ## 8. Provenance

@@ -177,7 +177,7 @@ if __name__ == "__main__":
             jr.split(key_n, N_POSTERIOR), f
         )
         post = sample_posterior(
-            problem, flow, u0, y, f, time_power=args.time_power
+            problem, flow, u0, y, f, args.ode_steps or ODE_STEPS, args.time_power
         )
         samples = np.asarray(
             jax.vmap(problem.flow_to_physical, in_axes=(0, None))(post, f)

@@ -319,6 +319,12 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help="flow clock warp, s = 1 - (1 - t)^p; 1 is the plain uniform clock",
     )
+    parser.add_argument(
+        "--ode_steps",
+        type=int,
+        default=None,
+        help="eval and scorecard only: RK4 steps for sampling (default: eval.ODE_STEPS)",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--dtype",

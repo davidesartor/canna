@@ -1,0 +1,31 @@
+# XS-late with a wider network: 768 x 8 blocks, 12 heads of 64 (170M parameters,
+# against 75.6M). Same problem, aux schedule, clock warp and 1M steps, so it compares
+# with XS-late one to one. Estimated ~57 ms/step on an A100, ~16 h.
+problem:
+  n_sources: 4
+  t_obs: 63115200.0
+  sampling_step: 0.25
+  response_points: 16
+  oms_noise: 15.0
+  acceleration_noise: 3.0
+  mass_range: [0.15, 1.4]
+  f0_range: [1.0e-4, 12.0e-3] # 16 response points truncate it to [1.0e-4, 1.3e-3]
+  snr_range: [7.0, 1000.0]
+
+network:
+  hidden_dim: 768
+  num_blocks: 8
+  num_heads: 12
+  patch_stages: 1
+
+batch_size: 256
+learning_rate: 1.0e-4
+weight_decay: 0.0
+total_steps: 1000000
+log_interval: 1000
+# aux heads for the first 10% of the run, then pure flow
+warmup_frac: 0.1
+# flow clock warp s = 1 - (1 - t)^3: more of training near the end of the path, where
+# a loud source's posterior is resolved (see path_position in train.py)
+time_power: 3.0
+seed: 0

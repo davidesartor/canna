@@ -18,7 +18,8 @@ per source rather than per injection, and over enough injections to see a bias:
 The ten eval injections (the SNR deciles eval.py plots) come first, with eval.py's keys
 and the first N_DRAWS of its base draws, so their rows compare one to one with the
 earlier per-source tables. N_RANDOM plain prior draws follow, for the statistics.
-Prints a summary and writes outputs/lisa-<config>/scorecard.npz.
+Prints a summary and writes outputs/lisa-<config>/scorecard.npz, or scorecard_ode<N>.npz
+when --ode_steps asks for other than eval.py's default, so integrator checks sit beside it.
 """
 
 import itertools
@@ -32,7 +33,7 @@ import orbax.checkpoint as ocp
 
 from .problem import LisaGB
 from .train import TrainState, parse_args
-from .eval import sample_posterior, N_CANDIDATES, N_POSTERIOR, N_QUANTILES
+from .eval import sample_posterior, N_CANDIDATES, N_POSTERIOR, N_QUANTILES, ODE_STEPS
 
 N_DRAWS = 256
 N_RANDOM = 200
@@ -89,7 +90,14 @@ def score(problem: LisaGB, draws: np.ndarray, truth: np.ndarray, f) -> dict:
 
 
 def score_injection(
-    problem: LisaGB, flow, latent, f, key_n, time_power: float = 1.0, n_draws: int = N_DRAWS
+    problem: LisaGB,
+    flow,
+    latent,
+    f,
+    key_n,
+    time_power: float = 1.0,
+    n_draws: int = N_DRAWS,
+    ode_steps: int = ODE_STEPS,
 ) -> dict:
     """Simulate one observation, draw from the flow, and score every source in it.
 
@@ -101,7 +109,7 @@ def score_injection(
     u0 = jax.vmap(problem.sample_flow, in_axes=(0, None))(
         jr.split(key_n, N_POSTERIOR)[:n_draws], f
     )
-    post = sample_posterior(problem, flow, u0, y, f, time_power=time_power)
+    post = sample_posterior(problem, flow, u0, y, f, ode_steps, time_power)
     draws = np.asarray(jax.vmap(problem.flow_to_physical, in_axes=(0, None))(post, f))
     return score(problem, draws, np.asarray(latent), f)
 
@@ -139,7 +147,12 @@ if __name__ == "__main__":
     )
     state, epoch, _ = state.restore_from(checkpoints)
     problem, flow = state.problem, state.flow
-    print(f"config {args.config}, epoch {epoch}, time_power {args.time_power}", flush=True)
+    ode_steps = args.ode_steps or ODE_STEPS
+    print(
+        f"config {args.config}, epoch {epoch}, time_power {args.time_power},"
+        f" ode_steps {ode_steps}",
+        flush=True,
+    )
 
     # the same candidates and keys as eval.py
     key_pick, key_window, key_noise = jr.split(jr.key(args.seed), 3)
@@ -156,7 +169,15 @@ if __name__ == "__main__":
     rows, injection, is_eval = [], [], []
     for n, (i, key_n) in enumerate(zip(np.concatenate([chosen, others]), noise_keys)):
         rows.append(
-            score_injection(problem, flow, latents[i], windows[i], key_n, args.time_power)
+            score_injection(
+                problem,
+                flow,
+                latents[i],
+                windows[i],
+                key_n,
+                args.time_power,
+                ode_steps=ode_steps,
+            )
         )
         injection += [n] * problem.n_sources
         is_eval += [n < N_QUANTILES] * problem.n_sources
@@ -173,9 +194,10 @@ if __name__ == "__main__":
             f"{rows['injection'][j]:4d} {rows['snr'][j]:7.1f} {rows['width'][j]:7.3f}"
             f" {rows['width'][j] / rows['ideal'][j]:8.0f} {rows['offset'][j]:+8.3f}"
         )
-    summary(rows, rows["is_eval"], f"the ten eval injections (epoch {epoch})")
-    summary(rows, ~rows["is_eval"], f"{N_RANDOM} random injections (epoch {epoch})")
+    summary(rows, rows["is_eval"], f"the ten eval injections (epoch {epoch}, {ode_steps} RK4 steps)")
+    summary(rows, ~rows["is_eval"], f"{N_RANDOM} random injections (epoch {epoch}, {ode_steps} RK4 steps)")
     summary(rows, np.ones_like(rows["is_eval"]), "all")
 
-    np.savez(out_dir / "scorecard.npz", epoch=epoch, **rows)
-    print(f"\nsaved {out_dir / 'scorecard.npz'}", flush=True)
+    name = "scorecard.npz" if ode_steps == ODE_STEPS else f"scorecard_ode{ode_steps}.npz"
+    np.savez(out_dir / name, epoch=epoch, ode_steps=ode_steps, **rows)
+    print(f"\nsaved {out_dir / name}", flush=True)
