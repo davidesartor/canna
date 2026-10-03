@@ -95,6 +95,38 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 4. Findings
 
+### F16 (2026-10-03): the integrator is converged, and E3' died on the home-directory quota
+
+**T2: XS-late scorecards at 64 and 128 RK4 steps** (jobs 13641220, 13641221) agree with the
+32-step one to within noise, on the 200 random injections.
+
+| steps | found, SNR < 15 / 15–40 / 40–100 / ≥ 100 | f₀ width (bins) | rank |
+|---|---|---|---|
+| 32 | 0.46 / 0.81 / 0.92 / 0.99 | 0.152 / 0.129 / 0.087 / 0.088 | 0.51 / 0.46 / 0.46 / 0.50 |
+| 64 | 0.46 / 0.81 / 0.92 / 0.99 | 0.147 / 0.130 / 0.088 / 0.089 | 0.50 / 0.46 / 0.46 / 0.50 |
+| 128 | 0.47 / 0.81 / 0.92 / 0.99 | 0.147 / 0.127 / 0.087 / 0.089 | 0.50 / 0.46 / 0.46 / 0.50 |
+
+- XS-late's detection loss and its 0.088-bin floor belong to the trained network, not to
+  the eval's ODE.
+- 32 steps stay the default.
+
+**E3' (XS-late-768) failed at its first checkpoint.**
+- Job 13641222 trained epoch 1 (129.5 s including compile).
+- Orbax's save then failed with `RESOURCE_EXHAUSTED` writing into
+  `outputs/lisa-XS-late-768/checkpoints/1.orbax-checkpoint-tmp`, and the job exited with
+  code 1.
+- The filesystem has 5.8 TB free, so this is the **per-user quota on
+  /home/mp/mentasgi**.
+- A 768-wide checkpoint is about 1.7 GB, against 0.77 GB at XS, and orbax holds two while
+  saving.
+- `outputs/` holds eight checkpoint directories, four of them obsolete:
+  - `lisa-XS.nan` and `lisa-S.nan` (NaN weights);
+  - `aux10` (stopped E1);
+  - `lisa-B` (empty);
+  - plus the failed temporary checkpoint.
+- `500k/lisa-XS` and `lisa-XS` (1M) are backed up on the laptop.
+- There is no personal folder under `/work/LISA`, where other LISA users keep theirs.
+
 ### F15 (2026-10-03): scorecards — the warp narrows posteriors 1.6× and removes the f₀ bias
 
 **Setup.** Jobs 13626493 (1M, uniform clock) and 13626496 (XS-late), about 4 min each on an
@@ -467,8 +499,8 @@ attribution.
 | **E2** | **one combined run**: XS-late, 1M steps (details below) | Does the recipe fix the floor (A) and the misses (B)? | ~10.8 h + eval | done (F13, F15): 1.6× narrower, bias removed, detection slightly worse; the floor is still ~60× ideal |
 | E3 | S with the E2 recipe | the wider band | ~15 h | only if E2 succeeds |
 | **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~4 min each) | done (13626493, 13626496), F15 |
-| T2 | XS-late scorecard again at 64 and 128 RK4 steps (`--ode_steps`, eval only; writes `scorecard_ode<N>.npz`) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | prepared 2026-10-03 |
-| **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | prepared 2026-10-03, the one next training run |
+| T2 | XS-late scorecard again at 64 and 128 RK4 steps (`--ode_steps`, eval only; writes `scorecard_ode<N>.npz`) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | done (13641220, 13641221): no, the integrator is converged (F16) |
+| **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | first attempt 13641222 died on the home quota after epoch 1 (F16); resubmit after freeing space |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
