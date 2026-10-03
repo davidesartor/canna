@@ -478,7 +478,72 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
   - The risk is that the long aux phase is what enables the jump.
   - E1b (no aux) is dropped to save compute.
 
-## 6. Experiment plan (revised 2026-10-01: compute-limited, as few runs as possible)
+## 6. Roadmap (2026-10-03)
+
+### Where things stand
+
+| | XS 1M, uniform clock | XS-late, warped clock + aux 10% |
+|---|---|---|
+| loud-source f₀ width (SNR ≥ 100) | 0.147 bins, 94× ideal | 0.088 bins, 59× ideal |
+| found, SNR 15–40 / < 15 | 85% / 52% | 81% / 45% |
+| f₀ bias | low, 8σ | none |
+| calibration (in95) | 0.97–0.99 | 0.99–1.00, conservative |
+
+**Ruled out as causes of the floor:**
+- the ODE integration (32 = 64 = 128 steps, F16);
+- bf16 rounding of the *input* coordinate (F5, F15);
+- f₀–ḟ physics (F12);
+- A100 numerics (F15).
+
+**Not yet tested:**
+- bf16 noise in the network's *output* and internal activations (T3 below);
+- capacity (E3', running);
+- the learning rate and its schedule (F9).
+
+**Why bf16 output noise is now a suspect.**
+- The velocity the network outputs is O(1) in flow units. bf16 keeps 8 significant bits,
+  so its rounding is ~0.002–0.004 units, which is 0.05–0.1 bins.
+- That noise would be flat in SNR and blind to where the source sits in the window,
+  exactly like the floor.
+- The fp32 eval of the 500k model in F5 moved its width by only 6%. But with a 0.2-bin
+  floor, an added ~0.07-bin noise *should* move it by only ~6%, so that test could not
+  see it. At XS-late's 0.088 bins it would dominate.
+
+### Steps, each with its decision
+
+1. **T3: XS-late scorecard in fp32 (eval only, ~10 min on an A100).**
+   Command: `sbatch slurm/lisa-scorecard.sbatch XS-late --dtype float32`, which writes
+   `scorecard_float32.npz`.
+   - **Loud widths drop clearly** (≲ 0.06 bins): bf16 noise is the floor. Go to step 2a.
+   - **Otherwise:** bf16 is ruled out for good. Go to step 2b.
+2. **Precision or capacity.**
+   - **2a: fix the precision.** Evaluate in fp32 (free). Then make the velocity head, and
+     if needed the last block, compute in fp32 during training. That is a small code
+     change, with a cost near zero because most of the network stays in bf16. Then check
+     whether E3' (bf16) also gains from an fp32 eval.
+   - **2b: capacity.** E3' (768 × 8, job 13645445) decides it. Its scorecard is compared
+     with XS-late's: floor and detection.
+3. **Detection of faint sources.**
+   - If E3' does not recover the −2.5% at SNR ≈ 17, the next training run uses
+     `time_power: 2` instead of 3. That puts 29% of samples in the first half of the path,
+     against 21%.
+   - The same run carries an lr cooldown over its last 20% (F9). Per the compute rule, it
+     is one combined run.
+4. **S** (the 0.1–4.2 mHz band, 128 tokens) with the settled recipe.
+   - One run of ~1M steps. At 768 wide that is probably ~30 h, so two 24 h job slots
+     (resume works).
+   - B (the full band) needs a /work allocation and a memory plan first.
+5. **Validation against a real sampler.** jexplore MCMC on 2–3 injections, chosen as one
+   crowded window with a missed SNR ~25–35 source and one loud window. Then extend the
+   scorecard's calibration to sky and amplitude.
+
+**Housekeeping:**
+- ask the `/work/LISA` admin (owner `palacih`) for a personal folder: the home quota is
+  tight (F16);
+- report or minimise F14 (compiled JAX code wrong on the laptop's Ada GPU);
+- keep running the lisa tests with `JAX_PLATFORMS=cpu` meanwhile.
+
+## 6b. Experiment plan, as run (revised 2026-10-01: compute-limited, as few runs as possible)
 
 **Principle.** Run no single-variable ablations beyond the two already paid for. One
 combined run carries every change we believe in, and the runs in flight supply most of the

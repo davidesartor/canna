@@ -18,8 +18,9 @@ per source rather than per injection, and over enough injections to see a bias:
 The ten eval injections (the SNR deciles eval.py plots) come first, with eval.py's keys
 and the first N_DRAWS of its base draws, so their rows compare one to one with the
 earlier per-source tables. N_RANDOM plain prior draws follow, for the statistics.
-Prints a summary and writes outputs/lisa-<config>/scorecard.npz, or scorecard_ode<N>.npz
-when --ode_steps asks for other than eval.py's default, so integrator checks sit beside it.
+Prints a summary and writes outputs/lisa-<config>/scorecard.npz. A non-default --ode_steps
+or --dtype adds _ode<N> or _<dtype> to the name (scorecard_ode64.npz, scorecard_float32.npz),
+so integrator and precision checks sit beside the default one instead of over it.
 """
 
 import itertools
@@ -150,7 +151,7 @@ if __name__ == "__main__":
     ode_steps = args.ode_steps or ODE_STEPS
     print(
         f"config {args.config}, epoch {epoch}, time_power {args.time_power},"
-        f" ode_steps {ode_steps}",
+        f" ode_steps {ode_steps}, dtype {args.dtype}",
         flush=True,
     )
 
@@ -198,6 +199,9 @@ if __name__ == "__main__":
     summary(rows, ~rows["is_eval"], f"{N_RANDOM} random injections (epoch {epoch}, {ode_steps} RK4 steps)")
     summary(rows, np.ones_like(rows["is_eval"]), "all")
 
-    name = "scorecard.npz" if ode_steps == ODE_STEPS else f"scorecard_ode{ode_steps}.npz"
+    name = "scorecard"
+    name += "" if ode_steps == ODE_STEPS else f"_ode{ode_steps}"
+    name += "" if args.dtype == "bfloat16" else f"_{args.dtype}"
+    name += ".npz"
     np.savez(out_dir / name, epoch=epoch, ode_steps=ode_steps, **rows)
     print(f"\nsaved {out_dir / name}", flush=True)
