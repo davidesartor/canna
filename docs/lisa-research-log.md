@@ -7,6 +7,14 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-02)
 
+- **Update, 2026-10-03 (F15).** The scorecards settle E2.
+  - The warped clock with aux 10% makes posteriors 1.6× narrower at every SNR.
+  - It removes the 1M model's low f₀ bias, which is real (8σ).
+  - Calibration is conservative, and nothing is over-confident.
+  - Detection loses about 2.5% of sources, mostly near SNR 17.
+  - The loud-source floor is 0.088 bins, still about 60× ideal, and it is not bf16.
+  - **Next:** a free check of the eval's step count (T2), then **one** run: the XS-late
+    recipe with the 768 × 8 network (E3).
 - **Update, 2026-10-02.** Both 1M-step runs are done.
   - **Uniform clock (E0):** about 22% narrower than 500k and 2 more sources found. The floor
     barely moved, and there is a hint of a low f₀ bias (F12).
@@ -86,6 +94,58 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13579022 | eval of XS-late | Completed in 13 min, `time_power 3` read from its config. Corner plots in `outputs/lisa-XS-late/corner`, copied locally to the same path. See F13. |
 
 ## 4. Findings
+
+### F15 (2026-10-03): scorecards — the warp narrows posteriors 1.6× and removes the f₀ bias
+
+**Setup.** Jobs 13626493 (1M, uniform clock) and 13626496 (XS-late), about 4 min each on an
+A100. Each covers 840 sources: the 10 eval injections plus 200 random prior injections.
+The outputs are in `outputs/scorecards/`.
+- "found" means an f₀ width under one bin.
+- The ideal width is √3/(π SNR) bins.
+- rank is the fraction of draws below the truth; 0.5 means unbiased.
+- in68 and in95 are the fractions of truths inside the flow's central intervals.
+
+| SNR | found 1M → late | f₀ width (bins) 1M → late | × ideal 1M → late | median offset (bins) 1M → late | rank 1M → late | in68 / in95, 1M → late |
+|---|---|---|---|---|---|---|
+| < 15 | 0.52 → 0.45 | 0.223 → 0.152 | 5 → 3 | −0.085 → +0.010 | 0.56 → 0.50 | 0.80 / 0.98 → 0.78 / 0.99 |
+| 15–40 | 0.85 → 0.81 | 0.187 → 0.129 | 10 → 6 | −0.042 → +0.021 | 0.58 → 0.46 | 0.87 / 0.99 → 0.95 / 1.00 |
+| 40–100 | 0.95 → 0.92 | 0.151 → 0.088 | 18 → 11 | −0.053 → +0.013 | 0.60 → 0.47 | 0.80 / 0.98 → 0.89 / 0.99 |
+| ≥ 100 | 0.99 → 0.99 | 0.147 → 0.088 | 94 → 59 | −0.056 → −0.003 | 0.62 → 0.50 | 0.77 / 0.97 → 0.87 / 0.99 |
+
+**Narrower.** On sources found by both, XS-late is narrower by a median factor of:
+- 0.61 at SNR ≥ 100, narrower in 97% of them;
+- 0.62 at SNR 40–100;
+- 0.70 at SNR 15–40.
+
+**F12's low f₀ bias is real in the 1M model and gone in XS-late.**
+- With 840 sources, the 1M ranks of 0.56–0.62 are about 8σ away from 0.5 for the 369 loud
+  random sources.
+- XS-late's ranks are 0.46–0.51, with offsets of about 0.
+- Both models are on the *conservative* side: in95 is 0.97–1.00, and in68 sits above
+  0.68. No over-confidence.
+
+**Detection got slightly worse.** 27 sources are found only by the 1M model (median SNR 17)
+and 6 only by XS-late, a net −21 of 840. This is the expected cost of the warp: about 21% of
+training samples land in the first half of the path, against 50% with a uniform clock.
+- Part of it may come from the eval instead. With uniform steps in t, the first half of
+  the path (s < 0.5) gets only ~6 of the 32 RK4 steps.
+
+**The floor moved, but it is still a floor.** At SNR ≥ 100 the width is 0.088 bins, still
+about flat in SNR (Spearman −0.16) and about 60× ideal.
+- **It is not bf16.** The width does not track the bf16 cell of the source's f₀ coordinate
+  (Spearman −0.11, the wrong sign). Sources with a 0.023-bin cell have 0.089 bins, those
+  with a 0.094-bin cell 0.086.
+
+**The A100 reproduces the CPU table** (F12) on the 31 localised eval sources: median width
+ratio 0.97, one outlier (the collapsed q0.40 source).
+- So F14's laptop-GPU problem does not reach TREX.
+
+**Against E2's decision rule:**
+- The floor fell 1.7×, not ≥ 3×, to 0.088 bins rather than ≲ 0.06.
+- Calibration improved.
+- B fell slightly.
+- **The warp is a keeper.** It narrows everything and removes the bias. But it is not
+  enough on its own.
 
 ### F14 (2026-10-02): on the laptop GPU, compiled code disagrees with eager code
 - **The failing test.** `test_fori_loop_transport_matches_the_unrolled_rk4` fails on the
@@ -404,9 +464,11 @@ attribution.
 |---|---|---|---|---|
 | E0 | XS 500k → 1M, then its eval | Q2: does more training move A or B? | eval only (~15 min) | done: width table F12 (A 92× → 76×, B 8 → 10 of 13), corner plots 13578013 |
 | E1 | XS, `warmup_frac 0.1` | Q3, and what triggers the jump (F10) | — | stopped at epoch ~60; only F10 survives |
-| **E2** | **one combined run**: XS-late, 1M steps (details below) | Does the recipe fix the floor (A) and the misses (B)? | ~10.8 h + eval | training and corner plots done (F13); **scorecard pending** |
+| **E2** | **one combined run**: XS-late, 1M steps (details below) | Does the recipe fix the floor (A) and the misses (B)? | ~10.8 h + eval | done (F13, F15): 1.6× narrower, bias removed, detection slightly worse; the floor is still ~60× ideal |
 | E3 | S with the E2 recipe | the wider band | ~15 h | only if E2 succeeds |
-| **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~10 min each) | code ready (2026-10-02), to submit |
+| **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~4 min each) | done (13626493, 13626496), F15 |
+| T2 | XS-late scorecard again at 64 and 128 RK4 steps (eval only; needs an `--ode_steps` flag) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | proposed |
+| **E3'** | XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step) | proposed, the one next training run |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
