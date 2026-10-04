@@ -95,6 +95,40 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 4. Findings
 
+### F18 (2026-10-04): float32 compiled LisaFlow is wrong on the A100 too, so T3 is void
+
+**T3 failed as a test.** The XS-late scorecard with `--dtype float32` (job 13719350, done
+in 6 min) found almost nothing.
+- Found fractions were 0, 1, 2 and 4% across the SNR bands.
+- Medians sat 2–5 bins off the truth.
+- The same model in bf16 finds 46–99%.
+
+**The cause is the GPU path, not the model.**
+- The 500k model evaluated in fp32 on the *CPU* (F5) was fine: 6% wider, all sources
+  found.
+- On the laptop's Ada GPU (F14), jit-compiled float32 LisaFlow was wrong while eager was
+  right.
+
+**So F14 is not laptop-specific.** Compiled float32 LisaFlow is wrong on both GPUs.
+- The bf16 path is fine. The A100 bf16 scorecard reproduces the CPU table (F15).
+- In bf16, `MultiStreamAttention` calls cuDNN flash attention explicitly. In float32 it
+  goes to `implementation="xla"`, so XLA's own GPU attention lowering or fusion is the
+  first suspect.
+
+**Consequences:**
+- Every production result so far (bf16) stands.
+- The bf16-output-noise hypothesis is still untested.
+- Any fp32 step on a GPU (the roadmap's step 2a) needs this fixed first.
+
+**To test next:**
+- a float32 single-block attention, jit vs eager, on the laptop GPU (seconds);
+- an fp32 scorecard on the CPU for a few injections.
+
+**E3' is running.** Job 13719349 started 4 Oct at 11:46 CEST on the e7a0864 code, with
+`save_opt_state: false`.
+- It is past epoch 17, with checkpoints saving: the quota fix works.
+- It runs at 59.6 s per epoch, with an ETA of about 04:20 CEST on 5 Oct.
+
 ### F17 (2026-10-03): E3' relaunch hit the quota again; checkpoints drop the optimizer state
 
 **What happened.** After the cleanup, job 13645445 saved epoch 1 (`checkpoints/1`), then
@@ -587,7 +621,7 @@ attribution.
 | E3 | S with the E2 recipe | the wider band | ~15 h | only if E2 succeeds |
 | **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~4 min each) | done (13626493, 13626496), F15 |
 | T2 | XS-late scorecard again at 64 and 128 RK4 steps (`--ode_steps`, eval only; writes `scorecard_ode<N>.npz`) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | done (13641220, 13641221): no, the integrator is converged (F16) |
-| **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | 13641222 and 13645445 died on the home quota (F16, F17); relaunch with `save_opt_state: false`, 60 s per epoch, ~17 h |
+| **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | **running**: job 13719349 since 4 Oct 11:46 CEST, 59.6 s per epoch, ETA ~04:20 CEST on 5 Oct (earlier 13641222 and 13645445 died on the quota, F16 and F17) |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
