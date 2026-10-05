@@ -27,16 +27,14 @@ random injections, for a slow device; the file records how many.
 
 import itertools
 import time
-from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
-import orbax.checkpoint as ocp
 
 from .problem import LisaGB
-from .train import TrainState, parse_args
+from .train import load_trained, parse_args
 from .eval import sample_posterior, N_CANDIDATES, N_POSTERIOR, N_QUANTILES, ODE_STEPS
 
 N_DRAWS = 256
@@ -142,14 +140,7 @@ def summary(rows: dict, which: np.ndarray, title: str) -> None:
 
 if __name__ == "__main__":
     args = parse_args()
-    out_dir: Path = args.output_dir / f"lisa-{args.config}"
-
-    state = TrainState.from_config(args)
-    checkpoints = ocp.CheckpointManager(
-        (out_dir / "checkpoints").absolute(),
-        options=ocp.CheckpointManagerOptions(max_to_keep=1),
-    )
-    state, epoch, _ = state.restore_from(checkpoints)
+    state, epoch, out_dir = load_trained(args)
     problem, flow = state.problem, state.flow
     ode_steps = args.ode_steps or ODE_STEPS
     n_random = N_RANDOM if args.n_random is None else args.n_random

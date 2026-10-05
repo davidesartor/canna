@@ -316,6 +316,34 @@ class TrainState(NamedTuple):
         return state, latest_epoch, restored["loss_hist"]
 
 
+def run_dir(args: argparse.Namespace) -> Path:
+    """Where a run keeps its checkpoints, plots and scorecards: outputs/lisa-<config>."""
+    return args.output_dir / f"lisa-{args.config}"
+
+
+def checkpoint_manager(out_dir: Path) -> ocp.CheckpointManager:
+    """The run's checkpoints, keeping only the latest (orbax holds the old one while saving)."""
+    return ocp.CheckpointManager(
+        (out_dir / "checkpoints").absolute(),
+        options=ocp.CheckpointManagerOptions(max_to_keep=1),
+    )
+
+
+def load_trained(args: argparse.Namespace) -> tuple[TrainState, int, Path]:
+    """The latest trained state of the run args names, its epoch and its folder.
+
+    For eval and scorecard. restore_from falls back to the fresh state when there is no
+    checkpoint, which is right for a new training run but would quietly score an
+    untrained network here, so stop instead.
+    """
+    out_dir = run_dir(args)
+    checkpoints = checkpoint_manager(out_dir)
+    state, epoch, _ = TrainState.from_config(args).restore_from(checkpoints)
+    if epoch == 0:
+        raise SystemExit(f"no checkpoint in {checkpoints.directory}: nothing to evaluate")
+    return state, epoch, out_dir
+
+
 def aux_weight_schedule(step: int, total_steps: int, warmup_frac: float) -> float:
     """Cosine anneal of the auxiliary heads, from 1 at the start to 0 after warmup_frac."""
     warmup_steps = warmup_frac * total_steps
@@ -415,13 +443,10 @@ if __name__ == "__main__":
     args = parse_args()
 
     # housekeeping
-    run_id = f"lisa-{args.config}"
-    out_dir: Path = args.output_dir / run_id
+    out_dir = run_dir(args)
+    run_id = out_dir.name
     out_dir.mkdir(parents=True, exist_ok=True)
-    checkpoints = ocp.CheckpointManager(
-        (out_dir / "checkpoints").absolute(),
-        options=ocp.CheckpointManagerOptions(max_to_keep=1),
-    )
+    checkpoints = checkpoint_manager(out_dir)
     print(f"JAX backend: {jax.default_backend()}", flush=True)
     print(f"devices: {jax.local_device_count()}", flush=True)
     print(f"run {run_id} -> {out_dir}", flush=True)
