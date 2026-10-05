@@ -16,6 +16,7 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
     changes from run to run, which points at the constant lr.
   - **Next:** two cheap tests instead of a new run. One is an fp32 scorecard on a CPU node
     (bf16 or not; no GPU). The other is an lr cooldown continuing the 768 model (~3 h).
+    Both were submitted on 5 Oct, with their decision rules in §6.
 - **Update, 2026-10-03 (F15).** The scorecards settle E2.
   - The warped clock with aux 10% makes posteriors 1.6× narrower at every SNR.
   - It removes the 1M model's low f₀ bias, which is real (8σ).
@@ -104,6 +105,8 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13641222, 13645445 | E3': XS-late-768 | Both died on the home quota at the first and second checkpoint (F16, F17). |
 | **13719349** | E3': XS-late-768, 1M steps, `save_opt_state: false` | **Completed** at 04:22 CEST on 5 Oct (16 h 36 min, trexgpu02, 59.6 s per epoch), no NaN. Final flow loss 0.4498. See F19. |
 | 13767819, 13767924 | scorecard and eval of XS-late-768 | Completed in 6 and 14 min. Downloaded through JupyterHub (SSH was down) to `outputs/lisa-XS-late-768` (checkpoint 1000, corner plots, `scorecard.npz`). See F19. |
+| ? | T3': XS-late scorecard in fp32 on a CPU node (cpu2022, 64 cores), `--n_random 40` | Submitted 2026-10-05 afternoon from JupyterHub. TREX code at 30701cf. |
+| ? | C1: XS-late-768-cool, epochs 1000 → 1200 with the lr cooldown | Submitted 2026-10-05 afternoon, after moving `outputs/lisa-XS-late-768/checkpoints` into `outputs/lisa-XS-late-768-cool/`. |
 
 ## 4. Findings
 
@@ -194,8 +197,8 @@ in 6 min) found almost nothing.
 - The same model in bf16 finds 46–99%.
 
 **The cause is the GPU path, not the model.**
-- The 500k model evaluated in fp32 on the *CPU* (F5) was fine: 6% wider, all sources
-  found.
+- The 500k model evaluated in fp32 on the *CPU* (F5) was fine: all sources found, and the
+  loudest one 6% narrower (0.197 bins against 0.210; corrected 2026-10-05 from "wider").
 - On the laptop's Ada GPU (F14), jit-compiled float32 LisaFlow was wrong while eager was
   right.
 
@@ -639,26 +642,55 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
 **Ruled out as causes of the floor:** the integrator, input rounding, A100 numerics, the
 physics, and now capacity (F19).
 
-**Two candidates are left, and both can be tested without a new 1M-step run:**
-1. **T3 on a CPU (no GPU time).** Run the XS-late-768 scorecard in fp32 on a TREX CPU node:
-   the 10 eval injections plus ~40 random ones. It needs two small additions: a
-   `--n_random` option and a CPU sbatch.
-   - If the loud widths fall clearly below 0.087 bins, bf16 is the floor. The fix is an fp32
-     velocity head and last block, plus the GPU float32 bug (F18) for evals.
-2. **C1: an lr cooldown on the 768 model (~3.3 h of A100).** Resume at 1M and train 200k
-   more steps, with the lr decaying linearly to 0.
-   - It needs a `--cooldown_steps` multiplier on the update. Scaling Muon's update is
-     exactly scaling its lr, and this keeps working across a resume with a fresh
-     optimizer state.
-   - It answers two questions: whether optimiser noise holds the floor up, and whether it
-     causes the run-specific bias.
-   - It also leaves the best model so far, whatever the outcome.
-   - It overwrites the TREX checkpoint 1000 (`max_to_keep=1`). The local copy is the
-     backup.
+**Two candidates are left. Both tests were submitted on 2026-10-05, with no new 1M-step
+run.**
+1. **T3': the XS-late scorecard in fp32 on a CPU node** (`slurm/lisa-scorecard-cpu.sbatch`,
+   10 eval injections plus 40 random, no GPU time). XS-late stands in for the 768 net: they
+   share the floor, the cheaper net runs about 2× faster on a CPU, and its checkpoint is
+   not touched by C1.
+2. **C1: an lr cooldown on the 768 model** (`configs/XS-late-768-cool.yaml`, ~3.3 h of
+   A100). It resumes at 1M and trains 200k more steps, with the lr decaying linearly from
+   1e-4 to 0.
+   - The decay is a per-epoch scale on the update (`--cooldown_steps`). With no weight
+     decay that is exactly a scaled lr, and it survives a resume with a fresh optimizer
+     state.
+   - It leaves the best model so far, whatever the outcome.
+   - It overwrites the 1M checkpoint on TREX. The local copy in
+     `outputs/lisa-XS-late-768/checkpoints/1000` is the only one left.
 
-Then one run of S with whatever survives (step 4 below). Detection (step 3) waits. The 768
-net already recovered half of the gap, and `time_power 2` would trade back some of the
-floor.
+**Predictions and decision rules (written 2026-10-05, before the results):**
+- **T3'.** The statistic is the per-source width ratio, fp32 on the CPU over bf16 on the
+  A100, for loud found sources (SNR ≥ 100, about 90 of them).
+  - **Reference.** The 1M model's bf16 widths agree between the CPU and the A100 to a
+    median ratio of 0.97 (F15).
+  - **If bf16 adds the noise F5 hinted at:** F5's 0.210 → 0.197 bins implies ≈ 0.073 bins
+    added in quadrature. Removing that from 0.088 leaves **≈ 0.05 bins, a ratio of
+    ≈ 0.56**.
+  - **Ratio ≤ 0.75:** bf16 sets most of the floor. Next is fp32 in the velocity head and
+    last block. That needs one training run, and evals need the GPU float32 bug fixed (F18)
+    or must stay on the CPU.
+  - **Ratio ≥ 0.9:** bf16 at eval is ruled out. A network *trained* in bf16 could still
+    be limited (F5, Open). That is a costlier test and comes second.
+  - My prior: about 1 in 3 that the ratio falls below 0.75. F5 is a single source, at 16
+    steps.
+- **C1.**
+  - **Loss** falls 0.004–0.010 over the cooldown, to 0.440–0.446. That is the usual
+    warmup-stable-decay gain.
+  - **If optimiser noise holds the floor up:** the loud width falls at least 20%, to
+    ≤ 0.07 bins. The position-dependent bias shrinks from a largest slice offset of 0.081
+    bins to ≲ 0.03, and the loud rank returns to 0.45–0.55.
+  - **If the floor stays at 0.085–0.09 and the bias stays:** the constant lr is ruled out.
+  - Detection: at most +1%.
+- **Then:**
+  - **One test positive:** its fix goes into the S run, which is one run with the whole
+    recipe (step 4 below). That is the 768 net, `time_power 3`, aux 10%, a cooldown over
+    the last 20%, plus the fp32 head if T3' says so.
+  - **Both negative:** the floor is either bf16 *in training* or the objective itself
+    (F6). The S run then goes ahead with the recipe as it is. The floor question moves to a
+    single fp32-head training test, and validation against MCMC (step 5) decides how much
+    the floor matters.
+  - **Detection (step 3) waits.** The 768 net recovered half the gap, and `time_power 2`
+    would trade back some of the floor.
 
 ### Where things stand (2026-10-03)
 
@@ -746,8 +778,8 @@ attribution.
 | **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~4 min each) | done (13626493, 13626496), F15 |
 | T2 | XS-late scorecard again at 64 and 128 RK4 steps (`--ode_steps`, eval only; writes `scorecard_ode<N>.npz`) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | done (13641220, 13641221): no, the integrator is converged (F16) |
 | **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | done (13719349, 16 h 36 min; F19): same floor (0.087 bins), net +11 sources found, loss −1.3%, a run-specific loud-source f₀ bias of ~1/3 width |
-| **T3'** | the XS-late scorecard in fp32 on a TREX **CPU** node (`slurm/lisa-scorecard-cpu.sbatch`, `--n_random 40`), since GPU fp32 is broken (F18); writes `scorecard_float32_cpu.npz` | Does bf16 set the 0.087–0.088-bin floor? XS-late and the 768 net share the floor, so the cheaper net answers it | none (CPU; est. 1–3 h on 64 cores) | prepared 2026-10-05 |
-| **C1** | `configs/XS-late-768-cool.yaml`: the 768 model continued from 1M to 1.2M steps, with the lr decaying linearly to 0 over the 200k (`--cooldown_steps`). Its checkpoint is moved, not copied, into `outputs/lisa-XS-late-768-cool`; `require_checkpoint` stops it from starting from scratch | Does optimiser noise hold up the floor and cause the run-specific bias (F9, F19)? | ~3.3 h | prepared 2026-10-05 |
+| **T3'** | the XS-late scorecard in fp32 on a TREX **CPU** node (`slurm/lisa-scorecard-cpu.sbatch`, `--n_random 40`), since GPU fp32 is broken (F18); writes `scorecard_float32_cpu.npz` | Does bf16 set the 0.087–0.088-bin floor? XS-late and the 768 net share the floor, so the cheaper net answers it | none (CPU; est. 1–3 h on 64 cores) | submitted 2026-10-05 (job id not yet logged) |
+| **C1** | `configs/XS-late-768-cool.yaml`: the 768 model continued from 1M to 1.2M steps, with the lr decaying linearly to 0 over the 200k (`--cooldown_steps`). Its checkpoint is moved, not copied, into `outputs/lisa-XS-late-768-cool`; `require_checkpoint` stops it from starting from scratch | Does optimiser noise hold up the floor and cause the run-specific bias (F9, F19)? | ~3.3 h | submitted 2026-10-05 (job id not yet logged) |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
@@ -851,3 +883,8 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
   - `outputs/scorecards/compare_768.py` makes the F19 tables, including the bias by window
     position.
   - The slurm logs 13719349, 13767819 and 13767924 are in `outputs/lisa-XS/logs/`.
+- **Code on TREX without SSH (2026-10-05).** Uploading a file through JupyterHub did not
+  reach the home folder. What worked was pasting a base64 git bundle into the JupyterHub
+  terminal: `outputs/paste-into-trex.txt` (bundle `e7a0864..30701cf`, md5
+  118bb29a963c3d7b34460aebbbf2faa3), then `git pull --ff-only ~/canna-30701cf.bundle fml`.
+  TREX is now at 30701cf.
