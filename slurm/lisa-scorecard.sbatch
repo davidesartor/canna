@@ -31,12 +31,14 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 # buffers off and let the kernels launch one at a time
 export XLA_FLAGS="--xla_gpu_enable_command_buffer="
 
-# compiled float32 LisaFlow comes out wrong on these GPUs at XLA's default GEMM autotuning
-# level (4): one autotuned matmul is garbage inside the full program, though right on its
-# own (F20). Level 3 still autotunes and matches the CPU. A float32 run also asks for true
-# fp32 matmuls instead of the TF32 the GPU uses by default; bf16 runs are left as they are.
+# compiled float32 LisaFlow can come out wrong on these GPUs, depending on which matmul
+# kernels XLA's autotuner picks (F20). Autotune level 3 fixed the laptop but not the A100,
+# whose fp32 posteriors were still 2.4x too narrow (F22), so a float32 run switches GEMM
+# autotuning off altogether. It also asks for true fp32 matmuls instead of the TF32 the
+# GPU uses by default. bf16 runs are left as they are. The CPU scorecard
+# (lisa-scorecard-cpu.sbatch) stays the fp32 reference until an A100 run matches it.
 if [[ " ${*:2} " == *" --dtype float32 "* || " ${*:2} " == *" --dtype=float32 "* ]]; then
-    XLA_FLAGS="${XLA_FLAGS} --xla_gpu_autotune_level=3"
+    XLA_FLAGS="${XLA_FLAGS} --xla_gpu_autotune_level=0"
     export JAX_DEFAULT_MATMUL_PRECISION=highest
 fi
 

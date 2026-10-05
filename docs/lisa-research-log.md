@@ -7,6 +7,10 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-05)
 
+- **Update, 2026-10-05 (F22).** On the A100, `--xla_gpu_autotune_level=3` is not enough.
+  fp32 posteriors there are 2.4× too narrow and overconfident (in68 0.45). On the laptop,
+  the real network and sampler in fp32 match the CPU. fp32 GPU jobs now switch autotuning
+  off (level 0), pending one 3-min A100 check. bf16, the production path, is unaffected.
 - **Update, 2026-10-05 (F21).** fp32 at eval (CPU) gives the same widths as bf16: ratio
   0.991, 95% interval 0.978–1.000. bf16 at eval is not the floor. The C1 cooldown has
   lowered the loss by 0.012 two-thirds of the way through, more than predicted. Its
@@ -117,8 +121,57 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13767819, 13767924 | scorecard and eval of XS-late-768 | Completed in 6 and 14 min. Downloaded through JupyterHub (SSH was down) to `outputs/lisa-XS-late-768` (checkpoint 1000, corner plots, `scorecard.npz`). See F19. |
 | 13780225 | T3': XS-late scorecard in fp32 on a CPU node (cpu2022, 64 cores, trex085), `--n_random 40` | Running since about 14:20 CEST on 5 Oct, submitted from JupyterHub. TREX code at 30701cf. 88 s per injection on 64 cores, 1 h 15 min in all. Done: same widths as bf16 (F21). |
 | 13780234 | C1: XS-late-768-cool, epochs 1000 → 1200 with the lr cooldown | Running since about 14:20 CEST on 5 Oct (trexgpu04), after moving `outputs/lisa-XS-late-768/checkpoints` into `outputs/lisa-XS-late-768-cool/`. It resumed at epoch 1000 with `lr_scale` 0.9975, then 0.9025 at epoch 1020; flow loss still 0.450 there. About 60 s per epoch, ETA about 17:45 CEST. |
+| 13790394 | A100 fp32 scorecard of XS-late at autotune level 3 (`--n_random 40`) | Completed in 3 min. It does not match the CPU: 2.4× too narrow, in68 0.45 at SNR ≥ 100 (F22). |
 
 ## 4. Findings
+
+### F22 (2026-10-05): level 3 does not fix fp32 on the A100; on the laptop, the real network and sampler are fine
+
+**The A100 test (job 13790394, 3 min).** The XS-late fp32 scorecard on the A100, with
+`--xla_gpu_autotune_level=3` and `JAX_DEFAULT_MATMUL_PRECISION=highest`, on the same 200
+sources as T3'. **It does not reproduce the CPU:**
+
+| SNR ≥ 100 | CPU fp32 (T3') | A100 fp32, level 3 | A100 fp32, default level (F18) |
+|---|---|---|---|
+| sources found, all SNR | 169 | 174 | 4 |
+| f₀ width | 0.088 bins | 0.036 bins (0.41×) | garbage |
+| median distance from the truth | 0.053 bins | 0.037 bins | ~2 bins |
+| in68 / in95 | 0.85 / 1.00 | **0.45 / 0.88** | – |
+
+- Level 3 removes the gross failure. But the posteriors are 2.4× narrower while sitting
+  about as far from the truth, so they are **overconfident**, not sharper.
+- CPU fp32 and A100 bf16 agree with each other and are calibrated (F21). So the A100 fp32
+  path is still wrong, now subtly.
+- The F20 hypothesis, that level 3 fixes the A100 too, is **refuted**.
+
+**The same checks on the laptop GPU with the real 768 network** (local checkpoint 1000;
+`fp32bug/prod_velocity.py`, `prod_sampler.py`):
+
+| | one velocity call, max error / rms relative | full sampler, 256 draws × 32 RK4 steps, max \|draws − CPU\| |
+|---|---|---|
+| default level, default precision (TF32) | 1.7×10⁻² / 2×10⁻³ | 0.31 |
+| default level, `highest` | 1.9×10⁻⁵ / 2×10⁻⁶ | 1.3×10⁻⁴ |
+| level 3, `highest` | 1.7×10⁻⁵ / 2×10⁻⁶ | 1.4×10⁻⁴ |
+| level 0, `highest` | 1.3×10⁻⁵ / 2×10⁻⁶ | – |
+
+- The real network does not hit F20's gross failure on the laptop, even at the default
+  level. That failure belongs to the tiny test network's shapes.
+- At full precision, the compiled fp32 sampler matches the CPU on the laptop.
+- TF32's 2×10⁻³ per call moves individual draws by up to 0.3 over 128 calls. That alone
+  does not mean the distribution is wrong: bf16 is coarser still and gives calibrated
+  posteriors.
+
+**So the A100 fp32 fault depends on the GPU, or on the 512 network, and not on the
+precision setting.** The A100 picks other kernels, and level 3 still lets it autotune.
+
+**Next, if fp32 on the GPU is still wanted:**
+- The eval and scorecard jobs now switch GEMM autotuning off for fp32 (`level=0`). Level 0
+  matches the CPU on the laptop for both networks.
+- One A100 run of `sbatch slurm/lisa-scorecard.sbatch XS-late --dtype float32 --n_random
+  40` (3 min) must match T3' this time.
+- If it does not, the A100 fp32 path stays untrusted, and fp32 checks keep running on the
+  CPU (88 s per injection).
+- Nothing in production depends on it: every run trains and evaluates in bf16.
 
 ### F21 (2026-10-05): T3' — fp32 at eval leaves the floor where it is; the cooldown is lowering the loss
 
@@ -217,8 +270,9 @@ below. Only the process's `XLA_FLAGS` differ:
 rounding steps. The A100 bf16 scorecards match the CPU (F15), and the CPU fp32 scorecard
 matches them too (F21).
 
-**Workaround:** `--xla_gpu_autotune_level=3`, plus `JAX_DEFAULT_MATMUL_PRECISION=highest`
-for true fp32 matmuls instead of TF32.
+**Workaround on the laptop:** `--xla_gpu_autotune_level=3`, plus
+`JAX_DEFAULT_MATMUL_PRECISION=highest` for true fp32 matmuls instead of TF32. It is **not
+enough on the A100** (F22), so the jobs now use level 0.
 - Together, compiled fp32 matches the CPU to 2×10⁻⁷.
 - `slurm/lisa-eval.sbatch` and `lisa-scorecard.sbatch` set both for `--dtype float32`.
 - `test_fori_loop_transport_matches_the_unrolled_rk4[3]` still misses its 10⁻⁵ tolerance
@@ -1014,3 +1068,6 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
     `minimal*`, `bf16_check`, and `same_program.py` for the fixed-program test.
   - The jax 0.10.1 venvs (CUDA 12 and 13) were built offline from the uv cache in the
     session scratchpad, and are not kept.
+- **F22.** `outputs/scorecards/XS-late_float32_gpu_at3.npz` is the A100 level-3 run, and
+  `a100_fp32.py` there makes the comparison. `fp32bug/prod_velocity.py` and
+  `prod_sampler.py` hold the laptop checks with the real network.
