@@ -31,11 +31,21 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 # buffers off and let the kernels launch one at a time
 export XLA_FLAGS="--xla_gpu_enable_command_buffer="
 
+# compiled float32 LisaFlow comes out wrong on these GPUs at XLA's default GEMM autotuning
+# level (4): one autotuned matmul is garbage inside the full program, though right on its
+# own (F20). Level 3 still autotunes and matches the CPU. A float32 run also asks for true
+# fp32 matmuls instead of the TF32 the GPU uses by default; bf16 runs are left as they are.
+if [[ " ${*:2} " == *" --dtype float32 "* || " ${*:2} " == *" --dtype=float32 "* ]]; then
+    XLA_FLAGS="${XLA_FLAGS} --xla_gpu_autotune_level=3"
+    export JAX_DEFAULT_MATMUL_PRECISION=highest
+fi
+
 export UV_SYSTEM_CERTS=1   # UV_NATIVE_TLS on uv < 0.12
 
 echo "host      : $(hostname)"
 echo "job       : ${SLURM_JOB_ID:-none}"
 echo "config    : ${CONFIG}"
+echo "XLA_FLAGS : ${XLA_FLAGS}"
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader || true
 
 srun uv run --extra cuda --frozen python -m canna.lisa.scorecard --config "${CONFIG}" "${@:2}"

@@ -7,6 +7,11 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-05)
 
+- **Update, 2026-10-05 (F20).** Compiled float32 is wrong on the GPUs because of XLA's
+  matmul autotuner at its default level, not because of our code or the attention.
+  `--xla_gpu_autotune_level=3` fixes it on the laptop, and the eval and scorecard jobs now
+  set it for fp32 runs. bf16 is unaffected. Whether the A100 is fixed too is a 3-minute
+  check.
 - **Update, 2026-10-05 (F19).** The 768 × 8 network (E3') is done.
   - The floor is unchanged: 0.087 bins against 0.088, flat from SNR 100 to 1300.
     Capacity is ruled out.
@@ -109,6 +114,59 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13780234 | C1: XS-late-768-cool, epochs 1000 → 1200 with the lr cooldown | Running since about 14:20 CEST on 5 Oct (trexgpu04), after moving `outputs/lisa-XS-late-768/checkpoints` into `outputs/lisa-XS-late-768-cool/`. It resumed at epoch 1000 with `lr_scale` 0.9975, then 0.9025 at epoch 1020; flow loss still 0.450 there. About 60 s per epoch, ETA about 17:45 CEST. |
 
 ## 4. Findings
+
+### F20 (2026-10-05): compiled float32 is wrong because of XLA's matmul autotuner
+This explains F14 and F18. It was found on the laptop GPU (RTX 2000 Ada, JAX and jaxlib
+0.11.0), with the tiny float32 test network.
+
+**The reproducer is one velocity evaluation.**
+- Eager on the GPU differs from the CPU by 2.9×10⁻⁴.
+- Jit-compiled, it differs by **0.595**, on velocities of at most 0.45. For a single sample
+  without vmap it differs by 1.6×10⁻².
+
+**Bisection.** The scripts are in `outputs/lisa-XS/eval-tools/fp32bug/`.
+- **Not the attention.** `dot_product_attention` (xla) on its own is right under jit. A
+  hand-written attention in its place leaves the network's error unchanged. F18's suspect
+  is cleared.
+- **Not `scan` or `jax.checkpoint`.** One plain block call fails the same way.
+- **It depends on the whole program.** Every stage is right when the compiled function
+  returns all the intermediates. Only when it returns just one of them does that one come
+  out wrong: 2×10⁻² at the backbone output, growing to 0.6 at the head.
+- **Inside a block,** the modulation alone is right. Any path from the modulation into a
+  matmul, the attention's qkv or the MLP, is wrong (0.41 and 0.77).
+- **XLA flags:**
+  - Switching off Triton GEMMs, cuBLASLt or command buffers changes nothing.
+  - **`--xla_gpu_autotune_level` 0, 1, 2 and 3 give the right answer. The default, 4, and
+    5 give the wrong one.**
+  - Matmul precision `highest` does not help at level 4, as F14 found.
+- **The kernel the autotuner picks.** In the failing program, it replaces one Triton GEMM
+  with a cuBLASLt matmul with a fused BIAS epilogue. That is the x embedding's second
+  Linear, a square 32 × 32 problem.
+  - The same layer compiled on its own is right with either kernel, and XLA logs no
+    mismatch.
+  - So the fault is in how the autotuned kernel is wired into the full program, not in the
+    kernel itself. That is an XLA bug.
+  - Disabling cuBLASLt alone does not fix it, so other autotuned choices can go wrong too.
+
+**bf16 is genuinely fine.** On the GPU, compiled and eager bf16 differ by 4.9×10⁻³, about
+2 bf16 rounding steps at |v| ≈ 0.45. Together with the A100 scorecards matching the CPU
+(F15), every bf16 result stands.
+
+**Workaround: `--xla_gpu_autotune_level=3`.** It keeps the autotuning.
+- With `JAX_DEFAULT_MATMUL_PRECISION=highest` too, compiled fp32 matches the CPU to
+  2×10⁻⁷.
+- `slurm/lisa-eval.sbatch` and `lisa-scorecard.sbatch` now set both, for `--dtype float32`
+  runs only.
+- `test_fori_loop_transport_matches_the_unrolled_rk4[3]` still misses its 10⁻⁵ tolerance
+  on the GPU, by 1.6×10⁻⁵. That is the GPU's default TF32 matmuls, not the bug.
+
+**Open:**
+- Whether the same workaround fixes the A100, where F18 found the same symptom. Test: a
+  GPU fp32 scorecard on XS-late with `--n_random 40`, checked against the CPU one (T3', the
+  same 50 injections). About 3 min.
+- If it does, fp32 evals can run on the A100 again.
+- An upstream JAX/XLA report, if a newer jaxlib still shows the bug.
+  `fp32bug/step5.py` reproduces it in seconds, but it needs canna.
 
 ### F19 (2026-10-05): E3' — capacity does not move the floor; it wins back half the detection
 
