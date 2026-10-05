@@ -5,8 +5,17 @@ Scope: the LISA galactic-binary flow (`src/canna/lisa`), all runs on TREX to dat
 slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-XS/`
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 
-## 1. Summary (2026-10-01, updated 2026-10-02)
+## 1. Summary (2026-10-01, updated 2026-10-05)
 
+- **Update, 2026-10-05 (F19).** The 768 × 8 network (E3') is done.
+  - The floor is unchanged: 0.087 bins against 0.088, flat from SNR 100 to 1300.
+    Capacity is ruled out.
+  - It wins back about half of the warp's detection loss (net +11 of 840 sources) and
+    lowers the loss by 1.3%.
+  - The loud-source f₀ has a bias of about 1/3 of a width. Its shape across the window
+    changes from run to run, which points at the constant lr.
+  - **Next:** two cheap tests instead of a new run. One is an fp32 scorecard on a CPU node
+    (bf16 or not; no GPU). The other is an lr cooldown continuing the 768 model (~3 h).
 - **Update, 2026-10-03 (F15).** The scorecards settle E2.
   - The warped clock with aux 10% makes posteriors 1.6× narrower at every SNR.
   - It removes the 1M model's low f₀ bias, which is real (8σ).
@@ -92,8 +101,89 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **13474448** | E2: XS-late training, 1M steps | **Completed** at 03:18 CEST on 2 Oct (10 h 57 min, trexgpu02, 39.6 s per epoch), no NaN. See F13. |
 | 13578013 | eval of the 1M model (E0) | Completed in 14 min. Corner plots in `outputs/lisa-XS/corner` on TREX, copied to `outputs/1M/lisa-XS/corner`. |
 | 13579022 | eval of XS-late | Completed in 13 min, `time_power 3` read from its config. Corner plots in `outputs/lisa-XS-late/corner`, copied locally to the same path. See F13. |
+| 13641222, 13645445 | E3': XS-late-768 | Both died on the home quota at the first and second checkpoint (F16, F17). |
+| **13719349** | E3': XS-late-768, 1M steps, `save_opt_state: false` | **Completed** at 04:22 CEST on 5 Oct (16 h 36 min, trexgpu02, 59.6 s per epoch), no NaN. Final flow loss 0.4498. See F19. |
+| 13767819, 13767924 | scorecard and eval of XS-late-768 | Completed in 6 and 14 min. Downloaded through JupyterHub (SSH was down) to `outputs/lisa-XS-late-768` (checkpoint 1000, corner plots, `scorecard.npz`). See F19. |
 
 ## 4. Findings
+
+### F19 (2026-10-05): E3' — capacity does not move the floor; it wins back half the detection
+
+**Training (job 13719349).** Completed at 04:22 CEST on 5 Oct: 16 h 36 min, 59.6 s per
+epoch, no NaN.
+- Final flow loss **0.4498**, against XS-late's 0.4557: 0.006 lower, or 1.3%.
+- The gap was widest early, 0.023 at epoch 50, because the loss drop came sooner. It is
+  0.004–0.008 from epoch 300 on.
+- The end slope matches XS-late's: −0.0015 per 100 epochs, against −0.0013.
+- The y aux metric grows without bound once its weight reaches 0: 521 here, 1.3×10⁶ in
+  XS-late. That head is no longer trained and sampling never uses it, so this is harmless.
+
+**Scorecard (job 13767819, 6 min) and corner plots (13767924, 14 min).** These use the same
+840 sources as F15. Widths are medians over the sources both models found:
+
+| SNR | n | found, 1M / late / 768 | f₀ width, late → 768 (bins) | per-source ratio 768 / late, median [16–84%] | in68, late → 768 | in95 | rank |
+|---|---|---|---|---|---|---|---|
+| < 15 | 148 | 0.52 / 0.45 / 0.47 | 0.149 → 0.158 | 1.00 [0.68–1.28] | 0.78 → 0.80 | 0.99 → 0.97 | 0.50 → 0.49 |
+| 15–40 | 157 | 0.85 / 0.81 / 0.83 | 0.128 → 0.117 | 0.92 [0.70–1.18] | 0.95 → 0.87 | 1.00 → 0.99 | 0.46 → 0.48 |
+| 40–100 | 151 | 0.95 / 0.92 / 0.94 | 0.088 → 0.089 | 1.00 [0.77–1.17] | 0.89 → 0.81 | 0.99 → 0.98 | 0.47 → 0.47 |
+| ≥ 100 | 384 | 0.99 / 0.99 / 0.995 | 0.088 → 0.087 | 0.96 [0.80–1.17] | 0.87 → 0.82 | 0.99 → 0.98 | 0.50 → 0.41 |
+
+**The floor did not move.**
+- It is 0.087 / 0.087 / 0.085 / 0.090 bins at SNR 100–200 / 200–400 / 400–800 / ≥ 800.
+  XS-late gives 0.089 / 0.091 / 0.087 / 0.087.
+- 2.25× the parameters and a 1.3% lower loss leave the floor the same to within 1%.
+  Capacity is ruled out, which adds it to the list of F16: the integrator, input rounding,
+  A100 numerics and the physics.
+- Two candidates remain:
+  - **bf16 inside the network (activations and output).** The floor is identical for two
+    networks of different width, which is how a fixed numerical resolution behaves. An
+    O(1) value in bf16 is resolved to 2⁻⁸ ≈ 0.004, and 0.004 flow units is 0.09 bins (1
+    unit = 24 bins): the floor's size. T3 was meant to test this; it is still void (F18).
+  - **Optimiser noise at a constant lr** (F9). See the bias below.
+
+**Detection: about half of the warp's loss is back.**
+- 16 sources are found only by the 768 net (median SNR 16) and 5 only by XS-late: net +11
+  of 840 (sign test p = 0.03).
+- Against the 1M uniform-clock model it is 7 against 17: net −10 (p = 0.06).
+- On the 10 eval injections, the two nets find and miss the same sources. The SNR 27 and 37
+  sources missed by XS-late are still missed.
+
+**Calibration is fine overall, but a bias shows at loud sources.**
+- in95 is 0.97–0.99 everywhere.
+- in68 moved from conservative (0.87–0.95) towards nominal (0.80–0.87).
+- At SNR ≥ 100, though, the rank fell to 0.41. The median sits **+0.021 bins** above the
+  truth (mean +0.030 ± 0.005, a 6σ shift), about a third of a width.
+
+**The f₀ bias depends on where the source sits in the window, and its shape changes from
+run to run.** Median offset in bins for found sources at SNR ≥ 40, in 8 slices of the f₀
+coordinate from −1 to +1 (53–76 sources per slice):
+
+| model | −1 | | | | 0 | | | +1 |
+|---|---|---|---|---|---|---|---|---|
+| 1M | −0.018 | −0.032 | −0.130 | −0.146 | −0.045 | −0.033 | +0.009 | −0.026 |
+| XS-late | +0.018 | −0.021 | −0.027 | −0.018 | −0.015 | +0.005 | +0.043 | +0.045 |
+| 768 | −0.015 | −0.017 | +0.039 | +0.081 | +0.063 | +0.003 | +0.001 | −0.009 |
+
+- F15's "no bias in XS-late" was partly a cancellation: about −0.02 in the lower half of the
+  window and +0.04 at the top.
+- Each run's bias is a smooth error of the learned function, about a quarter of the window
+  wide (6 bins), with its own shape and sign. That is where the constant-lr weights happened
+  to stop, not something in the physics or the data.
+- An lr cooldown, or an EMA of the weights, is the standard cure. It may also be what holds
+  the floor up.
+
+**Window-edge pile-up.** XS-late's 4 zero-width sources all sit at |coord| > 0.995. There,
+over half the draws share one f₀ value. The 768 net has none of these. They are 4 of 840
+and do not move the medians.
+
+**Verdict.**
+- Capacity is not the floor.
+- The 768 net is a little better than XS-late at 1.5× the cost: 1.3% lower loss and 11
+  more sources found, with similar calibration.
+- Its loud-source f₀ is biased by about 1/3 of a width, with a run-specific shape.
+
+**The local copy is complete.** `outputs/lisa-XS-late-768/checkpoints/1000` restores on the
+CPU: epoch 1000, 170,077,474 parameters, all finite.
 
 ### F18 (2026-10-04): float32 compiled LisaFlow is wrong on the A100 too, so T3 is void
 
@@ -534,9 +624,43 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
   - The risk is that the long aux phase is what enables the jump.
   - E1b (no aux) is dropped to save compute.
 
-## 6. Roadmap (2026-10-03)
+## 6. Roadmap (2026-10-03, updated 2026-10-05)
 
-### Where things stand
+### Update, 2026-10-05 (after E3', F19)
+
+| | XS 1M, uniform clock | XS-late | XS-late-768 |
+|---|---|---|---|
+| loud-source f₀ width (SNR ≥ 100) | 0.147 bins | 0.088 bins | 0.087 bins |
+| found, SNR < 15 / 15–40 / 40–100 | 52 / 85 / 95% | 45 / 81 / 92% | 47 / 83 / 94% |
+| loud f₀ bias | −0.056 bins, rank 0.62 | ≈ 0 overall, ±0.04 by position | +0.021 bins, rank 0.41 |
+| in95 | 0.97–0.99 | 0.99–1.00 | 0.97–0.99 |
+| GPU cost (1M steps) | 10.8 h | 10.9 h | 16.6 h |
+
+**Ruled out as causes of the floor:** the integrator, input rounding, A100 numerics, the
+physics, and now capacity (F19).
+
+**Two candidates are left, and both can be tested without a new 1M-step run:**
+1. **T3 on a CPU (no GPU time).** Run the XS-late-768 scorecard in fp32 on a TREX CPU node:
+   the 10 eval injections plus ~40 random ones. It needs two small additions: a
+   `--n_random` option and a CPU sbatch.
+   - If the loud widths fall clearly below 0.087 bins, bf16 is the floor. The fix is an fp32
+     velocity head and last block, plus the GPU float32 bug (F18) for evals.
+2. **C1: an lr cooldown on the 768 model (~3.3 h of A100).** Resume at 1M and train 200k
+   more steps, with the lr decaying linearly to 0.
+   - It needs a `--cooldown_steps` multiplier on the update. Scaling Muon's update is
+     exactly scaling its lr, and this keeps working across a resume with a fresh
+     optimizer state.
+   - It answers two questions: whether optimiser noise holds the floor up, and whether it
+     causes the run-specific bias.
+   - It also leaves the best model so far, whatever the outcome.
+   - It overwrites the TREX checkpoint 1000 (`max_to_keep=1`). The local copy is the
+     backup.
+
+Then one run of S with whatever survives (step 4 below). Detection (step 3) waits. The 768
+net already recovered half of the gap, and `time_power 2` would trade back some of the
+floor.
+
+### Where things stand (2026-10-03)
 
 | | XS 1M, uniform clock | XS-late, warped clock + aux 10% |
 |---|---|---|
@@ -621,7 +745,7 @@ attribution.
 | E3 | S with the E2 recipe | the wider band | ~15 h | only if E2 succeeds |
 | **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~4 min each) | done (13626493, 13626496), F15 |
 | T2 | XS-late scorecard again at 64 and 128 RK4 steps (`--ode_steps`, eval only; writes `scorecard_ode<N>.npz`) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | done (13641220, 13641221): no, the integrator is converged (F16) |
-| **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | **running**: job 13719349 since 4 Oct 11:46 CEST, 59.6 s per epoch, ETA ~04:20 CEST on 5 Oct (earlier 13641222 and 13645445 died on the quota, F16 and F17) |
+| **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | done (13719349, 16 h 36 min; F19): same floor (0.087 bins), net +11 sources found, loss −1.3%, a run-specific loud-source f₀ bias of ~1/3 width |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
@@ -710,3 +834,10 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
   - `widths32.py` produces the per-source table (F4).
 - **Samples.** `eval-tools/samples/*.npz` hold the flow and Fisher samples, the truth and
   the Fisher σ; `eval-tools/samples32/*.npy` hold the 32-step flow samples.
+- **E3' (F19).** `outputs/lisa-XS-late-768/` is the TREX output folder. It was downloaded on
+  2026-10-05 as a tar through JupyterHub and holds `checkpoints/1000` (no optimizer state),
+  `corner/`, `scorecard.npz` and `losses.pdf`.
+  - `outputs/scorecards/XS-late-768.npz` is a copy of the scorecard.
+  - `outputs/scorecards/compare_768.py` makes the F19 tables, including the bias by window
+    position.
+  - The slurm logs 13719349, 13767819 and 13767924 are in `outputs/lisa-XS/logs/`.
