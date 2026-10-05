@@ -1,6 +1,9 @@
 #!/bin/bash
-# The scorecard on a CPU node, for checks the GPUs cannot do: compiled float32 LisaFlow is
-# wrong on the A100s (F18), so the fp32 scorecard (T3: does bf16 set the floor?) runs here.
+# The scorecard on a CPU node: a reference that shares no GPU code path. T3' ran here
+# (F21), when compiled float32 LisaFlow was still wrong on the GPUs (F18). That is XLA's
+# matmul autotuner, and lisa-scorecard.sbatch now works around it (F20). Once an A100 run
+# confirms the fix, prefer that one for speed (~1.6 s against ~88 s per injection) and keep
+# this one as the cross-check.
 # Submit from the repo root:
 #     sbatch slurm/lisa-scorecard-cpu.sbatch XS-late --dtype float32 --n_random 40
 # Flags after the config go to scorecard. It writes outputs/lisa-<config>/scorecard_<dtype>_cpu.npz,

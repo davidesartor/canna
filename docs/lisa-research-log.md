@@ -7,8 +7,13 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-05)
 
-- **Update, 2026-10-05 (F20).** Compiled float32 is wrong on the GPUs because of XLA's
-  matmul autotuner at its default level, not because of our code or the attention.
+- **Update, 2026-10-05 (F21).** fp32 at eval (CPU) gives the same widths as bf16: ratio
+  0.991, 95% interval 0.978–1.000. bf16 at eval is not the floor. The C1 cooldown has
+  lowered the loss by 0.012 two-thirds of the way through, more than predicted. Its
+  scorecard decides the floor question.
+- **Update, 2026-10-05 (F20).** Compiled float32 is wrong on the GPUs because of an XLA GPU
+  compilation fault at its default autotuning level. The same program is right at levels 0–3,
+  on two jax and two CUDA versions, so it is not our code or the attention.
   `--xla_gpu_autotune_level=3` fixes it on the laptop, and the eval and scorecard jobs now
   set it for fp32 runs. bf16 is unaffected. Whether the A100 is fixed too is a 3-minute
   check.
@@ -110,63 +115,119 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13641222, 13645445 | E3': XS-late-768 | Both died on the home quota at the first and second checkpoint (F16, F17). |
 | **13719349** | E3': XS-late-768, 1M steps, `save_opt_state: false` | **Completed** at 04:22 CEST on 5 Oct (16 h 36 min, trexgpu02, 59.6 s per epoch), no NaN. Final flow loss 0.4498. See F19. |
 | 13767819, 13767924 | scorecard and eval of XS-late-768 | Completed in 6 and 14 min. Downloaded through JupyterHub (SSH was down) to `outputs/lisa-XS-late-768` (checkpoint 1000, corner plots, `scorecard.npz`). See F19. |
-| 13780225 | T3': XS-late scorecard in fp32 on a CPU node (cpu2022, 64 cores, trex085), `--n_random 40` | Running since about 14:20 CEST on 5 Oct, submitted from JupyterHub. TREX code at 30701cf. 88 s per injection on 64 cores, so about 74 min for 50 (an A100 takes ~1.6 s). |
+| 13780225 | T3': XS-late scorecard in fp32 on a CPU node (cpu2022, 64 cores, trex085), `--n_random 40` | Running since about 14:20 CEST on 5 Oct, submitted from JupyterHub. TREX code at 30701cf. 88 s per injection on 64 cores, 1 h 15 min in all. Done: same widths as bf16 (F21). |
 | 13780234 | C1: XS-late-768-cool, epochs 1000 → 1200 with the lr cooldown | Running since about 14:20 CEST on 5 Oct (trexgpu04), after moving `outputs/lisa-XS-late-768/checkpoints` into `outputs/lisa-XS-late-768-cool/`. It resumed at epoch 1000 with `lr_scale` 0.9975, then 0.9025 at epoch 1020; flow loss still 0.450 there. About 60 s per epoch, ETA about 17:45 CEST. |
 
 ## 4. Findings
 
-### F20 (2026-10-05): compiled float32 is wrong because of XLA's matmul autotuner
-This explains F14 and F18. It was found on the laptop GPU (RTX 2000 Ada, JAX and jaxlib
-0.11.0), with the tiny float32 test network.
+### F21 (2026-10-05): T3' — fp32 at eval leaves the floor where it is; the cooldown is lowering the loss
 
-**The reproducer is one velocity evaluation.**
-- Eager on the GPU differs from the CPU by 2.9×10⁻⁴.
-- Jit-compiled, it differs by **0.595**, on velocities of at most 0.45. For a single sample
-  without vmap it differs by 1.6×10⁻².
+**T3' (job 13780225, XS-late, fp32 on a CPU node, 1 h 15 min).** It used the 10 eval
+injections plus the first 40 random ones: 200 sources, with the same keys as the bf16 A100
+scorecard (F15). Per source, against bf16:
 
-**Bisection.** The scripts are in `outputs/lisa-XS/eval-tools/fp32bug/`.
-- **Not the attention.** `dot_product_attention` (xla) on its own is right under jit. A
-  hand-written attention in its place leaves the network's error unchanged. F18's suspect
-  is cleared.
-- **Not `scan` or `jax.checkpoint`.** One plain block call fails the same way.
-- **It depends on the whole program.** Every stage is right when the compiled function
-  returns all the intermediates. Only when it returns just one of them does that one come
-  out wrong: 2×10⁻² at the backbone output, growing to 0.6 at the head.
-- **Inside a block,** the modulation alone is right. Any path from the modulation into a
-  matmul, the attention's qkv or the MLP, is wrong (0.41 and 0.77).
-- **XLA flags:**
-  - Switching off Triton GEMMs, cuBLASLt or command buffers changes nothing.
-  - **`--xla_gpu_autotune_level` 0, 1, 2 and 3 give the right answer. The default, 4, and
-    5 give the wrong one.**
-  - Matmul precision `highest` does not help at level 4, as F14 found.
-- **The kernel the autotuner picks.** In the failing program, it replaces one Triton GEMM
-  with a cuBLASLt matmul with a fused BIAS epilogue. That is the x embedding's second
-  Linear, a square 32 × 32 problem.
-  - The same layer compiled on its own is right with either kernel, and XLA logs no
-    mismatch.
-  - So the fault is in how the autotuned kernel is wired into the full program, not in the
-    kernel itself. That is an XLA bug.
-  - Disabling cuBLASLt alone does not fix it, so other autotuned choices can go wrong too.
+| SNR | n | found, bf16 / fp32 | f₀ width, bf16 → fp32 (bins) | width ratio fp32 / bf16, median [16–84%] |
+|---|---|---|---|---|
+| < 15 | 33 | 0.39 / 0.39 | 0.154 → 0.141 | 0.98 [0.92–1.00] |
+| 15–40 | 41 | 0.78 / 0.78 | 0.132 → 0.131 | 0.99 [0.93–1.03] |
+| 40–100 | 31 | 0.94 / 0.94 | 0.098 → 0.093 | 0.99 [0.95–1.03] |
+| ≥ 100 | 95 | 1.00 / 1.00 | 0.088 → 0.088 | 0.99 [0.95–1.04] |
 
-**bf16 is genuinely fine.** On the GPU, compiled and eager bf16 differ by 4.9×10⁻³, about
-2 bf16 rounding steps at |v| ≈ 0.45. Together with the A100 scorecards matching the CPU
-(F15), every bf16 result stands.
+- **The loud-source ratio is 0.991, with a 95% bootstrap interval of 0.978–1.000** (93
+  sources).
+- The decision rule (§6) was ≥ 0.9, so **bf16 at eval is ruled out.** The bf16-noise
+  prediction, ≈ 0.56, is excluded. F5's 6% was noise.
+- The two runs find exactly the same 169 sources.
+- **fp32 does move the medians.** It shifts every loud source by −0.026 ± 0.002 bins,
+  about a quarter of a width.
+  - The shift is about the same across the window, a little larger at the top. It does not
+    depend on the bf16 cell of the input coordinate, so it is not input rounding.
+  - Coverage is unchanged (in68 0.86 against 0.85, in95 1.00).
+  - The bf16 medians are a little closer to the truth: median |offset| 0.038 against
+    0.053 bins. The network was trained in bf16, and that is its best precision for eval.
+- **Still open:** bf16 *in training* (F5, Open). It is a costlier test: one run with an
+  fp32 head. It comes after C1.
+- **Speed:** 88 s per injection on 64 cores, against ~1.6 s on an A100.
 
-**Workaround: `--xla_gpu_autotune_level=3`.** It keeps the autotuning.
-- With `JAX_DEFAULT_MATMUL_PRECISION=highest` too, compiled fp32 matches the CPU to
-  2×10⁻⁷.
-- `slurm/lisa-eval.sbatch` and `lisa-scorecard.sbatch` now set both, for `--dtype float32`
-  runs only.
+**C1 interim (job 13780234, at epoch 1118 of 1200, 16:30 CEST).** The 10-epoch mean flow
+loss went from **0.4499** (epochs 991–1000, constant lr) to 0.4490, 0.4471, 0.4450,
+0.4422, 0.4400 and **0.4377** (epochs 1101–1110, lr at 0.45).
+- That is −0.012 so far. It already beats the predicted −0.004 to −0.010 for the whole
+  cooldown.
+- It is about 10× faster than the last 100k constant-lr steps (−0.0015).
+- So optimiser noise at the constant lr was holding the loss up. Whether it also holds the
+  floor up waits for the scorecard. ETA about 17:50 CEST.
+
+### F20 (2026-10-05): compiled float32 is wrong because of an XLA GPU compilation fault, triggered by its default autotuning
+This explains F14 and F18. It was found on the laptop GPU (RTX 2000 Ada) with the tiny
+float32 test network. The scripts are in `outputs/lisa-XS/eval-tools/fp32bug/`.
+
+**The reproducer is one velocity evaluation.** Eager on the GPU differs from the CPU by
+2.9×10⁻⁴. Jit-compiled, it differs by **0.595**, on velocities of at most 0.45.
+
+**The same program gives two answers.** `same_program.py` lowers the jitted velocity once
+and hashes its StableHLO: 625 ops, no custom calls. The hash is the same in every run
+below. Only the process's `XLA_FLAGS` differ:
+
+| setup | `--xla_gpu_autotune_level` | error vs the CPU |
+|---|---|---|
+| jax 0.11.0, CUDA 12 (cuBLAS 12.9.2) | default (4) | 0.595 (in two fresh processes) |
+| | 3 | 2.9×10⁻⁴ |
+| | 0 | 3.0×10⁻⁴ |
+| | default, no GPU preallocation | 0.595 |
+| jax 0.10.1, CUDA 12 | default | 0.595 |
+| | 3 | 3.0×10⁻⁴ |
+| jax 0.10.1, CUDA 13 (cuBLAS 13.1.1) | default | 0.595, the same bytes as jax 0.10.1 + CUDA 12 |
+| | 3 | 2.9×10⁻⁴ |
+
+- **What this rules out.** The program is fixed, so its meaning cannot depend on a
+  performance flag. HLO has no undefined behaviour for these ops, and there are no custom
+  calls. So the fault is in how XLA compiles it for the GPU, not in the model code.
+- **It is not new and not specific to one version:** jax 0.10.1 and 0.11.0, CUDA 12 and 13.
+- **It is not specific to one machine:** the laptop's Ada GPU on driver 580; F18's A100 on
+  driver 550 shows the same symptom.
+- **It is not memory pressure:** turning preallocation off changes nothing.
+- Within one process, repeated calls give the same wrong bytes.
+
+**Bisection.**
+- **Not the attention.** On its own it is right under jit. A hand-written attention in its
+  place leaves the error. F18's suspect is cleared.
+- **Not `scan` or `jax.checkpoint`.** One plain block fails the same way.
+- **Program-dependent.** All stages are right when the jitted function returns every
+  intermediate, and wrong when it returns only one of them.
+- **Inside a block,** the modulation alone is right, while the paths from it into a matmul
+  are wrong.
+- **Flags:**
+  - Autotune levels 0–3 are right, and 4 (the default) and 5 are wrong.
+  - Turning off Triton GEMMs, cuBLASLt or command buffers does not fix it.
+  - Matmul precision `highest` does not help at level 4.
+- **Kernels.** At level 4, one GEMM becomes a cuBLASLt matmul with a BIAS epilogue, the x
+  embedding's second Linear. But the same layer compiled on its own is right, and with
+  cuBLASLt off the bug stays.
+- **The exact faulty step inside XLA is not identified.**
+
+**Related upstream:** [jax-ml/jax#35515](https://github.com/jax-ml/jax/issues/35515).
+- float32 on an Ada-generation GPU (RTX 4090), jax 0.9.0, at the default autotune level. The
+  level-4 correctness check there rejects every candidate as "WRONG RESULTS".
+- Its workarounds include `--xla_gpu_autotune_level=3`.
+- It is the same machinery misbehaving, though not necessarily the same bug: there it
+  errors, here a wrong plan is used silently.
+
+**bf16 is fine.** On the GPU, compiled and eager bf16 differ by 4.9×10⁻³, about 2 bf16
+rounding steps. The A100 bf16 scorecards match the CPU (F15), and the CPU fp32 scorecard
+matches them too (F21).
+
+**Workaround:** `--xla_gpu_autotune_level=3`, plus `JAX_DEFAULT_MATMUL_PRECISION=highest`
+for true fp32 matmuls instead of TF32.
+- Together, compiled fp32 matches the CPU to 2×10⁻⁷.
+- `slurm/lisa-eval.sbatch` and `lisa-scorecard.sbatch` set both for `--dtype float32`.
 - `test_fori_loop_transport_matches_the_unrolled_rk4[3]` still misses its 10⁻⁵ tolerance
-  on the GPU, by 1.6×10⁻⁵. That is the GPU's default TF32 matmuls, not the bug.
+  on the GPU, by 1.6×10⁻⁵. That is TF32, not the bug.
 
 **Open:**
-- Whether the same workaround fixes the A100, where F18 found the same symptom. Test: a
-  GPU fp32 scorecard on XS-late with `--n_random 40`, checked against the CPU one (T3', the
-  same 50 injections). About 3 min.
-- If it does, fp32 evals can run on the A100 again.
-- An upstream JAX/XLA report, if a newer jaxlib still shows the bug.
-  `fp32bug/step5.py` reproduces it in seconds, but it needs canna.
+- Confirm on the A100: `sbatch slurm/lisa-scorecard.sbatch XS-late --dtype float32
+  --n_random 40` must reproduce T3' (F21). About 3 min.
+- Report upstream, with `same_program.py` reduced so it no longer needs canna.
 
 ### F19 (2026-10-05): E3' — capacity does not move the floor; it wins back half the detection
 
@@ -836,8 +897,8 @@ attribution.
 | **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~4 min each) | done (13626493, 13626496), F15 |
 | T2 | XS-late scorecard again at 64 and 128 RK4 steps (`--ode_steps`, eval only; writes `scorecard_ode<N>.npz`) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | done (13641220, 13641221): no, the integrator is converged (F16) |
 | **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | done (13719349, 16 h 36 min; F19): same floor (0.087 bins), net +11 sources found, loss −1.3%, a run-specific loud-source f₀ bias of ~1/3 width |
-| **T3'** | the XS-late scorecard in fp32 on a TREX **CPU** node (`slurm/lisa-scorecard-cpu.sbatch`, `--n_random 40`), since GPU fp32 is broken (F18); writes `scorecard_float32_cpu.npz` | Does bf16 set the 0.087–0.088-bin floor? XS-late and the 768 net share the floor, so the cheaper net answers it | none (CPU; est. 1–3 h on 64 cores) | running: job 13780225 |
-| **C1** | `configs/XS-late-768-cool.yaml`: the 768 model continued from 1M to 1.2M steps, with the lr decaying linearly to 0 over the 200k (`--cooldown_steps`). Its checkpoint is moved, not copied, into `outputs/lisa-XS-late-768-cool`; `require_checkpoint` stops it from starting from scratch | Does optimiser noise hold up the floor and cause the run-specific bias (F9, F19)? | ~3.3 h | running: job 13780234 |
+| **T3'** | the XS-late scorecard in fp32 on a TREX **CPU** node (`slurm/lisa-scorecard-cpu.sbatch`, `--n_random 40`), since GPU fp32 is broken (F18); writes `scorecard_float32_cpu.npz` | Does bf16 set the 0.087–0.088-bin floor? XS-late and the 768 net share the floor, so the cheaper net answers it | none (CPU, 1 h 15 min) | done (13780225, F21): width ratio fp32 / bf16 0.991 [0.978–1.000], bf16 at eval ruled out |
+| **C1** | `configs/XS-late-768-cool.yaml`: the 768 model continued from 1M to 1.2M steps, with the lr decaying linearly to 0 over the 200k (`--cooldown_steps`). Its checkpoint is moved, not copied, into `outputs/lisa-XS-late-768-cool`; `require_checkpoint` stops it from starting from scratch | Does optimiser noise hold up the floor and cause the run-specific bias (F9, F19)? | ~3.3 h | running: job 13780234; loss −0.012 by epoch 1110 (F21) |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
@@ -946,3 +1007,10 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
   terminal: `outputs/paste-into-trex.txt` (bundle `e7a0864..30701cf`, md5
   118bb29a963c3d7b34460aebbbf2faa3), then `git pull --ff-only ~/canna-30701cf.bundle fml`.
   TREX is now at 30701cf.
+- **T3' and F20 (2026-10-05).**
+  - `outputs/scorecards/XS-late_float32_cpu.npz` is the CPU fp32 scorecard, fetched over
+    sftp. `t3_cpu.py` there makes the F21 tables.
+  - `outputs/lisa-XS/eval-tools/fp32bug/` holds the GPU bisection: `step1`–`step6`,
+    `minimal*`, `bf16_check`, and `same_program.py` for the fixed-program test.
+  - The jax 0.10.1 venvs (CUDA 12 and 13) were built offline from the uv cache in the
+    session scratchpad, and are not kept.
