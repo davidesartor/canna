@@ -160,9 +160,18 @@ class TrainState(NamedTuple):
 
     @eqx.filter_jit
     def train_step(
-        self, batch: TrainSample, aux_weight: Float[Array, ""]
+        self,
+        batch: TrainSample,
+        aux_weight: Float[Array, ""],
+        lr_scale: Float[Array, ""] | float = 1.0,
     ) -> tuple[Self, Float[Array, "3"]]:
-        """Take one variance-reweighted optimizer step on a batch, update running metrics."""
+        """Take one variance-reweighted optimizer step on a batch, update running metrics.
+
+        lr_scale multiplies the update. With no weight decay, Muon's and Adam's updates are
+        linear in the lr, so this is exactly a scaled lr. Unlike an optax schedule, it keeps
+        no step count in the optimizer state, so a resume with a fresh optimizer state still
+        lands at the right point of the schedule.
+        """
         flow_metrics = self.flow_metrics.update(batch.dx.astype(jnp.float32))
         x_metrics = self.x_metrics.update(batch.x_target.astype(jnp.float32))
         y_metrics = self.y_metrics.update(batch.y_target.astype(jnp.float32))
@@ -192,6 +201,7 @@ class TrainState(NamedTuple):
         updates, opt_state = self.tx.update(
             grads, self.opt_state, eqx.filter(self.flow, eqx.is_inexact_array)
         )
+        updates = jax.tree.map(lambda u: lr_scale * u, updates)
         flow = eqx.apply_updates(self.flow, updates)
 
         state = self._replace(
@@ -210,6 +220,7 @@ class TrainState(NamedTuple):
         batch_size: int,
         n_steps: int,
         time_power: float = 1.0,
+        lr_scale: Float[Array, ""] | float = 1.0,
     ) -> tuple[Self, Float[Array, "S 3"]]:
         """Fuse n_steps (gen + train_step) pairs into one XLA dispatch via lax.scan."""
         dynamic, static = eqx.partition(self, eqx.is_array)
@@ -220,7 +231,7 @@ class TrainState(NamedTuple):
             batch = jax.vmap(partial(train_sample, state.problem, time_power=time_power))(
                 jr.split(key_batch, batch_size)
             )
-            state, losses = state._replace(key=key).train_step(batch, aux_weight)
+            state, losses = state._replace(key=key).train_step(batch, aux_weight, lr_scale)
             return eqx.filter(state, eqx.is_array), losses
 
         dynamic, losses = jax.lax.scan(scan_step, dynamic, length=n_steps)
@@ -312,6 +323,18 @@ def aux_weight_schedule(step: int, total_steps: int, warmup_frac: float) -> floa
     return 0.5 + 0.5 * math.cos(math.pi * frac)
 
 
+def lr_scale_schedule(epoch: int, epochs: int, cooldown_epochs: int) -> float:
+    """1 until the last cooldown_epochs, then a linear decay to 0 (warmup-stable-decay).
+
+    Each epoch takes the ramp's value at its midpoint, so a cooldown starts just below 1,
+    ends just above 0 and averages 1/2.
+    """
+    start = epochs - cooldown_epochs
+    if cooldown_epochs <= 0 or epoch < start:
+        return 1.0
+    return (epochs - epoch - 0.5) / cooldown_epochs
+
+
 def parse_args() -> argparse.Namespace:
     """Read the named run .yaml as argparse defaults, so any CLI flag overrides it."""
     config_parser = argparse.ArgumentParser(add_help=False)
@@ -330,6 +353,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log_interval", type=int, default=1000)
     parser.add_argument("--warmup_frac", type=float, default=0.5)
     parser.add_argument(
+        "--cooldown_steps",
+        type=int,
+        default=0,
+        help="decay the lr linearly to 0 over the last N of total_steps (0: constant lr)",
+    )
+    parser.add_argument(
         "--time_power",
         type=float,
         default=1.0,
@@ -340,6 +369,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="eval and scorecard only: RK4 steps for sampling (default: eval.ODE_STEPS)",
+    )
+    parser.add_argument(
+        "--n_random",
+        type=int,
+        default=None,
+        help="scorecard only: random injections after the ten eval ones (default: scorecard.N_RANDOM)",
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
@@ -354,6 +389,12 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="include the optimizer state in checkpoints (about 2/3 of their size)",
+    )
+    parser.add_argument(
+        "--require_checkpoint",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="stop instead of starting from scratch when there is no checkpoint to resume",
     )
 
     with open(config_args.config_root / f"{config_args.config}.yaml") as f:
@@ -388,6 +429,11 @@ if __name__ == "__main__":
     # setup the training state
     state = TrainState.from_config(args)
     state, start_epoch, loss_history = state.restore_from(checkpoints)
+    if args.require_checkpoint and start_epoch == 0:
+        raise SystemExit(
+            f"no checkpoint in {checkpoints.directory}: {args.config} only continues a run,"
+            " see the header of its config"
+        )
     epochs = args.total_steps // args.log_interval
 
     # the checkpoint carries the (epochs, log_interval) grid it was written on, and
@@ -402,15 +448,21 @@ if __name__ == "__main__":
         cols = min(restored.shape[1], args.log_interval)
         loss_history[:rows, :cols] = restored[:rows, :cols]
 
+    cooldown_epochs = args.cooldown_steps // args.log_interval
     pbar = tqdm(range(start_epoch, epochs), initial=start_epoch, total=epochs)
     for epoch in pbar:
         aux_weight = aux_weight_schedule(epoch, epochs, args.warmup_frac)
+        lr_scale = lr_scale_schedule(epoch, epochs, cooldown_epochs)
 
         # one fused XLA dispatch for the whole epoch, instead of log_interval separate
-        # ones. aux_weight goes in as an array, not a python float: filter_jit treats
+        # ones. aux_weight and lr_scale go in as arrays, not python floats: filter_jit treats
         # non-arrays as static, so a float re-traces the whole epoch every time it changes
         state, epoch_losses = state.train_epoch(
-            jnp.asarray(aux_weight), args.batch_size, args.log_interval, args.time_power
+            jnp.asarray(aux_weight),
+            args.batch_size,
+            args.log_interval,
+            args.time_power,
+            jnp.asarray(lr_scale, dtype=jnp.float32),
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
 
@@ -430,7 +482,8 @@ if __name__ == "__main__":
         pbar.set_postfix(flow=f"{flow_l:.5f}", x=f"{x_l:.5f}", y=f"{y_l:.5f}")
         print(
             f"[epoch {epoch + 1}/{epochs}] flow={flow_l:.5f} x={x_l:.5f}"
-            f" y={y_l:.5f} aux_weight={aux_weight:.3f}",
+            f" y={y_l:.5f} aux_weight={aux_weight:.3f}"
+            + (f" lr_scale={lr_scale:.4f}" if cooldown_epochs else ""),
             flush=True,
         )
 

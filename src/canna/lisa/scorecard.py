@@ -20,10 +20,13 @@ and the first N_DRAWS of its base draws, so their rows compare one to one with t
 earlier per-source tables. N_RANDOM plain prior draws follow, for the statistics.
 Prints a summary and writes outputs/lisa-<config>/scorecard.npz. A non-default --ode_steps
 or --dtype adds _ode<N> or _<dtype> to the name (scorecard_ode64.npz, scorecard_float32.npz),
-so integrator and precision checks sit beside the default one instead of over it.
+and a run off the GPU adds the backend (scorecard_float32_cpu.npz), so integrator, precision
+and device checks sit beside the default one instead of over it. --n_random scores fewer
+random injections, for a slow device; the file records how many.
 """
 
 import itertools
+import time
 from pathlib import Path
 
 import jax
@@ -149,9 +152,11 @@ if __name__ == "__main__":
     state, epoch, _ = state.restore_from(checkpoints)
     problem, flow = state.problem, state.flow
     ode_steps = args.ode_steps or ODE_STEPS
+    n_random = N_RANDOM if args.n_random is None else args.n_random
     print(
         f"config {args.config}, epoch {epoch}, time_power {args.time_power},"
-        f" ode_steps {ode_steps}, dtype {args.dtype}",
+        f" ode_steps {ode_steps}, dtype {args.dtype}, n_random {n_random},"
+        f" backend {jax.default_backend()}",
         flush=True,
     )
 
@@ -162,12 +167,13 @@ if __name__ == "__main__":
     snrs = np.asarray(jax.lax.map(lambda pc: problem.snr(*pc), (latents, windows)))
     quantiles = np.linspace(1.0 / N_QUANTILES, 1.0, N_QUANTILES)
     chosen = np.argsort(snrs)[np.round(quantiles * (N_CANDIDATES - 1)).astype(int)]
-    others = np.setdiff1d(np.arange(N_CANDIDATES), chosen)[:N_RANDOM]
+    others = np.setdiff1d(np.arange(N_CANDIDATES), chosen)[:n_random]
     noise_keys = list(jr.split(key_noise, N_QUANTILES)) + [
         jr.fold_in(key_noise, 10_000 + int(i)) for i in others
     ]
 
     rows, injection, is_eval = [], [], []
+    start = time.perf_counter()
     for n, (i, key_n) in enumerate(zip(np.concatenate([chosen, others]), noise_keys)):
         rows.append(
             score_injection(
@@ -182,8 +188,12 @@ if __name__ == "__main__":
         )
         injection += [n] * problem.n_sources
         is_eval += [n < N_QUANTILES] * problem.n_sources
-        if (n + 1) % 25 == 0:
-            print(f"[{n + 1}/{len(noise_keys)}] injections scored", flush=True)
+        if (n + 1) % 5 == 0:
+            print(
+                f"[{n + 1}/{len(noise_keys)}] injections scored,"
+                f" {time.perf_counter() - start:.0f} s",
+                flush=True,
+            )
 
     rows = {k: np.concatenate([r[k] for r in rows]) for k in rows[0]}
     rows["injection"], rows["is_eval"] = np.array(injection), np.array(is_eval)
@@ -196,12 +206,13 @@ if __name__ == "__main__":
             f" {rows['width'][j] / rows['ideal'][j]:8.0f} {rows['offset'][j]:+8.3f}"
         )
     summary(rows, rows["is_eval"], f"the ten eval injections (epoch {epoch}, {ode_steps} RK4 steps)")
-    summary(rows, ~rows["is_eval"], f"{N_RANDOM} random injections (epoch {epoch}, {ode_steps} RK4 steps)")
+    summary(rows, ~rows["is_eval"], f"{n_random} random injections (epoch {epoch}, {ode_steps} RK4 steps)")
     summary(rows, np.ones_like(rows["is_eval"]), "all")
 
     name = "scorecard"
     name += "" if ode_steps == ODE_STEPS else f"_ode{ode_steps}"
     name += "" if args.dtype == "bfloat16" else f"_{args.dtype}"
+    name += "" if jax.default_backend() == "gpu" else f"_{jax.default_backend()}"
     name += ".npz"
-    np.savez(out_dir / name, epoch=epoch, ode_steps=ode_steps, **rows)
+    np.savez(out_dir / name, epoch=epoch, ode_steps=ode_steps, n_random=n_random, **rows)
     print(f"\nsaved {out_dir / name}", flush=True)

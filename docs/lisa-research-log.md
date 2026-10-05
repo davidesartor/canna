@@ -746,6 +746,8 @@ attribution.
 | **T1** | `scorecard.py` on the 1M model and on XS-late: per-source width and ideal, found, offset, 68%/95% coverage, rank; 10 eval + 200 random injections | the E2 verdict, the calibration question from F12, and an A100 cross-check of F12 | 2 short eval jobs (~4 min each) | done (13626493, 13626496), F15 |
 | T2 | XS-late scorecard again at 64 and 128 RK4 steps (`--ode_steps`, eval only; writes `scorecard_ode<N>.npz`) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | done (13641220, 13641221): no, the integrator is converged (F16) |
 | **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | done (13719349, 16 h 36 min; F19): same floor (0.087 bins), net +11 sources found, loss −1.3%, a run-specific loud-source f₀ bias of ~1/3 width |
+| **T3'** | the XS-late scorecard in fp32 on a TREX **CPU** node (`slurm/lisa-scorecard-cpu.sbatch`, `--n_random 40`), since GPU fp32 is broken (F18); writes `scorecard_float32_cpu.npz` | Does bf16 set the 0.087–0.088-bin floor? XS-late and the 768 net share the floor, so the cheaper net answers it | none (CPU; est. 1–3 h on 64 cores) | prepared 2026-10-05 |
+| **C1** | `configs/XS-late-768-cool.yaml`: the 768 model continued from 1M to 1.2M steps, with the lr decaying linearly to 0 over the 200k (`--cooldown_steps`). Its checkpoint is moved, not copied, into `outputs/lisa-XS-late-768-cool`; `require_checkpoint` stops it from starting from scratch | Does optimiser noise hold up the floor and cause the run-specific bias (F9, F19)? | ~3.3 h | prepared 2026-10-05 |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
@@ -801,7 +803,7 @@ attribution.
 
 ## 7. How to run
 
-On TREX, from `~/canna`, which is at dff3ef2:
+On TREX, from `~/canna`, after pulling the latest bundle (TREX cannot reach GitHub):
 
 ```bash
 # when a run's .out ends with [done]:
@@ -816,6 +818,14 @@ sbatch slurm/lisa.sbatch XS-late-768                         # E3' -> outputs/li
 # after E3' prints [done]:
 sbatch slurm/lisa-scorecard.sbatch XS-late-768               # compare with XS-late's scorecard (F15)
 sbatch slurm/lisa-eval.sbatch XS-late-768                    # corner plots
+# T3' and C1 (F19), independent of each other:
+sbatch slurm/lisa-scorecard-cpu.sbatch XS-late --dtype float32 --n_random 40   # -> outputs/lisa-XS-late/scorecard_float32_cpu.npz
+mkdir -p outputs/lisa-XS-late-768-cool
+mv outputs/lisa-XS-late-768/checkpoints outputs/lisa-XS-late-768-cool/          # a move: the quota has no room for a copy
+sbatch slurm/lisa.sbatch XS-late-768-cool                                        # C1, 1000 -> 1200 epochs, ~3.3 h
+# after C1 prints [done]:
+sbatch slurm/lisa-scorecard.sbatch XS-late-768-cool
+sbatch slurm/lisa-eval.sbatch XS-late-768-cool
 ```
 
 ## 8. Provenance
