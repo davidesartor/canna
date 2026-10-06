@@ -1282,4 +1282,19 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
   rule.
 - **Corner pages (2026-10-06).** `eval.py` writes `corner/q*.pdf` (full), `q*-pooled.pdf`
   and `gb-{loudest,median,faintest}.pdf`. Before this change only the full pages existed.
-  Older runs get the new pages only by rerunning their eval.
+  The finished XS runs were backfilled locally on 2026-10-06 by
+  `outputs/lisa-XS/eval-tools/backfill_corner.py`, on the laptop GPU in bf16, with eval.py's
+  keys. So the draws are the ones behind each run's existing full pages.
+  - The runs: XS 500k (`lisa-XS/corner-gpu`), XS 1M (`1M/lisa-XS/corner`), XS-late,
+    XS-late-768, XS-late-768-cool and XS-late-cool. XS-late-cool also got its full pages,
+    since its eval was never run.
+  - Each run's draws are kept in `<run>/eval_draws.npz`, as [injection, draw, source,
+    param] in physical units.
+  - The Fisher draws are shared by all XS runs, in
+    `eval-tools/fisher_eval_injections.npz`.
+  - Over the 40 eval sources, the per-GB pages are the same three GBs in every XS run:
+    loudest SNR 1365.6 (q1.00, s3), median 62.4 (q0.60, s2), faintest 5.3 (q0.20, s1).
+  - **Check.** On the 40 eval sources, the first 256 laptop draws reproduce each run's A100
+    scorecard. The f₀ width ratio, laptop over A100, is 0.994–1.008, and the found sets are
+    identical. That covers XS 1M, XS-late, -768, -768-cool and -cool; the 500k run has no
+    scorecard to check against.
