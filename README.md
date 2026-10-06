@@ -99,8 +99,19 @@ uv run python -m canna.lisa.eval      --config <name>   # outputs/lisa-<name>/co
 
 The scorecard scores every source of 210 injections: its frequency width
 against the ideal one, whether it was found, the offset from the truth, and
-whether the 68% and 95% intervals cover it. The eval draws corner plots of ten
-injections against a Fisher forecast. Both stop if the run has no checkpoint.
+whether the 68% and 95% intervals cover it. The eval draws corner plots, flow
+against a Fisher forecast, into `corner/`:
+
+- `q<quantile>.pdf`: one page per injection, at ten window-SNR quantiles, with every
+  source's parameters side by side.
+- `q<quantile>-pooled.pdf`: the same injection with its sources pooled. The
+  `[draw, source, param]` samples become `[draw × source, param]`, so each marginal
+  holds every source at once; f₀, for instance, shows one spike per binary.
+- `gb-loudest.pdf`, `gb-median.pdf`, `gb-faintest.pdf`: a single binary, the loudest,
+  median and faintest by SNR of all the sources in those ten injections. Its draws
+  are first relabelled onto it, since the flow's source slots are interchangeable.
+
+Both stop if the run has no checkpoint.
 `--ode_steps`, `--n_random` and `--dtype float32` adjust them. Evaluate in the
 precision the model trained in (bf16): fp32 gives the same widths.
 

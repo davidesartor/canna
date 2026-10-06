@@ -112,7 +112,7 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | optimiser | global-norm clip at 1, then `optax.contrib.muon` (0.2.8, default width scaling) at lr = 1e-4. Adam, at the same lr, handles the non-matrix parameters. **Constant lr, no schedule**, no weight decay. bf16 compute, fp32 parameters, batch 256, 1 epoch = 1000 steps. |
 | the rungs XS / S / B | They differ only in `response_points` (rp), the number of frequency bins of each source's response that jaxgb computes. The window is 4·rp bins, so the image is 2 × 4rp WDM pixels and the network sees 2rp y-tokens. A source's Doppler sideband plus its chirp drift must fit, and that caps f₀. **XS:** rp = 16, a 64-bin window, 32 tokens, f₀ ≤ 1.3 mHz (53% of the log band). **S:** rp = 64, 256 bins, 128 tokens, f₀ ≤ 4.2 mHz (78%). **B:** rp auto-sized to 1024, 4096 bins, 2048 tokens, the full 0.1–12 mHz. Everything else is the same: network, 4 sources, priors, optimiser, 500k steps. |
 | cost (A100-80G) | XS takes 38.9 s per epoch, about 23 ms fixed plus 15 ms of network per step. S takes 80 s per epoch. |
-| eval | 10 injections at the 0.1…1.0 SNR quantiles of 1024 prior draws (window SNR 121–1848), 1024 flow draws each, RK4 with 32 steps. The Fisher overlay is the Hessian averaged over 32 noise realisations, plus the prior precision. |
+| eval | 10 injections at the 0.1…1.0 SNR quantiles of 1024 prior draws (window SNR 121–1848), 1024 flow draws each, RK4 with 32 steps. The Fisher overlay is the Hessian averaged over 32 noise realisations, plus the prior precision. Since 2026-10-06, each injection also gets a **pooled** page (sources stacked, `[draw × source, param]`, one f₀ spike per GB), and the run gets **per-GB** pages for the loudest, median and faintest of the 40 eval sources (draws relabelled onto the source). A log axis spanning less than a factor of 2 (f₀) is drawn linear. |
 
 ## 3. Run history
 
@@ -1280,3 +1280,21 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
   on the CPU), `scorecard.npz` and `losses.pdf`, also copied as
   `outputs/scorecards/XS-late-cool.npz`. `compare_c2.py` makes the F24 table and applies the
   rule.
+- **Corner pages (2026-10-06).** `eval.py` writes `corner/q*.pdf` (full), `q*-pooled.pdf`
+  and `gb-{loudest,median,faintest}.pdf`. Before this change only the full pages existed.
+  The finished XS runs were backfilled locally on 2026-10-06 by
+  `outputs/lisa-XS/eval-tools/backfill_corner.py`, on the laptop GPU in bf16, with eval.py's
+  keys. So the draws are the ones behind each run's existing full pages.
+  - The runs: XS 500k (`lisa-XS/corner-gpu`), XS 1M (`1M/lisa-XS/corner`), XS-late,
+    XS-late-768, XS-late-768-cool and XS-late-cool. XS-late-cool also got its full pages,
+    since its eval was never run.
+  - Each run's draws are kept in `<run>/eval_draws.npz`, as [injection, draw, source,
+    param] in physical units.
+  - The Fisher draws are shared by all XS runs, in
+    `eval-tools/fisher_eval_injections.npz`.
+  - Over the 40 eval sources, the per-GB pages are the same three GBs in every XS run:
+    loudest SNR 1365.6 (q1.00, s3), median 62.4 (q0.60, s2), faintest 5.3 (q0.20, s1).
+  - **Check.** On the 40 eval sources, the first 256 laptop draws reproduce each run's A100
+    scorecard. The f₀ width ratio, laptop over A100, is 0.994–1.008, and the found sets are
+    identical. That covers XS 1M, XS-late, -768, -768-cool and -cool; the 500k run has no
+    scorecard to check against.

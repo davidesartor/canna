@@ -25,7 +25,6 @@ and device checks sit beside the default one instead of over it. --n_random scor
 random injections, for a slow device; the file records how many.
 """
 
-import itertools
 import time
 
 import jax
@@ -35,40 +34,12 @@ import numpy as np
 
 from .problem import LisaGB
 from .train import load_trained, parse_args
-from .eval import sample_posterior, N_CANDIDATES, N_POSTERIOR, N_QUANTILES, ODE_STEPS
+from .eval import match_sources, sample_posterior, N_CANDIDATES, N_POSTERIOR, N_QUANTILES, ODE_STEPS
 
 N_DRAWS = 256
 N_RANDOM = 200
 FOUND_BINS = 1.0
 SNR_BANDS = [(0, 15), (15, 40), (40, 100), (100, np.inf)]
-
-
-def match_sources(problem: LisaGB, draws: np.ndarray, truth: np.ndarray, f) -> np.ndarray:
-    """Relabel each draw's sources onto the true ones, by the cheapest permutation.
-
-    The flow's source slots are interchangeable, so a draw's slot 0 can be any of the
-    true sources. Each draw is matched in f0 (over the window span), log amplitude and
-    sky direction.
-    """
-    lo, hi = (float(v) for v in problem.f0_window(f))
-    perms = np.array(list(itertools.permutations(range(truth.shape[0]))))
-
-    def features(p):
-        lam, beta = p[..., 3], p[..., 4]
-        return np.stack(
-            [
-                p[..., 0] / (hi - lo),
-                np.log10(np.abs(p[..., 2]) + 1e-300),
-                np.cos(beta) * np.cos(lam),
-                np.cos(beta) * np.sin(lam),
-                np.sin(beta),
-            ],
-            axis=-1,
-        )
-
-    cost = ((features(draws)[:, perms] - features(truth)[None, None]) ** 2).sum((-1, -2))
-    best = perms[np.argmin(cost, axis=1)]
-    return np.take_along_axis(draws, best[:, :, None], axis=1)
 
 
 def score(problem: LisaGB, draws: np.ndarray, truth: np.ndarray, f) -> dict:
