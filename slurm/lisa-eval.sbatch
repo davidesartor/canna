@@ -35,11 +35,23 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 # buffers off and let the kernels launch one at a time
 export XLA_FLAGS="--xla_gpu_enable_command_buffer="
 
+# compiled float32 LisaFlow can come out wrong on these GPUs, depending on which matmul
+# kernels XLA's autotuner picks (F20). Autotune level 3 fixed the laptop but not the A100,
+# whose fp32 posteriors were still 2.4x too narrow (F22), so a float32 run switches GEMM
+# autotuning off altogether. It also asks for true fp32 matmuls instead of the TF32 the
+# GPU uses by default. bf16 runs are left as they are. With level 0 the A100 matches the
+# CPU fp32 scorecard to rounding (F23), at about 7x the eval time.
+if [[ " ${*:2} " == *" --dtype float32 "* || " ${*:2} " == *" --dtype=float32 "* ]]; then
+    XLA_FLAGS="${XLA_FLAGS} --xla_gpu_autotune_level=0"
+    export JAX_DEFAULT_MATMUL_PRECISION=highest
+fi
+
 export UV_SYSTEM_CERTS=1   # UV_NATIVE_TLS on uv < 0.12
 
 echo "host      : $(hostname)"
 echo "job       : ${SLURM_JOB_ID:-none}"
 echo "config    : ${CONFIG}"
+echo "XLA_FLAGS : ${XLA_FLAGS}"
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader || true
 
 srun uv run --extra cuda --frozen python -m canna.lisa.eval --config "${CONFIG}" "${@:2}"

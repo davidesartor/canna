@@ -66,9 +66,10 @@ def test_a_source_at_either_window_edge_keeps_its_response_inside_the_window():
 
 def test_the_guard_band_is_a_small_fraction_of_the_window():
     # the two response_points/2 guards are the only part of the window no source can be
-    # drawn at; keep that waste bounded
+    # drawn at; keep that waste bounded. The window is 4 response_points wide
+    # (wdm_freq_bands), so the guards take exactly a quarter of it
     problem = LisaGB(n_sources=1, t_obs=MONTH)
-    assert problem.response_points / problem.window_bins < 0.2
+    assert problem.response_points / problem.window_bins <= 0.25
 
 
 def test_response_points_covers_the_annual_doppler_and_the_fdot_drift():

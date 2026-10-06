@@ -1,0 +1,43 @@
+# Cooldown (C1): XS-late-768 continued from its 1M-step checkpoint for 200k more steps,
+# with the lr decaying linearly from 1e-4 to 0 over all of them (F19). Only meant as a
+# continuation: first move the 1M checkpoint in, so the run resumes at epoch 1000
+#     mkdir -p outputs/lisa-XS-late-768-cool
+#     mv outputs/lisa-XS-late-768/checkpoints outputs/lisa-XS-late-768-cool/
+# (a move, not a copy: the home quota holds about one more 0.6 GB checkpoint, and orbax
+# needs that room during each save). From scratch it would also stretch the aux phase
+# to 120k steps. About 200 x 59.6 s = 3.3 h on an A100.
+problem:
+  n_sources: 4
+  t_obs: 63115200.0
+  sampling_step: 0.25
+  response_points: 16
+  oms_noise: 15.0
+  acceleration_noise: 3.0
+  mass_range: [0.15, 1.4]
+  f0_range: [1.0e-4, 12.0e-3] # 16 response points truncate it to [1.0e-4, 1.3e-3]
+  snr_range: [7.0, 1000.0]
+
+network:
+  hidden_dim: 768
+  num_blocks: 8
+  num_heads: 12
+  patch_stages: 1
+
+batch_size: 256
+learning_rate: 1.0e-4
+weight_decay: 0.0
+total_steps: 1200000
+# the last 200k steps, i.e. the whole continuation, decay the lr linearly to 0
+cooldown_steps: 200000
+log_interval: 1000
+# aux heads for the first 10% of the run, then pure flow
+warmup_frac: 0.1
+# flow clock warp s = 1 - (1 - t)^3: more of training near the end of the path, where
+# a loud source's posterior is resolved (see path_position in train.py)
+time_power: 3.0
+seed: 0
+# checkpoints without the optimizer state (0.6 GB instead of 1.7 GB): the TREX home
+# quota does not hold two full 768-wide checkpoints, and orbax keeps the old one while saving
+save_opt_state: false
+# without the moved checkpoint this would train 1.2M steps from scratch: refuse instead
+require_checkpoint: true

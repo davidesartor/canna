@@ -1,22 +1,15 @@
 from jaxtyping import Array
-from pathlib import Path
 import itertools
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
-import orbax.checkpoint as ocp
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import corner
 import equinox as eqx
 
 from .problem import LisaGB
 from .network import LisaFlow
-from .train import TrainState, parse_args, path_speed
+from .train import load_trained, parse_args, path_speed
 
 # the velocity field is stiff near t=1, and too few steps smear the posterior out: on
 # the trained XS model the loudest source's f0 width is 0.76/0.42/0.27/0.22/0.21 bins
@@ -115,20 +108,22 @@ def fisher_draws(
 
 
 if __name__ == "__main__":
+    # headless, and only here: scorecard imports sample_posterior from this module, and
+    # selecting the backend at import would switch any notebook that does the same to Agg
+    # (see train.py)
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import corner
+
     args = parse_args()
 
-    out_dir: Path = args.output_dir / f"lisa-{args.config}"
+    # rebuild the state skeleton, then overwrite its params from the checkpoint
+    state, _, out_dir = load_trained(args)
+    problem, flow = state.problem, state.flow
     corner_dir = out_dir / "corner"
     corner_dir.mkdir(parents=True, exist_ok=True)
-
-    # rebuild the state skeleton, then overwrite its params from the checkpoint
-    state = TrainState.from_config(args)
-    checkpoints = ocp.CheckpointManager(
-        (out_dir / "checkpoints").absolute(),
-        options=ocp.CheckpointManagerOptions(max_to_keep=1),
-    )
-    state, *_ = state.restore_from(checkpoints)
-    problem, flow = state.problem, state.flow
 
     n_sources = problem.n_sources
     labels = [
