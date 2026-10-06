@@ -5,8 +5,18 @@ Scope: the LISA galactic-binary flow (`src/canna/lisa`), all runs on TREX to dat
 slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-XS/`
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 
-## 1. Summary (2026-10-01, updated 2026-10-05)
+## 1. Summary (2026-10-01, updated 2026-10-06)
 
+- **Update, 2026-10-06 (F23).** The lr cooldown (C1) is the biggest gain so far.
+  - The loud-source f₀ floor goes from 0.087 to 0.037 bins (×0.44, now 25× ideal).
+  - The run-specific bias is gone.
+  - Faint-source detection beats every earlier model.
+  - Calibration stays conservative, and the loss falls 0.022.
+  - The constant lr was the main cause of both the floor and the bias.
+  - A100 fp32 at autotune level 0 matches the CPU to rounding, which closes F18, F20
+    and F22.
+  - **Next:** every run gets a cooldown. Then S with the recipe, possibly preceded by
+    a 2-h cooldown of the 512 net to choose its width (§6).
 - **Update, 2026-10-05 (F22).** On the A100, `--xla_gpu_autotune_level=3` is not enough.
   fp32 posteriors there are 2.4× too narrow and overconfident (in68 0.45). On the laptop,
   the real network and sampler in fp32 match the CPU. fp32 GPU jobs now switch autotuning
@@ -120,10 +130,73 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **13719349** | E3': XS-late-768, 1M steps, `save_opt_state: false` | **Completed** at 04:22 CEST on 5 Oct (16 h 36 min, trexgpu02, 59.6 s per epoch), no NaN. Final flow loss 0.4498. See F19. |
 | 13767819, 13767924 | scorecard and eval of XS-late-768 | Completed in 6 and 14 min. Downloaded through JupyterHub (SSH was down) to `outputs/lisa-XS-late-768` (checkpoint 1000, corner plots, `scorecard.npz`). See F19. |
 | 13780225 | T3': XS-late scorecard in fp32 on a CPU node (cpu2022, 64 cores, trex085), `--n_random 40` | Running since about 14:20 CEST on 5 Oct, submitted from JupyterHub. TREX code at 30701cf. 88 s per injection on 64 cores, 1 h 15 min in all. Done: same widths as bf16 (F21). |
-| 13780234 | C1: XS-late-768-cool, epochs 1000 → 1200 with the lr cooldown | Running since about 14:20 CEST on 5 Oct (trexgpu04), after moving `outputs/lisa-XS-late-768/checkpoints` into `outputs/lisa-XS-late-768-cool/`. It resumed at epoch 1000 with `lr_scale` 0.9975, then 0.9025 at epoch 1020; flow loss still 0.450 there. About 60 s per epoch, ETA about 17:45 CEST. |
+| 13780234 | C1: XS-late-768-cool, epochs 1000 → 1200 with the lr cooldown | Completed at 17:57 CEST on 5 Oct (3 h 36 min, trexgpu04), final 10-epoch loss 0.4276 (F23). It ran after moving `outputs/lisa-XS-late-768/checkpoints` into `outputs/lisa-XS-late-768-cool/`. It resumed at epoch 1000 with `lr_scale` 0.9975, then 0.9025 at epoch 1020; flow loss still 0.450 there. About 60 s per epoch, ETA about 17:45 CEST. |
 | 13790394 | A100 fp32 scorecard of XS-late at autotune level 3 (`--n_random 40`) | Completed in 3 min. It does not match the CPU: 2.4× too narrow, in68 0.45 at SNR ≥ 100 (F22). |
+| 13793687, 13793690 | scorecard and eval of XS-late-768-cool (C1) | Completed in 5 and 14 min. Floor 0.087 → 0.037 bins, bias gone, best detection so far (F23). Corner plots copied to `outputs/lisa-XS-late-768-cool/corner`. |
+| 13793694 | A100 fp32 scorecard of XS-late at autotune level 0 | Completed in 21 min. Matches the CPU fp32 scorecard to rounding (F23). |
 
 ## 4. Findings
+
+### F23 (2026-10-06): C1 — the lr cooldown halves the floor, removes the bias and finds more sources
+
+**Runs.**
+- C1 training, job 13780234: epochs 1000 → 1200, lr decaying linearly to 0, 3 h 36 min.
+- Scorecard 13793687 (5 min) and eval 13793690 (14 min).
+- The scorecard uses the same 840 sources as F15 and F19. Widths are medians over sources
+  that both models found.
+
+| SNR | n | found, 768 at 1M → cooled | f₀ width (bins) | per-source ratio, median [16–84%] | × ideal (cooled) | in68 | in95 | rank |
+|---|---|---|---|---|---|---|---|---|
+| < 15 | 148 | 0.47 → **0.54** | 0.163 → 0.103 | 0.63 [0.50–0.77] | 2 | 0.80 → 0.78 | 0.97 → 0.97 | 0.49 → 0.53 |
+| 15–40 | 157 | 0.83 → **0.86** | 0.119 → 0.067 | 0.53 [0.42–0.67] | 3 | 0.87 → 0.90 | 0.99 → 1.00 | 0.48 → 0.50 |
+| 40–100 | 151 | 0.94 → **0.97** | 0.091 → 0.040 | 0.46 [0.34–0.57] | 5 | 0.81 → 0.90 | 0.98 → 0.99 | 0.47 → 0.49 |
+| ≥ 100 | 384 | 0.995 → 0.995 | **0.087 → 0.037** | **0.44 [0.35–0.57]** | 25 | 0.82 → 0.93 | 0.98 → 0.99 | 0.41 → 0.49 |
+
+**Loss.** The 10-epoch mean went 0.4499 → **0.4276** (−0.022). At the constant-lr pace of
+the last 100k steps (−0.002 per 100k), the same gain would have taken about 1.1M more
+steps.
+
+**Floor.** At SNR ≥ 100 the median ratio is **0.440, with a 95% interval of 0.427–0.453**.
+- The floor is 0.038 / 0.039 / 0.035 / 0.036 bins at SNR 100–200 / 200–400 / 400–800
+  / ≥ 800. It is still flat in SNR, but 2.3× lower: 25× ideal, against 55×.
+- Against the rule (≤ 0.07 bins: optimiser noise contributes; ≤ 0.06: it dominates),
+  **the constant lr was the main cause of the floor.**
+
+**Bias.**
+- The loud-source mean offset went from +0.029 ± 0.005 to **+0.007 ± 0.005** bins, and
+  the median |offset| from 0.042 to 0.013 bins.
+- The window-position profile, the largest |median offset| over 8 slices, went from 0.081
+  to **0.008** bins.
+- The rank went from 0.41 to 0.49.
+- That passes the rule (≲ 0.03 bins, rank 0.45–0.55). **The run-specific bias of F19 was
+  the constant-lr iterate**, as suspected.
+
+**Detection is the best of any model so far.**
+- 21 sources are found only by the cooled model, and 1 only by the 1M one.
+- Against XS-late it is 33 against 2.
+- Against the uniform-clock 1M model (F15), the cooled model now finds more at every SNR:
+  0.54 / 0.86 / 0.97 against 0.52 / 0.85 / 0.95.
+- So the detection cost of the warp (F15) is gone. Step 3 of §6, `time_power 2`, is no
+  longer needed.
+
+**Calibration** is conservative everywhere: in68 0.78–0.93, in95 0.97–1.00. Nothing is
+over-confident. At SNR ≥ 100, in68 = 0.93 means the posteriors are still wider than they
+need to be.
+
+**Corner plots** (`outputs/lisa-XS-late-768-cool/corner`, local). On the loudest
+injection's first-source block, the cooled model has fewer stray contours: the
+intermediate-amplitude blob in f₀–A is gone. Sky, ψ and φ₀ look as before. This is a visual
+check only; the scorecard measures f₀ alone.
+
+**The A100 fp32 check at autotune level 0** (job 13793694, 21 min; level 3 took 3 min)
+reproduces the CPU fp32 scorecard (T3') to rounding:
+- widths and offsets agree to a median of 4×10⁻⁷ bins, at most 6×10⁻⁵;
+- the found sets and the in68/in95 flags are identical;
+- ranks differ by at most one draw in 256.
+
+So on the A100, autotuning at both level 4 and level 3 selects wrong fp32 kernels, and with
+autotuning off it is right. **The F22 prediction holds.** fp32 on the GPU is usable again,
+at about 7× the eval time. bf16 needs none of this.
 
 ### F22 (2026-10-05): level 3 does not fix fp32 on the A100; on the laptop, the real network and sampler are fine
 
@@ -800,7 +873,48 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
   - The risk is that the long aux phase is what enables the jump.
   - E1b (no aux) is dropped to save compute.
 
-## 6. Roadmap (2026-10-03, updated 2026-10-05)
+## 6. Roadmap (2026-10-03, updated 2026-10-06)
+
+### Update, 2026-10-06 (after C1, F23)
+
+| | XS 1M, uniform | XS-late | XS-late-768 | **XS-late-768-cool** |
+|---|---|---|---|---|
+| loud-source f₀ width (SNR ≥ 100) | 0.147 bins | 0.088 | 0.087 | **0.037** (25× ideal) |
+| found, SNR < 15 / 15–40 / 40–100 | 52 / 85 / 95% | 45 / 81 / 92% | 47 / 83 / 94% | **54 / 86 / 97%** |
+| loud f₀ bias | −0.056, rank 0.62 | ±0.04 by position | +0.021, rank 0.41 | **+0.002, rank 0.49** |
+| in68 / in95 at SNR ≥ 100 | 0.77 / 0.97 | 0.87 / 0.99 | 0.82 / 0.98 | 0.93 / 0.99 |
+| GPU time | 10.8 h | 10.9 h | 16.6 h | 16.6 + 3.6 h |
+
+**Settled.**
+- The lr schedule was the main lever. A warmup-stable-decay schedule (the last ~20% decaying
+  to 0) goes into every run from now on.
+- Neither bf16 at eval nor network width moved the floor at a constant lr (F19, F21).
+- Faint-source detection no longer needs its own run.
+
+**Still open:**
+- The floor is still flat in SNR, at 25× ideal for loud sources. The posteriors are
+  conservative (in68 0.93), so they are wider than the data require.
+- Whether width matters once the lr is annealed. F19 tested capacity at a constant lr only.
+
+**Next, in order:**
+1. **C2, optional: cool down XS-late (512) the same way.** That is 200k steps, about
+   2.2 h. It decides the network width for S:
+   - S at 512 takes ~80 s per epoch, so 1M steps is ~22 h, one 24 h slot;
+   - S at 768 takes ~123 s per epoch, ~34 h over two slots.
+   - **Rule:** if the cooled 512 net's loud width is ≤ 1.1× the cooled 768's (≤ 0.041
+     bins), and its found fractions are within 1 point per band, S uses 512. Otherwise S
+     uses 768.
+   - Needs: a config like `XS-late-768-cool.yaml`, and the XS-late checkpoint backed up
+     locally first, because the run replaces it on TREX.
+2. **S with the recipe.** `time_power 3`, aux 10%, 1M steps of which the last 200k cool
+   down, and the width from C2. This is the run that carries the method to the wider band.
+3. **Validation against MCMC** (jexplore) on 2–3 injections. Now that the flow is sharper,
+   this measures how far its conservative widths sit from the true posterior. It also
+   extends the calibration check beyond f₀ (sky, amplitude).
+4. **Lower priority:**
+   - bf16 in *training* (an fp32 head);
+   - a longer cooldown or total, if the floor matters after step 3;
+   - B, which needs a /work folder.
 
 ### Update, 2026-10-05 (after E3', F19)
 
@@ -952,7 +1066,7 @@ attribution.
 | T2 | XS-late scorecard again at 64 and 128 RK4 steps (`--ode_steps`, eval only; writes `scorecard_ode<N>.npz`) | Do the detection loss and the 0.088-bin floor come from the integrator? The warp leaves the first half of the path only ~6 of 32 steps | 2 × ~5 min | done (13641220, 13641221): no, the integrator is converged (F16) |
 | **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | done (13719349, 16 h 36 min; F19): same floor (0.087 bins), net +11 sources found, loss −1.3%, a run-specific loud-source f₀ bias of ~1/3 width |
 | **T3'** | the XS-late scorecard in fp32 on a TREX **CPU** node (`slurm/lisa-scorecard-cpu.sbatch`, `--n_random 40`), since GPU fp32 is broken (F18); writes `scorecard_float32_cpu.npz` | Does bf16 set the 0.087–0.088-bin floor? XS-late and the 768 net share the floor, so the cheaper net answers it | none (CPU, 1 h 15 min) | done (13780225, F21): width ratio fp32 / bf16 0.991 [0.978–1.000], bf16 at eval ruled out |
-| **C1** | `configs/XS-late-768-cool.yaml`: the 768 model continued from 1M to 1.2M steps, with the lr decaying linearly to 0 over the 200k (`--cooldown_steps`). Its checkpoint is moved, not copied, into `outputs/lisa-XS-late-768-cool`; `require_checkpoint` stops it from starting from scratch | Does optimiser noise hold up the floor and cause the run-specific bias (F9, F19)? | ~3.3 h | running: job 13780234; loss −0.012 by epoch 1110 (F21) |
+| **C1** | `configs/XS-late-768-cool.yaml`: the 768 model continued from 1M to 1.2M steps, with the lr decaying linearly to 0 over the 200k (`--cooldown_steps`). Its checkpoint is moved, not copied, into `outputs/lisa-XS-late-768-cool`; `require_checkpoint` stops it from starting from scratch | Does optimiser noise hold up the floor and cause the run-specific bias (F9, F19)? | ~3.3 h | done (13780234, F23): floor 0.087 → 0.037 bins, bias gone, detection up; loss −0.022 |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
@@ -1071,3 +1185,8 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
 - **F22.** `outputs/scorecards/XS-late_float32_gpu_at3.npz` is the A100 level-3 run, and
   `a100_fp32.py` there makes the comparison. `fp32bug/prod_velocity.py` and
   `prod_sampler.py` hold the laptop checks with the real network.
+- **C1 (F23).** `outputs/scorecards/XS-late-768-cool.npz` (also copied into
+  `outputs/lisa-XS-late-768-cool/`) and `compare_cool.py` hold the cooled scorecard.
+  `XS-late_float32_gpu_at0.npz` is the A100 level-0 check. The corner plots and
+  `losses.pdf` are in `outputs/lisa-XS-late-768-cool/`. The cooled checkpoint (epoch 1200)
+  is on TREX only so far.

@@ -35,8 +35,8 @@ export XLA_FLAGS="--xla_gpu_enable_command_buffer="
 # kernels XLA's autotuner picks (F20). Autotune level 3 fixed the laptop but not the A100,
 # whose fp32 posteriors were still 2.4x too narrow (F22), so a float32 run switches GEMM
 # autotuning off altogether. It also asks for true fp32 matmuls instead of the TF32 the
-# GPU uses by default. bf16 runs are left as they are. The CPU scorecard
-# (lisa-scorecard-cpu.sbatch) stays the fp32 reference until an A100 run matches it.
+# GPU uses by default. bf16 runs are left as they are. With level 0 the A100 matches the
+# CPU fp32 scorecard to rounding (F23), at about 7x the eval time.
 if [[ " ${*:2} " == *" --dtype float32 "* || " ${*:2} " == *" --dtype=float32 "* ]]; then
     XLA_FLAGS="${XLA_FLAGS} --xla_gpu_autotune_level=0"
     export JAX_DEFAULT_MATMUL_PRECISION=highest
