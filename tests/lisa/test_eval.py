@@ -106,3 +106,12 @@ def test_the_warped_clock_still_covers_the_whole_path(small_flow, time_power):
     post = sample_posterior(problem, ConstantVelocity(v), u0, y, f, 8, time_power)
     assert jnp.allclose(post[..., 1], u0[..., 1] + 0.7, atol=1e-10)
     assert jnp.allclose(post[..., 0], u0[..., 0])
+
+
+def test_chunking_the_draws_changes_nothing(small_flow):
+    """sample_posterior pushes the draws through in chunks; each draw's path is its own."""
+    problem, flow, u0, y, f = small_flow
+    whole = sample_posterior(problem, flow, u0, y, f, 3, 3.0, chunk=len(u0))
+    chunked = sample_posterior(problem, flow, u0, y, f, 3, 3.0, chunk=2)
+    # the network computes in float32, and the batch size changes its summation order
+    assert jnp.allclose(whole, chunked, atol=1e-6)

@@ -20,6 +20,8 @@ N_POSTERIOR = 1024
 N_CANDIDATES = 1024
 N_QUANTILES = 10
 N_FISHER_DRAWS = 32
+# draws pushed through the network at once by sample_posterior (B needs it: see there)
+CHUNK = 256
 
 PARAM_LABELS = [
     "f_0",
@@ -43,6 +45,7 @@ def sample_posterior(
     f: Array,
     ode_steps: int = ODE_STEPS,
     time_power: float = 1.0,
+    chunk: int = CHUNK,
 ) -> Array:
     """RK4 transport of prior draws u along the learned velocity field, on the manifold.
 
@@ -52,6 +55,10 @@ def sample_posterior(
     The network gives the velocity along the path, d/ds; on the warped clock the ODE is
     in t, so each evaluation is scaled by ds/dt. Steps uniform in t then crowd towards
     the end of the path: with time_power 3 the last of 32 ends at 1 - s = 3e-5.
+
+    The draws go through in chunks of `chunk`, one after another: on B (2048 tokens) all
+    1024 at once need a single 27 GiB buffer and ran out of memory on an A100. A draw's
+    path does not depend on the others, so chunking changes nothing but the memory.
     """
 
     @eqx.filter_vmap(in_axes=(None, 0))
@@ -72,7 +79,12 @@ def sample_posterior(
 
         return jax.lax.fori_loop(0, ode_steps, step, u)
 
-    return push(flow, u)
+    n = u.shape[0]
+    if n <= chunk:
+        return push(flow, u)
+    assert n % chunk == 0, f"{n} draws do not split into chunks of {chunk}"
+    chunks = jax.lax.map(lambda c: push(flow, c), u.reshape(n // chunk, chunk, *u.shape[1:]))
+    return chunks.reshape(u.shape)
 
 
 def scaled_inverse(m: Array) -> Array:
