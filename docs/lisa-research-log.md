@@ -7,6 +7,10 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-06)
 
+- **Update, 2026-10-06 (F25).** The B benchmark: 1.57 s per step at 512 wide and 2.57 s
+  at 768 (41× XS), memory no issue. The B eval needed draws in chunks, now done. B
+  scorecards use `--n_random 50`. Default plan: `B-late` (512), 200k steps, ~3.6
+  days.
 - **Update, 2026-10-06 (F24).** C2 cooled the 512 net the same way.
   - Its loud floor matches the 768's (×1.03), so the floor is not capacity.
   - The 768 net is 11–15% sharper below SNR 100 and finds 11 more of 840 sources.
@@ -141,8 +145,52 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13793694 | A100 fp32 scorecard of XS-late at autotune level 0 | Completed in 21 min. Matches the CPU fp32 scorecard to rounding (F23). |
 | **13849421** | C2: XS-late-cool, epochs 1000 → 1200 with the lr cooldown | Completed on 6 Oct (2 h 11 min, trexgpu02, 38.8 s per epoch), final 10-epoch loss 0.4352 (F24). |
 | 13867994 | scorecard of XS-late-cool | Completed in 4 min. The loud floor matches the cooled 768's; fewer faint sources found (F24). |
+| 13875733, 13875737 | B0: `B-late` and `B-late-768`, 300 steps each into `outputs/bench` | Completed in 10 and 15 min: 1.57 and 2.57 s per step, peak 18.6 and 29.4 GiB (F25). |
+| 13875770, 13875840 | B0: scorecard (`--n_random 10`) and eval of the 768 benchmark checkpoint | The scorecard runs at ~78 s per injection. The eval ran out of memory at 1024 draws, now fixed by chunking (F25). |
 
 ## 4. Findings
+
+### F25 (2026-10-06): B0 — B costs 1.57 s per step at 512 wide and 2.57 s at 768; the eval needs chunking
+
+**Training benchmark.** Jobs 13875733 (`B-late`, 512) and 13875737 (`B-late-768`), 300 steps
+each in epochs of 100, on one A100 at batch 256:
+
+| width | first epoch (incl. compile) | steady epoch (100 steps) | per step | peak GPU memory |
+|---|---|---|---|---|
+| 512 | 224 s | 157 s | **1.57 s** | 18.6 GiB of 59 |
+| 768 | 334 s | 257 s | **2.57 s** | 29.4 GiB of 59 |
+
+- That is 41× (512) and 43× (768) an XS step. The XS/S fit's 1.5 s held.
+- Memory is no constraint at batch 256. The 59 GiB is JAX's default cap of 75% of the card.
+- **Cost of a B run:**
+
+| steps (20% cooldown) | 512 | 768 |
+|---|---|---|
+| 100k | 44 h, 2 slots | 71 h, 3 slots |
+| 150k | 65 h, 3 slots | 107 h, 5 slots |
+| 200k | 87 h, 4 slots | 143 h, 6 slots |
+
+- For comparison, a 1M-step XS run took 11 h (512) or 17 h (768). B can afford roughly a
+  tenth to a fifth of XS's steps.
+
+**Eval.** Job 13875840 ran out of memory: `sample_posterior` pushed all 1024 draws through
+B's 2048 tokens at once, which needs a single 27.3 GiB buffer.
+- Fixed by pushing the draws in chunks of 256 (`eval.CHUNK`). That changes nothing but the
+  memory. A test checks it against the unchunked transport, to float32 rounding.
+- The first chunk is exactly the scorecard's 256 draws.
+
+**Scorecard.** Job 13875770 runs at ~78 s per injection at 768 (256 draws). The default 10 +
+200 injections would take ~4.5 h on B, so **B scorecards use `--n_random 50`**: 60
+injections, ~1.3 h, ~240 sources.
+
+**Recommendation for the budget (the user decides).** At a fixed GPU budget, the 512 net
+gets 1.64× the steps of the 768.
+- On XS, at equal steps, the 768 net bought +11 of 840 sources and 11–15% sharper widths at
+  SNR < 100 (F24).
+- B will be far short of XS's 1M steps, though, and on XS each doubling of steps was worth
+  ~20% in width plus the coarse gains (F12).
+- **Default: `B-late` (512) for 200k steps, ~3.6 days in 4 chained slots.** The alternative
+  at the same cost is `B-late-768` for ~120k.
 
 ### F24 (2026-10-06): C2 — once cooled, the 512 net matches the 768's floor but finds fewer sources; S runs at 768
 
@@ -1164,7 +1212,7 @@ attribution.
 | **C1** | `configs/XS-late-768-cool.yaml`: the 768 model continued from 1M to 1.2M steps, with the lr decaying linearly to 0 over the 200k (`--cooldown_steps`). Its checkpoint is moved, not copied, into `outputs/lisa-XS-late-768-cool`; `require_checkpoint` stops it from starting from scratch | Does optimiser noise hold up the floor and cause the run-specific bias (F9, F19)? | ~3.3 h | done (13780234, F23): floor 0.087 → 0.037 bins, bias gone, detection up; loss −0.022 |
 | **C2** | `configs/XS-late-cool.yaml`: XS-late (512 × 8) continued from 1M to 1.2M steps with the same cooldown as C1; its checkpoint (with optimizer state) is moved into `outputs/lisa-XS-late-cool` | Does width matter once the lr is annealed? Rule: loud width ≤ 1.1× C1's (≤ 0.041 bins) and found fractions within 1 point per band → S at 512 | ~2.2 h | done (13849421, 13867994; F24): loud width ×1.03 the 768's, but found −4.1 / −1.3 / −2.0 points, so S at 768 |
 | **S1** | `configs/S-late.yaml` (512) or `S-late-768.yaml`: S with the full recipe, 1M steps, the last 200k cooling down | Does the recipe carry to the 0.1–4.2 mHz band? | ~34 h in two chained slots (768, per F24) | dropped 2026-10-06: the user goes straight to B |
-| **B0** | benchmark: `B-late` and `B-late-768` for 300 steps, then the B scorecard and eval on the 768 checkpoint, all into `outputs/bench` | B's seconds per step and peak memory at each width; whether the eval fits | ~1 h in all | prepared 2026-10-06 |
+| **B0** | benchmark: `B-late` and `B-late-768` for 300 steps, then the B scorecard and eval on the 768 checkpoint, all into `outputs/bench` | B's seconds per step and peak memory at each width; whether the eval fits | ~1 h in all | done (F25): 1.57 / 2.57 s per step, eval chunked, scorecard `--n_random 50` |
 | **B1** | `configs/B-late(-768).yaml`: the full recipe on B, length set from B0 | Does the recipe carry to the whole band? | from B0 (est. days) | waits for B0 |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
