@@ -1,4 +1,5 @@
 from jaxtyping import Array
+from pathlib import Path
 import itertools
 
 import jax
@@ -107,15 +108,115 @@ def fisher_draws(
     return mean + (z / jnp.sqrt(w)) @ v.T / d
 
 
+def match_sources(problem: LisaGB, draws: np.ndarray, truth: np.ndarray, f) -> np.ndarray:
+    """Relabel each draw's sources onto the true ones, by the cheapest permutation.
+
+    The flow's source slots are interchangeable, so a draw's slot 0 can be any of the
+    true sources. Each draw is matched in f0 (over the window span), log amplitude and
+    sky direction.
+    """
+    lo, hi = (float(v) for v in problem.f0_window(f))
+    perms = np.array(list(itertools.permutations(range(truth.shape[0]))))
+
+    def features(p):
+        lam, beta = p[..., 3], p[..., 4]
+        return np.stack(
+            [
+                p[..., 0] / (hi - lo),
+                np.log10(np.abs(p[..., 2]) + 1e-300),
+                np.cos(beta) * np.cos(lam),
+                np.cos(beta) * np.sin(lam),
+                np.sin(beta),
+            ],
+            axis=-1,
+        )
+
+    cost = ((features(draws)[:, perms] - features(truth)[None, None]) ** 2).sum((-1, -2))
+    best = perms[np.argmin(cost, axis=1)]
+    return np.take_along_axis(draws, best[:, :, None], axis=1)
+
+
+def axis_ranges(flow: np.ndarray, fisher: np.ndarray, scale: list[str]) -> list[tuple]:
+    """Each axis' plot range: the span of both sample sets, padded by 5% in its own scale."""
+    ranges = []
+    for c in range(flow.shape[1]):
+        # a linear-space Fisher can spill below zero on a log axis -- ignore those
+        fisher_c = fisher[:, c]
+        fisher_c = fisher_c[fisher_c > 0] if scale[c] == "log" else fisher_c
+        lo = min([flow[:, c].min()] + ([fisher_c.min()] if fisher_c.size else []))
+        hi = max([flow[:, c].max()] + ([fisher_c.max()] if fisher_c.size else []))
+        if scale[c] == "log":
+            ll, hh = np.log10(lo), np.log10(hi)
+            m = 0.05 * (hh - ll) or 0.1
+            ranges.append((10 ** (ll - m), 10 ** (hh + m)))
+        else:
+            m = 0.05 * (hi - lo) or 0.1
+            ranges.append((lo - m, hi + m))
+    return ranges
+
+
+def corner_page(
+    path: Path,
+    flow: np.ndarray,
+    fisher: np.ndarray,
+    labels: list[str],
+    scale: list[str],
+    title: str,
+    truths: np.ndarray,
+    pooled: bool = False,
+    bins: int = 20,
+) -> None:
+    """One corner page: flow draws (orange) over Fisher draws (blue, dashed), truths in black.
+
+    flow and fisher are [n, ndim]; truths is [k, ndim]. Each truth row draws lines across
+    the page; that is what marks a full page, whose rows are the label permutations of the
+    truth. A pooled page stacks every source into the same ndim parameters, so a row is one
+    source: it gets a line on the diagonal and a point in the 2D panels, since lines there
+    would cross at k^2 places of which only k are real.
+    """
+    import corner
+    import matplotlib.pyplot as plt
+
+    ranges = axis_ranges(flow, fisher, scale)
+    # a log axis over less than a factor of 2 (f0 inside one window, ~1%) only crowds its
+    # tick labels together; draw it linear. Amplitudes span decades and stay log
+    scale = ["linear" if sc == "log" and hi < 2 * lo else sc for sc, (lo, hi) in zip(scale, ranges)]
+    style = dict(range=ranges, axes_scale=scale, bins=bins, hist_kwargs={"density": True})
+    fig = corner.corner(
+        flow, labels=labels, color="C1", show_titles=not pooled, title_fmt=".2g", **style
+    )
+    corner.corner(
+        fisher,
+        fig=fig,
+        color="C0",
+        plot_datapoints=False,
+        contour_kwargs={"linestyles": "dashed"},
+        **style,
+    )
+    if pooled:
+        ndim = flow.shape[1]
+        axes = np.array(fig.axes).reshape(ndim, ndim)
+        for i in range(ndim):
+            for t in truths:
+                axes[i, i].axvline(t[i], color="black", lw=0.8)
+        corner.overplot_points(fig, truths, marker="s", ms=3, color="black")
+    else:
+        for t in truths:
+            corner.overplot_lines(fig, t, color="black")
+    fig.suptitle(title, y=1.0)
+    for ax in fig.axes:
+        ax.set_rasterized(True)
+    fig.savefig(path, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     # headless, and only here: scorecard imports sample_posterior from this module, and
     # selecting the backend at import would switch any notebook that does the same to Agg
-    # (see train.py)
+    # (see train.py). corner_page imports pyplot itself, after this
     import matplotlib
 
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import corner
 
     args = parse_args()
 
@@ -125,7 +226,9 @@ if __name__ == "__main__":
     corner_dir = out_dir / "corner"
     corner_dir.mkdir(parents=True, exist_ok=True)
 
-    n_sources = problem.n_sources
+    n_sources, n_params = problem.n_sources, len(PARAM_LABELS)
+    # a full page has every source's parameters side by side; a pooled or per-source page
+    # has the n_params parameters once
     labels = [
         f"${label}$" + (f" (s{s})" if n_sources > 1 else "")
         for s in range(n_sources)
@@ -136,6 +239,8 @@ if __name__ == "__main__":
         for _ in range(n_sources)
         for is_log in PARAM_IS_LOG
     ]
+    source_labels = [f"${label}$" for label in PARAM_LABELS]
+    source_scale = scale[:n_params]
 
     key_pick, key_window, key_noise = jr.split(jr.key(args.seed), 3)
 
@@ -161,11 +266,15 @@ if __name__ == "__main__":
         windows[chosen],
     )
 
+    # every eval source, for the per-GB pages once all injections are done
+    sources = []
+
     for j, key_n in enumerate(jr.split(key_noise, N_QUANTILES)):
         latent, f = latents[j], windows[j]
-        truth = np.asarray(latent).reshape(n_sources, len(PARAM_LABELS))
+        truth = np.asarray(latent).reshape(n_sources, n_params)
+        tag = f"q{quantiles[j]:.2f}"
 
-        # inject, sample the flow, and map back to physical units
+        # inject, sample the flow, and map back to physical units: [draw, source, param]
         o = problem.sample_observation(key_n, latent, f)
         y = problem.preprocess(o, f)
         u0 = jax.vmap(problem.sample_flow, in_axes=(0, None))(
@@ -174,9 +283,9 @@ if __name__ == "__main__":
         post = sample_posterior(
             problem, flow, u0, y, f, args.ode_steps or ODE_STEPS, args.time_power
         )
-        samples = np.asarray(
+        draws = np.asarray(
             jax.vmap(problem.flow_to_physical, in_axes=(0, None))(post, f)
-        ).reshape(N_POSTERIOR, -1)
+        )
 
         # Fisher forecast at the injection, straight in physical parameters: the nll
         # Hessian averaged over noise realizations (the data-dependent part cancels, the
@@ -190,77 +299,65 @@ if __name__ == "__main__":
             jax.lax.map(lambda o: jax.hessian(nll)(p0, o), replicas).mean(0)
             + prior_prec_p
         )
-        fisher_samples = np.asarray(
+        fisher = np.asarray(
             fisher_draws(jr.fold_in(key_n, 1), p0, prec_p, prior_prec_p, N_POSTERIOR)
-        )
+        ).reshape(N_POSTERIOR, n_sources, n_params)
 
-        # the Fisher is centred on one labelling, the posterior on all of them
-        fisher_samples = np.concatenate(
-            [
-                fisher_samples.reshape(N_POSTERIOR, n_sources, -1)[
-                    :, list(sigma)
-                ].reshape(N_POSTERIOR, -1)
-                for sigma in itertools.permutations(range(n_sources))
-            ]
-        )
-
-        # pad each axis by 5% of its span, measured in that axis' own scale, over both
-        ranges = []
-        for c in range(samples.shape[1]):
-            # a linear-space Fisher can spill below zero on a log axis -- ignore those
-            fisher_c = fisher_samples[:, c]
-            fisher_c = fisher_c[fisher_c > 0] if scale[c] == "log" else fisher_c
-            lo = min(
-                [samples[:, c].min()] + ([fisher_c.min()] if fisher_c.size else [])
-            )
-            hi = max(
-                [samples[:, c].max()] + ([fisher_c.max()] if fisher_c.size else [])
-            )
-            if scale[c] == "log":
-                ll, hh = np.log10(lo), np.log10(hi)
-                m = 0.05 * (hh - ll) or 0.1
-                ranges.append((10 ** (ll - m), 10 ** (hh + m)))
-            else:
-                m = 0.05 * (hi - lo) or 0.1
-                ranges.append((lo - m, hi + m))
-
-        # one corner file per injection, named by its SNR quantile
-        fig = corner.corner(
-            samples,
-            labels=labels,
-            range=ranges,
-            axes_scale=scale,
-            color="C1",
-            show_titles=True,
-            title_fmt=".2g",
-            hist_kwargs={"density": True},
-        )
-        corner.corner(
-            fisher_samples,
-            fig=fig,
-            range=ranges,
-            axes_scale=scale,
-            color="C0",
-            hist_kwargs={"density": True},
-            plot_datapoints=False,
-            contour_kwargs={"linestyles": "dashed"},
-        )
-
-        # source labelling is arbitrary, so mark every permutation of the truth
-        for sigma in itertools.permutations(range(n_sources)):
-            corner.overplot_lines(fig, truth[list(sigma)].reshape(-1), color="black")
-
-        tag = f"q{quantiles[j]:.2f}"
-        fig.suptitle(
+        # full page, one per injection, named by its SNR quantile: every parameter of
+        # every source. The Fisher is centred on one labelling and the posterior on all
+        # of them, so the Fisher draws and the truth lines come in every permutation
+        perms = list(itertools.permutations(range(n_sources)))
+        corner_page(
+            corner_dir / f"{tag}.pdf",
+            draws.reshape(N_POSTERIOR, -1),
+            np.concatenate([fisher[:, list(p)] for p in perms]).reshape(-1, len(labels)),
+            labels,
+            scale,
             f"flow (orange) vs Fisher (blue), SNR quantile {quantiles[j]:.1f},"
             f" SNR={snrs[j]:.1f}",
-            y=1.0,
+            np.stack([truth[list(p)].reshape(-1) for p in perms]),
         )
-        for ax in fig.axes:
-            ax.set_rasterized(True)
-        page_path = corner_dir / f"{tag}.pdf"
-        fig.savefig(page_path, bbox_inches="tight", dpi=150)
-        plt.close(fig)
-        print(f"[{j + 1}/{N_QUANTILES}] {tag} -> {page_path}", flush=True)
 
-    print(f"saved {N_QUANTILES} plots to {corner_dir}", flush=True)
+        # pooled page: [draw, source, param] -> [draw * source, param], so each marginal
+        # holds every source at once (f0 shows one spike per GB) and labels drop out
+        corner_page(
+            corner_dir / f"{tag}-pooled.pdf",
+            draws.reshape(-1, n_params),
+            fisher.reshape(-1, n_params),
+            source_labels,
+            source_scale,
+            f"all {n_sources} sources pooled, flow (orange) vs Fisher (blue),"
+            f" SNR quantile {quantiles[j]:.1f}, SNR={snrs[j]:.1f}",
+            truth,
+            pooled=True,
+            bins=50,
+        )
+        print(f"[{j + 1}/{N_QUANTILES}] {tag} -> {corner_dir / tag}(-pooled).pdf", flush=True)
+
+        # keep each source, its draws relabelled onto it, for the per-GB pages
+        matched = match_sources(problem, draws, truth, f)
+        source_snr = np.asarray(problem.snr(jnp.asarray(truth)[:, None, :], f))
+        for s in range(n_sources):
+            sources.append((source_snr[s], tag, s, matched[:, s], fisher[:, s], truth[s]))
+
+    # per-GB pages: the loudest, the median and the faintest single source over all the
+    # eval injections, each against its own Fisher forecast
+    sources.sort(key=lambda rec: rec[0])
+    picks = {"loudest": sources[-1], "median": sources[len(sources) // 2], "faintest": sources[0]}
+    for name, (snr, tag, s, flow_s, fisher_s, truth_s) in picks.items():
+        corner_page(
+            corner_dir / f"gb-{name}.pdf",
+            flow_s,
+            fisher_s,
+            source_labels,
+            source_scale,
+            f"{name} of the {len(sources)} eval sources: SNR {snr:.1f}"
+            f" (injection {tag}, source {s}), flow (orange) vs Fisher (blue)",
+            truth_s[None],
+        )
+
+    print(
+        f"saved {N_QUANTILES} full and {N_QUANTILES} pooled pages and the"
+        f" loudest/median/faintest GB pages to {corner_dir}",
+        flush=True,
+    )
