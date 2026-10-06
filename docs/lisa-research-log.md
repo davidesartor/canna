@@ -1067,6 +1067,8 @@ attribution.
 | **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | done (13719349, 16 h 36 min; F19): same floor (0.087 bins), net +11 sources found, loss −1.3%, a run-specific loud-source f₀ bias of ~1/3 width |
 | **T3'** | the XS-late scorecard in fp32 on a TREX **CPU** node (`slurm/lisa-scorecard-cpu.sbatch`, `--n_random 40`), since GPU fp32 is broken (F18); writes `scorecard_float32_cpu.npz` | Does bf16 set the 0.087–0.088-bin floor? XS-late and the 768 net share the floor, so the cheaper net answers it | none (CPU, 1 h 15 min) | done (13780225, F21): width ratio fp32 / bf16 0.991 [0.978–1.000], bf16 at eval ruled out |
 | **C1** | `configs/XS-late-768-cool.yaml`: the 768 model continued from 1M to 1.2M steps, with the lr decaying linearly to 0 over the 200k (`--cooldown_steps`). Its checkpoint is moved, not copied, into `outputs/lisa-XS-late-768-cool`; `require_checkpoint` stops it from starting from scratch | Does optimiser noise hold up the floor and cause the run-specific bias (F9, F19)? | ~3.3 h | done (13780234, F23): floor 0.087 → 0.037 bins, bias gone, detection up; loss −0.022 |
+| **C2** | `configs/XS-late-cool.yaml`: XS-late (512 × 8) continued from 1M to 1.2M steps with the same cooldown as C1; its checkpoint (with optimizer state) is moved into `outputs/lisa-XS-late-cool` | Does width matter once the lr is annealed? Rule: loud width ≤ 1.1× C1's (≤ 0.041 bins) and found fractions within 1 point per band → S at 512 | ~2.2 h | prepared 2026-10-06 |
+| **S1** | `configs/S-late.yaml` (512) or `S-late-768.yaml`: S with the full recipe, 1M steps, the last 200k cooling down | Does the recipe carry to the 0.1–4.2 mHz band? | ~22 h (512) or ~34 h in two chained slots (768) | prepared 2026-10-06, waits for C2 |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
@@ -1145,6 +1147,16 @@ sbatch slurm/lisa.sbatch XS-late-768-cool                                       
 # after C1 prints [done]:
 sbatch slurm/lisa-scorecard.sbatch XS-late-768-cool
 sbatch slurm/lisa-eval.sbatch XS-late-768-cool
+# C2 (F23, §6): cool down the 512 net the same way
+mkdir -p outputs/lisa-XS-late-cool
+mv outputs/lisa-XS-late/checkpoints outputs/lisa-XS-late-cool/                 # a move: C2 replaces it
+sbatch slurm/lisa.sbatch XS-late-cool                                            # 1000 -> 1200 epochs, ~2.2 h
+# after C2 prints [done]:
+sbatch slurm/lisa-scorecard.sbatch XS-late-cool                                  # compare with XS-late-768-cool
+# S1, at the width C2 points to (S-late = 512, ~22 h; S-late-768, ~34 h): a chain of
+# two jobs, the second resuming from the first's checkpoint if the 24 h limit hits
+JOB=$(sbatch --parsable slurm/lisa.sbatch S-late)
+sbatch --dependency=afterany:$JOB slurm/lisa.sbatch S-late
 ```
 
 ## 8. Provenance
@@ -1190,3 +1202,12 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
   `XS-late_float32_gpu_at0.npz` is the A100 level-0 check. The corner plots and
   `losses.pdf` are in `outputs/lisa-XS-late-768-cool/`. The cooled checkpoint (epoch 1200)
   is on TREX only so far.
+- **Where the large files live (2026-10-06).** The user's rule is that large files are
+  kept only on the PC. Checkpoints and corner plots are downloaded from TREX into the same
+  `outputs/<run>/` layout locally, verified, and then removed from TREX by the user.
+  - `outputs/lisa-XS-late/checkpoints/1000`: XS-late at 1M, with the optimizer state.
+  - `outputs/lisa-XS-late-768-cool/checkpoints/1200`: the cooled 768 model, the best so
+    far.
+  - `outputs/lisa-XS-late-768/checkpoints/1000`: the 768 model at 1M.
+  - `outputs/1M/lisa-XS/checkpoints/1000`: XS with the uniform clock at 1M.
+  - On TREX only small files stay: scorecards, `losses.pdf` and logs.
