@@ -7,6 +7,11 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-06)
 
+- **Update, 2026-10-06 (F24).** C2 cooled the 512 net the same way.
+  - Its loud floor matches the 768's (×1.03), so the floor is not capacity.
+  - The 768 net is 11–15% sharper below SNR 100 and finds 11 more of 840 sources.
+  - By the pre-written rule, **S runs at 768** (`S-late-768`, ~34 h, two chained
+    slots).
 - **Update, 2026-10-06 (F23).** The lr cooldown (C1) is the biggest gain so far.
   - The loud-source f₀ floor goes from 0.087 to 0.037 bins (×0.44, now 25× ideal).
   - The run-specific bias is gone.
@@ -134,8 +139,50 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13790394 | A100 fp32 scorecard of XS-late at autotune level 3 (`--n_random 40`) | Completed in 3 min. It does not match the CPU: 2.4× too narrow, in68 0.45 at SNR ≥ 100 (F22). |
 | 13793687, 13793690 | scorecard and eval of XS-late-768-cool (C1) | Completed in 5 and 14 min. Floor 0.087 → 0.037 bins, bias gone, best detection so far (F23). Corner plots copied to `outputs/lisa-XS-late-768-cool/corner`. |
 | 13793694 | A100 fp32 scorecard of XS-late at autotune level 0 | Completed in 21 min. Matches the CPU fp32 scorecard to rounding (F23). |
+| **13849421** | C2: XS-late-cool, epochs 1000 → 1200 with the lr cooldown | Completed on 6 Oct (2 h 11 min, trexgpu02, 38.8 s per epoch), final 10-epoch loss 0.4352 (F24). |
+| 13867994 | scorecard of XS-late-cool | Completed in 4 min. The loud floor matches the cooled 768's; fewer faint sources found (F24). |
 
 ## 4. Findings
+
+### F24 (2026-10-06): C2 — once cooled, the 512 net matches the 768's floor but finds fewer sources; S runs at 768
+
+**Runs.**
+- C2 training, job 13849421: XS-late (512 × 8) from epoch 1000 to 1200 with C1's cooldown,
+  resuming with its optimizer state. 2 h 11 min at 38.8 s per epoch.
+- Scorecard 13867994, 4 min, on the same 840 sources as F15, F19 and F23.
+
+**Loss.** The 10-epoch mean went 0.4557 → **0.4352** (−0.020), against −0.022 for the 768
+net (0.4276). The gap between the two widths stays about 0.008, as it was before cooling.
+
+| SNR | n | found: 512 at 1M / 512 cooled / 768 cooled | f₀ width, 512 cooled / 768 cooled (bins) | ratio 512c / 768c, median [16–84%] | ratio 512c / 512 at 1M | in68, 512c / 768c | in95 |
+|---|---|---|---|---|---|---|---|
+| < 15 | 148 | 0.45 / 0.50 / **0.54** | 0.118 / 0.102 | 1.12 [0.96–1.52] | 0.70 | 0.76 / 0.78 | 0.97 / 0.97 |
+| 15–40 | 157 | 0.81 / 0.85 / **0.86** | 0.077 / 0.068 | 1.15 [0.96–1.45] | 0.59 | 0.92 / 0.90 | 1.00 / 1.00 |
+| 40–100 | 151 | 0.92 / 0.95 / **0.97** | 0.044 / 0.041 | 1.13 [0.91–1.43] | 0.51 | 0.93 / 0.90 | 0.98 / 0.99 |
+| ≥ 100 | 384 | 0.99 / 0.995 / 0.995 | 0.039 / 0.037 | **1.03 [0.85–1.32]** | 0.44 | 0.93 / 0.93 | 0.99 / 0.99 |
+
+**The cooldown helps the 512 net exactly as much.** Its loud width falls ×0.443 against its
+own 1M checkpoint (C1: ×0.440).
+- Its bias goes too: the window-position profile went from 0.045 to **0.009** bins, and the
+  loud mean offset is +0.011 ± 0.005.
+- Calibration is the same as the 768's.
+- So F23's gain is a property of the schedule, not of the wider net.
+
+**The floor does not depend on width.** At SNR ≥ 100 the 512 net is 1.033× the 768's, with a
+95% interval of 1.012–1.053.
+- By SNR: 0.044 / 0.040 / 0.036 / 0.035 against 0.038 / 0.039 / 0.035 / 0.036 bins.
+- So the remaining floor (25× ideal) is not capacity either.
+
+**Width does matter below SNR 100.**
+- The 768 net is 11–15% narrower there.
+- It finds more sources: 18 found only by the 768 against 7 only by the 512, net 11 of 840
+  (sign test p = 0.04). By band: +4.1, +1.3 and +2.0 points.
+- That is the same +11 as at constant lr (F19). Width buys detection and intermediate-SNR
+  precision, not the loud floor.
+
+**Decision, by the rule written in §6 before the run.** The loud width is within 1.1× (yes,
+1.03). The found fractions are within 1 point in every band (no: 4.1, 1.3 and 2.0). So
+**S runs at 768**: `configs/S-late-768.yaml`, ~34 h in two chained 24 h slots.
 
 ### F23 (2026-10-06): C1 — the lr cooldown halves the floor, removes the bias and finds more sources
 
@@ -875,6 +922,21 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
 
 ## 6. Roadmap (2026-10-03, updated 2026-10-06)
 
+### Update, 2026-10-06 (after C2, F24)
+
+**C2 has decided the width: S runs at 768.** The steps below shift up by one.
+1. **S1: `S-late-768`.** It is the next GPU job, about 34 h.
+   - Its predictions, written now:
+     - the loss falls at the cooldown as on XS;
+     - the loud-source f₀ floor sits near XS's 0.04 bins (25–30× ideal);
+     - SNR 15–40 detection is at least 80%;
+     - in95 is ≥ 0.95 in every band.
+   - **If the floor is ≥ 2× XS's,** the wider window costs precision. The next lever is
+     then the S-specific conditioning: 4× the tokens per window.
+2. **MCMC validation** (jexplore) on 2–3 XS injections, using `XS-late-768-cool`. It can run
+   on the laptop while S trains, with the user's go: it is a CPU job of a few hours.
+3. **Lower priority:** bf16 in training; a longer cooldown; B.
+
 ### Update, 2026-10-06 (after C1, F23)
 
 | | XS 1M, uniform | XS-late | XS-late-768 | **XS-late-768-cool** |
@@ -1067,8 +1129,8 @@ attribution.
 | **E3'** | `configs/XS-late-768.yaml`: the XS-late recipe (`warmup_frac 0.1`, `time_power 3`, 1M steps) with a **768 × 8** network, 12 heads of 64 (170M parameters) | Does capacity lower the floor and win back detection? | ~16 h (est. 57 ms/step; resumable if the 24 h limit hits) | done (13719349, 16 h 36 min; F19): same floor (0.087 bins), net +11 sources found, loss −1.3%, a run-specific loud-source f₀ bias of ~1/3 width |
 | **T3'** | the XS-late scorecard in fp32 on a TREX **CPU** node (`slurm/lisa-scorecard-cpu.sbatch`, `--n_random 40`), since GPU fp32 is broken (F18); writes `scorecard_float32_cpu.npz` | Does bf16 set the 0.087–0.088-bin floor? XS-late and the 768 net share the floor, so the cheaper net answers it | none (CPU, 1 h 15 min) | done (13780225, F21): width ratio fp32 / bf16 0.991 [0.978–1.000], bf16 at eval ruled out |
 | **C1** | `configs/XS-late-768-cool.yaml`: the 768 model continued from 1M to 1.2M steps, with the lr decaying linearly to 0 over the 200k (`--cooldown_steps`). Its checkpoint is moved, not copied, into `outputs/lisa-XS-late-768-cool`; `require_checkpoint` stops it from starting from scratch | Does optimiser noise hold up the floor and cause the run-specific bias (F9, F19)? | ~3.3 h | done (13780234, F23): floor 0.087 → 0.037 bins, bias gone, detection up; loss −0.022 |
-| **C2** | `configs/XS-late-cool.yaml`: XS-late (512 × 8) continued from 1M to 1.2M steps with the same cooldown as C1; its checkpoint (with optimizer state) is moved into `outputs/lisa-XS-late-cool` | Does width matter once the lr is annealed? Rule: loud width ≤ 1.1× C1's (≤ 0.041 bins) and found fractions within 1 point per band → S at 512 | ~2.2 h | prepared 2026-10-06 |
-| **S1** | `configs/S-late.yaml` (512) or `S-late-768.yaml`: S with the full recipe, 1M steps, the last 200k cooling down | Does the recipe carry to the 0.1–4.2 mHz band? | ~22 h (512) or ~34 h in two chained slots (768) | prepared 2026-10-06, waits for C2 |
+| **C2** | `configs/XS-late-cool.yaml`: XS-late (512 × 8) continued from 1M to 1.2M steps with the same cooldown as C1; its checkpoint (with optimizer state) is moved into `outputs/lisa-XS-late-cool` | Does width matter once the lr is annealed? Rule: loud width ≤ 1.1× C1's (≤ 0.041 bins) and found fractions within 1 point per band → S at 512 | ~2.2 h | done (13849421, 13867994; F24): loud width ×1.03 the 768's, but found −4.1 / −1.3 / −2.0 points, so S at 768 |
+| **S1** | `configs/S-late.yaml` (512) or `S-late-768.yaml`: S with the full recipe, 1M steps, the last 200k cooling down | Does the recipe carry to the 0.1–4.2 mHz band? | ~34 h in two chained slots (768, per F24) | ready: `S-late-768` |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
@@ -1153,10 +1215,13 @@ mv outputs/lisa-XS-late/checkpoints outputs/lisa-XS-late-cool/                 #
 sbatch slurm/lisa.sbatch XS-late-cool                                            # 1000 -> 1200 epochs, ~2.2 h
 # after C2 prints [done]:
 sbatch slurm/lisa-scorecard.sbatch XS-late-cool                                  # compare with XS-late-768-cool
-# S1, at the width C2 points to (S-late = 512, ~22 h; S-late-768, ~34 h): a chain of
-# two jobs, the second resuming from the first's checkpoint if the 24 h limit hits
-JOB=$(sbatch --parsable slurm/lisa.sbatch S-late)
-sbatch --dependency=afterany:$JOB slurm/lisa.sbatch S-late
+# S1 at 768 (F24), ~34 h: a chain of two jobs, the second resuming from the first's
+# checkpoint when the 24 h limit hits
+JOB=$(sbatch --parsable slurm/lisa.sbatch S-late-768)
+sbatch --dependency=afterany:$JOB slurm/lisa.sbatch S-late-768
+# after [done]:
+sbatch slurm/lisa-scorecard.sbatch S-late-768
+sbatch slurm/lisa-eval.sbatch S-late-768
 ```
 
 ## 8. Provenance
@@ -1211,3 +1276,7 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
   - `outputs/lisa-XS-late-768/checkpoints/1000`: the 768 model at 1M.
   - `outputs/1M/lisa-XS/checkpoints/1000`: XS with the uniform clock at 1M.
   - On TREX only small files stay: scorecards, `losses.pdf` and logs.
+- **C2 (F24).** `outputs/lisa-XS-late-cool/` holds `checkpoints/1200` (params only, verified
+  on the CPU), `scorecard.npz` and `losses.pdf`, also copied as
+  `outputs/scorecards/XS-late-cool.npz`. `compare_c2.py` makes the F24 table and applies the
+  rule.
