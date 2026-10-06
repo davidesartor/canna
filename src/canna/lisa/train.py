@@ -1,5 +1,6 @@
 from functools import partial
 import math
+import time
 from typing import NamedTuple, Self
 from jaxtyping import Array, Float, Key
 from pathlib import Path
@@ -344,6 +345,15 @@ def load_trained(args: argparse.Namespace) -> tuple[TrainState, int, Path]:
     return state, epoch, out_dir
 
 
+def peak_memory_report() -> str:
+    """The device's peak memory so far, or "" where the backend does not report it (the CPU)."""
+    stats = jax.devices()[0].memory_stats() or {}
+    if "peak_bytes_in_use" not in stats:
+        return ""
+    limit = stats.get("bytes_limit", 0) / 2**30
+    return f"[memory] peak {stats['peak_bytes_in_use'] / 2**30:.1f} GiB of {limit:.0f} GiB"
+
+
 def aux_weight_schedule(step: int, total_steps: int, warmup_frac: float) -> float:
     """Cosine anneal of the auxiliary heads, from 1 at the start to 0 after warmup_frac."""
     warmup_steps = warmup_frac * total_steps
@@ -482,6 +492,7 @@ if __name__ == "__main__":
         # one fused XLA dispatch for the whole epoch, instead of log_interval separate
         # ones. aux_weight and lr_scale go in as arrays, not python floats: filter_jit treats
         # non-arrays as static, so a float re-traces the whole epoch every time it changes
+        started = time.perf_counter()
         state, epoch_losses = state.train_epoch(
             jnp.asarray(aux_weight),
             args.batch_size,
@@ -490,6 +501,7 @@ if __name__ == "__main__":
             jnp.asarray(lr_scale, dtype=jnp.float32),
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
+        seconds = time.perf_counter() - started  # the first epoch includes the compile
 
         # a non-finite loss has already poisoned the weights: stop, and leave the last
         # finite checkpoint in place instead of saving over it
@@ -508,9 +520,12 @@ if __name__ == "__main__":
         print(
             f"[epoch {epoch + 1}/{epochs}] flow={flow_l:.5f} x={x_l:.5f}"
             f" y={y_l:.5f} aux_weight={aux_weight:.3f}"
-            + (f" lr_scale={lr_scale:.4f}" if cooldown_epochs else ""),
+            + (f" lr_scale={lr_scale:.4f}" if cooldown_epochs else "")
+            + f" time={seconds:.0f}s",
             flush=True,
         )
+        if epoch == start_epoch and peak_memory_report():
+            print(peak_memory_report(), flush=True)
 
         # redraw loss curve: median per epoch, shaded 10-90 percentile spread
         xs = np.arange(1, epoch + 2) * args.log_interval

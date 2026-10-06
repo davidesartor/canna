@@ -10,7 +10,7 @@ import equinox as eqx
 
 from .problem import LisaGB
 from .network import LisaFlow
-from .train import load_trained, parse_args, path_speed
+from .train import load_trained, parse_args, path_speed, peak_memory_report
 
 # the velocity field is stiff near t=1, and too few steps smear the posterior out: on
 # the trained XS model the loudest source's f0 width is 0.76/0.42/0.27/0.22/0.21 bins
@@ -361,3 +361,5 @@ if __name__ == "__main__":
         f" loudest/median/faintest GB pages to {corner_dir}",
         flush=True,
     )
+    if peak_memory_report():
+        print(peak_memory_report(), flush=True)
