@@ -89,6 +89,7 @@ window covers, and so in how many conditioning tokens the network sees:
 | `XS-late-768` | the same with a 768 × 8 network |
 | `XS-late-768-cool`, `XS-late-cool` | 200k-step cooldowns continuing those two from 1M steps |
 | `S-late`, `S-late-768` | S with the full recipe, 1M steps of which the last 200k cool down |
+| `B-late`, `B-late-768` | B with the full recipe; a provisional 200k steps, set from a benchmark of B's cost per step |
 
 **Evaluating a run.**
 

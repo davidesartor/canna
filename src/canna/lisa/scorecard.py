@@ -33,7 +33,7 @@ import jax.random as jr
 import numpy as np
 
 from .problem import LisaGB
-from .train import load_trained, parse_args
+from .train import load_trained, parse_args, peak_memory_report
 from .eval import match_sources, sample_posterior, N_CANDIDATES, N_POSTERIOR, N_QUANTILES, ODE_STEPS
 
 N_DRAWS = 256
@@ -178,3 +178,5 @@ if __name__ == "__main__":
     name += ".npz"
     np.savez(out_dir / name, epoch=epoch, ode_steps=ode_steps, n_random=n_random, **rows)
     print(f"\nsaved {out_dir / name}", flush=True)
+    if peak_memory_report():
+        print(peak_memory_report(), flush=True)
