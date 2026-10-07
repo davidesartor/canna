@@ -147,6 +147,7 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13867994 | scorecard of XS-late-cool | Completed in 4 min. The loud floor matches the cooled 768's; fewer faint sources found (F24). |
 | 13875733, 13875737 | B0: `B-late` and `B-late-768`, 300 steps each into `outputs/bench` | Completed in 10 and 15 min: 1.57 and 2.57 s per step, peak 18.6 and 29.4 GiB (F25). |
 | 13875770, 13875840 | B0: scorecard (`--n_random 10`) and eval of the 768 benchmark checkpoint | The scorecard runs at ~78 s per injection. The eval ran out of memory at 1024 draws, now fixed by chunking (F25). |
+| **13882121 → 13882126** | B1: `B-late` (512 wide), 200k steps, the last 40k cooling down; five 24 h links chained with `afterany`, the fifth a spare | Running since about 18:45 CEST on 6 Oct (trexgpu05). 1.54 s per step and peak 18.6 GiB, as B0 measured. Flow loss 0.753 → 0.550 by epoch 35 of 200 (7 Oct, 09:44 CEST), still falling. The y aux loss jumps from 0.005 to 2.4 the epoch the aux weight reaches 0, then climbs. XS-late and XS-late-768 did the same (y ended at 190 and 520): once the weight is 0 the aux heads stop training, and sampling uses only the velocity output. About 56 epochs per link, so links 1–4 cover the run and the cooldown starts in link 3. Earliest finish about 08:30 CEST on 10 Oct, later by any queue wait between links. |
 
 ## 4. Findings
 
@@ -1213,7 +1214,7 @@ attribution.
 | **C2** | `configs/XS-late-cool.yaml`: XS-late (512 × 8) continued from 1M to 1.2M steps with the same cooldown as C1; its checkpoint (with optimizer state) is moved into `outputs/lisa-XS-late-cool` | Does width matter once the lr is annealed? Rule: loud width ≤ 1.1× C1's (≤ 0.041 bins) and found fractions within 1 point per band → S at 512 | ~2.2 h | done (13849421, 13867994; F24): loud width ×1.03 the 768's, but found −4.1 / −1.3 / −2.0 points, so S at 768 |
 | **S1** | `configs/S-late.yaml` (512) or `S-late-768.yaml`: S with the full recipe, 1M steps, the last 200k cooling down | Does the recipe carry to the 0.1–4.2 mHz band? | ~34 h in two chained slots (768, per F24) | dropped 2026-10-06: the user goes straight to B |
 | **B0** | benchmark: `B-late` and `B-late-768` for 300 steps, then the B scorecard and eval on the 768 checkpoint, all into `outputs/bench` | B's seconds per step and peak memory at each width; whether the eval fits | ~1 h in all | done (F25): 1.57 / 2.57 s per step, eval chunked, scorecard `--n_random 50` |
-| **B1** | `configs/B-late(-768).yaml`: the full recipe on B, length set from B0 | Does the recipe carry to the whole band? | from B0 (est. days) | waits for B0 |
+| **B1** | `configs/B-late(-768).yaml`: the full recipe on B, length set from B0 | Does the recipe carry to the whole band? | ~87 h at 512 (B0) | running (13882121 chain, 512 wide, 200k steps); earliest finish 10 Oct |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
