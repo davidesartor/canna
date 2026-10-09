@@ -1,0 +1,147 @@
+% =======================================================================================
+\section{Conditional Flow Matching from Prior to Posterior}
+\label{app:fm}
+% =======================================================================================
+
+\subsection{Objective}
+\label{app:fm-objective}
+
+For a window $w$ with data $d$ and conditioning input $y = y(d, w)$ (\cref{app:conditioning}),
+the target is the posterior $p(X\mid y, w)\propto p(d\mid X)\,\pi_w(X)$ over the set of sources
+$X\in\manifold^S$ in flow coordinates. We learn a time-dependent vector field
+$\vnet(X, t; y, w)$ whose flow transports the prior to the posterior: draws
+$X(0)\sim\pi_w$, integrated along
+\begin{equation}
+  \frac{\dd X}{\dd t} = \dot s(t)\,\vnet\bigl(X, t; y, w\bigr),\qquad t\in[0,1],
+  \label{eq:ode}
+\end{equation}
+should end at $X(1)\sim p(\cdot\mid y,w)$. The clock $s(t)$ is the identity in plain flow
+matching; \cref{app:fm-warp} warps it.
+
+Training uses the conditional flow-matching construction
+\citep{lipman2023flow,liu2023flow,albergo2023building} on a Riemannian manifold
+\citep{chen2024flow}. A training example draws a window $w$, a target set
+$X_1\sim\pi_w$ and the data $d\sim p(d\mid X_1)$ from the simulator, and an independent base
+set $X_0\sim\pi_w$ in the same window. The conditional path is the geodesic between the
+aligned sets of \cref{eq:set-log},
+\begin{equation}
+  X_s = \Exp_{X_0}\bigl(s\,\Log_{X_0}(X_1)\bigr),\qquad
+  u_s = \frac{\dd X_s}{\dd s},
+  \label{eq:cond-path}
+\end{equation}
+and the network regresses the conditional velocity,
+\begin{equation}
+  \mathcal L_{\rm flow}(\eta) =
+  \E_{t\sim\Unif(0,1)}\;\E_{w,\,X_0,\,X_1,\,d}\;
+  \frac{1}{11S}\Bigl\lVert \vnet\bigl(X_{s(t)}, t; y, w\bigr) - u_{s(t)}\Bigr\rVert^2 .
+  \label{eq:loss-flow}
+\end{equation}
+Its minimiser is the marginal field $v^\star(X,s;y,w) = \E[u_s\mid X_s = X, y, w]$, which
+generates the marginal path from $p_0 = \pi_w$ (because $X_0$ is independent of the data) to
+$p_1 = p(\cdot\mid y,w)$ \citep{lipman2023flow,chen2024flow}. The base distribution is thus the
+prior itself, not a Gaussian: on most factors of $\manifold$ the prior is uniform
+(\cref{app:geometry-chart}), and starting from it means that a source the data say nothing
+about only needs to stay where it is. Flow-matching posterior estimation with a Gaussian base
+is studied by \citet{dax2023flow}.
+
+\subsection{A Warped Clock}
+\label{app:fm-warp}
+
+The fine structure of a narrow posterior is resolved only at the very end of the path
+(\cref{app:sensitivity}), where a uniform clock spends almost none of its samples. We keep
+$t\sim\Unif(0,1)$ and the network's time input $t$, but place the point at
+\begin{equation}
+  s(t) = 1 - (1-t)^p,\qquad p = 3,
+  \label{eq:warp}
+\end{equation}
+along the path, and keep the target $u_s = \dd X_s/\dd s$, which stays of order one as
+$s\to1$. Equivalently, the regression in \cref{eq:loss-flow} is weighted by the density of
+path positions
+\begin{equation}
+  q_p(s) = \frac{1}{p}(1-s)^{1/p-1},\qquad
+  \Pr\bigl(1-s<\epsilon\bigr) = \epsilon^{1/p}.
+  \label{eq:warp-density}
+\end{equation}
+For $p=3$, 21\% of the samples fall in the first half of the path ($1-2^{-1/3}$, against 50\%),
+and 1\% of them within $10^{-6}$ of its end (against $10^{-6}$). The minimiser is unchanged,
+since only the weighting over $s$ moves, and the sampler restores the clock through the factor
+$\dot s(t) = p(1-t)^{p-1}$ in \cref{eq:ode}. Conditioning the network on $t$ rather than $s$
+stretches the end of the path: $1-s = 10^{-6}$ is $1-t = 10^{-2}$, which the sinusoidal time
+embedding resolves (\cref{app:architecture}). This plays the role of the non-uniform noise
+levels used to train diffusion models \citep{karras2022elucidating,kingma2023understanding,esser2024scaling}, applied here to the end of the path rather than to its middle.
+
+\subsection{Auxiliary Heads and the Full Loss}
+\label{app:fm-aux}
+
+The network has two further heads (\cref{app:architecture}): an estimate $\hat X_1$ of the
+endpoint and a reconstruction $\hat y$ of the noiseless conditioning input, with losses
+\begin{equation}
+  \mathcal L_{x} = \E\,\frac{1}{11S}\bigl\lVert\Log_{X_1}(\hat X_1)\bigr\rVert^2,
+  \qquad
+  \mathcal L_{y} = \E\,\frac{1}{\lvert y\rvert}\bigl\lVert\hat y - y_{\rm clean}\bigr\rVert^2,
+  \label{eq:aux-x}
+\end{equation}
+where $\Log$ is the set-aligned logarithm of \cref{eq:set-log} and $y_{\rm clean}$ is the
+conditioning input computed from the noiseless signal. The training loss is
+\begin{equation}
+  \mathcal L = \frac{\mathcal L_{\rm flow}}{V_{\rm flow}}
+  + a(\tau)\left[\frac{\mathcal L_{x}}{V_{x}} + \frac{\mathcal L_{y}}{V_{y}}\right],
+  \qquad
+  a(\tau) = \tfrac12 + \tfrac12\cos\bigl(\pi\min(\tau/\tau_a, 1)\bigr),
+  \label{eq:loss}
+\end{equation}
+with $V_\bullet$ the running variance of each target over all training samples so far,
+pooled over coordinates (a Welford accumulator), and $a(\tau)$ a cosine decay over the first
+fraction $f_{\rm aux} = \tau_a/\tau_{\rm total}$ of training ($\tau$ counts epochs of 1000
+steps). The original runs used $f_{\rm aux} = 0.5$; the recipe uses $f_{\rm aux}=0.1$
+(\cref{app:xs}). Once $a=0$ the auxiliary heads get no gradient, their losses drift
+(\cref{app:xs-dynamics}), and sampling never uses them. The logged losses are the raw mean
+squared errors before the variance normalisation.
+
+\subsection{Sampling}
+\label{app:fm-sampling}
+
+To sample a window we draw $N$ base sets from the prior, integrate \cref{eq:ode} with the
+classical fourth-order Runge--Kutta scheme on 32 uniform steps in $t$, and map back with
+$\varphi_w^{-1}$ (\cref{alg:sample}). The four stages are evaluated in the ambient
+coordinates and only the full step is retracted onto the manifold with $\Exp$. Under the
+warped clock, steps uniform in $t$ crowd towards the end of the path: the last of 32 ends at
+$1-s = 32^{-3} = 3\times10^{-5}$. Each draw costs $4\times32 = 128$ network evaluations. Draws
+are independent, so we push them through in chunks of 256 to bound the memory on B. The
+integrator is converged at 32 steps: 64 and 128 steps change neither the widths nor the
+detections (\cref{tab:numerics}).
+
+\begin{algorithm}[h]
+  \caption{One training step (per example; batched over 256 windows).}
+  \label{alg:train}
+  \begin{algorithmic}
+    \STATE {\bfseries Input:} weights $\eta$, auxiliary weight $a$, running variances $V_\bullet$
+    \STATE draw a window $w$ (\cref{app:signal-windows}) and $\theta_{1:S}\sim\pi_w$
+    \STATE $\tilde d \leftarrow \sum_s\tilde h(\theta_s) + \tilde n$ \hfill (\cref{eq:data})
+    \STATE $y\leftarrow y(\tilde d, w)$,\ \ $y_{\rm clean}\leftarrow y(\tilde h, w)$ \hfill (\cref{app:conditioning})
+    \STATE $X_1\leftarrow\varphi_w(\theta_{1:S})$,\ \ $X_0\leftarrow\varphi_w(\theta'_{1:S})$, $\theta'_{1:S}\sim\pi_w$
+    \STATE $t\sim\Unif(0,1)$,\ \ $s\leftarrow1-(1-t)^p$
+    \STATE $X_s\leftarrow\Exp_{X_0}\bigl(s\Log_{X_0}(X_1)\bigr)$,\ \ $u_s\leftarrow\dd X_s/\dd s$ \hfill (\cref{eq:set-log,eq:cond-path})
+    \STATE $(\hat v, \hat X_1, \hat y)\leftarrow\text{network}_\eta(X_s, t, y, \fw)$
+    \STATE update $V_\bullet$; take a gradient step on \cref{eq:loss} (Muon/Adam, \cref{app:training})
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[h]
+  \caption{Sampling the posterior of one window.}
+  \label{alg:sample}
+  \begin{algorithmic}
+    \STATE {\bfseries Input:} data $\tilde d$ of window $w$, number of draws $N$, steps $K_t=32$
+    \STATE $y\leftarrow y(\tilde d, w)$;\ \ $\Delta t\leftarrow1/K_t$
+    \FOR{$n=1$ {\bfseries to} $N$ (in parallel)}
+      \STATE $X\leftarrow\varphi_w(\theta_{1:S})$, $\theta_{1:S}\sim\pi_w$
+      \FOR{$j=0$ {\bfseries to} $K_t-1$}
+        \STATE $t\leftarrow j\Delta t$;\ \ $F(X,t) := p(1-t)^{p-1}\,\vnet(X,t;y,\fw)$
+        \STATE $k_1\leftarrow F(X,t)$,\ \ $k_2\leftarrow F(X+\tfrac{\Delta t}{2}k_1, t+\tfrac{\Delta t}{2})$
+        \STATE $k_3\leftarrow F(X+\tfrac{\Delta t}{2}k_2, t+\tfrac{\Delta t}{2})$,\ \ $k_4\leftarrow F(X+\Delta t\,k_3, t+\Delta t)$
+        \STATE $X\leftarrow\Exp_X\bigl(\tfrac{\Delta t}{6}(k_1+2k_2+2k_3+k_4)\bigr)$
+      \ENDFOR
+      \STATE {\bfseries output} $\varphi_w^{-1}(X)$
+    \ENDFOR
+  \end{algorithmic}
+\end{algorithm}

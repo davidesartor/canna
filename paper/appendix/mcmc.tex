@@ -1,0 +1,76 @@
+% =======================================================================================
+\section{Comparison with MCMC}
+\label{app:mcmc}
+% =======================================================================================
+% STATUS (2026-10-08): the likelihood and the MCMC set-up are validated (App. C.4); the
+% flow-vs-MCMC comparison on XS windows has not been run yet (a few CPU/GPU hours, needs the
+% authors' go). Everything marked [TBD] comes from it.
+
+\subsection{MCMC for Galactic Binaries}
+
+The standard analysis of LISA's galactic binaries is a global fit
+\citep{cornish2007tests,littenberg2020global,littenberg2023prototype,strub2024global,katz2024efficient,deng2025modular}:
+a Markov chain samples all resolvable sources at once, together with the noise, moves
+between models with different numbers of sources by reversible jumps
+\citep{green1995reversible}, and uses parallel tempering
+\citep{earl2005parallel,vousden2016dynamic} to cross between the modes of
+\cref{app:priors-symmetries}. The frequency band is split into overlapping segments
+that are updated in turn, which is what makes the problem tractable and is also the unit our
+windows imitate. Each new stretch of data, or each change of the noise model, means sampling
+again. An amortised posterior estimator costs one forward integration per window once
+trained, which is what makes it attractive as a proposal distribution, as a fast first pass, or
+for population studies that need many independent analyses \citep{srinivasan2025simulation}.
+Neural density estimation for galactic binaries was explored by \citet{korsakova2024neural}.
+
+\subsection{Sampler}
+
+Our reference sampler is \texttt{jexplore}, a JAX parallel-tempered ensemble MCMC developed in
+the LISA community, with affine-invariant stretch moves \citep{goodman2010ensemble,foreman2013emcee} and temperature swaps, run on the likelihood of \cref{eq:loglik} and the
+priors of \cref{tab:prior}. For one source (8 dimensions), 32 walkers at four temperatures
+(1, 1.6, 2.56, 4.1) for 20\,000 iterations, the second half kept, take about a minute on a GPU,
+with acceptance rates of 0.24 (stretch) and 0.32 (swap) and $\hat R<1.0002$. On a published
+source, this sampler on our likelihood reproduces the published posterior
+(\cref{app:noise-validation}).
+
+\subsection{Flow against MCMC}
+
+\paragraph{Protocol.}
+Two XS eval windows, chosen to probe the two limitations of \cref{app:xs}: the loudest
+(window SNR 1848, sources at SNR 14, 33, 1245 and 1366), where the $f_0$ floor and the
+amplitude--inclination width matter, and the crowded window of \cref{fig:corner-median}
+(sources at SNR 26, 27, 62 and 567), where the flow misses an SNR-27 source. For each window,
+we run MCMC over all four sources jointly (32 dimensions) with the same noise realisation as
+the flow, relabel its samples as the flow's (\cref{app:evaluation-matching}), and compare
+marginal widths, 1-D Wasserstein distances in units of the MCMC standard deviation, and the
+coverage of the MCMC medians by the flow's intervals, for all eight parameters. \tbd
+
+\begin{table}[h]
+\caption{Flow against MCMC on two XS windows: ratio of marginal widths (flow / MCMC) per
+parameter, for the sources of each window. \tbd}
+\label{tab:mcmc}
+\centering
+\small
+\begin{tabular}{lrcccccccc}
+\toprule
+source & SNR & $f_0$ & $\Mc$ & $\Amp$ & $\alpha$ & $\sin\delta$ & $\psi$ & $\cos\iota$ & $\phi_0$ \\
+\midrule
+loud window, 1 & 1366 & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
+loud window, 2 & 1245 & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
+crowded window, 1 & 62 & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
+crowded window, 2 & 27 & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+  \centering
+  \placeholderfig[0.2\textheight]{Corner plot of the loudest eval source: flow, MCMC and Fisher
+  overlaid (as \cref{fig:corner-loudest}).}
+  \caption{Flow against MCMC. \tbd}
+  \label{fig:mcmc}
+\end{figure}
+
+\paragraph{Cost.}
+Once trained, the flow draws 256 posterior samples of an XS window in about a second on an
+A100 and of a B window in about a minute; the MCMC of one window takes \tbd. Training costs
+about 20 A100-hours on XS and 86 on B, paid once.

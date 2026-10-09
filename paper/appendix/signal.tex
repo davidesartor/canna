@@ -1,0 +1,279 @@
+% =======================================================================================
+\section{The Galactic-Binary Signal and the LISA Response}
+\label{app:signal}
+% =======================================================================================
+
+We compute the signal with JaxGB \citep{jaxgb}. This section reproduces its model in its own
+notation and conventions, which are also those of the time-domain response simulator LISA GW
+Response \citep{lisagwresponse}: the two codes share the triad, the polarisation convention
+and the link response, and pass the same eight parameters to each other unchanged. Only
+the heterodyned evaluation (\cref{app:signal-heterodyne}) and the TDI combination
+(\cref{app:signal-tdi}) are specific to JaxGB.
+
+\subsection{Waveform}
+\label{app:signal-waveform}
+
+A detached compact binary in the Galaxy, most often a pair of white dwarfs, emits a
+quasi-monochromatic gravitational wave at twice its orbital frequency
+\citep{nelemans2001gravitational,korol2017prospects}, which drifts slowly through radiation
+reaction. The transverse-traceless strain of the plane wave is
+\begin{equation}
+  h_{ij}(\xi) = h_+(\xi)\,e^+_{ij} + h_\times(\xi)\,e^\times_{ij},\qquad
+  \xi = t - \frac{\hat{\mathbf k}\cdot\mathbf x(t)}{c},
+  \label{eq:xi}
+\end{equation}
+with $\hat{\mathbf k}$ the direction of propagation, $\mathbf x$ the position and
+$e^{+,\times}_{ij}$ the polarisation tensors of the source frame. For a mildly chirping,
+circular binary the two polarisations are
+\begin{equation}
+  h_+(\xi) = -\Amp\,\bigl(1+\cos^2\iota\bigr)\cos\Psi(\xi),\qquad
+  h_\times(\xi) = -2\Amp\cos\iota\,\sin\Psi(\xi),\qquad
+  \Psi(\xi) = -\phi_0 + 2\pi f_0\,\xi + \pi\fdot\,\xi^2,
+  \label{eq:waveform}
+\end{equation}
+with strain amplitude $\Amp$, inclination $\iota$ of the orbital angular momentum to the line
+of sight, initial phase $\phi_0$, frequency $f_0$ and frequency derivative $\fdot$, all
+referred to the start of the observation. The sky position, right ascension $\alpha$ and
+declination $\delta$ in the equatorial (ICRS) frame of the orbit files, defines the
+orthonormal triad
+\begin{equation}
+  \hat{\mathbf u} = (\sin\alpha,\,-\cos\alpha,\,0),\qquad
+  \hat{\mathbf v} = (-\sin\delta\cos\alpha,\,-\sin\delta\sin\alpha,\,\cos\delta),\qquad
+  \hat{\mathbf k} = (-\cos\delta\cos\alpha,\,-\cos\delta\sin\alpha,\,-\sin\delta),
+  \label{eq:triad}
+\end{equation}
+and with it the polarisation tensors of the solar-system barycentre (SSB),
+$\epsilon^+_{ij} = (\hat{\mathbf u}\otimes\hat{\mathbf u} - \hat{\mathbf v}\otimes\hat{\mathbf v})_{ij}$
+and
+$\epsilon^\times_{ij} = (\hat{\mathbf u}\otimes\hat{\mathbf v} + \hat{\mathbf v}\otimes\hat{\mathbf u})_{ij}$.
+The source frame is rotated from the SSB frame by the polarisation angle $\psi$,
+$e^+_{ij} = \cos2\psi\,\epsilon^+_{ij} + \sin2\psi\,\epsilon^\times_{ij}$ and
+$e^\times_{ij} = -\sin2\psi\,\epsilon^+_{ij} + \cos2\psi\,\epsilon^\times_{ij}$, so that
+\begin{equation}
+  h_{ij}(\xi) = h_+^{\rm SSB}(\xi)\,\epsilon^+_{ij} + h_\times^{\rm SSB}(\xi)\,\epsilon^\times_{ij},
+  \qquad
+  h_+^{\rm SSB} = h_+\cos2\psi - h_\times\sin2\psi,\qquad
+  h_\times^{\rm SSB} = h_+\sin2\psi + h_\times\cos2\psi .
+  \label{eq:pol-ssb}
+\end{equation}
+In complex form, $h_{ij}(\xi) = \mathrm{Re}\bigl\{\bigl(A_+^{\rm SSB}\epsilon^+_{ij}
++ A_\times^{\rm SSB}\epsilon^\times_{ij}\bigr)e^{\ii\Psi(\xi)}\bigr\}$ with
+\begin{equation}
+  A_+^{\rm SSB} = -\Amp\bigl[(1+\cos^2\iota)\cos2\psi + 2\ii\cos\iota\sin2\psi\bigr],\qquad
+  A_\times^{\rm SSB} = -\Amp\bigl[(1+\cos^2\iota)\sin2\psi - 2\ii\cos\iota\cos2\psi\bigr].
+  \label{eq:complex-amp}
+\end{equation}
+In LISA GW Response the same triad reads $\hat{\mathbf k} = -\mathbf e_r$,
+$\hat{\mathbf u} = -\mathbf e_\phi$, $\hat{\mathbf v} = -\mathbf e_\theta$ in the spherical basis
+of the ICRS, and its galactic-binary strain is \cref{eq:waveform,eq:pol-ssb} term by term.
+
+For a circular binary driven by gravitational radiation alone, the frequency derivative is
+fixed by the chirp mass $\Mc$,
+\begin{equation}
+  \fdot = \frac{96}{5}\,\pi^{8/3}\left(\frac{G\Mc}{c^3}\right)^{5/3} f_0^{11/3},
+  \label{eq:fdot}
+\end{equation}
+and the amplitude by the distance $D$, $\Amp = 2(G\Mc)^{5/3}(\pi f_0)^{2/3}/(c^4 D)$. We
+parametrise each source by $\theta = (f_0, \Mc, \Amp, \alpha, \delta, \psi, \iota, \phi_0)$,
+derive $\fdot$ from \cref{eq:fdot}, and do not sample the distance: the amplitude prior is
+set by the signal-to-noise ratio instead (\cref{app:noise-snr}). Tides and mass transfer,
+which change $\fdot$ for some systems, are neglected.
+
+\subsection{Single-Link Response}
+\label{app:signal-response}
+
+LISA measures the wave as relative frequency fluctuations of six laser links between three
+spacecraft. Let $i$ be the receiving and $j$ the emitting spacecraft of link $ij$, $t_i$ the
+time of reception and $t_j = t_i - L_{ij}(t_i)$ the time of emission, with $L_{ij}$ the light
+travel time. The link response is \citep{finn2009response,cornish2009alternative}
+\begin{equation}
+  y_{ij}(t_i) = -\frac12\,\frac{H_{ij}(\xi_i) - H_{ij}(\xi_j)}{1 - \hat{\mathbf k}\cdot\hat{\mathbf x}_{ij}},
+  \qquad
+  H_{ij}(\xi) = \hat x^k_{ij}\hat x^l_{ij}\,h_{kl}(\xi)
+  = F^+_{ij}\,h_+^{\rm SSB}(\xi) + F^\times_{ij}\,h_\times^{\rm SSB}(\xi),
+  \label{eq:link-response}
+\end{equation}
+with $\xi_i = t_i - \hat{\mathbf k}\cdot\mathbf x_i(t_i)/c$,
+$\xi_j = t_j - \hat{\mathbf k}\cdot\mathbf x_j(t_j)/c$, the unit vector
+$\hat{\mathbf x}_{ij} = (\mathbf x_i(t_i) - \mathbf x_j(t_j))/\lVert\mathbf x_i(t_i) - \mathbf x_j(t_j)\rVert$
+from the emitter to the receiver, and the antenna patterns
+$F^+_{ij} = (\hat{\mathbf u}\cdot\hat{\mathbf x}_{ij})^2 - (\hat{\mathbf v}\cdot\hat{\mathbf x}_{ij})^2$
+and $F^\times_{ij} = 2(\hat{\mathbf u}\cdot\hat{\mathbf x}_{ij})(\hat{\mathbf v}\cdot\hat{\mathbf x}_{ij})$.
+This is the response of LISA GW Response, $y_{ij}(t) = [H_{ij}(t - L_{ij} - \hat{\mathbf k}\cdot\mathbf x_j/c)
+- H_{ij}(t - \hat{\mathbf k}\cdot\mathbf x_i/c)]/[2(1 - \hat{\mathbf k}\cdot\mathbf n_{ij})]$,
+with $\mathbf n_{ij}\equiv\hat{\mathbf x}_{ij}$.
+
+For the galactic binary, define
+$\mathcal A_{ij} = A_+^{\rm SSB}F^+_{ij} + A_\times^{\rm SSB}F^\times_{ij}$ and
+\begin{equation}
+  \alpha_{ij}(t_i) = \pi L_{ij}(t_i)\,\bigl(1 - \hat{\mathbf k}\cdot\hat{\mathbf x}_{ij}\bigr)\,
+  \bigl(f_0 + \fdot\,\xi_i\bigr).
+  \label{eq:alpha}
+\end{equation}
+With $L_{ij}\simeq\lVert\mathbf x_i(t_i) - \mathbf x_j(t_j)\rVert/c$ and the adiabatic
+approximation $\fdot(\xi_i - \xi_j)/2\ll f_0$ (no significant change of frequency during a
+light travel time), half the phase difference between emission and reception is
+$\alpha_{ij}$, and the response becomes
+\begin{equation}
+  y_{ij}(t_i) = -\mathrm{Re}\left\{\frac{\ii\,\mathcal A_{ij}\sin\alpha_{ij}}
+  {1 - \hat{\mathbf k}\cdot\hat{\mathbf x}_{ij}}\,
+  e^{-\ii\left(\alpha_{ij} - \Psi(\xi_i)\right)}\right\}.
+  \label{eq:link-gb}
+\end{equation}
+
+\subsection{Heterodyned Frequency-Domain Response}
+\label{app:signal-heterodyne}
+
+With $q = \operatorname{round}(f_0\Tobs)$ the frequency bin closest to $f_0$, the response
+separates into a fast carrier and a slowly varying envelope,
+$y_{ij}(t_i) = \mathrm{Re}\bigl\{\mathcal G_{ij}(t_i)\,e^{2\pi\ii qt_i/\Tobs}\bigr\}$, with
+\begin{equation}
+  \mathcal G_{ij}(t_i) = -\frac{\ii}{2}\,\frac{f_0 + \fdot\,\xi_i}{f_{\star}}\,\mathcal A_{ij}\,
+  \operatorname{sinc}\alpha_{ij}\;
+  \exp\Bigl\{-\ii\Bigl[\alpha_{ij} + 2\pi f_0\frac{\hat{\mathbf k}\cdot\mathbf x_i(t_i)}{c}
+  - \Bigl(-\phi_0 + 2\pi\bigl(f_0 - \tfrac{q}{\Tobs}\bigr)t_i + \pi\fdot\,\xi_i^2\Bigr)\Bigr]\Bigr\},
+  \label{eq:slow}
+\end{equation}
+where $\operatorname{sinc}x = \sin x/x$ and $f_\star = (2\pi L)^{-1}$, with $L$ in seconds.
+The envelope varies on the scale of LISA's orbit, so its spectrum is confined to a few bins
+around zero: the Doppler sideband $\pm f_0v_\oplus/c$ ($v_\oplus = 29.8$\,km/s, so
+$\sim10^{-4}f_0$) plus the chirp drift $\fdot\,\Tobs$. JaxGB samples it at $R$ times
+$t_m = m\Tobs/R$ and Fourier-transforms it, which gives the one-sided spectrum on the $R$ bins
+starting at $k_{\min} = q - R/2$:
+\begin{equation}
+  \tilde y_{ij}\bigl(f_{q+k}\bigr) = \frac{\Tobs}{2R}\sum_{m=0}^{R-1}\mathcal G_{ij}(t_m)\,
+  e^{-2\pi\ii km/R},\qquad k = -\tfrac R2,\dots,\tfrac R2 - 1,\qquad f_k = \frac{k}{\Tobs}.
+  \label{eq:heterodyne}
+\end{equation}
+The factor $1/2$ is the positive-frequency half of the real signal, and the normalisation is
+that of the continuous transform, $\tilde h(f) \simeq \int_0^{\Tobs}h(t)\,e^{-2\pi\ii ft}\,\dd t$.
+This is the fast galactic-binary response of \citet{cornish2007tests}, vectorised over
+sources and differentiable. The baseline JaxGB model makes two further approximations,
+accurate at the percent level: the emitter's position is taken at the time of reception,
+$\mathbf x_j(t_j)\simeq\mathbf x_j(t_i)$, so that $\hat{\mathbf x}_{ji} = -\hat{\mathbf x}_{ij}$
+and $\mathcal A_{ji} = \mathcal A_{ij}$, and all six light travel times are equal and constant,
+$L_{ij} = L$, their average. With the equal-arm orbits of LISA Orbits \citep{lisaorbits},
+$L = 2.5\,\text{Gm}/c = 8.34$\,s and $f_\star = 19.1$\,mHz.
+
+\subsection{Time-Delay Interferometry}
+\label{app:signal-tdi}
+
+Laser frequency noise is cancelled by time-delay interferometry
+\citep[TDI;][]{tinto2021time}. JaxGB forms the first-generation (1.5) Michelson
+combinations for equal and constant arms on the envelopes of \cref{eq:slow}, with the
+instantaneous frequency $f = f_0 + \fdot\,t$ and the delay phase $x = 2\pi fL$:
+\begin{equation}
+  X = -2\ii\sin x\;e^{-\ii x}\Bigl[\bigl(\mathcal G_{21} - \mathcal G_{31}\bigr)
+  + e^{-\ii x}\bigl(\mathcal G_{12} - \mathcal G_{13}\bigr)\Bigr],
+  \label{eq:tdi-x}
+\end{equation}
+with $Y$ and $Z$ from the cyclic permutation $1\to2\to3\to1$, Fourier-transformed as in
+\cref{eq:heterodyne}. Since $-2\ii\sin x\,e^{-\ii x} = -(1 - D^2)$ with $D = e^{-\ii x}$ the
+delay operator, \cref{eq:tdi-x} is $(1-D^2)$ times a combination of the four links that
+involve spacecraft 1. The standard equal-arm TDI-1.5 Michelson combination
+\citep[eq.~14]{babak2021lisa} pairs the delays the other way round,
+$(1-D^2)\bigl[(y_{13}-y_{12}) + D\,(y_{31}-y_{21})\bigr]$; the two differ by
+$(1-D^2)(1-D)\bigl[(y_{13}-y_{31}) - (y_{12}-y_{21})\bigr]$, which is of higher order in $x$.
+On JaxGB's own link responses, for sources drawn from our prior, they agree to
+$2.4\times10^{-4}$ (relative) up to 3\,mHz and to $7\times10^{-3}$ at 10\,mHz, with powers
+equal to 0.2\%. We use the quasi-orthogonal channels \citep{prince2002lisa}
+\begin{equation}
+  A = \frac{Z-X}{\sqrt2},\qquad E = \frac{X-2Y+Z}{\sqrt6},\qquad T = \frac{X+Y+Z}{\sqrt3},
+  \label{eq:aet}
+\end{equation}
+whose noises are uncorrelated for equal arms (\cref{app:noise-psd}). The isotropic sky prior
+does not depend on the frame; sources quoted in ecliptic coordinates, as in the LISA Data
+Challenges, must be rotated to the equatorial frame of the orbits.
+
+\subsection{Frequency Windows}
+\label{app:signal-windows}
+
+A training example is one window of $K=4R$ consecutive frequency bins, starting at an even
+bin $k_0$, with centre frequency $\fw = (k_0 + K/2)/\Tobs$. The window holds $S=4$ sources,
+whose $R$-bin responses are added at their own offsets $k_{\min}-k_0$. A guard band of $R/2$
+bins at each edge keeps every response inside the window: sources are drawn with
+\begin{equation}
+  f_0 \in \bigl[f_{\rm lo}(w), f_{\rm hi}(w)\bigr]
+  = \Bigl[\max\bigl(\tfrac{k_0 + R/2}{\Tobs}, f_{\min}\bigr),\;
+          \min\bigl(\tfrac{k_0 + K - R/2}{\Tobs}, f_{\max}\bigr)\Bigr],
+  \label{eq:window-interior}
+\end{equation}
+an interior of $3R$ bins. The window is placed by drawing $f_c$ log-uniformly on
+$[f_{\min}, f_{\max}]$ and snapping the start to the nearest even bin
+$k_0 = 2\operatorname{round}(f_c\Tobs/2 - R)$, clipped to the valid range. Windows therefore
+tile the band with density $\propto 1/f$, and $f_0$ is log-uniform over the band to within
+the snapping.
+
+\paragraph{How many bins a source needs.}
+Half of a source's response window must hold the Doppler sideband plus the whole chirp
+drift, so a source needs
+\begin{equation}
+  n_{\rm span}(f_0,\Mc) = 2\left\lceil\Bigl(\frac{f_0 v_\oplus}{c}
+  + \fdot(\Mc, f_0)\,\Tobs\Bigr)\Tobs\right\rceil \le R
+  \label{eq:span}
+\end{equation}
+bins. For a given $R$, the highest frequency the prior can reach is set by the heaviest
+binary, $\Mc_{\max} = 1.4\cdot2^{-1/5} = 1.219\,\Msun$, and solves
+$(v_\oplus/c)\,f_0 + \kappa\,\Mc_{\max}^{5/3}\Tobs f_0^{11/3} = R/(2\Tobs)$, with
+$\kappa$ the constant of \cref{eq:fdot}. In $u = f_0^{1/3}$ this
+is a degree-11 trinomial, solved numerically by Newton's method from the smaller of the
+Doppler-only root $Rc/(2\Tobs v_\oplus)$ and the chirp-only root. The two terms scale very
+differently: the Doppler term is linear in $f_0$ and the chirp term goes as $f_0^{11/3}$, so
+once the chirp dominates (above $\sim4$\,mHz for the heaviest binaries,
+\cref{fig:band}c) quadrupling $R$ buys only $4^{3/11}\simeq1.46$ times more bandwidth.
+
+\paragraph{Rungs.}
+The problem comes in three sizes that differ only in $R$ and hence in how much of the band a
+window covers (\cref{tab:rungs}). With the full band, $R$ is sized automatically as the
+power of two above $n_{\rm span}(f_{\max},\Mc_{\max})$, with a floor of 256 points: at
+12\,mHz the Doppler sideband is 75 bins and the chirp of the heaviest binary 291 bins, so
+$n_{\rm span}=734$ and $R=1024$, which could hold the heaviest binaries up to 13.3\,mHz.
+
+\begin{table}[h]
+\caption{The three problem sizes. They share the priors, the four sources per window, the
+network and the training recipe; only the response points $R$, and with them the window and
+the number of data tokens, differ. The band fraction is of $\log f$ over 0.1--12\,mHz.}
+\label{tab:rungs}
+\centering
+\small
+\begin{tabular}{lrrrrll}
+\toprule
+rung & $R$ & window $K$ [bins] & interior [bins] & data tokens & $f_0$ range & band \\
+\midrule
+XS & 16 & 64 & 48 & 32 & 0.1--1.26\,mHz & 53\% \\
+S & 64 & 256 & 192 & 128 & 0.1--4.15\,mHz & 78\% \\
+B & 1024 & 4096 & 3072 & 2048 & 0.1--12\,mHz & 100\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{figures/band.pdf}
+  \caption{The band as the training prior sees it. (a) The TDI-1.5 noise PSDs of the $A$,
+  $E$ and $T$ channels in fractional-frequency units, which whiten the data
+  (\cref{eq:psd}). (b) The amplitude prior: the band between a sky-averaged SNR of 7 and of
+  1000 at each frequency (\cref{eq:amp-window}); the dot is the faint source of
+  \citet{strub2022bayesian} at SNR 7.93, used to validate the likelihood (\cref{app:mcmc}).
+  (c) The half-span of a source's response, Doppler sideband plus chirp drift over
+  $\Tobs$ (\cref{eq:span}), against the half-window of each rung; the dots mark the highest
+  frequency each rung can hold for the heaviest binary in the prior: 1.26, 4.15 and
+  13.3\,mHz (the prior itself stops at 12\,mHz).}
+  \label{fig:band}
+\end{figure}
+
+\subsection{What the Simulator Leaves Out}
+\label{app:signal-limits}
+
+The training distribution is deliberately simpler than real LISA data. Every window holds
+exactly four resolvable binaries and nothing else: there is no confusion foreground from the
+millions of unresolved binaries \citep{timpano2006characterizing,karnesis2021characterization},
+no other source class, no gaps or glitches, and the noise is stationary and known. Sources in
+neighbouring windows never leak in, because the guard band keeps every response inside its
+own window. For $R<256$ (XS and S) the slow response is sampled critically rather than
+generously, which leaves per-bin amplitudes of the highest-frequency XS sources with a
+$\sim$10--25\% aliasing error against a 1024-point reference while preserving the total
+power; the same simulator generates the training data and the test injections, so this
+affects realism, not consistency. Using the posteriors inside a global fit would require
+lifting the first two simplifications: a variable number of sources per window, and sources
+that straddle window edges.

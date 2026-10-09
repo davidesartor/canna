@@ -1,0 +1,80 @@
+% =======================================================================================
+\section{The Conditioning Input}
+\label{app:conditioning}
+% =======================================================================================
+
+The network sees the data of a window through three operations: whitening, a
+Wilson--Daubechies--Meyer (WDM) transform, and a compression of the dynamic range.
+
+\paragraph{Whitening.}
+Each bin and channel is divided by its noise amplitude,
+$\tilde d^{\,\rm w}_{k,c} = \tilde d_{k,c}/\sqrt{S_c(f_k)\Tobs/2}$, so that under noise alone
+$\tilde d^{\,\rm w}_{k,c}\sim\CN(0,1)$: real and imaginary parts have variance $1/2$, and the
+signal enters in units of its SNR per bin.
+
+\paragraph{WDM transform.}
+The WDM transform \citep{necula2012transient,cornish2020time,vajpeyi2026explicit} tiles the
+time--frequency plane with $N_t$ time rows and $N_f$ frequency channels. From the one-sided
+spectrum, channel $m$ draws on the Fourier bins within $N_t/2$ of $mN_t/2$:
+\begin{equation}
+  x_{n,m} = \sum_{l=-N_t/2}^{N_t/2-1}\tilde d^{\,\rm w}_{mN_t/2+l}\,\Phi_l\,e^{2\pi\ii nl/N_t},
+  \qquad
+  w_{n,m} = \sqrt2\,(-1)^{nm}\,\mathrm{Re}\bigl[C^*_{n,m}\,x_{n,m}\bigr],
+  \qquad
+  C_{n,m} = \begin{cases}1 & n+m\ \text{even}\\ \ii & n+m\ \text{odd},\end{cases}
+  \label{eq:wdm}
+\end{equation}
+with $\Phi$ a Meyer-type window with a flat top over $|2l/N_t|\le a$ and a cosine taper of
+width $b = 1-2a$, here $a = 1/3$. We compute only the channels that cover the window: $K$
+channels starting at an even offset, as one reshape and a small matrix product, so that the
+compiled graph does not grow with $K$ (a channel-by-channel loop compiles to millions of
+operations on B).
+
+We use the minimum $N_t = 2$ time rows, and in this case the transform simplifies exactly. The
+window evaluates to $\Phi = (1, 0)$, so channel $m$ sees only bin $m$, and \cref{eq:wdm}
+reduces to
+\begin{equation}
+  (w_{0,m},\,w_{1,m}) =
+  \begin{cases}
+    \sqrt2\,\bigl(\mathrm{Re}\,\tilde d^{\,\rm w}_m,\ \ \mathrm{Im}\,\tilde d^{\,\rm w}_m\bigr) & m\ \text{even},\\
+    \sqrt2\,\bigl(\mathrm{Im}\,\tilde d^{\,\rm w}_m,\ -\mathrm{Re}\,\tilde d^{\,\rm w}_m\bigr) & m\ \text{odd},
+  \end{cases}
+  \label{eq:wdm-nt2}
+\end{equation}
+which we verified numerically against the implementation. The conditioning image is therefore
+a lossless, real re-encoding of the whitened complex spectrum, two rows of unit-variance
+pixels per TDI channel, rather than a time--frequency map. More time rows would trade
+frequency resolution for time resolution, which the slowly evolving signals of this problem
+do not need inside a window.
+\draftnote{With $N_t=2$ the WDM step is a re-encoding of Re/Im. Present it that way in the
+main text, or justify the WDM framing (e.g.\ a path to longer windows or other sources).}
+
+\paragraph{Compression.}
+A source puts $\sum_{k,c}|\tilde h^{\rm w}_{k,c}|^2 = \snr^2/2$ into a few bins, so the loudest
+reach whitened amplitudes of order $10^3$ per bin, against unit-variance noise.
+The input is $y = \operatorname{arcsinh}(w)$, linear in the noise and logarithmic for loud
+signals, arranged as an image of $2\times K\times3$ pixels: time rows, frequency channels, and
+the $A$, $E$, $T$ channels (\cref{fig:window}b). The same operations applied to the noiseless
+signal give the target $y_{\rm clean}$ of the reconstruction head (\cref{eq:aux-x}).
+
+\paragraph{What the image does not carry.}
+Whitening and windowing remove the absolute frequency, which still matters: the Doppler width
+scales with $f$, the chirp with $f_0^{11/3}$, and the amplitude window with $S_n(\fw)$. The
+window centre $\fw$ is therefore given to the network separately (\cref{app:architecture}).
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{figures/window.pdf}
+  \caption{One XS window, from data to posterior (eval injection q0.20, final model). (a)
+  Whitened power per bin, summed over $A$ and $E$, with the noiseless signal; vertical lines
+  mark the true frequencies and their SNRs, and the shaded bins are the guard bands. (b) The
+  conditioning input: $\operatorname{arcsinh}$ of the two-row WDM coefficients
+  (\cref{eq:wdm-nt2}) for the three TDI channels. (c) The flow's $f_0$ posterior for each
+  source, relabelled onto it (\cref{app:evaluation-matching}), against the Fisher forecast
+  (each histogram scaled to a unit peak). The three detectable sources are found, with
+  posteriors several times wider than the Fisher forecast. The SNR-5.3 source is not found,
+  and its posterior does not spread over the window as the prior would: with exactly four
+  sources per window and amplitudes of SNR $\gtrsim7$, a fourth source the data do not support
+  can only sit where it is masked by the loud ones, which is where the flow puts it.}
+  \label{fig:window}
+\end{figure}

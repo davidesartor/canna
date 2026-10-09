@@ -1,0 +1,63 @@
+% =======================================================================================
+\section{Notation and Overview of the Appendices}
+\label{app:notation}
+% =======================================================================================
+
+The appendices hold the complete technical description of the problem, the method and the
+experiments. \Cref{tab:notation} collects the notation. The appendices are ordered from the
+physics to the results:
+\begin{itemize}
+  \item \cref{app:signal}: the galactic-binary signal, the LISA response and the frequency
+        windows that define a training example;
+  \item \cref{app:noise}: the noise model, the likelihood, the signal-to-noise ratio, and how
+        the forward model was validated;
+  \item \cref{app:priors}: the prior over the sources in a window, its exact symmetries, and the
+        simulated dataset;
+  \item \cref{app:geometry}: the flow coordinates and the product manifold of an unordered set
+        of sources;
+  \item \cref{app:fm}: the conditional flow-matching objective, the warped clock, the
+        auxiliary heads and the sampler;
+  \item \cref{app:sensitivity}: why the flow-matching loss is nearly blind to the width of a
+        narrow posterior, and what the warped clock changes;
+  \item \cref{app:conditioning,app:architecture,app:training}: the conditioning input, the
+        network, and the optimisation and compute;
+  \item \cref{app:evaluation}: the evaluation protocol and the metrics;
+  \item \cref{app:xs,app:b,app:mcmc}: the experiments on the XS rung, on the whole band (B),
+        and the comparison with MCMC.
+\end{itemize}
+
+\begin{table}[h]
+\caption{Notation.}
+\label{tab:notation}
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lll}
+\toprule
+symbol & meaning & value or range \\
+\midrule
+$\Tobs$ & observation time & $2\,\text{yr} = 6.31\times10^{7}$\,s \\
+bin & frequency resolution $1/\Tobs$ & $15.84$\,nHz \\
+$S$ & number of sources in a window & 4 \\
+$\theta = (f_0, \Mc, \Amp, \alpha, \delta, \psi, \iota, \phi_0)$ & one source; $(\alpha,\delta)$: RA, dec & \cref{tab:prior} \\
+$\fdot(\Mc, f_0)$ & frequency derivative, derived from $(\Mc, f_0)$ & \cref{eq:fdot} \\
+$R$ & response points: bins of one source's response & 16 (XS), 64 (S), 1024 (B) \\
+$L$ & light travel time along an arm (equal arms) & $2.5\,\text{Gm}/c = 8.34$\,s \\
+$K = 4R$ & bins in a window & 64, 256, 4096 \\
+$k_0$, $\fw$ & first bin and centre frequency of a window & \cref{app:signal-windows} \\
+$\tilde d_{k,c}$ & data in bin $k$ and TDI channel $c\in\{A,E,T\}$ & complex \\
+$S_c(f)$ & one-sided noise PSD of channel $c$ (fractional frequency) & \cref{eq:psd} \\
+$\inner{a}{b}$ & noise-weighted inner product & \cref{eq:inner} \\
+$\snr$ & optimal matched-filter SNR, $\snr^2 = \inner{h}{h}$ & 7 to 1000 (prior) \\
+$\pi_w$ & prior over the $S$ sources of window $w$ & \cref{app:priors} \\
+$\varphi_w$ & chart from physical parameters to flow coordinates & \cref{eq:chart} \\
+$\manifold$ & flow manifold of one source, embedded in $\R^{11}$ & $[-1,1]\times\R\times[-1,1]\times\Sph^2\times\Sph^2\times\Sph^1$ \\
+$X = (x_1,\dots,x_S)$ & a set of sources in flow coordinates & $\manifold^S/\mathfrak{S}_S$ \\
+$y$ & conditioning input (whitened, transformed data) & $2\times K\times 3$ \\
+$t$, $s(t)$ & flow time and path position, $s = 1-(1-t)^p$ & $p=3$ (warped), $p=1$ (uniform) \\
+$\vnet$ & the network's velocity field, weights $\eta$ & \cref{app:architecture} \\
+$\Exp_x$, $\Log_x$ & exponential and logarithm maps & \cref{app:geometry} \\
+$y_{ij}$ & response of the link received on spacecraft $i$ from $j$ & \cref{eq:link-response} \\
+\bottomrule
+\end{tabular}
+\end{table}

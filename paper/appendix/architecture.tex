@@ -1,0 +1,104 @@
+% =======================================================================================
+\section{Network Architecture}
+\label{app:architecture}
+% =======================================================================================
+
+The velocity field is a transformer with two token streams, one for the sources and one for
+the data, that attend to each other in every block: the multimodal diffusion transformer
+(MMDiT) of \citet{esser2024scaling}, with the adaptive-normalisation conditioning of
+\citet{peebles2023scalable}. \Cref{fig:architecture} shows it, and \cref{tab:network} gives
+the sizes.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{figures/architecture.pdf}
+  \caption{The network. The parameter stream (blue) has one token per source and no
+  positional embedding, so the network is equivariant to permutations of the sources; the
+  data stream (grey) has one token per $2\times2$ patch of the conditioning image. Both
+  streams attend jointly in every block, and the flow time and the window frequency modulate
+  every normalisation and residual gate. Only the velocity head is used to sample; the two
+  auxiliary heads are trained during the first 10\% of the steps.}
+  \label{fig:architecture}
+\end{figure}
+
+\subsection{Embeddings}
+
+All feed-forward maps are SwiGLU \citep{shazeer2020glu},
+$\mathrm{FF}(z) = W_2\bigl(a\odot\mathrm{SiLU}(g)\bigr)$ with $[a;g] = W_1z + b_1$.
+\begin{itemize}
+  \item \textbf{Sources.} Each source's 11 coordinates are embedded by its own application of
+        a shared $\mathrm{FF}: \R^{11}\to\R^D$, giving $S$ tokens with no positional embedding.
+  \item \textbf{Data.} The $2\times K\times3$ image is cut into $2\times2$ patches, each
+        flattened to 12 numbers and mapped linearly to $\R^D$, giving $2R$ tokens (1 row of
+        $K/2$). Sinusoidal embeddings of the row and column index, each passed through an
+        $\mathrm{FF}$, are added.
+  \item \textbf{Conditioning.} The flow time and the window centre frequency are embedded as
+        $c = \mathrm{FF}_t\bigl(E(t)\bigr) + \mathrm{FF}_f\bigl(E(\fw)\bigr)$, with
+        $E(\tau) = \mathrm{FF}\bigl([\sin2\pi\omega_k\tau;\ \cos2\pi\omega_k\tau]_{k=1}^{D}\bigr)$
+        and $\omega_k = (2\pi)^{-(k-1)/(D-1)}$, angular frequencies from 1 to $2\pi$ per
+        unit. For $\fw$ in hertz the phases are small and the embedding is close to linear in
+        $\fw$.
+\end{itemize}
+
+\subsection{Blocks}
+
+Each of the $N$ blocks updates the source tokens $z^x$ and the data tokens $z^y$. For each
+stream $\sigma\in\{x,y\}$, a zero-initialised linear map of $\mathrm{SiLU}(c)$ produces a shift,
+a scale and a gate, $(\beta^\sigma,\gamma^\sigma,\zeta^\sigma)$, so that every residual branch
+starts as the identity \citep{peebles2023scalable}:
+\begin{align}
+  h^\sigma &= \mathrm{LN}(z^\sigma)\odot(1+\gamma^\sigma) + \beta^\sigma, \nonumber\\
+  [q^\sigma; k^\sigma; v^\sigma] &= W^\sigma_{qkv}h^\sigma,\qquad
+  o = \mathrm{Attn}\bigl([q^x; q^y], [k^x; k^y], [v^x; v^y]\bigr), \nonumber\\
+  z^\sigma &\leftarrow z^\sigma + \zeta^\sigma\odot W^\sigma_{o}\,o^\sigma, \nonumber\\
+  z^\sigma &\leftarrow z^\sigma + \zeta'^\sigma\odot\mathrm{FF}^\sigma\bigl(\mathrm{LN}(z^\sigma)\odot(1+\gamma'^\sigma) + \beta'^\sigma\bigr),
+\end{align}
+with a second shift, scale and gate $(\beta'^\sigma,\gamma'^\sigma,\zeta'^\sigma)$ for the
+feed-forward branch, $\mathrm{LN}$ a layer normalisation without learned affine parameters,
+and the feed-forward hidden width $2D$. The attention runs over all $S+2R$ tokens with $H$
+heads of dimension 64. Queries and keys are RMS-normalised per head, with no learned scale
+\citep{henry2020query,dehghani2023scaling}. The projections are separate for the two streams,
+the attention is joint. The blocks are applied with a scan over stacked parameters and
+rematerialised in the backward pass \citep{chen2016training}.
+
+\subsection{Heads}
+
+The source tokens pass through a final shift-and-scale modulation and an
+$\mathrm{FF}:\R^D\to\R^{2\times11}$, which gives the velocity $\vnet$ and the endpoint
+estimate $\hat X_1$ for each source. The data tokens are mapped back to $2\times2$ patches,
+which gives the reconstruction $\hat y$.
+
+\subsection{Permutation Equivariance}
+\label{app:architecture-equivariance}
+
+Every map applied to a source token is shared across sources, and attention without
+positional information is equivariant to permutations of its tokens. Permuting the input
+sources therefore permutes the outputs: $\vnet(\sigma X) = \sigma\,\vnet(X)$ for every
+$\sigma\in\mathfrak S_S$. With an exchangeable base distribution, the flow of \cref{eq:ode}
+maps exchangeable distributions to exchangeable distributions, and the set alignment of
+\cref{eq:set-log} gives it a regression target that is itself defined on unordered sets
+\citep[compare][]{zaheer2017deep,lee2019set}.
+
+\subsection{Sizes and Precision}
+
+\Cref{tab:network} gives the two widths we trained. The network is the same on every rung,
+and only the number of data tokens changes. Parameters are kept in float32, and the forward
+and backward passes run in bfloat16 \citep{micikevicius2018mixed,kalamkar2019study}. In
+bfloat16, attention uses the fused cuDNN flash-attention kernel \citep{dao2022flashattention}:
+on B, materialising the attention logits of a batch, $256\times8$ heads $\times\,2052^2$ in
+float32, would need 32\,GiB, which is what made the first B run run out of memory.
+
+\begin{table}[h]
+\caption{Network sizes. Parameter counts are exact; tokens are sources plus data patches; step times are for a batch of 256 windows (\cref{app:training-compute}).}
+\label{tab:network}
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+width $D$ & heads $H$ & blocks $N$ & parameters & tokens on XS / S / B & A100 time per step, XS / B \\
+\midrule
+512 & 8 & 8 & 75\,636\,258 & 36 / 132 / 2052 & 38.9\,ms / 1.54\,s \\
+768 & 12 & 8 & 170\,077\,474 & 36 / 132 / 2052 & 59.6\,ms / 2.57\,s \\
+\bottomrule
+\end{tabular}
+\end{table}

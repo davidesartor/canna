@@ -1,0 +1,82 @@
+% =======================================================================================
+\section{Evaluation Protocol and Metrics}
+\label{app:evaluation}
+% =======================================================================================
+
+\subsection{Injections}
+
+All models are scored on the same test set. With a fixed seed we draw 1024 candidate windows
+and their sources from the prior. The ten \emph{eval injections} are the candidates at the
+0.1, 0.2, \dots, 1.0 quantiles of the window SNR (121 to 1848 on XS), and 200 further
+candidates are taken at random. This gives 210 windows and 840 sources. Each window gets its
+own noise realisation, and the flow draws 256 samples per window (1024 for corner plots) with
+32 RK4 steps in bfloat16. Every model sees the same windows, noise and base draws, so
+comparisons between models are paired, source by source. These are prior-predictive
+injections: averaged over them, a calibrated posterior gives uniform ranks
+\citep{talts2018validating}.
+
+\subsection{Relabelling the Draws}
+\label{app:evaluation-matching}
+
+The flow's source slots are exchangeable, so the first slot of one draw can be any of the true
+sources. To score a source, each draw is relabelled by the permutation that minimises
+$\sum_i\lVert F(\hat\theta_{\sigma(i)}) - F(\theta_i)\rVert^2$, with features
+$F = \bigl(f_0/(f_{\rm hi}-f_{\rm lo}),\ \log_{10}\Amp,\ n_{\rm sky}\bigr)$. The matching weighs
+sky position and amplitude as well as frequency. When a window also holds a source the flow
+has not localised, the matching can give a well-localised source's slot to that one: in the
+window of \cref{fig:corner-median}, 18\% of the draws are relabelled this way, although 99.7\%
+of them have a slot within one bin of the source. The robust width below is insensitive to this
+contamination, while the coverage it affects is, if anything, made conservative.
+
+\subsection{Metrics}
+\label{app:evaluation-metrics}
+
+All metrics are computed on the $f_0$ marginal of each source, in bins of $1/\Tobs$:
+\begin{itemize}
+  \item \textbf{width}: $w = 1.4826\,\MAD$ of the draws, the standard deviation of a Gaussian,
+        robust to a minority of mis-relabelled draws;
+  \item \textbf{found}: $w<1$ bin. A source the flow has not found is spread over the window,
+        several bins wide;
+  \item \textbf{ideal width}: $w^\star = \sqrt3/(\pi\snr)$, with $\snr$ the source's own SNR
+        (\cref{eq:ideal-width}). On the 40 eval sources, the full Fisher forecast below is a
+        median 10\% wider (0 to 33\%), so ``$\times$ ideal'' reads about 10\% higher than
+        ``$\times$ Fisher'';
+  \item \textbf{offset}: median of the draws minus the truth;
+  \item \textbf{rank}: the fraction of draws below the truth, uniform on $[0,1]$ for a
+        calibrated posterior; a mean away from 1/2 is a bias;
+  \item \textbf{coverage}: whether the truth lies in the central 68\% and 95\% intervals
+        (in68, in95).
+\end{itemize}
+We report them in SNR bands ($<15$, 15--40, 40--100, $\ge100$). Widths and offsets are medians
+over the found sources of a band, and coverage and ranks are averages over all its sources.
+
+\paragraph{The ideal width.}
+For a sinusoid $s(t) = A\cos(\omega t+\phi)$ observed for a time $T$ in white noise, and a
+time origin at the centre of the observation, the Fisher matrix in $(\omega,\phi)$ is
+diagonal, with $\Gamma_{\omega\omega} = \snr^2T^2/12$ and $\Gamma_{\phi\phi} = \snr^2$. The
+amplitude decouples. The frequency error is therefore
+\begin{equation}
+  \sigma_{f_0} = \frac{\sqrt{12}}{2\pi\,\snr\,T} = \frac{\sqrt3}{\pi\,\snr}\ \text{bins},
+  \label{eq:ideal-width}
+\end{equation}
+0.055 bins at SNR 10 and $5.5\times10^{-4}$ bins at SNR 1000. Orbital Doppler modulation,
+the chirp and correlations with the other seven parameters can only widen it: a lower bound,
+attained by the full Fisher forecast to within the 10\% above.
+
+\subsection{Fisher Forecast}
+\label{app:evaluation-fisher}
+
+The corner plots overlay a Gaussian forecast at the truth. Its precision is the Hessian of
+the negative log-likelihood (\cref{eq:loglik}) at the truth, averaged over 32 noise
+realisations, plus the prior precision, taken from the covariance of the 1024 candidates. A
+single realisation's Hessian can be indefinite along poorly constrained directions; the
+average cancels the data-dependent term. In physical units the precision matrix spans about 45
+orders of magnitude on its diagonal, so we diagonalise it after a Jacobi rescaling to unit
+diagonal, floor each eigenvalue at the prior precision along its eigenvector, and draw from the
+resulting Gaussian. The forecast is a reference width, not a posterior
+\citep{cutler1994gravitational,vallisneri2008use}. It is unimodal, so it cannot show the
+exact symmetries of \cref{eq:psi-phi-symmetry}, and Gaussian, so it cannot follow the curved
+amplitude--inclination degeneracy. For a parameter the data do not constrain, such as the
+chirp mass at low frequency, where the chirp drift over the mission is a small fraction of a
+bin (0.08 bins at 2\,mHz for $\Mc = 0.45\,\Msun$), it simply shows the prior's width centred on
+the truth.

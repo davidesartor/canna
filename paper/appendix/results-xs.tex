@@ -1,0 +1,259 @@
+% =======================================================================================
+\section{Experiments on XS}
+\label{app:xs}
+% =======================================================================================
+
+\subsection{Setup}
+
+XS is the smallest rung: $R=16$, 64-bin windows with a 48-bin interior, $f_0$ between 0.1 and
+1.26\,mHz (53\% of the log band), four sources per window and 32 data tokens
+(\cref{tab:rungs}). Because a step is cheap (39\,ms at width 512), XS is where every design
+decision was made. With a tight compute budget, we never ran single-variable sweeps. Each
+run combined the changes we believed in, read against the runs already paid for, and was
+followed by cheap evaluation-only tests that ruled out alternative explanations. The five
+models of \cref{tab:xs-ladder} form the ladder of this section:
+\begin{enumerate}
+  \item \textbf{uniform clock}: width 512, uniform clock ($p=1$), auxiliary heads over the
+        first half of training ($f_{\rm aux}=0.5$), constant learning rate, 500k steps then
+        continued to 1M;
+  \item \textbf{warp}: the warped clock ($p=3$) and a short auxiliary phase
+        ($f_{\rm aux}=0.1$), otherwise identical, 1M steps;
+  \item \textbf{warp, 768}: the same at width 768 (170M parameters);
+  \item \textbf{warp, cooldown}: model 2 continued for 200k steps with the learning rate
+        decaying linearly to zero;
+  \item \textbf{warp, 768, cooldown} (\emph{final}): model 3 continued the same way.
+\end{enumerate}
+The evaluation is that of \cref{app:evaluation}: 840 sources in 210 windows, scored
+identically for every model.
+
+\begin{table}[h]
+\caption{The XS ladder, on the same 840 sources. Loud width: median $f_0$ width of the found
+sources at SNR $\ge100$, and its median ratio to the ideal width $\sqrt3/(\pi\snr)$. Found:
+fraction of sources with width below one bin. Calibration: coverage of the 68\% and 95\%
+intervals and mean rank of the truth at SNR $\ge100$. Bias: the largest median offset across
+eight slices of the source's position in the window, SNR $\ge40$ (\cref{fig:bias}). Hours: A100
+time, cooldowns added to the run they continue.}
+\label{tab:xs-ladder}
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\input{tables/xs_ladder}
+\end{table}
+
+\subsection{Headline Results}
+
+The final model finds 54\%, 86\%, 97\% and 99.5\% of the sources in the four SNR bands
+(\cref{tab:xs-final}), places them without bias (median offsets below 0.006 bins, mean ranks
+0.49--0.53), and is calibrated on the conservative side: 78--93\% of the truths inside the
+68\% intervals and 97--100\% inside the 95\% intervals. Below SNR 40 its $f_0$ posteriors are
+within a factor 2--3 of the ideal width. Above that, the width stops following $1/\snr$
+(\cref{fig:width-snr}): it levels off at $0.035$--$0.039$ bins from SNR 100 to 1400, 25 times
+the ideal width at the median loud source. This floor, 0.6\,nHz, is the main remaining
+limitation, and the rest of this section traces what moved it.
+
+\begin{table}[h]
+\caption{The final model (XS, width 768, warped clock, cooldown) by SNR band, on 840 sources.
+Width and offset are medians over found sources, in bins of $1/\Tobs$; coverage and rank
+over all sources.}
+\label{tab:xs-final}
+\centering
+\small
+\input{tables/xs_final_by_band}
+\end{table}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.6\textwidth]{figures/width_snr.pdf}
+  \caption{Width of the $f_0$ posterior against the source's SNR, on the 840 scored sources.
+  Points: the final model. Lines: medians of the found sources in SNR bins, for the
+  uniform-clock baseline, the warped clock, and the final model. Dashed: the ideal width
+  $\sqrt3/(\pi\snr)$. Every model has a floor at high SNR; the warped clock lowers it by a
+  factor 0.6 and the cooldown by a further 0.44, and below SNR $\sim40$ the final model is
+  within a factor 2--3 of the ideal.}
+  \label{fig:width-snr}
+\end{figure}
+
+\subsection{What Each Change Bought}
+\label{app:xs-ladder}
+
+\Cref{fig:ladder} summarises the ladder. Detection differences are paired, source by source,
+with a two-sided sign test.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{figures/ladder.pdf}
+  \caption{The XS ladder. (a) The loud-source floor: median $f_0$ width at SNR $\ge100$, with
+  its ratio to the ideal width. (b) Found fraction per SNR band. Same 840 sources for all
+  models.}
+  \label{fig:ladder}
+\end{figure}
+
+\paragraph{Training longer at a constant learning rate helps a little.}
+Doubling the uniform-clock run from 500k to 1M steps narrowed the posteriors of the ten eval
+windows by a median factor 0.78 (narrower for 27 of 29 sources) and localised two more of the
+13 sources at SNR 15--40, but the loud floor only moved from 92 to 76 times the Fisher width.
+
+\paragraph{The warped clock narrows every posterior, at a small cost in detection.}
+Against the uniform clock at the same 1M steps, the warp narrowed the loud floor from 0.147 to
+0.088 bins, by a median factor of 0.61 at SNR $\ge100$, 0.62 at 40--100 and 0.70 at
+15--40, and the posterior was narrower for 97\% of the loud sources. It also removed a bias:
+the uniform-clock model placed loud sources low by about 0.056 bins (mean rank 0.62, 8 standard
+errors from 1/2). The price was detection: 27 sources were found only by the uniform clock and
+6 only by the warp ($p = 3\times10^{-4}$), mostly near SNR 17, the expected effect of moving
+training samples from the first half of the path (50\% of them) to its end (21\% left).
+
+\paragraph{Width buys detection, not the floor.}
+At a constant learning rate, the 768-wide network had the same floor as the 512 (0.087 against
+0.088 bins, flat in SNR), with 2.25 times the parameters and a 1.3\% lower loss. It found 16
+sources the 512 missed against 5 the other way ($p=0.027$), recovering half of the warp's
+detection cost.
+
+\paragraph{The cooldown halves the floor and removes the bias.}
+Cooling the 768 network down over 200k more steps lowered the loss from 0.4499 to 0.4276; at
+the constant-rate slope of its last 100k steps the same gain would have taken about a million
+more steps. The loud floor fell from 0.087 to 0.037 bins, a median per-source ratio of 0.440
+(95\% interval 0.427--0.453), at every loud SNR: 0.038, 0.039, 0.035 and 0.036 bins at SNR
+100--200, 200--400, 400--800 and $\ge800$. The cooled model found 21 sources the 1M model did
+not, and missed one ($p=10^{-5}$). Against the uniform clock it now finds more sources in every
+band (17 against 7). The 512 network gained exactly as much from the same cooldown (factor
+0.443), so the gain belongs to the schedule, not to the width. Once both are cooled, the floor
+does not depend on width (the 512 is 1.03 times the 768, 95\% interval 1.01--1.05), but the 768
+is 11--15\% sharper below SNR 100 and finds 18 sources the 512 misses against 7 ($p=0.043$).
+
+\paragraph{What the floor is not.}
+Cheap evaluation-only tests ruled out the obvious numerical causes (\cref{tab:numerics}): the
+integrator (32, 64 and 128 RK4 steps agree), bfloat16 at evaluation (float32 on a CPU gives a
+width ratio of 0.991), the rounding of the input coordinate at constant learning rate
+(\cref{app:geometry-remarks}), and A100 numerics (the A100 and CPU tables agree). Width is ruled
+out above. The floor that remains is flat in SNR at 25 times the ideal width. By
+\cref{eq:sensitivity} it costs about $2\times10^{-3}$ of the logged loss under the warp, four
+times the epoch-to-epoch scatter: visible to the objective, unlike the floor under the uniform
+clock, but small next to the 0.022 the cooldown gained. Bfloat16 arithmetic inside the network
+during training, and the optimisation itself, are the candidates left untested.
+
+\subsection{Bias}
+
+At a constant learning rate, each run carried its own smooth $f_0$ bias as a function of where
+the source sits in the window (\cref{fig:bias}): up to $-0.146$ bins for the uniform clock and
+$+0.081$ bins for the 768-wide warp, comparable to their widths, with a different shape in each
+run. The cooldown removes it, to at most 0.008 bins across the window, and the mean
+offset of the loud sources goes from $+0.029\pm0.005$ to $+0.007\pm0.005$ bins. A profile that
+differs from run to run and disappears when the learning rate anneals is the signature of
+where a noisy constant-rate iterate happened to stop, rather than of the physics or the data.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.55\textwidth]{figures/bias.pdf}
+  \caption{Median $f_0$ offset of the found sources at SNR $\ge40$ in eight slices of their
+  position in the window, from its low edge ($-1$) to its high edge ($+1$); bands show one
+  standard error of the median. At a constant learning rate each run has its own bias
+  profile; after the cooldown none is left.}
+  \label{fig:bias}
+\end{figure}
+
+\subsection{Calibration}
+
+\Cref{fig:calibration} shows the calibration of the $f_0$ marginal over all 840 sources. The
+uniform-clock model's ranks lean to one side, its bias. The final model's are centred but
+over-represented in the middle: the truth falls near the centre of the posterior more often
+than it should, the signature of posteriors that are wider than necessary, consistent with
+in68 = 0.93 at SNR $\ge100$. No model is over-confident in any band. Calibration of the other
+parameters will be measured against MCMC (\cref{app:mcmc}).
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.55\textwidth]{figures/calibration.pdf}
+  \caption{Calibration of the $f_0$ marginal, 840 sources. (a) Empirical CDF of the truth's
+  rank among the draws minus the uniform CDF, with a pointwise 95\% band. A calibrated
+  posterior stays in the band; the uniform-clock model is biased, and the final model's
+  S-shape means its posteriors are too wide. (b) Coverage of the central 68\% (circles) and
+  95\% (squares) intervals by SNR band; dashed lines are the nominal levels.}
+  \label{fig:calibration}
+\end{figure}
+
+\subsection{Single-Source Posteriors}
+
+\Cref{fig:corner-median,fig:corner-loudest} show all eight parameters of two sources,
+the median and the loudest of the 40 sources in the eval windows, against the Fisher forecast.
+The flow reproduces the exact symmetries: four modes in $\psi$ at quarter-turn spacing, two in
+$\phi_0$, and the diagonal bands they form together (\cref{eq:psi-phi-symmetry}). For the
+loud source it follows the curved amplitude--inclination degeneracy towards face-on, where
+$\psi$ and $\phi_0$ merge into one combination. In both cases the flow is wider than the Fisher
+forecast in $f_0$ (the floor above) and along the amplitude--inclination direction. How much
+of the latter is the true posterior, which a Gaussian forecast cannot follow, and how much is
+excess width, is what the comparison with MCMC will measure (\cref{app:mcmc}). The chirp mass
+at these frequencies is not measured, and the flow returns its prior.
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.92\textwidth]{figures/corner_median.pdf}
+  \caption{Posterior of the median-SNR eval source (SNR 62.4, window at 0.888\,mHz), final
+  model, 1024 draws relabelled onto the source (blue), against the Fisher forecast (grey) and
+  the truth (black). Contours enclose 39\% and 86\% of the mass. The flow reproduces the four
+  $(\psi,\phi_0)$ copies of \cref{eq:psi-phi-symmetry}. 18\% of the draws fall outside the
+  plotted $f_0$ range: they are slots the relabelling assigns to this source although they
+  belong to an unlocalised SNR-27 source in the same window (\cref{app:evaluation-matching}).}
+  \label{fig:corner-median}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.92\textwidth]{figures/corner_loudest.pdf}
+  \caption{As \cref{fig:corner-median}, for the loudest eval source (SNR 1366, window at
+  0.101\,mHz). The $f_0$ posterior is far wider than the forecast (the floor); the amplitude
+  and inclination follow the degeneracy towards face-on, where the polarisation angle and the
+  phase become degenerate.}
+  \label{fig:corner-loudest}
+\end{figure}
+
+\subsection{Training Dynamics}
+\label{app:xs-dynamics}
+
+\Cref{fig:training} shows the training curves. With the original long auxiliary phase, the
+flow loss crept down at $2$--$3\times10^{-4}$ per epoch for 170 epochs and then fell by 0.056
+within 35 epochs, as the auxiliary weight crossed about 0.2. With $f_{\rm aux}=0.1$ and the
+uniform clock (a run stopped after 60 epochs to save compute), the crossover at epoch 36
+brought no such drop, so the auxiliary weight alone does not trigger it. Under the warp the
+drop came early, near epoch 60, consistent with the warp putting more weight on the fine
+structure that the drop seems to learn; what triggers it remains open. After it, the loss
+follows a slow power law: each doubling of the steps lowers it by 0.014 to 0.022, and a fit of
+$L_\infty + A\,n^{-\alpha}$ to steps 300k--681k predicted 0.4070 at 1M steps, against the 0.4061
+reached. The cooldown is worth much more than further constant-rate training:
+$-0.022$ in 200k steps for the 768 network and $-0.020$ for the 512. The losses of the
+uniform and warped clocks weight the path differently and are not comparable with each other.
+Once the auxiliary weight reaches zero, the auxiliary heads stop training and their losses
+drift up by orders of magnitude (the reconstruction loss reaches 190 and 520 at 1M steps, at
+widths 512 and 768); they play no role in sampling.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{figures/training.pdf}
+  \caption{Training curves: median flow loss per epoch of 1000 steps. (a) XS, uniform clock,
+  500k steps then continued to 1M. (b) XS, warped clock, widths 512 and 768, each continued
+  with a 200k-step cooldown (shaded). (c) B, warped clock, 512 wide: the run in progress
+  (\cref{app:b}), with its planned cooldown. Losses under different clocks and problems are
+  not comparable with each other.}
+  \label{fig:training}
+\end{figure}
+
+\subsection{Numerical Checks}
+
+\begin{table}[h]
+\caption{The warped-clock model (512, 1M steps) under different integrators and precisions.
+The float32 rows score the first 200 sources (50 windows) with the same keys; ``ratio'' is
+the median per-source width ratio to the default bfloat16 evaluation on the same sources.
+Autotuning on the A100 at level 3 gives over-confident posteriors (\cref{app:training-numerics}).}
+\label{tab:numerics}
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\input{tables/xs_numerics}
+\end{table}
+
+\subsection{Summary: the Recipe}
+
+What the XS ladder settled, and what B uses: the warped clock with $p=3$, auxiliary heads for
+the first 10\% of training, and a linear learning-rate cooldown over the last 20\%. Width 768
+helps detection at 1.5 times the cost of 512 at equal steps. The remaining $f_0$ floor sits at
+25 times the ideal width for loud sources, with posteriors that are conservative rather than
+over-confident.

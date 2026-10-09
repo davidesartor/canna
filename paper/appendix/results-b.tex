@@ -1,0 +1,122 @@
+% =======================================================================================
+\section{The Whole Band: B}
+\label{app:b}
+% =======================================================================================
+% STATUS (2026-10-08): B1 is running on TREX (jobs 13882121 -> 13882126, 4 chained 24 h
+% links + 1 spare). Epoch 91 of 200 at 07:45 UTC on 8 Oct, flow loss 0.526, 1536 s per
+% epoch, no NaN; the cooldown starts at epoch 161, earliest finish ~08:30 CEST on 10 Oct.
+% Everything marked [TBD] is filled from its scorecard and eval:
+%   sbatch slurm/lisa-scorecard.sbatch B-late --n_random 50     # 60 windows, 240 sources, ~1 h
+%   sbatch slurm/lisa-eval.sbatch B-late                         # corner pages, chunked draws
+% then: copy scorecard.npz to paper/data/scorecards/B-late.npz, rerun paper/scripts.
+
+\subsection{Setup}
+
+B covers the whole band, 0.1--12\,mHz, in windows of 4096 bins ($R=1024$, an interior of 3072
+bins) with 2048 data tokens, 64 times as many as XS. Everything else is the XS recipe
+(\cref{app:xs}): four sources per window, the same priors, the 512-wide network (75.6M
+parameters, unchanged), the warped clock with $p=3$, auxiliary heads for the first 10\% of the
+steps, and a linear cooldown over the last 20\%. A step costs 1.54\,s on one A100 (41 times
+XS) with a peak of 18.6\,GiB, so B can afford a fifth of the steps of the XS runs:
+
+\begin{table}[h]
+\caption{Cost of a B run on one A100, with the last 20\% of the steps cooling down, in 24-hour
+jobs. At a fixed budget the 512-wide network gets 1.64 times the steps of the 768.}
+\label{tab:b-cost}
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+steps & width 512 & width 768 \\
+\midrule
+100k & 44\,h, 2 jobs & 71\,h, 3 jobs \\
+150k & 65\,h, 3 jobs & 107\,h, 5 jobs \\
+200k & 87\,h, 4 jobs & 143\,h, 6 jobs \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We train the 512-wide network for 200k steps, the last 40k cooling down. On XS, width 768
+bought detection at equal steps (\cref{app:xs-ladder}), but B is far short of the XS step
+counts, and each doubling of the steps was worth about 20\% in width on XS; at this budget,
+steps are the better use of compute. \Cref{fig:training}c shows the run so far: the flow loss
+fell from 0.753 to 0.526 in 91k steps and is still falling, with no instability. As on XS, the
+auxiliary losses drift once their weight reaches zero (at 20k steps).
+
+\subsection{Results}
+
+\begin{table}[h]
+\caption{B by SNR band, on 240 sources in 60 windows (\cref{app:evaluation}). \tbd}
+\label{tab:b-band}
+\centering
+\small
+\begin{tabular}{lrcccrccc}
+\toprule
+SNR $\snr$ & $n$ & found & width [bins] & $\times$ ideal & offset [bins] & in68 & in95 & rank \\
+\midrule
+$<15$ & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
+15--40 & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
+40--100 & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
+$\geq 100$ & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
+\midrule
+all & \tbd & \tbd & & & & \tbd & \tbd & \tbd \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\caption{B by frequency, in thirds of the log band. Above a few mHz the chirp is resolved and
+the chirp mass becomes measurable; the Doppler sideband widens and the sky position sharpens.
+Chirp-mass and sky widths are for found sources at SNR $\ge40$. \tbd}
+\label{tab:b-frequency}
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+$f_0$ & found ($\snr\ge40$) & loud $f_0$ width [bins] & $\sigma_{\ln\Mc}$ & sky width [deg] & in95 \\
+\midrule
+0.1--0.49\,mHz & \tbd & \tbd & \tbd & \tbd & \tbd \\
+0.49--2.4\,mHz & \tbd & \tbd & \tbd & \tbd & \tbd \\
+2.4--12\,mHz & \tbd & \tbd & \tbd & \tbd & \tbd \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+  \centering
+  \begin{minipage}{0.48\textwidth}\centering
+    \placeholderfig[0.18\textheight]{$f_0$ width against SNR on B, with the XS final model and
+    the ideal width (as \cref{fig:width-snr}).}
+  \end{minipage}\hfill
+  \begin{minipage}{0.48\textwidth}\centering
+    \placeholderfig[0.18\textheight]{Corner plot of a loud high-frequency source, where the
+    chirp mass is measured (as \cref{fig:corner-loudest}).}
+  \end{minipage}
+  \caption{B results. \tbd}
+  \label{fig:b-results}
+\end{figure}
+
+The analysis that will fill these placeholders:
+\begin{itemize}
+  \item \textbf{Does the recipe carry over?} Detection, widths and calibration by SNR band
+        (\cref{tab:b-band}), against the XS final model on the same SNR bands. \tbd
+  \item \textbf{What the band adds.} At high frequency the chirp is resolved and the chirp
+        mass measured (\cref{tab:b-frequency}); the Fisher forecast is then informative for
+        $\Mc$ and is the reference for its width. \tbd
+  \item \textbf{Does the wider window cost precision?} The B and XS models, compared on
+        windows below 1.26\,mHz, where both are trained. \tbd
+  \item \textbf{Resolution of the frequency coordinate.} One unit of $x_f$ spans 1536 bins on
+        B, so its bfloat16 cell reaches 6 bins over half of the window
+        (\cref{app:geometry-remarks}). The $f_0$ width against the source's position in the
+        window, as in \cref{fig:bias}, tests whether this limits B. \tbd
+\end{itemize}
+
+% Predictions written before the result (2026-10-08), for the authors; not for the paper:
+%  - the loss drops at the cooldown (epoch 161) as on XS, by ~0.02;
+%  - if the recipe carries over: loud f0 floor near XS's 0.04 bins (25-30x ideal), SNR 15-40
+%    detection >= 80%, in95 >= 0.95 in every band;
+%  - if the bf16 cell of x_f matters on B: the loud width grows with |x_f| and sources with
+%    |x_f| > 0.5 (half of them) are wider than a bin, so loud-source detection falls well
+%    below XS's 99%. On XS the effect is at most 1.1-1.2x at a 0.094-bin cell; B's cell is
+%    64x larger in bins. The fix would be fp32 Fourier features of the source coordinates
+%    before the bf16 cast, which needs a new run.

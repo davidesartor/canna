@@ -1,0 +1,27 @@
+% =======================================================================================
+\section{Flow Matching on the Source Manifold}
+\label{sec:method}
+% =======================================================================================
+% Drafted material: app:geometry, app:fm, app:sensitivity, app:conditioning,
+% app:architecture, app:training.
+
+\subsection{Conditional Flow Matching from Prior to Posterior}
+\label{sec:method-cfm}
+% the base distribution is the prior; geodesic paths; the objective (app:fm)
+
+\subsection{A Product Manifold for a Set of Binaries}
+\label{sec:method-geometry}
+% chart, spheres and circles, the permutation-aligned coupling (app:geometry)
+
+\subsection{Emphasising the End of the Path}
+\label{sec:method-warp}
+% the loss is blind to narrow posteriors; the warped clock s = 1 - (1 - t)^3 (app:sensitivity, fig:warp)
+
+\subsection{Network Architecture}
+\label{sec:method-architecture}
+% conditioning input (app:conditioning, fig:window); MMDiT with a permutation-equivariant parameter stream
+% (app:architecture, fig:architecture)
+
+\subsection{Training and Sampling}
+\label{sec:method-training}
+% auxiliary heads, Muon, warmup-stable-decay cooldown, RK4 on the manifold (app:fm, app:training; alg:train, alg:sample)

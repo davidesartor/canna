@@ -1,0 +1,40 @@
+% ---------------------------------------------------------------------------------------
+% notation
+% ---------------------------------------------------------------------------------------
+\newcommand{\Mc}{\mathcal{M}}               % chirp mass
+\newcommand{\Amp}{\mathcal{A}}              % strain amplitude
+\newcommand{\Tobs}{T_{\rm obs}}             % observation time
+\newcommand{\fw}{f_{w}}                     % centre frequency of a window
+\newcommand{\fdot}{\dot f}
+\newcommand{\snr}{\rho}
+\newcommand{\Msun}{M_\odot}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Sph}{\mathbb{S}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\MAD}{\operatorname{MAD}}
+\newcommand{\Exp}{\operatorname{Exp}}
+\newcommand{\Log}{\operatorname{Log}}
+\newcommand{\Unif}{\mathcal{U}}
+\newcommand{\Normal}{\mathcal{N}}
+\newcommand{\CN}{\mathcal{CN}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\ii}{\mathrm{i}}
+\newcommand{\T}{^{\top}}
+\newcommand{\inner}[2]{\langle #1 \,|\, #2 \rangle}
+\newcommand{\bins}{\,\text{bins}}
+\newcommand{\manifold}{\mathcal{X}}         % one source's flow manifold
+\newcommand{\vnet}{\hat v_{\eta}}           % the network's velocity
+
+% ---------------------------------------------------------------------------------------
+% drafting aids: remove before submission
+% ---------------------------------------------------------------------------------------
+\definecolor{tbdcolor}{HTML}{C4351F}
+% a value that B1 (or another pending run) will fill in
+\newcommand{\tbd}[1][]{\textcolor{tbdcolor}{\textbf{[TBD#1]}}}
+% a figure slot that a pending run will fill
+\newcommand{\placeholderfig}[2][0.32\textwidth]{%
+  \fbox{\parbox[c][#1][c]{0.95\linewidth}{\centering\small\color{tbdcolor}
+  \textbf{placeholder}\\[2pt] #2}}}
+% notes to the authors, rendered in the margin while drafting
+\newcommand{\draftnote}[1]{\todo[color=yellow!25, size=\tiny]{#1}}

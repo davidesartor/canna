@@ -1,0 +1,25 @@
+% =======================================================================================
+\section{Galactic Binaries in LISA Data}
+\label{sec:problem}
+% =======================================================================================
+% The physics, and the simulated dataset. Drafted material: app:signal, app:noise,
+% app:priors, app:mcmc (labels of the appendix sections).
+
+\subsection{Signal Model and Instrument Response}
+\label{sec:problem-signal}
+% quasi-monochromatic chirping binaries, the FastGB-style response, TDI A/E/T;
+% frequency windows and why a window holds a whole response (app:signal, fig:band)
+
+\subsection{Noise Model and Likelihood}
+\label{sec:problem-likelihood}
+% stationary Gaussian noise, the TDI-1.5 PSD, the Whittle likelihood, the SNR (app:noise)
+
+\subsection{Priors and the Simulated Dataset}
+\label{sec:problem-dataset}
+% the per-window prior: log-uniform f0, Korol+22 chirp mass, SNR-defined amplitude,
+% isotropic angles; four sources per window; the XS/S/B rungs (app:signal, app:priors; fig:priors)
+
+\subsection{Bayesian Inference and the Global Fit}
+\label{sec:problem-bayes}
+% the posterior over an unordered set; exact symmetries and degeneracies; MCMC global
+% fits (RJMCMC, parallel tempering) and their cost; what amortisation buys (app:mcmc)
