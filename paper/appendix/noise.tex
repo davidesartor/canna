@@ -1,0 +1,160 @@
+% =======================================================================================
+\section{Noise Model, Likelihood and Signal-to-Noise Ratio}
+\label{app:noise}
+% =======================================================================================
+
+\subsection{Instrument Noise}
+\label{app:noise-psd}
+
+We use the two noise terms of the LISA science requirements as given by
+\citet{babak2021lisa}: the optical metrology system (OMS) and the test-mass acceleration
+noise of one link, as displacement and acceleration spectra (their eqs.~9 and 11),
+\begin{align}
+  P_{\rm oms}(f) &= (15\,\text{pm})^2\left[1+\Bigl(\frac{2\,\text{mHz}}{f}\Bigr)^4\right]
+  \,\text{m}^2\,\text{Hz}^{-1}, \nonumber\\
+  P_{\rm acc}(f) &= \Bigl(3\,\frac{\text{fm}}{\text{s}^2}\Bigr)^2
+  \left[1+\Bigl(\frac{0.4\,\text{mHz}}{f}\Bigr)^2\right]
+  \left[1+\Bigl(\frac{f}{8\,\text{mHz}}\Bigr)^4\right]
+  \,\text{m}^2\,\text{s}^{-4}\,\text{Hz}^{-1}.
+  \label{eq:single-link}
+\end{align}
+A link measures a Doppler shift, so in the relative-frequency units of the response
+(\cref{eq:link-response}) a displacement noise enters as $(2\pi f/c)^2$ in power and an
+acceleration noise picks up a further $(2\pi f)^{-4}$ (their eqs.~10 and 13):
+\begin{equation}
+  S_{\rm oms}(f) = \Bigl(\frac{2\pi f}{c}\Bigr)^2P_{\rm oms}(f),\qquad
+  S_{\rm acc}(f) = \frac{P_{\rm acc}(f)}{(2\pi f)^2\,c^2}.
+\end{equation}
+For equal arms, identical noise levels on all links and uncorrelated noises, the TDI-1.5
+Michelson combination has the PSD $S_X$ of \citet[eq.~19]{babak2021lisa}, and $X$ and $Y$ have
+the cross spectral density $S_{XY}$, which we obtain from their TDI-2.0 expression (eq.~129)
+by removing the generation-2 transfer factor $4\sin^2 2x$:
+\begin{equation}
+  S_X = 16\sin^2x\,\bigl[S_{\rm oms} + (3+\cos2x)\,S_{\rm acc}\bigr],\qquad
+  S_{XY} = -8\sin^2x\,\cos x\,\bigl[S_{\rm oms} + 4S_{\rm acc}\bigr],\qquad
+  x = 2\pi fL .
+\end{equation}
+The channels of \cref{eq:aet} diagonalise the $XYZ$ covariance, with $S_A = S_E = S_X - S_{XY}$
+and $S_T = S_X + 2S_{XY}$ (their eqs.~127--128):
+\begin{align}
+  S_A(f) = S_E(f) &= 8\sin^2x\,\bigl[(2+\cos x)\,S_{\rm oms}
+  + 2\,(3 + 2\cos x + \cos2x)\,S_{\rm acc}\bigr], \nonumber\\
+  S_T(f) &= 16\sin^2x\,(1-\cos x)\,\bigl[S_{\rm oms} + 2\,(1-\cos x)\,S_{\rm acc}\bigr].
+  \label{eq:psd}
+\end{align}
+$S_A$ is their eq.~130 divided by $4\sin^22x$. These are the PSDs our simulator draws the
+noise from and our likelihood whitens with; we checked them against the expressions above to
+machine precision, with the same $L = 8.34$\,s as the response. \Cref{fig:band}a shows them.
+The units matter more than they seem: writing the noise as a fractional length (dividing by
+the arm length rather than by $c/2\pi f$) leaves the whitening wrong by $x^2$, a tilt across
+the band rather than a constant, which would silently re-weight low-frequency against
+high-frequency sources. We checked the units by forming the sky-averaged sensitivity from
+the Monte-Carlo-averaged response of the $A$ and $E$ channels and comparing it with the
+analytic curve of \citet{robson2019construction}: the ratio is flat (log-log slope $-0.001$)
+at the expected $1/2$ below 4\,mHz, against a slope of $-2$ for the fractional-length form.
+
+\subsection{Data Model and Likelihood}
+\label{app:noise-likelihood}
+
+In a window, the data are the sum of the four responses and Gaussian noise,
+\begin{equation}
+  \tilde d_{k,c} = \sum_{s=1}^{S}\tilde h_c(f_k;\theta_s) + \tilde n_{k,c},\qquad
+  \tilde n_{k,c} \sim \CN\!\left(0,\ \tfrac{1}{2}S_c(f_k)\,\Tobs\right),
+  \label{eq:data}
+\end{equation}
+independent across bins $k$ and channels $c\in\{A,E,T\}$: the noise is stationary, and the
+three channels are uncorrelated for equal arms. With the noise-weighted inner product
+\begin{equation}
+  \inner{a}{b} = 4\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{S_c(f_k)\,\Tobs},
+  \label{eq:inner}
+\end{equation}
+the discrete form of $4\,\mathrm{Re}\int a\,b^*/S\,\dd f$, the log-likelihood of the window
+is the Whittle likelihood
+\begin{equation}
+  \log p(d\mid\theta_{1:S}) = -\tfrac12\inner{d-h}{d-h} + \text{const}
+  = -\sum_{k,c}\frac{\bigl|\tilde d_{k,c}-\tilde h_{k,c}(\theta_{1:S})\bigr|^2}{S_c(f_k)\,\Tobs/2}
+  + \text{const}.
+  \label{eq:loglik}
+\end{equation}
+Training never evaluates it, because the flow learns from simulated pairs alone, but it
+defines the posterior that the flow must reproduce, and the Fisher reference
+(\cref{app:evaluation-fisher}) and the MCMC baseline (\cref{app:mcmc}) use it directly.
+
+\subsection{Signal-to-Noise Ratio and the Amplitude Prior}
+\label{app:noise-snr}
+
+The optimal matched-filter SNR is $\snr^2 = \inner{h}{h}$: for noiseless data $d = h$, it is
+twice the log-likelihood gain of the true sources over no source,
+$\snr^2 = 2\,[\log p(d\mid\theta_{1:S}) - \log p(d\mid\text{no source})]$. We quote two
+versions: the SNR of one source (its response alone) and the SNR of a window (all four
+sources). A fixed box in amplitude would be a very different prior at the two ends of the
+band: the same $\Amp$ is undetectable at 0.1\,mHz and very loud at 5\,mHz. As in
+\citet{strub2022bayesian}, we instead set the amplitude prior through the SNR. For a
+monochromatic source averaged over sky position, polarisation, inclination and phase,
+\begin{equation}
+  \snr^2 \simeq C\,\frac{\Amp^2\,\Tobs}{S_n(f)},\qquad
+  S_n(f) = \frac{10}{3\,(cL)^2}\left[P_{\rm oms} + \frac{4P_{\rm acc}}{(2\pi f)^4}\right]
+  \left[1+0.6\Bigl(\frac{f}{f_\star}\Bigr)^2\right],\quad f_\star = \frac{1}{2\pi L},
+  \label{eq:snr-sky}
+\end{equation}
+with $cL = 2.5$\,Gm the arm length. $S_n$ is the sky-averaged sensitivity of
+\citet[eq.~13]{robson2019construction} in its low-frequency form: their acceleration term
+carries $2\bigl(1+\cos^2(f/f_\star)\bigr)$, which tends to the 4 above for $f\ll f_\star$; the
+two differ by at most 0.7\% in $S_n$ (0.3\% in amplitude) between 0.1 and 12\,mHz, because
+the acceleration noise is negligible where they differ. Rather than take the constant $C$
+from a paper whose normalisation conventions differ from ours, we measure it by Monte Carlo
+against our own $\snr$ with this $S_n$: $C = 3.225$, flat to 0.1\% below 1.5\,mHz and
+drifting by 7\% at 12\,mHz, where the $1+0.6(f/f_\star)^2$ approximation runs out. A window at
+centre frequency $\fw$ then has the amplitude range
+\begin{equation}
+  \Amp \in \bigl[\Amp_{\rm lo}(\fw), \Amp_{\rm hi}(\fw)\bigr]
+  = [\snr_{\min}, \snr_{\max}]\,\sqrt{\frac{S_n(\fw)}{C\,\Tobs}},
+  \qquad [\snr_{\min},\snr_{\max}] = [7, 1000],
+  \label{eq:amp-window}
+\end{equation}
+evaluated at the window centre rather than at each source's frequency: the sensitivity is
+flat across a window, and this keeps the amplitude coordinate (\cref{eq:chart}) a function
+of the window alone. \Cref{fig:band}b shows the range across the band and \cref{fig:priors}b
+the per-source SNR it produces.
+
+\subsection{Validation of the Forward Model}
+\label{app:noise-validation}
+
+Before training, we checked the simulator and the likelihood against an independent analysis
+and against their own statistics.
+\begin{itemize}
+  \item \textbf{SNR against a published source.} For the faint source of
+        \citet[Table VII]{strub2022bayesian} ($f_0 = 1.40457$\,mHz,
+        $\log_{10}\fdot = -17.3$, $\Amp = 4.55\times10^{-23}$, ecliptic longitude and latitude
+        $(1.5, 0.2)$ rotated to the equatorial $(\alpha,\delta)$ of the orbits,
+        $\iota = 1.2$, $\psi = 2$, $\phi_0 = 3$, two years), our SNR is 7.951 against their
+        7.93. Their value is the SNR in their noise realisation, a draw from
+        $\Normal(\snr_{\rm opt}, 1)$, so the agreement (0.26\%) is better than the check can
+        resolve.
+  \item \textbf{Posterior against a published source.} A parallel-tempered ensemble MCMC on
+        our likelihood (\cref{app:mcmc}) reproduces the width and shape of their posterior:
+        the $f_0$--$\fdot$ correlation, the prior-limited $\fdot$, the $\cos\iota$--$\Amp$
+        anticorrelation, and $\sigma_{f_0} = 1.40$\,nHz against their $+1.9/-1.5$\,nHz.
+        Their narrower $\cos\iota$ comes from sampling inside a $\pm3\sigma$ Fisher box
+        around the maximum-likelihood point, which truncates the tail towards face-on; inside
+        the same box we reproduce their width. Over 48 noise realisations, the gain from the
+        optimal SNR to the maximum-likelihood SNR matches theirs (0.32), which tests the
+        curvature of the likelihood.
+  \item \textbf{Noise generator.} Whitened by the same PSD the likelihood uses, 3000
+        pure-noise windows give complex values of unit variance ($E|z|^2 = 1.0000$, variance
+        0.5000 in each of the real and imaginary parts, correlation $-2\times10^{-4}$), an
+        empirical PSD equal to $S_c$ to Monte-Carlo precision with no frequency tilt, and
+        $\inner{n}{n}$ distributed as the expected $\chi^2$ (Kolmogorov--Smirnov $p = 0.83$).
+  \item \textbf{Response and TDI conventions.} JaxGB's waveform and link response
+        (\cref{eq:waveform,eq:pol-ssb,eq:link-response}) are those of the documentation of
+        JaxGB and of LISA GW Response, which share the triad, the polarisation rotation and
+        the link response term by term. JaxGB's TDI combination (\cref{eq:tdi-x}) agrees with
+        the standard equal-arm TDI-1.5 $X$ of \citet[eq.~14]{babak2021lisa}, built from the
+        same link responses, to $2.4\times10^{-4}$ up to 3\,mHz and $7\times10^{-3}$ at 10\,mHz
+        (\cref{app:signal-tdi}).
+  \item \textbf{Noise PSDs.} The $A$, $E$, $T$ PSDs of the simulator equal
+        \cref{eq:psd}, that is eqs.~19 and 127--130 of \citet{babak2021lisa} at TDI 1.5, to
+        machine precision.
+  \item \textbf{Self-consistency.} The two forms of $\snr^2$ above agree to the last digit, and an MCMC on a noiseless injection recovers the truth at the
+        centre of the posterior with $\hat R\approx1.000$ on all eight parameters.
+\end{itemize}

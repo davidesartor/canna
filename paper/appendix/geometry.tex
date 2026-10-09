@@ -1,0 +1,115 @@
+% =======================================================================================
+\section{Flow Coordinates and the Source Manifold}
+\label{app:geometry}
+% =======================================================================================
+
+\subsection{The Chart}
+\label{app:geometry-chart}
+
+The flow does not work in physical units. A chart $\varphi_w$, which depends on the window,
+maps each source to eleven numbers on a product manifold:
+\begin{align}
+  x_f &= \frac{2\ln f_0 - \ln f_{\rm lo} - \ln f_{\rm hi}}{\ln f_{\rm hi} - \ln f_{\rm lo}}\in[-1,1], &
+  x_{\Mc} &= \frac{\ln\Mc - \mu_{\Mc}}{\sigma_{\Mc}}\in\R, &
+  x_{\Amp} &= \frac{2\ln\Amp - \ln\Amp_{\rm lo} - \ln\Amp_{\rm hi}}{\ln\Amp_{\rm hi} - \ln\Amp_{\rm lo}}\in[-1,1], \nonumber\\
+  n_{\rm sky} &= \begin{pmatrix}\cos\delta\cos\alpha\\ \cos\delta\sin\alpha\\ \sin\delta\end{pmatrix}\in\Sph^2, &
+  n_{\rm or} &= \begin{pmatrix}\sin\iota\cos\psi\\ \sin\iota\sin\psi\\ \cos\iota\end{pmatrix}\in\Sph^2, &
+  e_{\phi} &= \begin{pmatrix}\cos\phi_0\\ \sin\phi_0\end{pmatrix}\in\Sph^1,
+  \label{eq:chart}
+\end{align}
+so that a source lives on
+$\manifold = [-1,1]\times\R\times[-1,1]\times\Sph^2\times\Sph^2\times\Sph^1$, of dimension 8,
+embedded in $\R^{11}$. Frequency and amplitude are whitened relative to the window
+(\cref{eq:window-interior,eq:amp-window}), so the network always predicts quantities of order
+one, and the absolute frequency reaches it through the conditioning instead
+(\cref{app:architecture}). The log chirp mass is standardised by its prior mean and standard
+deviation, computed once by quadrature over $(m_1, m_2/m_1)$ on a $256\times256$ grid. The
+inverse chart uses $\operatorname{atan2}$ for every angle.
+
+The chart is chosen so that the prior is simple on $\manifold$: $x_f$ and $x_{\Amp}$ are
+uniform on $[-1,1]$, $n_{\rm sky}$ and $n_{\rm or}$ are uniform on their spheres (isotropic
+sky, $\psi$ uniform and $\cos\iota$ uniform), and $e_\phi$ is uniform on the circle. Only
+$x_{\Mc}$ keeps a non-trivial density. Angles then have no branch cuts and the sky no poles:
+a posterior that straddles $\alpha = 0$ or $\phi_0 = 0$ is a single connected mode on the
+manifold.
+
+\subsection{Geodesics}
+\label{app:geometry-maps}
+
+Each factor comes with its exponential map $\Exp_x(v)$, which follows the geodesic from $x$
+with initial velocity $v$ for unit time, and its logarithm $\Log_x(x')$, the initial velocity
+of the geodesic from $x$ to $x'$:
+\begin{itemize}
+  \item \textbf{line} ($x_{\Mc}$): $\Log_x(x') = x'-x$, $\Exp_x(v) = x+v$;
+  \item \textbf{interval} ($x_f$, $x_{\Amp}$): the same, with $\Exp$ clipped to $[-1,1]$. The
+        segment between two interior points stays inside, so the clip only guards the
+        sampler against overshooting;
+  \item \textbf{sphere} ($\Sph^{n-1}$, unit radius): with
+        $\vartheta = \operatorname{atan2}\bigl(\lVert x' - \langle x,x'\rangle x\rVert,
+        \langle x,x'\rangle\bigr)$ the angle between the points,
+        \begin{equation}
+          \Log_x(x') = \vartheta\,\frac{x' - \cos\vartheta\,x}{\lVert x' - \cos\vartheta\,x\rVert},
+          \qquad
+          \Exp_x(v) = \cos\lVert v_\perp\rVert\,x + \frac{\sin\lVert v_\perp\rVert}{\lVert v_\perp\rVert}\,v_\perp,
+          \quad v_\perp = v - \langle v, x\rangle x,
+        \end{equation}
+        with an arbitrary direction orthogonal to $x$ at the antipode, where the geodesic is
+        not unique. $\Exp$ discards the radial part of $v$, which keeps the sampler on the
+        sphere;
+  \item \textbf{product} $\manifold$: factor by factor, with the product metric
+        $d(x,x')^2 = \sum_{\rm factors}\lVert\Log_x(x')\rVert^2$.
+\end{itemize}
+The geodesic interpolation between two points is
+$\gamma(s) = \Exp_{x_0}\bigl(s\Log_{x_0}(x_1)\bigr)$, $s\in[0,1]$, with constant speed; we
+obtain its velocity $\dot\gamma(s)$ by automatic differentiation of $\gamma$ with respect to $s$.
+
+\subsection{An Unordered Set of Sources}
+\label{app:geometry-set}
+
+A window holds a set of $S$ sources, a point of the quotient $\manifold^S/\mathfrak S_S$ by the
+permutation group. We work with an ordered representative and choose the order when it
+matters, which is when a path is drawn between two sets. For base and target sets $X_0$ and
+$X_1$, we align the target to the base,
+\begin{equation}
+  \sigma^\star = \operatorname*{arg\,min}_{\sigma\in\mathfrak S_S}
+  \sum_{i=1}^{S} d\bigl(x_{0,i},\, x_{1,\sigma(i)}\bigr)^2,
+  \qquad
+  \Log_{X_0}(X_1) = \Bigl(\Log_{x_{0,i}}\bigl(x_{1,\sigma^\star(i)}\bigr)\Bigr)_{i=1}^{S},
+  \label{eq:set-log}
+\end{equation}
+by exhaustive search over the $S!=24$ permutations (for larger sets the implementation falls
+back to randomised pairwise swaps). The aligned path never sends two slots across each other
+when swapping their targets would shorten it. \Cref{eq:set-log} is the logarithm map of the
+quotient wherever the minimiser is unique, which holds outside a set of measure zero. It is
+the single-sample analogue of the minibatch optimal-transport couplings of
+\citet{tong2024improving}, restricted to the permutation group. Three properties together
+make the sampled distribution exchangeable: the aligned coupling, the exchangeable base
+distribution (the prior), and a network that is equivariant to permutations of the source
+tokens (\cref{app:architecture-equivariance}). The auxiliary endpoint loss uses the same
+aligned logarithm, so it is invariant to permutations too (\cref{eq:aux-x}).
+
+\subsection{Remarks}
+\label{app:geometry-remarks}
+
+\paragraph{Orientation.}
+$(\psi,\iota,\phi_0)$ are Euler angles of the binary's frame relative to the line of sight, so
+their natural space is $SO(3)$ modulo the symmetries of \cref{eq:psi-phi-symmetry}. Our chart
+uses $\Sph^2\times\Sph^1$ instead, with $(\psi,\iota)$ as azimuth and polar angle. At the poles,
+$\iota\in\{0,\pi\}$, the wave is circularly polarised and depends on $\psi$ and $\phi_0$ only
+through $\phi_0\mp2\psi$, while the chart point no longer carries $\psi$. This set has
+measure zero, but nearly face-on sources sit close to it, and an $SO(3)$ chart would treat
+them more naturally.
+
+\paragraph{Resolution of the coordinates in bfloat16.}
+The network computes in bfloat16, which keeps 8 significant bits, so the input coordinate
+$x_f$ is resolved to $2^{-8}|x_f|$ to $2^{-7}|x_f|$. One unit of $x_f$ spans half the window
+interior, 24 bins on XS: the bfloat16 cell of $x_f$ ranges from below 0.01 bins near the
+window centre to 0.094 bins near the edges. On XS this does not set the posterior width. At a
+constant learning rate, the 0.088-bin floor did not depend on the cell size (Spearman
+$-0.10$ over 379 loud sources). After the cooldown, the 768 network's loud sources in the
+largest cells are $1.10\times$ (95\% CI 0.94--1.21) as wide as those in the smallest, and
+the 512 network's $1.22\times$ (1.02--1.40). On B one unit spans 1536 bins, and the cell
+reaches 6 bins over half of the window, about 160 times the XS floor; whether the network
+still resolves sub-cell positions there is measured in \cref{app:b}.
+\draftnote{New 2026-10-08: the XS cell test after the cooldown; not yet in the research log.
+Decide whether it stays.}

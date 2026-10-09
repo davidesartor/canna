@@ -1,0 +1,19 @@
+% =======================================================================================
+\section{Introduction}
+\label{sec:introduction}
+% =======================================================================================
+% Planned paragraphs (empty on purpose; to be written from the appendices):
+%  - diffusion models and flow matching as conditional samplers; amortised
+%    simulation-based inference (NPE, FMPE, score-based SBI)
+%  - LISA and its Galactic binaries: tens of millions of sources, ~10^4 resolvable,
+%    overlapping in frequency; the population matters for astrophysics
+%  - the global fit: trans-dimensional MCMC over all sources at once, its cost, and why
+%    an amortised, local (per-window) posterior estimator is attractive
+%  - what is hard for a generative model here: unordered sets of sources (label
+%    switching), angles and spheres, exact degeneracies, posteriors 10^3 times narrower
+%    than the prior at high SNR
+%  - contributions: (i) flow matching on a product manifold for an unordered set of
+%    binaries; (ii) why the flow-matching loss is blind to narrow posteriors and a time
+%    warp that fixes it (app:sensitivity); (iii) a training recipe (warp, short auxiliary phase,
+%    lr cooldown) and an ablation ladder on XS (app:xs); (iv) the whole LISA band (B,
+%    app:b) and a comparison with MCMC (app:mcmc)

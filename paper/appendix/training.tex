@@ -1,0 +1,96 @@
+% =======================================================================================
+\section{Optimisation, Schedules and Compute}
+\label{app:training}
+% =======================================================================================
+
+\subsection{Optimiser}
+
+Gradients are clipped to a global norm of 1, then the two-dimensional weight matrices are
+updated with Muon \citep{jordan2024muon,liu2025muon} and all other parameters with Adam, both
+at learning rate $\gamma = 10^{-4}$ and without weight decay (\texttt{optax.contrib.muon},
+version 0.2.8, default width scaling). Batches hold 256 windows; one epoch is 1000 steps.
+Muon orthogonalises each matrix update, so its size per element is fixed by the learning rate
+and the shape: we measured an update RMS of $(0.03$--$0.045)\,\gamma$, about five times smaller
+than AdamW at the same nominal rate. We did not tune the learning rate; with the compute
+available, every run went into a different question (\cref{app:xs}).
+
+\subsection{Schedules}
+\label{app:training-schedules}
+
+\paragraph{Auxiliary heads.}
+The weight $a(\tau)$ of \cref{eq:loss} decays as a half cosine from 1 to 0 over the first
+$f_{\rm aux}$ of training: half of the run in the original configuration, a tenth in the
+recipe.
+
+\paragraph{Learning rate.}
+The original runs kept the learning rate constant. The recipe adds a cooldown: constant, then
+a linear decay to zero over the last 20\% of the steps, the warmup-stable-decay schedule of
+\citet{hu2024minicpm} and \citet{hagele2024scaling} without warmup. It is applied as a scale
+on the update in epoch $e$ of $E$,
+\begin{equation}
+  \lambda_e = \begin{cases} 1 & e < E - E_c,\\[2pt] \dfrac{E - e - \frac12}{E_c} & e\ge E-E_c,\end{cases}
+\end{equation}
+with $E_c$ the number of cooldown epochs, so that each epoch takes the ramp's value at its
+midpoint. Without weight decay, scaling the update is exactly scaling the learning rate, and
+because the scale is a function of the epoch rather than of a step counter in the optimiser
+state, a run resumed with a fresh optimiser lands at the right point of the schedule. The
+cooldowns of \cref{app:xs} continue a finished 1M-step run for 200k more steps with
+$E_c = 200$.
+
+\paragraph{Checkpoints.}
+Every epoch saves a checkpoint, and a job longer than the cluster's 24-hour limit is a chain
+of jobs that each resume from the latest one. To fit a storage quota, the 768-wide runs and
+B save the weights without the optimiser state. A resumed job then restarts Muon's momentum
+and Adam's moments, which leaves no visible trace in the loss: on B, the epoch before and
+after the first restart logged 0.5370 and 0.5374.
+
+\subsection{Compute}
+\label{app:training-compute}
+
+Every run used a single NVIDIA A100 (80\,GB, PCIe). The simulator, the loss and the update
+are compiled into one XLA program per epoch of 1000 steps. \Cref{tab:compute} gives the
+measured costs. A fit of the step time against the network's FLOPs on XS and S gives about
+23\,ms of fixed cost per step and 105\,TFLOP/s of marginal throughput (about a third of the
+A100's bfloat16 peak), so the small XS problem is dominated by overheads and the large B
+problem by the network. The whole XS ablation ladder of \cref{tab:xs-ladder} cost about 45
+A100-hours, and B1 about 86.
+
+\begin{table}[h]
+\caption{Measured cost on one A100, batch 256. Peak memory is for training; JAX reserves 75\%
+of the card by default.}
+\label{tab:compute}
+\centering
+\small
+\begin{tabular}{llrrl}
+\toprule
+rung & width & per 1000 steps & peak memory & runs \\
+\midrule
+XS & 512 & 38.9\,s & -- & 1M steps in 10.8\,h; 200k cooldown in 2.2\,h \\
+XS & 768 & 59.6\,s & -- & 1M steps in 16.6\,h; 200k cooldown in 3.6\,h \\
+S & 512 & 80\,s & -- & 500k steps in 11.1\,h (an early run that diverged; not retrained) \\
+B & 512 & 1536\,s & 18.6\,GiB & 200k steps in 86\,h (4 chained jobs) \\
+B & 768 & 2570\,s & 29.4\,GiB & 300-step benchmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Sampling cost.}
+A scorecard pass on XS (210 windows, 256 draws each, 32 RK4 steps) takes about 4 minutes on
+an A100, about one second per window. On B, 256 draws of one window take about 78 seconds with
+the 768-wide network.
+
+\subsection{Numerics}
+\label{app:training-numerics}
+
+Training and evaluation run in bfloat16. Three checks, on XS-late
+(\cref{tab:numerics}), show that the numerics do not set the results: the RK4 integrator is
+converged at 32 steps; float32 evaluation on a CPU gives the same widths as bfloat16 on the
+A100 (median ratio 0.991, 95\% interval 0.978--1.000, over 93 loud sources) and finds the same
+169 sources; and float32 on the A100 reproduces the CPU once XLA's GEMM autotuning is switched
+off. With autotuning on, float32 programs were silently wrong on both GPUs we used. At the
+default level they found almost no sources. At level 3 the A100 gave posteriors 2.4 times
+narrower than the CPU's at the same distance from the truth: over-confident, with 45\% of the
+truths inside the 68\% intervals. A fixed compiled program gave different answers at different
+autotuning levels, on two JAX and two CUDA versions, so the fault is in the compilation and not
+in the model; bfloat16 is unaffected. We report it because the over-confident failure is easy to
+mistake for a sharper posterior.

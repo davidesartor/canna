@@ -1,0 +1,114 @@
+% =======================================================================================
+\section{Why the Flow-Matching Loss Cannot See a Narrow Posterior}
+\label{app:sensitivity}
+% =======================================================================================
+
+The first trained XS models placed loud sources at the right frequency, but with an $f_0$
+width that stopped shrinking at about $0.15$--$0.2$ bins whatever the SNR: about 100 times the
+ideal width at SNR 1000 (\cref{fig:width-snr}). The training loss gave no sign of it. This
+appendix explains why, with a model simple enough to solve, and derives what the warped clock
+of \cref{eq:warp} changes.
+
+\subsection{A Gaussian Model of One Coordinate}
+
+Take one flow coordinate with base $x_0\sim\Normal(0,s_0^2)$, target posterior
+$x_1\sim\Normal(0,\sigma^2)$, the straight path $x_s = (1-s)x_0 + s x_1$ and the target
+$u = x_1 - x_0$. At path position $s$ the marginal is $x_s\sim\Normal(0, m^2(s))$ with
+$m^2 = (1-s)^2s_0^2 + s^2\sigma^2$, and the optimal field is linear,
+\begin{equation}
+  v^\star(x,s) = \E[u\mid x_s = x] = g(s)\,x,\qquad
+  g(s) = \frac{s\,\sigma^2 - (1-s)\,s_0^2}{m^2(s)} .
+\end{equation}
+A model whose field is exactly that of a wider posterior $\Normal(0,\sigma_m^2)$, the field
+$g_m(s)\,x$ with $\sigma\to\sigma_m$ in $g$ and $m$, pays an excess loss over the optimum. By
+the orthogonality of the regression residual, it is
+\begin{equation}
+  \Delta L_p(\sigma_m;\sigma) = \E_{t}\,\E_{x\sim\Normal(0,m^2)}\bigl[(g_m - g)^2x^2\bigr]
+  = \int_0^1 m^2(s)\,\bigl[g_m(s) - g(s)\bigr]^2\,\dd t,\qquad s = 1-(1-t)^p .
+  \label{eq:excess}
+\end{equation}
+
+\begin{proposition}
+\label{prop:sensitivity}
+For $\sigma\ll\sigma_m\ll s_0$,
+\begin{equation}
+  \Delta L_p(\sigma_m;\sigma) = C_p\,s_0^{\,2-1/p}\,\sigma_m^{1/p}\,\bigl(1+o(1)\bigr),\qquad
+  C_p = \frac{(2p-1)\,\pi}{4p^2\sin\bigl(\pi/2p\bigr)},
+  \label{eq:sensitivity}
+\end{equation}
+so that $C_1 = \pi/4$ for the uniform clock and $C_3 = 5\pi/18$ for the warped one. To leading
+order the excess does not depend on the true width $\sigma$.
+\end{proposition}
+
+\begin{proof}
+Set $s_0=1$ and $\epsilon = 1-s$; the clock has density $q_p(\epsilon) = \frac1p\epsilon^{1/p-1}$
+in $\epsilon$. Where $\epsilon\gg\sigma$, $m^2\simeq\epsilon^2$ and $g\simeq-1/\epsilon$, so
+\begin{equation*}
+  g_m - g \simeq \frac{\sigma_m^2-\epsilon}{\epsilon^2+\sigma_m^2} + \frac1\epsilon
+  = \frac{\sigma_m^2(1+\epsilon)}{\epsilon\,(\epsilon^2+\sigma_m^2)},\qquad
+  m^2(g_m-g)^2 \simeq \frac{\sigma_m^4}{(\epsilon^2+\sigma_m^2)^2}
+\end{equation*}
+up to a relative $O(\epsilon)$. The region $\epsilon\lesssim\sigma$ contributes $O(\sigma)$.
+Substituting $\epsilon = \sigma_m z$,
+\begin{equation*}
+  \Delta L_p \simeq \frac1p\int_0^\infty \epsilon^{1/p-1}\frac{\sigma_m^4\,\dd\epsilon}{(\epsilon^2+\sigma_m^2)^2}
+  = \frac{\sigma_m^{1/p}}{p}\int_0^\infty\frac{z^{1/p-1}}{(1+z^2)^2}\,\dd z
+  = \frac{\sigma_m^{1/p}}{2p}\,B\!\Bigl(\frac{1}{2p}, 2-\frac{1}{2p}\Bigr),
+\end{equation*}
+and $\Gamma(a)\Gamma(2-a) = (1-a)\,\pi/\sin(\pi a)$ with $a = 1/2p$ gives $C_p$. The factor
+$s_0^{2-1/p}$ follows from dimensions: $\Delta L$ scales as $s_0^2$ and depends on
+$\sigma_m/s_0$ alone.
+\end{proof}
+
+\Cref{fig:warp}b checks \cref{eq:sensitivity} against direct quadrature of \cref{eq:excess}:
+the ratio is 1.000 for $p=1$ and 0.95 for $p=3$ at a width of 0.037 XS bins.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.55\textwidth]{figures/warp.pdf}
+  \caption{(a) Share of the training samples that land within $\epsilon$ of the end of the
+  path, $\epsilon^{1/p}$, for the uniform and the warped clock; vertical lines mark where the
+  structure of an $f_0$ posterior of 0.18 bins, 0.037 bins, and the ideal width at SNR 1000
+  is resolved ($1-s\approx\sigma/s_0$, XS units). (b) Excess flow-matching loss of a model that
+  is $\sigma_m$ wide when the true posterior is far narrower: quadrature of \cref{eq:excess}
+  (dots) and the asymptote \cref{eq:sensitivity} (lines).}
+  \label{fig:warp}
+\end{figure}
+
+\subsection{Consequences}
+
+\paragraph{The loss rewards absolute narrowness, weakly.}
+Under the uniform clock the excess is linear in the model's width,
+$\Delta L_1\simeq\frac\pi4 s_0\sigma_m$, and its gradient $\frac\pi4 s_0$ is the same whether
+the model is 1000 or 2 times too wide. Nothing in the objective grows as the posterior gets
+closer to its true width.
+
+\paragraph{The floor is invisible in the logged loss.}
+On XS, $x_f$ is uniform on $[-1,1]$, so $s_0 = 1/\sqrt3$, and one unit is 24 bins. A floor of
+0.18 bins, $\sigma_m = 0.0075$, costs $\frac\pi4 s_0\sigma_m = 3.4\times10^{-3}$ on that
+coordinate. The logged loss averages over $11S = 44$ coordinates, and about half of the
+sources are loud enough to be affected, so the whole floor raises the logged loss by
+$\approx1.5\times10^{-4}$. That is less than the epoch-to-epoch scatter of the logged loss
+($5\times10^{-4}$), and about 1\% of what a doubling of the training steps buys
+($1.7\times10^{-2}$, \cref{app:xs-dynamics}). Longer training and bigger networks lower the
+part of the loss the objective can see, which is the coarse structure: detection, sky
+position, amplitude.
+
+\paragraph{Where the information lives.}
+The structure of a posterior of width $\sigma$ is resolved only at $1-s\lesssim\sigma/s_0$. For
+the 0.18-bin floor this is the last 1.3\% of a uniform clock, and for the ideal width at SNR
+1000 ($5.5\times10^{-4}$ bins) the last $4\times10^{-5}$ (\cref{fig:warp}a).
+
+\paragraph{What the warp changes.}
+With $p=3$ the same floor costs $(10/9)(\sigma_m/s_0)^{-2/3}$ times more: 20 times at 0.18
+bins and 58 times at 0.037 bins. The gradient now grows as the posterior narrows,
+$\partial_{\sigma_m}\Delta L_3\propto\sigma_m^{-2/3}$, and 23\% of the samples land where the
+0.18-bin structure is resolved instead of 1.3\%. In the experiments the warp alone narrowed the
+loud-source $f_0$ posteriors by a factor of 0.6 at every SNR (\cref{app:xs}).
+
+The model is idealised: one coordinate, Gaussian base and posterior, a straight path, a model
+error of the simplest form. Its point is the scaling. A uniform-$t$ flow-matching loss is
+nearly blind to the width of posteriors much narrower than the prior, which is the regime of
+loud gravitational-wave sources, whose ideal posterior is three to seven orders of magnitude
+narrower than the window (48 bins on XS and 3072 on B, against $5.5\times10^{-4}$ bins at SNR
+1000).
