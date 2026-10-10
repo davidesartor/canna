@@ -4,8 +4,59 @@ Scope: the LISA galactic-binary flow (`src/canna/lisa`), all runs on TREX to dat
 (2026-09-01 to 2026-10-01), and the experiment plan from here. The numbers come from the
 slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-XS/`
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
+§9 places the work in the literature (survey of 2026-10-09).
 
-## 1. Summary (2026-10-01, updated 2026-10-06)
+## 1. Summary (2026-10-01, updated 2026-10-10)
+
+- **Update, 2026-10-10 evening (F27): flow against MCMC on two XS windows** (jexplore,
+  32-D joint, two converged seeds each).
+  - The flow is never biased: the MCMC median is inside its 95% in 64 of 64
+    source–parameter pairs.
+  - Loud sources are too wide: f₀ 38–84× the MCMC width, everything else 4–8×.
+  - Found faint sources are near-optimal (1–2×).
+  - In each window it misses one faint source the MCMC localises (SNR 27.1: 231× in f₀),
+    which costs a brighter neighbour ~20% of its draws.
+  - Fisher matches the MCMC at SNR ≥ 567, so the floor's "× ideal" holds.
+- **R1 is ready** (f55ab93, `configs/XS-pos.yaml`, PositionedLisaFlow), handed to TREX on
+  10 Oct.
+
+- **Update, 2026-10-10 (F26): B1 trains, but does not localise f₀.**
+  - **Training:** 200k steps in four 24 h links, no NaN. Flow loss 0.473; the cooldown
+    gave −0.025.
+  - **Widths:** f₀ is 2.8–4.5 bins wide at every SNR, so only 1 of 240 sources is under a
+    bin. The posteriors over-cover (in68 0.84–0.90). The sky is resolved, but ψ and φ₀ are
+    not.
+  - **Cause:** in the flow's f₀ coordinate, B's floor is XS's: 2.0×10⁻³ against
+    1.5–1.6×10⁻³ units of x_f. One unit is 24 bins on XS and 1536 on B. So the
+    loud-source floor is a fixed precision of the coordinate, and B's window makes it
+    3 bins.
+  - **Ruled out:** the bf16 input cell, the bf16 y-token positions (only 641 distinct of
+    2048 on B, a defect in its own right) and eval-time rounding.
+  - **Next (§6):** multi-scale fp32 Fourier features for the source coordinate and the
+    token positions, tested on XS first (one ~13 h run), then B.
+
+- **Update, 2026-10-09 (§9): related work.** A survey of neural and simulation-based
+  inference for LISA, with 39 entries added to or updated in `paper/references.bib`.
+  - **Closest work:** Delmond, Korsakova et al. (arXiv:2606.29039, June 2026).
+    - A normalizing-flow posterior for **one** Galactic binary, and for **two** as a
+      proof of concept, with label switching broken by ordering f₀.
+    - Uniform priors in ±2 μHz boxes, SNR 10–100, T_obs = 1 yr.
+  - **Also close:**
+    - **Mao, Lee and Edwards (Auckland, arXiv:2512.18290):** flow-matching posteriors for
+      one GB-like source with 3 parameters and data gaps, from a WDM-image CNN.
+    - **SlotFlow (Houba, Giarda and Speri, arXiv:2511.23228):** amortised inference with
+      an unknown number of sources, using factorised per-slot flows and Hungarian
+      matching, tested on sinusoids only.
+  - **What is ours:**
+    - the non-factorised joint posterior of 4 GBs per window;
+    - label switching handled inside the flow-matching coupling;
+    - Riemannian flow matching on the parameter manifold;
+    - broad priors, and one network for the whole band (B);
+    - the loss-sensitivity account of the loud-source floor, and its fix. The others see
+      the same symptom but attribute it to other causes.
+  - **Must do:** the MCMC comparison, and a cut of the scorecard by source separation.
+  - **Time-sensitive:** Korsakova's group (NPE, flow matching and diffusion talks) and the
+    SlotFlow group ("towards LISA", May 2026) are heading to the same problem.
 
 - **Update, 2026-10-06 (F25).** The B benchmark: 1.57 s per step at 512 wide and 2.57 s
   at 768 (41× XS), memory no issue. The B eval needed draws in chunks, now done. B
@@ -147,9 +198,192 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13867994 | scorecard of XS-late-cool | Completed in 4 min. The loud floor matches the cooled 768's; fewer faint sources found (F24). |
 | 13875733, 13875737 | B0: `B-late` and `B-late-768`, 300 steps each into `outputs/bench` | Completed in 10 and 15 min: 1.57 and 2.57 s per step, peak 18.6 and 29.4 GiB (F25). |
 | 13875770, 13875840 | B0: scorecard (`--n_random 10`) and eval of the 768 benchmark checkpoint | The scorecard runs at ~78 s per injection. The eval ran out of memory at 1024 draws, now fixed by chunking (F25). |
-| **13882121 → 13882126** | B1: `B-late` (512 wide), 200k steps, the last 40k cooling down; five 24 h links chained with `afterany`, the fifth a spare | Running since about 18:45 CEST on 6 Oct (trexgpu05). 1.54 s per step and peak 18.6 GiB, as B0 measured. Flow loss 0.753 → 0.550 by epoch 35 of 200 (7 Oct, 09:44 CEST), still falling. The y aux loss jumps from 0.005 to 2.4 the epoch the aux weight reaches 0, then climbs. XS-late and XS-late-768 did the same (y ended at 190 and 520): once the weight is 0 the aux heads stop training, and sampling uses only the velocity output. About 56 epochs per link, so links 1–4 cover the run and the cooldown starts in link 3. Earliest finish about 08:30 CEST on 10 Oct, later by any queue wait between links. |
+| **13882121 → 13882126** | B1: `B-late` (512 wide), 200k steps, the last 40k cooling down; five 24 h links chained with `afterany`, the fifth a spare | **Completed** at 08:58 CEST on 10 Oct. It started at 18:46 CEST on 6 Oct; links 1–3 hit the 24 h limit at epochs 56, 112 and 167 (trexgpu05, 04, 04), link 4 ran 168–200, and the spare exited in 57 s. 1.54 s per step, peak 18.6 GiB, no NaN, no queue wait between links. Final 10-epoch flow loss 0.473 (0.498 before the cooldown). The y aux loss jumps from 0.005 to 2.4 the epoch the aux weight reaches 0, then climbs to 1508. XS-late and XS-late-768 did the same (y ended at 190 and 520): once the weight is 0 the aux heads stop training, and sampling uses only the velocity output (F26). |
+| 13948963, 13949002 | scorecard (`--n_random 50`) and eval of B-late, queued with `afterok:13882126` | Completed in 43 and 41 min, peak 5.5 GiB each. f₀ is 2.8–4.5 bins wide at every SNR; 1 of 240 sources found; calibration conservative (F26). Downloaded to `outputs/lisa-B-late` (checkpoint 200, verified on the CPU; corner pages; logs). |
 
 ## 4. Findings
+
+### F27 (2026-10-10): flow against MCMC on two XS windows — never biased, too wide when loud, misses one faint source per window
+
+**Setup** (the protocol of `paper/appendix/mcmc.tex`).
+- **Windows:** the loudest eval window (q1.00, injection 9: sources at SNR 14.4, 1245, 33 and
+  1366, f = 0.10 mHz) and the crowded one of `fig:corner-median` (q0.60, injection 5: SNR
+  27.1, 26.3, 62 and 567).
+- **Data:** eval.py's noise realisation, so the flow (`XS-late-768-cool`, its 1024 eval
+  draws) saw the same data.
+- **Sampler:** `lisa_checks/mcmc_xs.py`, jexplore with temperature swaps, then differential
+  evolution or stretch moves at even odds.
+  - 64 walkers × 6 temperatures (1–10), all four sources jointly (32 dimensions).
+  - The training prior, with the chirp mass's density by quadrature (checked against 2×10⁶
+    draws: χ²/dof 0.72). The float64 likelihood.
+  - The walkers start from the window's Fisher draws.
+  - 100k iterations of burn-in and 300k kept, thinned by 100. Two seeds per window, 14 min
+    each on the laptop GPU.
+- **Comparison:** `lisa_checks/compare_mcmc.py`. Every sample set is relabelled by
+  `match_sources`, and ψ, φ₀ are folded by the likelihood's exact symmetries (ψ + π, and
+  ψ + π/2 with φ₀ + π; the script asserts the invariance).
+
+**The MCMC is converged.**
+- Between the two seeds, every width agrees within 2% on window 5 and within 7.5% on
+  window 9, with W1 ≤ 0.1 MCMC σ.
+- The exception is the SNR-14 source's sky and φ₀ (W1 0.3–0.5 σ): its sky posterior is
+  broad and multimodal (MCMC 2× Fisher), and the seeds weight it a little differently.
+- At SNR ≥ 567, Fisher matches the MCMC in f₀ to 2%, and in most other parameters within
+  20% (the amplitude–inclination and ψ–φ₀ pairs 0.8–1.4).
+- So the scorecard's "× ideal" and the corner pages' Fisher are the right yardstick where
+  the floor is quoted. Below SNR ~60 Fisher can be off by 2× (A–ι near face-on, the sky of
+  the SNR-14 source).
+
+**Flow against MCMC** (width = 1.4826 MAD; "other" = A, sky, ψ, sin ι, φ₀; M_c is
+prior-dominated in both, ratio 0.95–1.06).
+
+| window, source | SNR | f₀ width, flow / MCMC | other, median [range] | flow draws > 1 bin off in f₀ |
+|---|---|---|---|---|
+| 9, 3 | 1366 | **84** | 5.6 [4.2–6.6] | 0.3% |
+| 9, 1 | 1245 | **66** | 6.4 [3.6–8.4] | 0% |
+| 5, 3 | 567 | **38** | 4.8 [4.1–5.8] | 0% |
+| 5, 2 | 62 | 6.2 | 2.1 [0.5–6.8] | 18% |
+| 9, 2 | 33 | 4.8 | 1.6 [1.0–2.1] | 20% |
+| 5, 0 | 27.1 | **231** (missed) | 5.0 [2.8–54] | 87% |
+| 5, 1 | 26.3 | 2.3 | 1.1 [1.0–1.2] | 0.3% |
+| 9, 0 | 14.4 | 21 | 5.3 [2.0–9.5] | 58% |
+
+- **Never biased.** The MCMC median lies inside the flow's central 95% for all 64
+  source–parameter pairs, and inside its 68% for 57 of 64. The flow is conservative, as the
+  scorecards' calibration said.
+- **Loud sources are too wide.**
+  - f₀ is 38–84× the MCMC width: the floor of F23 and F26 (0.037 bins against
+    0.0004–0.0013).
+  - Everything else is 4–8× too wide, along the posterior's own degeneracies
+    (`corner_window9_s3.pdf`: the flow spreads along the A–ι line).
+  - So the precision limit is not only f₀'s, although f₀ is where it costs most.
+- **Faint and moderate sources are near-optimal when found.** At SNR 26–33 the flow is
+  within 1.0–2.1× in every parameter but f₀ (2.3–4.8×).
+- **One faint source per window is missed, and that is the flow's failure, not the
+  data's.**
+  - The MCMC localises the SNR-27.1 source to 0.023 bins, as Fisher does (×1.06), while the
+    flow is 231× wider.
+  - In ~20% of its draws, the missed source's brighter neighbour (SNR 33 or 62) is placed
+    elsewhere: the flow's slots get confused when one is not locked on.
+- **ψ and φ₀ of the SNR-62 source** are a near-face-on degeneracy (sin ι ≈ 0.95). Only a
+  combination is constrained in both, so their width ratio (0.5) is not meaningful; W1 is
+  0.3 σ.
+- **Cost.** 14 min of laptop GPU per window and seed, against ~1 s per window for the flow
+  on an A100.
+
+**Consequences.**
+- For the paper: `tab:mcmc` and `fig:mcmc` can be filled from `outputs/mcmc/`
+  (`compare_window{9,5}.npz`, `corner_window*_s*.pdf`).
+- For R1: the 4–8× in the non-f₀ parameters says the floor is broader than f₀. R1's
+  position features target f₀ (and the sky through the token positions). If R1 fixes f₀
+  but not the rest, the remaining limit is elsewhere.
+
+### F26 (2026-10-10): B1 — B trains cleanly, but f₀ stops at ~3 bins: XS's floor, in coordinate units
+
+**Training (jobs 13882121 → 13882126, 6–10 Oct).** `B-late`, 512 × 8, 200k steps, the last
+40k cooling down.
+- Four 24 h links did all 200 epochs. The first three hit the time limit at epochs 56, 112
+  and 167, and the next link resumed within seconds each time. The spare link found the run
+  complete and exited in 57 s. Training ended at 08:58 CEST on 10 Oct.
+- 1.54 s per step and 18.6 GiB peak throughout, as B0 measured. No NaN.
+- Restarting the optimizer at each link (no saved moments) cost nothing visible:
+  0.5370 → 0.5374 at epoch 57, 0.5154 → 0.5098 at 113.
+- 10-epoch mean flow loss: 0.668 (epochs 1–10), 0.538 (51–60), 0.525 (91–100), **0.498**
+  (151–160, the last at constant lr), **0.473** (191–200).
+  - The cooldown is worth −0.025. The constant-lr trend alone would have given about
+    −0.012 over the same 40 epochs.
+  - XS ended at 0.435 (512) and 0.428 (768).
+- The aux losses drift once their weight reaches 0 (y ends at 1508, x at 0.25), as on every
+  XS run. Sampling uses only the velocity output.
+
+**Scorecard (job 13948963, 43 min, 10 eval + 50 random injections, 240 sources) and eval
+(13949002, 41 min).** Both peaked at 5.5 GiB.
+
+| SNR | n | found | f₀ width (bins), median | × ideal | in68 | in95 | rank |
+|---|---|---|---|---|---|---|---|
+| < 15 | 40 | 0.00 | 3.93 | 73 | 0.90 | 1.00 | 0.49 |
+| 15–40 | 38 | 0.03 | 3.80 | 197 | 0.84 | 0.97 | 0.38 |
+| 40–100 | 47 | 0.00 | 2.93 | 361 | 0.89 | 0.98 | 0.43 |
+| ≥ 100 | 115 | 0.00 | 3.17 | 2148 | 0.89 | 1.00 | 0.45 |
+
+(The widths here are over all sources with width under 50 bins, since almost none is
+"found". 11 sources are lost, wider than 50 bins, all at SNR < 10.)
+
+- **Only 1 of 240 sources is under a bin.** Widths are 2.8–4.5 bins (IQR) at every SNR, from
+  5 to 1668. On XS the loud floor is 0.037 bins.
+- **The posteriors are broad but honest.** in68 is 0.84–0.90 and in95 0.97–1.00 in every
+  band, so they over-cover. Offsets are about 0.4 widths.
+- **The offsets are shared within an injection.** The std of the per-injection mean is
+  3.2 bins, against 1.6 within an injection. The loudest eval injection (q1.00) is shifted
+  by +12 to +19 bins on all four sources. Below 1 mHz, widths and offsets are about 20%
+  larger.
+- **Loudest eval source (SNR 1668, `corner/gb-loudest.pdf`).**
+  - The sky is resolved: λ to ±0.009 rad.
+  - M_c is broad (±0.11), and ψ and φ₀ are flat, while the Fisher has them tight.
+  - With f₀ uncertain by 3 bins the phase is lost, so that follows.
+- The other per-GB pages are the median (SNR 60.8, q0.10 s3) and the faintest (SNR 7.3,
+  q0.20 s1).
+- The corner pages log "Too few points to create valid contours" because the Fisher draws
+  are far narrower than the axes. That is cosmetic.
+
+**What does not set the width.** Each scored source's f₀ coordinate was regenerated
+(`outputs/scorecards/positions_B.py`; they match the scorecard's SNRs).
+- **The bf16 cell of the input coordinate does not.** That cell is 6 bins for |x_f| > 0.5
+  and shrinks toward the centre. But sources in 0.09–0.4-bin cells are as wide (2.5–3.0
+  bins) as those in 6-bin cells (≈ 3.2). Spearman ρ with the cell is +0.21, and the
+  widths are 30× the smallest cells.
+- **The bf16 positions of the y tokens do not either.**
+  - `PositionalEmbed` builds `arange(2048)` in the compute dtype. In bf16 that gives only
+    **641 distinct positions for the 2048 frequency tokens**: steps of 2, 4 and 8 tokens
+    above token 256, 512 and 1024. XS (32 tokens) and S (128) are exact.
+  - Its highest frequency is one period per window, so on B neighbouring tokens differ by
+    0.003 rad, against 0.2 on XS.
+  - Yet sources sit at tokens 264–1792, and the widths are 3.1, 3.1 and 3.5 bins where
+    the step is 4, 8 and 16 bins.
+  - It is a defect for B regardless, and the next B run should not keep it.
+- **Not eval-time rounding (bound from F21).** fp32 at eval left XS-late's width unchanged
+  (0.991, 95% ≥ 0.978). That caps eval-time rounding at 7.5×10⁻⁴ coordinate units in
+  quadrature, so fp32 at eval could narrow B by at most ~7%. The test is not worth running.
+  It would also need smaller chunks, since fp32 attention falls back to XLA's materialised
+  logits.
+
+**What does fit: a fixed precision in the flow's coordinate.** The f₀ coordinate x_f maps
+the window interior onto [−1, 1].
+- One unit of x_f spans **24 bins on XS and ~1536 on B**.
+- In those units:
+
+| run | loud f₀ width (bins) | in units of x_f |
+|---|---|---|
+| XS-late-768-cool (F23) | 0.037 | **1.5×10⁻³** |
+| XS-late-cool (F24, 512) | 0.039 | **1.6×10⁻³** |
+| B-late (512, SNR ≥ 40) | 3.0 | **2.0×10⁻³** (IQR 1.7–2.4) |
+
+- B, with a 64× wider window and a sixth of the steps, places sources to within 30% of
+  XS's best precision in x_f. That precision is about half a bf16 ulp of an O(1) number
+  (2⁻⁸ = 3.9×10⁻³).
+- The floor F6 and F23 describe on XS, 25× Fisher, is the same limit. On XS it sits below
+  a bin; B's window makes it 3 bins.
+- To find sources on B (width < 1 bin) the network needs 6.5×10⁻⁴ units, 2.5× finer than
+  XS's best. To reach Fisher for loud sources it needs ~10⁻⁶.
+- On XS only the cooldown has moved this number (3.6 → 1.5×10⁻³). Width (F19, F24),
+  integrator steps (F16) and fp32 at eval (F21) did not.
+
+**Candidate causes, both structural.**
+1. **Representation.** x_f enters `x_embed` as a raw scalar, through an MLP, with no
+   Fourier features. The y positions come from sinusoids no finer than the window. Both
+   resolve a fixed fraction of the window, whatever its size in bins.
+2. **bf16 in training** (F5, F21, still open). After the first layer the coordinate
+   lives in O(1) bf16 activations, and the gradient cannot shape structure below their
+   rounding.
+- Fourier features of x_f, computed in fp32 with periods down to about a bin, address
+  both. They carry the fine position in O(1) features, so the bf16 cast no longer limits
+  it.
+
+**Consequences.**
+- B as built cannot localise f₀. More steps or the 768 width would not close a 1000×
+  gap: B already matches XS's best coordinate precision.
+- §9's claim 5 (one network for the whole band) is not supported yet.
+- The fix is architectural, and XS can test it cheaply: its floor is the same limit (§6).
 
 ### F25 (2026-10-06): B0 — B costs 1.57 s per step at 512 wide and 2.57 s at 768; the eval needs chunking
 
@@ -969,7 +1203,53 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
   - The risk is that the long aux phase is what enables the jump.
   - E1b (no aux) is dropped to save compute.
 
-## 6. Roadmap (2026-10-03, updated 2026-10-06)
+## 6. Roadmap (2026-10-03, updated 2026-10-10)
+
+### Update, 2026-10-10 (after B1, F26)
+
+B trains, but places f₀ only to ~3 bins. That is the precision XS reaches in the flow's
+coordinate (≈ 2×10⁻³ of a unit), scaled by B's 64× wider window. So the next step is
+architectural, not more steps or width.
+
+1. **The change (code, no GPU). Done in f55ab93** as `PositionedLisaFlow`, a subclass, so
+   `LisaFlow`'s fields, and every checkpoint saved from it, stay as they were.
+   - XS-late-768-cool and B-late restore and give bit-identical outputs on fixed inputs.
+   - 374 lisa tests pass, 9 of them new (`tests/lisa/test_positions.py`).
+   - What was built differs from the sketch below in two ways. The source position is
+     taken from x_f through the exact window geometry (`WindowGeometry.source_bins`), not
+     as octaves of x_f. And the shortest period is 2 bins, the same for both streams.
+
+   The sketch, as written before the code. Behind network options whose defaults keep
+   every existing checkpoint's function bit for bit:
+   - **Fourier features of the f₀ coordinate,** sin and cos of π·2ᵏ·x_f for k = 0 … K, with
+     K set from the window so the finest period is about a bin (K ≈ 5 on XS, 11 on B).
+     They are computed in fp32 before the bf16 cast and concatenated to the raw coordinate
+     in `x_embed`.
+   - **Token positions in fp32 with periods down to 2 tokens,** instead of the current
+     one-period-per-window sinusoids in the compute dtype. That fixes the 641-of-2048
+     merge on B.
+   - Use the same Fourier basis for the token positions and the source coordinate (one
+     position, two encodings), so attention can match a source to its tokens.
+   - Tests: the defaults reproduce the old outputs exactly, the features separate
+     neighbouring tokens on B in bf16, and permutation invariance holds.
+2. **R1: test it on XS (~13 h).** `XS-late-cool`'s recipe from scratch (512, 1.2M steps, the
+   last 200k cooling down) with the features on, so it compares one to one with F24.
+   - **Rule, written now:**
+     - a loud floor ≤ 0.012 bins (≤ 5×10⁻⁴ units of x_f) means representation was the
+       limit, and B reruns with the features;
+     - a floor near 0.039 means it is not, which points to bf16 in training (F21's open
+       item), to be tested next with an fp32 x-stream.
+   - Its scorecard and eval as usual. One prediction is that the loud floor becomes
+     SNR-dependent again.
+3. **B2, only if R1 passes:** `B-late` with the features, 200k steps (87 h, 4 links).
+   - If R1 cuts XS's floor by f, B's should fall to ~3/f bins. B needs f ≥ 3 to find
+     sources.
+4. **Meanwhile, CPU only, no GPU budget** (both from §9.5):
+   - the MCMC comparison on 2–3 XS injections against `XS-late-768-cool`. Done on 10 Oct
+     on the laptop GPU (F27);
+   - the cut of the XS scorecards by separation from the nearest other source.
+5. **Not worth running:** fp32 at eval on B (≤ 7% by F21's bound), B at 768, or a longer B
+   run.
 
 ### Update, 2026-10-06 (the user's call): skip S, go to B
 
@@ -1214,7 +1494,8 @@ attribution.
 | **C2** | `configs/XS-late-cool.yaml`: XS-late (512 × 8) continued from 1M to 1.2M steps with the same cooldown as C1; its checkpoint (with optimizer state) is moved into `outputs/lisa-XS-late-cool` | Does width matter once the lr is annealed? Rule: loud width ≤ 1.1× C1's (≤ 0.041 bins) and found fractions within 1 point per band → S at 512 | ~2.2 h | done (13849421, 13867994; F24): loud width ×1.03 the 768's, but found −4.1 / −1.3 / −2.0 points, so S at 768 |
 | **S1** | `configs/S-late.yaml` (512) or `S-late-768.yaml`: S with the full recipe, 1M steps, the last 200k cooling down | Does the recipe carry to the 0.1–4.2 mHz band? | ~34 h in two chained slots (768, per F24) | dropped 2026-10-06: the user goes straight to B |
 | **B0** | benchmark: `B-late` and `B-late-768` for 300 steps, then the B scorecard and eval on the 768 checkpoint, all into `outputs/bench` | B's seconds per step and peak memory at each width; whether the eval fits | ~1 h in all | done (F25): 1.57 / 2.57 s per step, eval chunked, scorecard `--n_random 50` |
-| **B1** | `configs/B-late(-768).yaml`: the full recipe on B, length set from B0 | Does the recipe carry to the whole band? | ~87 h at 512 (B0) | running (13882121 chain, 512 wide, 200k steps); earliest finish 10 Oct |
+| **B1** | `configs/B-late(-768).yaml`: the full recipe on B, length set from B0 | Does the recipe carry to the whole band? | ~87 h at 512 (B0) | done (13882121 chain, 87 h; F26): trains cleanly, loss 0.473, but f₀ widths are ~3 bins at every SNR, so 1 of 240 sources is found; the floor is XS's, in coordinate units |
+| **R1** | `configs/XS-pos.yaml`: XS with `positions: 32`, the sources' and token columns' positions in bins through one fp32 Fourier basis (`PositionedLisaFlow`, f55ab93), 512 × 8, 1.2M steps, the last 200k cooling down; the same recipe as XS-late-cool | Is the fixed coordinate precision (F26) a representation limit? Rule: loud floor ≤ 0.012 bins (≤ 1/3 of F24's 0.039, i.e. ≤ 5×10⁻⁴ units of x_f) → yes, and B reruns with it | ~13 h | prepared 2026-10-10 (f55ab93), handed to TREX as `~/canna-f55ab93.bundle` |
 
 **E2 contents (prepared 2026-10-01 as `configs/XS-late.yaml`):**
 - **Network:** the XS network, unchanged (512 × 8, 75.6M parameters). The user chose not
@@ -1388,3 +1669,223 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
     scorecard. The f₀ width ratio, laptop over A100, is 0.994–1.008, and the found sets are
     identical. That covers XS 1M, XS-late, -768, -768-cool and -cool; the 500k run has no
     scorecard to check against.
+- **MCMC (F27).** `outputs/mcmc/` (local, ~400 MB):
+  - `window{9,5}_s{0,1}.npz` with their logs: cold chains thinned by 100 (64 walkers × 3000),
+    in sampler and physical coordinates, plus R-hat, τ, ESS and the acceptance per chunk;
+  - `run_all.sh`, the four production runs;
+  - `compare_window{9,5}.npz`: the per-source rows of `compare_mcmc.py`;
+  - `corner_window*_s*.pdf`: MCMC, flow, Fisher and truth for each source.
+  The scripts are tracked: `lisa_checks/mcmc_xs.py` (needs `.venv313`) and
+  `lisa_checks/compare_mcmc.py` (the project venv).
+- **B1 (F26).** `outputs/lisa-B-late/` holds the following, downloaded on 10 Oct:
+  - `checkpoints/200` (params only, 75.6M, restored and finite on the CPU);
+  - `scorecard.npz`, also copied as `outputs/scorecards/B-late.npz`;
+  - `corner/` (10 full, 10 pooled and 3 per-GB pages);
+  - `losses.pdf`;
+  - `logs/`, with all five training links plus the scorecard and eval.
+
+  In `outputs/scorecards/`:
+  - `positions_B.py` regenerates each scored source's f₀ coordinate, bf16 cell and
+    bins per unit of x_f into `coord_B.npz`, and asserts that the SNRs match the
+    scorecard's;
+  - `width_B.py` makes the width-against-cell, SNR and f₀ cuts and the per-injection
+    offset coherence;
+  - `token_B.py` does the cut by the bf16 token-position step.
+
+## 9. Related work (literature survey, 2026-10-09)
+
+**How the survey was done.**
+- **INSPIRE-HEP citation graph:** the papers citing Korsakova+24, Katz+25, Strub+24,
+  Deng+25, Srinivasan+25, Alvey+23 ("crowded") and Dax+23 (FMPE).
+- **INSPIRE title and full-text searches:** LISA, Taiji, TianQin and Galactic binaries,
+  crossed with neural, normalizing flow, flow matching, diffusion, transformer,
+  simulation-based and amortised. Also author lists: Korsakova, Alvey, Houba, Speri,
+  Delmond, and the Auckland statistics group.
+- **arXiv API abstract searches** for the same terms, which also catch cs and stat papers.
+- **Talk listings:**
+  - the AI for Gravitational Waves workshop at CERN, 5–8 May 2026;
+  - Journées LISA France, IAP, 4–5 May 2026;
+  - the 3IA seminar #55 in Nice, 22 May 2026.
+
+Every new bib entry was checked against INSPIRE and the arXiv API. They sit in
+`paper/references.bib` under "Neural and simulation-based inference for LISA", plus a few
+in the MCMC and generative-model sections. Nothing cites them yet. The search scripts were
+scratch and are not kept.
+
+### 9.1 The closest work: amortised posteriors for Galactic binaries
+
+| work (bib key) | what it infers | data and model | network, objective | label switching | priors, SNR | validated against |
+|---|---|---|---|---|---|---|
+| **Delmond, Korsakova, Oberlin, Marsat, Basset, Dobigeon** (`delmond2026neural`, Toulouse + OCA Nice, June 2026) | 1 GB (8 parameters); 2 GBs (16) as a proof of concept; fixed, known number of sources | GBGPU (FastGB), 1 yr, A and E in the frequency domain (Re, Im), 64–512 bins per channel, no embedding net, stationary noise, no confusion noise | NSF, ResNet conditioner, 1.2–3.9×10⁸ parameters; NLL on 7×10⁶ precomputed waveforms, with the other parameters drawn on the fly; about a week per run on one A100 | ordering f₀₁ ≤ f₀₂ (their first runs gave one mode per source) | uniform; f₀ in f_c ± 2 μHz; one variant spans 0.5 mHz with f_c as an input; SNR 10–100 | ptemcee MCMC (JS divergence); P-P plots on 1000 injections |
+| **Mao, Lee, Edwards** (`mao2025robust`, Auckland Statistics, Dec 2025) | 1 GB-like source, 3 parameters (A, f, ḟ); the angles are fixed | fastlisaresponse, TDI A, 30 or 90 days, gaps (80% duty cycle) | FMPE (Gaussian base, OT path, residual MLP), with a 1D CNN on the time series or a 2D CNN on the WDM log-modulus (pywavelet); 10⁴–2×10⁴ training signals | — | log-uniform boxes of ±10⁻⁵ to ±10⁻³ around the truth; SNR about 40 | MAF with the same summary net; no MCMC |
+| **SlotFlow: Houba, Giarda, Speri** (`houba2025slotflow`, ETH + ESA, Nov 2025) | K ≤ 10 sinusoids (A, φ, f) with **unknown K**: a classifier over K, then K slots | toy sinusoids in white noise; no LISA response | a shared conditional NSF per slot, **factorised across slots** given a global context; 8×10⁶ training samples | Hungarian matching on the per-slot NLL | uniform | Eryn RJMCMC at K = 3: amplitude and phase agree; **frequency 2–3× broader** (blamed on an encoder bottleneck) |
+| **Korsakova, Babak, Katz, Karnesis, Khukhlaev, Gair** (`korsakova2024neural`) | density estimation, not amortised over data: a flow for the Galaxy's spatial distribution (the Sangria catalogue) and one flow per verification binary, fit to its MCMC posterior; proposed as priors, MCMC proposals and a compact catalogue (not run in a sampler there) | the Sangria population; MCMC posteriors of 4 verification binaries | NSF + RealNVP blocks, ResNet conditioners | per source; a joint flow across sources is named as needed but not built | — | quality of the fits (corner plots, likelihoods) |
+| **Sasli, Karnesis, ..., Stergioulas** (`sasli2026learned`, Aug 2026, Eryn team) | learned birth proposals in RJMCMC: useless while the fit is assembled, optimal at equilibrium | wavelet and pulse models of unknown order (BBH, GW150914, EEG, a Sangria MBHB); no GB benchmark | adaptive NSF (pocoMC/zuko), retrained on the cold chain | — | — | ten-seed benchmark with a stopping rule |
+
+**What Delmond et al. find, and where it touches us.**
+- Single sources at 1 and 5 mHz match MCMC.
+- At 10–15 mHz, f₀, ḟ and the sky are broader than MCMC, while the amplitudes match.
+- In the 0.5 mHz band, f₀ is "noticeably harder".
+- Two sources:
+  - Their pairs are 2×10⁻⁴ mHz apart ("unfavourable", 6.3 one-year bins, 12.6 of our
+    two-year bins) and 5×10⁻⁴ mHz apart ("favourable", 31.6 of our bins).
+  - The favourable pair approaches MCMC. The unfavourable pair is broad and sometimes
+    biased.
+  - For comparison, the closest pair in one of our windows sits a median of **2.5 bins**
+    apart on XS (every window closer than their unfavourable pair), 10 bins on S, and 163
+    on B. That is 4 sources drawn log-uniformly over the 3R-bin interior (simulated).
+- Their stated next steps: trans-dimensional inference, embedding networks, windows over
+  the full band, and non-stationary noise, glitches and gaps.
+
+**Population-level SBI without per-source fits.**
+- `srinivasan2025simulation` trains a flow on a compressed strain spectrum to infer DWD
+  population parameters.
+- `desanti2026inferring` does the same from the reconstructed foreground (NPE).
+- Both answer a different question from ours.
+
+**Deep-learning detection and separation (no posteriors).**
+- `zhao2023space`: a self-attention network that detects and extracts every source class.
+- `houba2025deep`: an encoder–decoder that separates MBHBs, GBs and glitches.
+- `ma2026deep`: separation of overlapping GCBs and an EMRI, recursively.
+- `niu2026extracting`: a review.
+- Not in the bib: Tay+26 classifies GB types with XGBoost; Cain+26 uses an autoencoder
+  for anomaly detection against the confusion background.
+
+### 9.2 Other LISA sources, and talks with no paper yet
+
+**MBHBs:**
+- `du2024advancing`: a normalizing flow, Taiji.
+- `liang2024rapid`: continuous normalizing flows trained by flow matching (linear and trig
+  paths), 11-D, with confusion noise.
+- `martinvilchez2025efficient`: sequential neural likelihood.
+- `spadaro2026accurate`: DINGO plus importance sampling, robust up to SNR ~500, with lower
+  efficiency at ~1000.
+- `liang2026fluxmc`: flow matching guiding PT-MCMC.
+- `sun2026robust`: Taiji, glitch-robust, with contrastive learning.
+- `zhang2026prelocalization`: an NSF for TianQin early warning.
+
+**EMRIs:** `cole2026sequential`, where TMNRE shrinks the 11-D prior volume by 10⁶–10⁷.
+
+**SGWB:** `alvey2024simulation` and `alvey2025leveraging` (TMNRE, saqqara), and
+`dimitriou2024fast`.
+
+**Talks with no paper yet** (not in the bib):
+- **James Alvey (Cambridge):** "Tackling the LISA Global Fit: Scalable Simulation-Based
+  Inference and the Road Ahead", CERN AI4GW, 6 May 2026. It is a survey plus the hurdles
+  to scaling; no GB paper by Alvey exists. His LISA papers are on the SGWB, EMRIs and
+  overlapping signals for 3G detectors.
+- **Giovanni Giarda (ETH):** "SlotFlow: Amortized Trans-Dimensional Inference towards
+  LISA", CERN AI4GW, 7 May 2026.
+- **Malvina Bellotti with N. Korsakova (OCA):** "Low-latency detection and parameter
+  estimation of MBHBs for LISA using flow matching", Journées LISA France, 5 May 2026.
+- **Iuliu Cuceu (OCA; N. Christensen, A. Lamberts):** "LISA stochastic GW component
+  separation with diffusion", using a Simformer-style transformer diffusion model, 3IA
+  seminar, 22 May 2026.
+- **Rahul Srinivasan:** "Rapid detection and inference of EMRIs in LISA: divide and
+  conquer", with a transformer, CERN AI4GW, 6 May 2026.
+
+**The Auckland group, more broadly.** Vajpeyi, Meyer, Maturana-Russel, Liu, Lee and Aimen
+mostly do Bayesian nonparametric and variational noise PSD estimation for LISA, which is not
+neural. The neural work is Mao, Lee and Edwards: `mao2025robust` above, a gap-imputing
+autoencoder (PRD 111, 024067), and calibration of approximate credible intervals (PRD 109,
+083002).
+
+### 9.3 Ground-based overlapping signals, label switching, symmetries
+
+- **Overlapping signals:**
+  - `langendorff2023normalizing`: an NPE for two overlapping BBHs.
+  - `alvey2023crowded`: a joint TMNRE of two BBHs with 30 parameters.
+  - `hu2025hierarchical`: hierarchical subtraction with NDEs.
+  - `zhao2025compact`: counting and separation with a transformer.
+  - Papalini, thesis 2026, not in the bib: transformers plus flows for the ET.
+- **Label switching** in GW MCMC: `buscicchio2019label`, alongside `stephens2000dealing`
+  and `jasra2005markov`.
+- **Equivariant flow matching** (`klein2023equivariant`) aligns prior and data samples
+  over permutations of identical particles. It is the ML precedent for our set alignment
+  (the nearest of the 24 permutations), and the paper must cite it.
+- **GW NPE lineage:** `chua2020learning`, `green2020gravitational`, `green2021complete`,
+  `gabbard2022bayesian`, `dax2021real`, `dax2025real`.
+- **Transformers for GW NPE:** `kofler2026flexible` (dingo-t1).
+- **Reviews:** `cuoco2025applications`, `zhao2025dawning`.
+
+### 9.4 What overlaps with canna.lisa, and what is new (as of 2026-10-09)
+
+**Not new: cite, and do not claim.**
+- An amortised neural posterior for GBs with the LISA response (Delmond+26).
+- Flow matching for LISA-band signals (Liang+24 on MBHBs; Mao+25 on one GB-like source;
+  FluxMC).
+- The whitened frequency-domain A/E input (Delmond+26) and a WDM input (Mao+25). With
+  N_t = 2, our WDM image is a re-encoding of Re/Im (the `\draftnote` in
+  `paper/appendix/conditioning.tex`), so it is not a contribution.
+- Permutation-invariant multi-source amortised inference (SlotFlow; the overlapping-CBC
+  NPEs) and the permutation alignment in flow matching (Klein+23).
+- Transformers for GW posteriors (dingo-t1).
+- A fixed, known number of sources: the same limitation as Delmond+26; SlotFlow does not
+  have it.
+
+**New, as far as the survey found.**
+1. **A joint, non-factorised posterior of 4 overlapping GBs per window**: 32 physical
+   parameters and 44 flow coordinates, with the full jaxgb/LISA response (TDI 1.5 A/E/T),
+   T_obs = 2 yr.
+   - The largest amortised joint GB posterior we found is Delmond's 2 sources and 16
+     parameters.
+   - SlotFlow's slots are conditionally independent given the data, by construction.
+   - On XS our windows are more crowded than Delmond's hardest pair.
+2. **Label switching handled inside the flow-matching coupling.** Each mode has 6144
+   equivalent copies (24 permutations × the ψ + kπ/2 and φ₀ + π symmetries), and the
+   coupling handles them on the product manifold. The alternatives are ordering (Delmond)
+   or Hungarian matching on a per-slot NLL (SlotFlow).
+3. **Riemannian flow matching on [−1,1]×ℝ×[−1,1]×S²×S²×S¹** for GW parameters. We found
+   no GW inference paper that uses Riemannian flow matching or flows on spheres; the GW
+   NPEs use Euclidean flows on normalised parameters or (cos, sin) embeddings.
+4. **Survey-like priors and SNR range.**
+   - Ours: f₀ log-uniform over the band (windows placed log-uniformly), SNR log-uniform
+     from 7 to 1000, and the DWD chirp-mass prior.
+   - Theirs: ±2 μHz boxes and SNR 10–100 (Delmond), and boxes of ±10⁻⁵ (Mao).
+5. **One network for the whole 0.1–12 mHz band** (B: 4096-bin windows, 2048 tokens).
+   Delmond trains one network per band; their widest variant spans 0.5 mHz. **Not yet
+   supported:** B1 trains, but its f₀ widths are ~3 bins (F26), so the claim waits for B2.
+6. **Simulation on the fly in JAX:** 2.6×10⁸ windows and 10⁹ sources per 10⁶ steps,
+   against fixed sets of 10⁴–10⁷.
+7. **The loud-source floor: a mechanism and a fix.**
+   - Delmond's f₀ and sky widths at 10–15 mHz and SlotFlow's 2–3× broad frequencies look
+     like the same symptom; they blame capacity or the encoder.
+   - Ours:
+     - The loss-sensitivity proposition (F6) shows that flow-matching training barely sees
+       the floor.
+     - The warped clock and the lr cooldown cut it from 0.13–0.25 to **0.037 bins** (F15,
+       F23).
+     - At 768 the floor is not capacity (F19, F24).
+   - This applies to any amortised estimator of loud, narrow posteriors, and may be the
+     paper's most general result.
+8. **Engineering new to GW inference:** MMDiT with joint data and parameter tokens, Muon
+   with a WSD cooldown, and bf16 training. This is not a scientific claim, but it is
+   relevant for ICML.
+
+### 9.5 Consequences for the paper and the plan
+
+- **Related work** has five strands:
+  - amortised per-source GB inference (Delmond, Mao, SlotFlow);
+  - neural density estimation inside the global-fit samplers (Korsakova+24, Sasli+26);
+  - population SBI (Srinivasan+25, De Santi+26);
+  - neural inference for the other LISA sources;
+  - overlapping signals, label switching and equivariant flow matching.
+- **The MCMC comparison (appendix N) is now required.** Delmond and SlotFlow both have one.
+  The draft's `\tbd`s there are the most important gap.
+- **A cheap, CPU-only addition:** cut the existing XS scorecards by the separation from the
+  nearest other source in the window (in bins). That gives width, found fraction and
+  calibration against separation, and places our results next to Delmond's favourable and
+  unfavourable pairs (31.6 and 12.6 of our bins) without a new run.
+- **Limitations to state:**
+  - 4 sources per window, with no model selection; an undetectable source returns a
+    masked, prior-like posterior (Fig. `fig:window`).
+  - Stationary Gaussian noise with no confusion foreground, and no gaps.
+  - B does not yet localise f₀ (~3 bins, F26), and the loud floor on XS is still 25×
+    Fisher. F26 traces both to one fixed precision of the f₀ coordinate.
+- **Timing.**
+  - Korsakova's group: NPE for GBs, flow matching for MBHBs, and diffusion for the
+    stochastic part.
+  - The SlotFlow group: a talk "towards LISA".
+  - Delmond et al. list trans-dimensional inference as their next step.
+  - So "the first joint multi-GB amortised posterior with the full LISA response" is a
+    claim with a short shelf life.

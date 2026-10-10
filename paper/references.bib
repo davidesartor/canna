@@ -1,5 +1,8 @@
 % Bibliography. arXiv entries were checked against the arXiv API on 2026-10-08 (titles,
 % authors, journal references); software entries against the installed package metadata.
+% Entries added or updated on 2026-10-09 (the related-work survey, docs/lisa-research-log.md
+% section 9) were checked against both INSPIRE-HEP and the arXiv API; published versions
+% carry the journal title.
 
 % ---------------------------------------------------------------------------------------
 % LISA, Galactic binaries, the global fit
@@ -144,34 +147,44 @@
   doi     = {10.1103/PhysRevD.107.063004}
 }
 
-@misc{katz2024efficient,
-  title         = {An efficient {GPU}-accelerated multi-source global fit pipeline for {LISA} data analysis},
-  author        = {Katz, Michael L. and Karnesis, Nikolaos and Korsakova, Natalia and Gair, Jonathan R. and Stergioulas, Nikolaos},
-  year          = {2024},
-  eprint        = {2405.04690},
-  archiveprefix = {arXiv},
-  primaryclass  = {gr-qc},
-  note          = {arXiv:2405.04690}
+@article{katz2024efficient,
+  title   = {Efficient {GPU}-accelerated multisource global fit pipeline for {LISA} data analysis},
+  author  = {Katz, Michael L. and Karnesis, Nikolaos and Korsakova, Natalia and Gair, Jonathan R. and Stergioulas, Nikolaos},
+  journal = {Physical Review D},
+  volume  = {111},
+  pages   = {024060},
+  year    = {2025},
+  doi     = {10.1103/PhysRevD.111.024060}
 }
 
-@misc{strub2024global,
-  title         = {Global Analysis of {LISA} Data with {G}alactic Binaries and Massive Black Hole Binaries},
-  author        = {Strub, Stefan H. and Ferraioli, Luigi and Schmelzbach, C{\'e}dric and St{\"a}hler, Simon C. and Giardini, Domenico},
-  year          = {2024},
-  eprint        = {2403.15318},
-  archiveprefix = {arXiv},
-  primaryclass  = {gr-qc},
-  note          = {arXiv:2403.15318}
+@article{strub2024global,
+  title   = {Global analysis of {LISA} data with {G}alactic binaries and massive black hole binaries},
+  author  = {Strub, Stefan H. and Ferraioli, Luigi and Schmelzbach, C{\'e}dric and St{\"a}hler, Simon C. and Giardini, Domenico},
+  journal = {Physical Review D},
+  volume  = {110},
+  pages   = {024005},
+  year    = {2024},
+  doi     = {10.1103/PhysRevD.110.024005}
 }
 
-@misc{deng2025modular,
-  title         = {Modular global-fit pipeline for {LISA} data analysis},
-  author        = {Deng, Senwen and Babak, Stanislav and Le Jeune, Maude and Marsat, Sylvain and Plagnol, {\'E}ric and Sartirana, Andrea},
-  year          = {2025},
-  eprint        = {2501.10277},
+@article{deng2025modular,
+  title   = {Modular global-fit pipeline for {LISA} data analysis},
+  author  = {Deng, Senwen and Babak, Stanislav and Le Jeune, Maude and Marsat, Sylvain and Plagnol, {\'E}ric and Sartirana, Andrea},
+  journal = {Physical Review D},
+  volume  = {111},
+  pages   = {103014},
+  year    = {2025},
+  doi     = {10.1103/PhysRevD.111.103014}
+}
+
+@misc{demasi2026massively,
+  title         = {Massively parallel transdimensional sampling with data assimilation: an application to {LISA} galactic binaries},
+  author        = {Demasi, Gabriele and Del Pozzo, Walter},
+  year          = {2026},
+  eprint        = {2609.17674},
   archiveprefix = {arXiv},
   primaryclass  = {gr-qc},
-  note          = {arXiv:2501.10277}
+  note          = {arXiv:2609.17674}
 }
 
 @article{strub2022bayesian,
@@ -184,16 +197,73 @@
   doi     = {10.1103/PhysRevD.106.062003}
 }
 
-@misc{korsakova2024neural,
-  title         = {Neural density estimation for {G}alactic Binaries in {LISA} data analysis},
-  author        = {Korsakova, Natalia and Babak, Stanislav and Katz, Michael L. and Karnesis, Nikolaos and Khukhlaev, Sviatoslav and Gair, Jonathan R.},
-  year          = {2024},
-  eprint        = {2402.13701},
-  archiveprefix = {arXiv},
-  primaryclass  = {astro-ph.IM},
-  note          = {arXiv:2402.13701}
+@inproceedings{baghi2022lisa,
+  title     = {The {LISA} Data Challenges},
+  author    = {Baghi, Quentin},
+  booktitle = {Rencontres de Moriond 2022: Proceedings of the Gravitation Session},
+  pages     = {117--122},
+  year      = {2022},
+  doi       = {10.58027/1e1n-7973},
+  eprint    = {2204.12142},
+  archiveprefix = {arXiv}
 }
 
+% ---------------------------------------------------------------------------------------
+% Neural and simulation-based inference for LISA (related work; survey of 2026-10-09,
+% docs/lisa-research-log.md section 9)
+% ---------------------------------------------------------------------------------------
+% Galactic binaries: per-source posteriors, several sources, unknown source count
+@misc{delmond2026neural,
+  title         = {Neural posterior estimation of {G}alactic Binary signals for the {LISA} mission},
+  author        = {Delmond, Tanguy and Korsakova, Natalia and Oberlin, Thomas and Marsat, Sylvain and Basset, Antoine and Dobigeon, Nicolas},
+  year          = {2026},
+  eprint        = {2606.29039},
+  archiveprefix = {arXiv},
+  primaryclass  = {astro-ph.IM},
+  note          = {arXiv:2606.29039}
+}
+
+@misc{mao2025robust,
+  title         = {Robust and scalable simulation-based inference for gravitational wave signals with gaps},
+  author        = {Mao, Ruiting and Lee, Jeong Eun and Edwards, Matthew C.},
+  year          = {2025},
+  eprint        = {2512.18290},
+  archiveprefix = {arXiv},
+  primaryclass  = {astro-ph.IM},
+  note          = {arXiv:2512.18290}
+}
+
+@misc{houba2025slotflow,
+  title         = {{SlotFlow}: Amortized Trans-Dimensional Inference with Slot-Based Normalizing Flows},
+  author        = {Houba, Niklas and Giarda, Giovanni and Speri, Lorenzo},
+  year          = {2025},
+  eprint        = {2511.23228},
+  archiveprefix = {arXiv},
+  primaryclass  = {astro-ph.IM},
+  note          = {arXiv:2511.23228}
+}
+
+@article{korsakova2024neural,
+  title   = {Neural density estimation for {G}alactic binaries in the {LISA} data analysis},
+  author  = {Korsakova, Natalia and Babak, Stanislav and Katz, Michael L. and Karnesis, Nikolaos and Khukhlaev, Sviatoslav and Gair, Jonathan R.},
+  journal = {Physical Review D},
+  volume  = {110},
+  pages   = {104069},
+  year    = {2024},
+  doi     = {10.1103/PhysRevD.110.104069}
+}
+
+@misc{sasli2026learned,
+  title         = {Learned proposals in trans-dimensional inference are optimal at equilibrium, not during assembly},
+  author        = {Sasli, Argyro and Karnesis, Nikolaos and Karamanis, Minas and Katz, Michael L. and Kourtesis, Dimitrios and Coughlin, Michael W. and Mandic, Vuk and Stergioulas, Nikolaos},
+  year          = {2026},
+  eprint        = {2608.12392},
+  archiveprefix = {arXiv},
+  primaryclass  = {physics.data-an},
+  note          = {arXiv:2608.12392}
+}
+
+% Galactic binaries: population inference without per-source fits
 @article{srinivasan2025simulation,
   title   = {Simulation-based population inference of {LISA}'s {G}alactic binaries: Bypassing the global fit},
   author  = {Srinivasan, Rahul and Barausse, Enrico and Korsakova, Natalia and Trotta, Roberto},
@@ -204,15 +274,240 @@
   doi     = {10.1103/shym-w46f}
 }
 
-@inproceedings{baghi2022lisa,
-  title     = {The {LISA} Data Challenges},
-  author    = {Baghi, Quentin},
-  booktitle = {Rencontres de Moriond 2022: Proceedings of the Gravitation Session},
-  pages     = {117--122},
-  year      = {2022},
-  doi       = {10.58027/1e1n-7973},
-  eprint    = {2204.12142},
-  archiveprefix = {arXiv}
+@article{desanti2026inferring,
+  title   = {Inferring the population properties of {G}alactic binaries from {LISA}'s stochastic foreground},
+  author  = {De Santi, Federico and Santini, Alessandro and Toubiana, Alexandre and Karnesis, Nikolaos and Gerosa, Davide},
+  journal = {Physical Review D},
+  volume  = {113},
+  pages   = {123006},
+  year    = {2026},
+  doi     = {10.1103/9lc5-vgw5}
+}
+
+% Deep-learning detection and source separation (Galactic binaries among other sources)
+@article{zhao2023space,
+  title   = {Space-based gravitational wave signal detection and extraction with deep neural network},
+  author  = {Zhao, Tianyu and Lyu, Ruoxi and Wang, He and Cao, Zhoujian and Ren, Zhixiang},
+  journal = {Communications Physics},
+  volume  = {6},
+  pages   = {212},
+  year    = {2023},
+  doi     = {10.1038/s42005-023-01334-6}
+}
+
+@article{houba2025deep,
+  title   = {Deep source separation of overlapping gravitational-wave signals and nonstationary noise artifacts},
+  author  = {Houba, Niklas},
+  journal = {Physical Review Research},
+  volume  = {7},
+  pages   = {033115},
+  year    = {2025},
+  doi     = {10.1103/6bjw-xjj2}
+}
+
+@article{ma2026deep,
+  title   = {Deep learning extraction of overlapping galactic compact binaries and {EMRI} gravitational waves by coupling of ensemble separation and recursive reasoning methods},
+  author  = {Ma, Cunliang and Xie, Yibin and Cao, Zhoujian and Lu, Zimo},
+  journal = {Science China Physics, Mechanics \& Astronomy},
+  volume  = {69},
+  pages   = {249513},
+  year    = {2026},
+  doi     = {10.1007/s11433-025-2868-y}
+}
+
+@article{niu2026extracting,
+  title   = {Extracting overlapping gravitational-wave signals of {G}alactic compact binaries: A mini review},
+  author  = {Niu, Rui and Zhao, Wen},
+  journal = {Fundamental Research},
+  volume  = {6},
+  pages   = {1360--1377},
+  year    = {2026},
+  doi     = {10.1016/j.fmre.2024.11.007}
+}
+
+% Other LISA, Taiji and TianQin sources: neural posterior, likelihood and ratio estimation
+@article{du2024advancing,
+  title   = {Advancing space-based gravitational wave astronomy: Rapid parameter estimation via normalizing flows},
+  author  = {Du, Minghui and Liang, Bo and Wang, He and Xu, Peng and Luo, Ziren and Wu, Yueliang},
+  journal = {Science China Physics, Mechanics \& Astronomy},
+  volume  = {67},
+  pages   = {230412},
+  year    = {2024},
+  doi     = {10.1007/s11433-023-2270-7}
+}
+
+@article{liang2024rapid,
+  title   = {Rapid parameter estimation for merging massive black hole binaries using continuous normalizing flows},
+  author  = {Liang, Bo and Du, Minghui and Wang, He and Xu, Yuxiang and Liu, Chang and Wei, Xiaotong and Xu, Peng and others},
+  journal = {Machine Learning: Science and Technology},
+  volume  = {5},
+  pages   = {045040},
+  year    = {2024},
+  doi     = {10.1088/2632-2153/ad8da9}
+}
+
+@article{martinvilchez2025efficient,
+  title   = {Efficient massive black hole binary parameter estimation for {LISA} using sequential neural likelihood},
+  author  = {Mart{\'\i}n V{\'\i}lchez, Iv{\'a}n and Sopuerta, Carlos F.},
+  journal = {Journal of Cosmology and Astroparticle Physics},
+  volume  = {2025},
+  number  = {04},
+  pages   = {022},
+  year    = {2025},
+  doi     = {10.1088/1475-7516/2025/04/022}
+}
+
+@article{spadaro2026accurate,
+  title   = {Accurate and efficient simulation-based inference for massive black-hole binaries with {LISA}},
+  author  = {Spadaro, Alice and Gair, Jonathan and Gerosa, Davide and Green, Stephen R. and Buscicchio, Riccardo and Gupte, Nihar and Tenorio, Rodrigo and others},
+  journal = {Physical Review D},
+  volume  = {114},
+  pages   = {023038},
+  year    = {2026},
+  doi     = {10.1103/mmyl-wdgq}
+}
+
+@misc{liang2026fluxmc,
+  title         = {{FluxMC}: Rapid and High-Fidelity Inference for Space-Based Gravitational-Wave Observations},
+  author        = {Liang, Bo and Liu, Chang and Song, Hanlin and Zhao, Tianyu and Du, Minghui and Wang, He and Gu, Haohao and others},
+  year          = {2026},
+  eprint        = {2604.04957},
+  archiveprefix = {arXiv},
+  primaryclass  = {astro-ph.IM},
+  note          = {arXiv:2604.04957}
+}
+
+@misc{sun2026robust,
+  title         = {Robust parameter inference for {T}aiji via time-frequency contrastive learning and normalizing flows},
+  author        = {Sun, Tian-Yang and Liang, Bo and Song, Ji-Yu and Liu, Song-Tao and Jin, Shang-Jie and Wang, He and Du, Ming-Hui and others},
+  year          = {2026},
+  eprint        = {2604.13867},
+  archiveprefix = {arXiv},
+  primaryclass  = {gr-qc},
+  note          = {arXiv:2604.13867}
+}
+
+@misc{zhang2026prelocalization,
+  title         = {Pre-localization of Massive Black Hole Binaries in the Millihertz Band},
+  author        = {Zhang, Xue-Ting and Gair, Jonathan and Messenger, Chris and Korsakova, Natalia and Hu, Yi-Ming and Chen, Hong-Yu},
+  year          = {2026},
+  eprint        = {2604.24330},
+  archiveprefix = {arXiv},
+  primaryclass  = {gr-qc},
+  note          = {arXiv:2604.24330}
+}
+
+@article{cole2026sequential,
+  title   = {Sequential simulation-based inference for extreme mass ratio inspirals},
+  author  = {Cole, Philippa S. and Alvey, James and Speri, Lorenzo and Weniger, Christoph and Bhardwaj, Uddipta and Gerosa, Davide and Bertone, Gianfranco},
+  journal = {Physical Review D},
+  volume  = {113},
+  pages   = {063030},
+  year    = {2026},
+  doi     = {10.1103/4cd3-wfjr}
+}
+
+@article{alvey2024simulation,
+  title   = {Simulation-based inference for stochastic gravitational wave background data analysis},
+  author  = {Alvey, James and Bhardwaj, Uddipta and Domcke, Valerie and Pieroni, Mauro and Weniger, Christoph},
+  journal = {Physical Review D},
+  volume  = {109},
+  pages   = {083008},
+  year    = {2024},
+  doi     = {10.1103/PhysRevD.109.083008}
+}
+
+@article{alvey2025leveraging,
+  title   = {Leveraging time-dependent instrumental noise for the {LISA} stochastic gravitational wave background analysis},
+  author  = {Alvey, James and Bhardwaj, Uddipta and Domcke, Valerie and Pieroni, Mauro and Weniger, Christoph},
+  journal = {Physical Review D},
+  volume  = {111},
+  pages   = {102006},
+  year    = {2025},
+  doi     = {10.1103/PhysRevD.111.102006}
+}
+
+@article{dimitriou2024fast,
+  title   = {Fast likelihood-free reconstruction of gravitational wave backgrounds},
+  author  = {Dimitriou, Androniki and Figueroa, Daniel G. and Zaldivar, Bryan},
+  journal = {Journal of Cosmology and Astroparticle Physics},
+  volume  = {2024},
+  number  = {09},
+  pages   = {032},
+  year    = {2024},
+  doi     = {10.1088/1475-7516/2024/09/032}
+}
+
+% Overlapping signals in ground-based detectors: joint and hierarchical neural inference
+@article{langendorff2023normalizing,
+  title   = {Normalizing Flows as an Avenue to Studying Overlapping Gravitational Wave Signals},
+  author  = {Langendorff, Jurriaan and Kolmus, Alex and Janquart, Justin and Van Den Broeck, Chris},
+  journal = {Physical Review Letters},
+  volume  = {130},
+  pages   = {171402},
+  year    = {2023},
+  doi     = {10.1103/PhysRevLett.130.171402}
+}
+
+@article{bhardwaj2023sequential,
+  title   = {Sequential simulation-based inference for gravitational wave signals},
+  author  = {Bhardwaj, Uddipta and Alvey, James and Miller, Benjamin Kurt and Nissanke, Samaya and Weniger, Christoph},
+  journal = {Physical Review D},
+  volume  = {108},
+  pages   = {042004},
+  year    = {2023},
+  doi     = {10.1103/PhysRevD.108.042004}
+}
+
+@misc{alvey2023crowded,
+  title         = {What to do when things get crowded? Scalable joint analysis of overlapping gravitational wave signals},
+  author        = {Alvey, James and Bhardwaj, Uddipta and Nissanke, Samaya and Weniger, Christoph},
+  year          = {2023},
+  eprint        = {2308.06318},
+  archiveprefix = {arXiv},
+  primaryclass  = {gr-qc},
+  note          = {arXiv:2308.06318}
+}
+
+@misc{hu2025hierarchical,
+  title         = {Hierarchical Subtraction with Neural Density Estimators as a General Solution to Overlapping Gravitational Wave Signals},
+  author        = {Hu, Qian},
+  year          = {2025},
+  eprint        = {2507.05209},
+  archiveprefix = {arXiv},
+  primaryclass  = {gr-qc},
+  note          = {arXiv:2507.05209}
+}
+
+@article{zhao2025compact,
+  title   = {Compact binary coalescence gravitational wave signal counting and separation},
+  author  = {Zhao, Tianyu and Zhou, Yue and Shi, Ruijun and Xu, Peng and Cao, Zhoujian and Ren, Zhixiang},
+  journal = {Physical Review D},
+  volume  = {111},
+  pages   = {104028},
+  year    = {2025},
+  doi     = {10.1103/PhysRevD.111.104028}
+}
+
+% Reviews of machine learning in gravitational-wave data analysis
+@article{cuoco2025applications,
+  title   = {Applications of machine learning in gravitational-wave research with current interferometric detectors},
+  author  = {Cuoco, Elena and Cavagli{\`a}, Marco and Heng, Ik Siong and Keitel, David and Messenger, Christopher},
+  journal = {Living Reviews in Relativity},
+  volume  = {28},
+  pages   = {2},
+  year    = {2025},
+  doi     = {10.1007/s41114-024-00055-8}
+}
+
+@article{zhao2025dawning,
+  title   = {Dawning of a new era in gravitational wave data analysis: Unveiling cosmic mysteries via artificial intelligence---{A} systematic review},
+  author  = {Zhao, Tianyu and Shi, Ruijun and Zhou, Yue and Cao, Zhoujian and Ren, Zhixiang},
+  journal = {Frontiers of Physics},
+  volume  = {20},
+  pages   = {045301},
+  year    = {2025},
+  doi     = {10.15302/frontphys.2025.045301}
 }
 
 % ---------------------------------------------------------------------------------------
@@ -385,6 +680,16 @@
   doi     = {10.1214/088342305000000016}
 }
 
+@article{buscicchio2019label,
+  title   = {Label switching problem in {B}ayesian analysis for gravitational wave astronomy},
+  author  = {Buscicchio, Riccardo and Roebber, Elinore and Goldstein, Janna M. and Moore, Christopher J.},
+  journal = {Physical Review D},
+  volume  = {100},
+  pages   = {084041},
+  year    = {2019},
+  doi     = {10.1103/PhysRevD.100.084041}
+}
+
 @misc{talts2018validating,
   title         = {Validating {B}ayesian Inference Algorithms with Simulation-Based Calibration},
   author        = {Talts, Sean and Betancourt, Michael and Simpson, Daniel and Vehtari, Aki and Gelman, Andrew},
@@ -475,6 +780,13 @@
   year    = {2024}
 }
 
+@inproceedings{klein2023equivariant,
+  title     = {Equivariant flow matching},
+  author    = {Klein, Leon and Kr{\"a}mer, Andreas and No{\'e}, Frank},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2023}
+}
+
 @inproceedings{esser2024scaling,
   title     = {Scaling Rectified Flow Transformers for High-Resolution Image Synthesis},
   author    = {Esser, Patrick and Kulal, Sumith and Blattmann, Andreas and Entezari, Rahim and M{\"u}ller, Jonas and Saini, Harry and Levi, Yam and others},
@@ -529,6 +841,66 @@
   pages   = {241103},
   year    = {2021},
   doi     = {10.1103/PhysRevLett.127.241103}
+}
+
+@article{chua2020learning,
+  title   = {Learning {B}ayesian posteriors with neural networks for gravitational-wave inference},
+  author  = {Chua, Alvin J. K. and Vallisneri, Michele},
+  journal = {Physical Review Letters},
+  volume  = {124},
+  pages   = {041102},
+  year    = {2020},
+  doi     = {10.1103/PhysRevLett.124.041102}
+}
+
+@article{green2020gravitational,
+  title   = {Gravitational-wave parameter estimation with autoregressive neural network flows},
+  author  = {Green, Stephen R. and Simpson, Christine and Gair, Jonathan},
+  journal = {Physical Review D},
+  volume  = {102},
+  pages   = {104057},
+  year    = {2020},
+  doi     = {10.1103/PhysRevD.102.104057}
+}
+
+@article{green2021complete,
+  title   = {Complete parameter inference for {GW150914} using deep learning},
+  author  = {Green, Stephen R. and Gair, Jonathan},
+  journal = {Machine Learning: Science and Technology},
+  volume  = {2},
+  pages   = {03LT01},
+  year    = {2021},
+  doi     = {10.1088/2632-2153/abfaed}
+}
+
+@article{gabbard2022bayesian,
+  title   = {{B}ayesian parameter estimation using conditional variational autoencoders for gravitational-wave astronomy},
+  author  = {Gabbard, Hunter and Messenger, Chris and Heng, Ik Siong and Tonolini, Francesco and Murray-Smith, Roderick},
+  journal = {Nature Physics},
+  volume  = {18},
+  pages   = {112--117},
+  year    = {2022},
+  doi     = {10.1038/s41567-021-01425-7}
+}
+
+@article{dax2025real,
+  title   = {Real-time inference for binary neutron star mergers using machine learning},
+  author  = {Dax, Maximilian and Green, Stephen R. and Gair, Jonathan and Gupte, Nihar and P{\"u}rrer, Michael and Raymond, Vivien and Wildberger, Jonas and others},
+  journal = {Nature},
+  volume  = {639},
+  pages   = {49--53},
+  year    = {2025},
+  doi     = {10.1038/s41586-025-08593-z}
+}
+
+@article{kofler2026flexible,
+  title   = {Flexible Gravitational-Wave Parameter Estimation with Transformers},
+  author  = {Kofler, Annalena and Dax, Maximilian and Green, Stephen R. and Wildberger, Jonas and Gupte, Nihar and Macke, Jakob H. and Gair, Jonathan and others},
+  journal = {Physical Review Letters},
+  volume  = {136},
+  pages   = {251401},
+  year    = {2026},
+  doi     = {10.1103/n3ld-b4wv}
 }
 
 @inproceedings{geffner2023compositional,
