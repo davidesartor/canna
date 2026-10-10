@@ -62,10 +62,14 @@ ran them (`outputs/`, and the cluster):
 
 - `data/logs/<job>.csv`: the per-epoch losses of each training job, nothing else from the
   slurm logs. `scripts/data.py` (`LOGS`) says which jobs make up each run.
-- `data/scorecards/*.npz`: the per-source scorecards; `coord.npy` is each scored source's
-  f0 flow coordinate.
+- `data/scorecards/*.npz`: the per-source scorecards; `coord.npy` is each scored XS source's
+  f0 flow coordinate, and `coord_B.npz` the same for B, with the bins per unit of the
+  coordinate and its bfloat16 cell (`outputs/scorecards/positions_B.py`).
 - `data/eval/`: the final model's flow draws and the Fisher draws of the eval injections
   the figures show (1, 5 and 9).
+- `data/mcmc/`: the flow-against-MCMC summaries of eval windows 9 and 5
+  (`lisa_checks/compare_mcmc.py`): per-source width ratios, coverage, seed agreement, and
+  4000 MCMC draws of each window's loudest source.
 
 To bring in a new run, from `paper/scripts`:
 
@@ -73,6 +77,7 @@ To bring in a new run, from `paper/scripts`:
 python import_data.py logs path/to/canna-lisa-<job>.out          # -> data/logs/<job>.csv
 cp ../../outputs/scorecards/<run>.npz ../data/scorecards/
 python import_data.py eval <eval_draws.npz> <fisher.npz> --injections 1 5 9
+python import_data.py mcmc ../../outputs/mcmc/compare_window9.npz ../../outputs/mcmc/compare_window5.npz
 ```
 
 then reference it in the figure scripts, run `./make_figures.sh`, and commit `data/` with the
@@ -82,8 +87,9 @@ not committed).
 
 ## Placeholders
 
-- `\tbd` (red) marks a value a pending run fills in: B1 (`appendix/results-b.tex`) and the
-  flow-vs-MCMC comparison (`appendix/mcmc.tex`). Their headers say what to run.
+- `\tbd` (red) marks a value a pending run fills in. B1 and the flow-vs-MCMC comparison are
+  filled (2026-10-10); what is left is the outcome of the XS test of position features
+  (end of `appendix/results-b.tex`).
 - `\placeholderfig` is an empty framed figure slot.
 - `\draftnote` puts a yellow margin note for the authors. Switch all of them off with the
   `disable` option of `todonotes` in `main.tex`.

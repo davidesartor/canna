@@ -157,8 +157,9 @@ where a noisy constant-rate iterate happened to stop, rather than of the physics
 uniform-clock model's ranks lean to one side, its bias. The final model's are centred but
 over-represented in the middle: the truth falls near the centre of the posterior more often
 than it should, the signature of posteriors that are wider than necessary, consistent with
-in68 = 0.93 at SNR $\ge100$. No model is over-confident in any band. Calibration of the other
-parameters will be measured against MCMC (\cref{app:mcmc}).
+in68 = 0.93 at SNR $\ge100$. No model is over-confident in any band. The other parameters are
+conservative too: against a joint MCMC on two eval windows, the MCMC median lies inside the
+final model's central 95\% for all 64 source--parameter pairs (\cref{app:mcmc}).
 
 \begin{figure}[h]
   \centering
@@ -179,10 +180,11 @@ The flow reproduces the exact symmetries: four modes in $\psi$ at quarter-turn s
 $\phi_0$, and the diagonal bands they form together (\cref{eq:psi-phi-symmetry}). For the
 loud source it follows the curved amplitude--inclination degeneracy towards face-on, where
 $\psi$ and $\phi_0$ merge into one combination. In both cases the flow is wider than the Fisher
-forecast in $f_0$ (the floor above) and along the amplitude--inclination direction. How much
-of the latter is the true posterior, which a Gaussian forecast cannot follow, and how much is
-excess width, is what the comparison with MCMC will measure (\cref{app:mcmc}). The chirp mass
-at these frequencies is not measured, and the flow returns its prior.
+forecast in $f_0$ (the floor above) and along the amplitude--inclination direction. The
+comparison with MCMC settles the latter (\cref{app:mcmc}). The true posterior follows the same
+curved degeneracy but is four times narrower along it for the loud source, so this is excess
+width, not a non-Gaussianity the forecast cannot follow. The chirp mass at these frequencies is
+not measured, and the flow returns its prior.
 
 \begin{figure}[p]
   \centering
@@ -230,8 +232,8 @@ widths 512 and 768); they play no role in sampling.
   \includegraphics[width=\textwidth]{figures/training.pdf}
   \caption{Training curves: median flow loss per epoch of 1000 steps. (a) XS, uniform clock,
   500k steps then continued to 1M. (b) XS, warped clock, widths 512 and 768, each continued
-  with a 200k-step cooldown (shaded). (c) B, warped clock, 512 wide: the run in progress
-  (\cref{app:b}), with its planned cooldown. Losses under different clocks and problems are
+  with a 200k-step cooldown (shaded). (c) B, warped clock, 512 wide (\cref{app:b}): 200k steps
+  in four chained jobs (dotted: job boundaries), the last 40k cooling down (shaded). Losses under different clocks and problems are
   not comparable with each other.}
   \label{fig:training}
 \end{figure}

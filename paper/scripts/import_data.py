@@ -10,7 +10,12 @@ have, and writes the compact files that are committed under paper/data.
     python import_data.py eval ../../outputs/lisa-XS-late-768-cool/eval_draws.npz \
         ../../outputs/lisa-XS/eval-tools/fisher_eval_injections.npz --injections 1 5 9
 
-Scorecards are already small: copy outputs/scorecards/<run>.npz to data/scorecards/.
+    # flow against MCMC -> data/mcmc/: lisa_checks/compare_mcmc.py's per-window summaries
+    python import_data.py mcmc ../../outputs/mcmc/compare_window9.npz \
+        ../../outputs/mcmc/compare_window5.npz
+
+Scorecards are already small: copy outputs/scorecards/<run>.npz to data/scorecards/ (and,
+for B, outputs/scorecards/coord_B.npz from positions_B.py).
 """
 
 import argparse
@@ -65,6 +70,16 @@ def import_eval(draws_path: Path, fisher_path: Path, injections: list[int]) -> N
     print(f"eval injections {injections} -> data/eval/final_eval_draws.npz, fisher_eval_draws.npz")
 
 
+def import_mcmc(paths: list[Path]) -> None:
+    """compare_mcmc.py's summaries: per-source rows, coverage, and the loudest source's draws."""
+    out = DATA / "mcmc"
+    out.mkdir(parents=True, exist_ok=True)
+    for path in paths:
+        with np.load(path) as d:
+            np.savez_compressed(out / path.name, **{k: d[k] for k in d.files})
+        print(f"{path.name} -> data/mcmc/{path.name}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="what", required=True)
@@ -74,10 +89,14 @@ if __name__ == "__main__":
     p_eval.add_argument("draws", type=Path)
     p_eval.add_argument("fisher", type=Path)
     p_eval.add_argument("--injections", type=int, nargs="+", default=[1, 5, 9])
+    p_mcmc = sub.add_parser("mcmc")
+    p_mcmc.add_argument("files", nargs="+", type=Path)
     args = parser.parse_args()
     if args.what == "logs":
         for path in args.files:
             import_log(path)
+    elif args.what == "mcmc":
+        import_mcmc(args.files)
     else:
         (DATA / "eval").mkdir(parents=True, exist_ok=True)
         import_eval(args.draws, args.fisher, args.injections)

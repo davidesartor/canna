@@ -76,8 +76,8 @@ B & 768 & 2570\,s & 29.4\,GiB & 300-step benchmark \\
 
 \paragraph{Sampling cost.}
 A scorecard pass on XS (210 windows, 256 draws each, 32 RK4 steps) takes about 4 minutes on
-an A100, about one second per window. On B, 256 draws of one window take about 78 seconds with
-the 768-wide network.
+an A100, about one second per window. On B, 256 draws of one window take about 42 seconds with
+the 512-wide network (the B1 scorecard: 60 windows in 42 minutes) and 78 with the 768.
 
 \subsection{Numerics}
 \label{app:training-numerics}

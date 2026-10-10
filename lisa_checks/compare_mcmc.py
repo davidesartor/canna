@@ -9,8 +9,10 @@ parameter it prints
 - the width ratio, flow / MCMC, of the robust standard deviation (1.4826 MAD);
 - the 1-D Wasserstein distance between the two, in units of the MCMC standard deviation;
 - whether the MCMC median lies inside the flow's central 68% and 95%;
+- the fraction of the flow's draws more than a bin from the MCMC median in f0;
 and the same between the two MCMC seeds, which bounds what the MCMC itself can resolve.
-Writes outputs/mcmc/compare_window<j>.npz and one corner page per source.
+Writes outputs/mcmc/compare_window<j>.npz, with 4000 relabelled MCMC draws of the window's
+loudest source for the paper's figure, and one corner page per source.
 
 Run from the repo root with the project venv:  .venv/bin/python lisa_checks/compare_mcmc.py
 """
@@ -119,14 +121,15 @@ def main():
         runs = sorted(args.out.glob(f"window{j}_s*.npz"))
         assert runs, f"no MCMC runs for window {j}"
         rng = np.random.default_rng(0)
-        mcmc = []
+        mcmc, matched = [], []
         for r in runs:
             z = np.load(r)
             print(f"{r.name}: {z['seconds'] / 60:.1f} min, R-hat max {z['rhat'].max():.4f}, "
                   f"tau max {z['tau'].max():.0f} iterations, ESS min {z['ess'].min():.0f}")
             pick = rng.choice(len(z["physical"]), min(args.n_mcmc, len(z["physical"])), replace=False)
             draws = z["physical"][pick].reshape(-1, *truth.shape)
-            mcmc.append(fold(match_sources(problem, draws, truth, f), truth, t_obs))
+            matched.append(match_sources(problem, draws, truth, f))
+            mcmc.append(fold(matched[-1], truth, t_obs))
         flow = fold(match_sources(problem, flow_all[j], truth, f), truth, t_obs)
         fisher = fold(fisher_all[j], truth, t_obs)
         ref = np.concatenate(mcmc)
@@ -151,12 +154,19 @@ def main():
             print(f"  {'MCMC median in flow 95':22s}" + "".join(f"{str(bool(x)):>11s}" for x in r_flow[3]))
             out[f"s{src}"] = np.stack([width(ref[:, src]), *r_flow[:2], r_fish[0], *(r_seed[:2] if r_seed else [np.nan * r_flow[0]] * 2)])
             out[f"s{src}_in68"], out[f"s{src}_in95"] = r_flow[2], r_flow[3]
+            far = np.mean(np.abs(flow[:, src, 0] - np.median(ref[:, src, 0])) > 1.0)
+            out[f"s{src}_far"] = far
+            print(f"  flow draws > 1 bin from the MCMC median in f0: {far:.3f}")
             corner_source(
                 args.out / f"corner_window{j}_s{src}.pdf",
                 flow[:, src], ref[:, src], fisher[:, src], tru[src],
                 f"window {j} (window SNR {s['window_snr']:.0f}), source {src}, SNR {s['snr'][src]:.1f}",
             )
+        loudest = int(np.argmax(s["snr"]))
+        draws_loudest = np.concatenate(matched)[:, loudest]
+        draws_loudest = draws_loudest[rng.choice(len(draws_loudest), 4000, replace=False)]
         np.savez(args.out / f"compare_window{j}.npz", snr=s["snr"], columns=COLUMNS,
+                 truth=truth, window=float(f), loudest=loudest, mcmc_loudest=draws_loudest,
                  rows=["mcmc width", "flow/mcmc width", "flow W1/sd", "fisher/mcmc width",
                        "seed1/seed0 width", "seed W1/sd"], **out)
         print(f"\nsaved {args.out / f'compare_window{j}.npz'} and corner_window{j}_s*.pdf")

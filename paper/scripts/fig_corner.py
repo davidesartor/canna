@@ -69,5 +69,6 @@ def page(j, s, name):
     style.save(fig, f"corner_{name}")
 
 
-page(5, 2, "median")
-page(9, 3, "loudest")
+if __name__ == "__main__":
+    page(5, 2, "median")
+    page(9, 3, "loudest")

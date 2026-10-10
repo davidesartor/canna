@@ -3,7 +3,7 @@
 (a) XS, uniform clock: 500k steps then continued to 1M at the same constant lr;
 (b) XS, warped clock (p = 3, aux heads for the first 10%): 512 and 768 wide, each then cooled
     down over 200k more steps with the lr decaying linearly to 0;
-(c) B1, the whole band, still running: the curve so far and the planned schedule.
+(c) B1, the whole band: 200k steps in four 24 h jobs, the last 40k cooling down.
 The warp re-weights the objective, so (a) and (b) are not on a common scale; (c) is a
 different problem.
 """
@@ -53,20 +53,21 @@ ax.set_title("XS, warped clock", fontsize=6.8, color=style.INK2, pad=3)
 ax.legend(loc="upper right", bbox_to_anchor=(0.86, 1.0), fontsize=5.8, ncol=1)
 style.panel_label(ax, "b")
 
-# (c) B1 so far
+# (c) B1
 ax = axes[2]
 d = data.training_log("B-late")
 ax.axvspan(160, 200, color=style.GRID, alpha=0.7, lw=0)
-ax.text(180, 0.765, "planned\ncooldown", ha="center", va="top", fontsize=5.8, color=style.INK2)
+ax.text(180, 0.765, "cooldown\nlr → 0", ha="center", va="top", fontsize=5.8, color=style.INK2)
 ax.plot(d["epoch"], d["flow"], color=style.MODELS["B-late"]["color"], lw=1.0)
-last = d["epoch"][-1]
-ax.plot([last], [d["flow"][-1]], marker="o", ms=3.5, color=style.MODELS["B-late"]["color"], mec="white", mew=0.8)
-ax.annotate(f"epoch {last} of 200\n(8 Oct, running)", (last, d["flow"][-1]), xytext=(105, 0.66),
+# the 24 h job boundaries: each restarts the optimizer's moments, with no visible cost
+for start in (57, 113, 168):
+    ax.axvline(start - 0.5, color=style.AXIS, lw=0.5, ls=(0, (2, 2)))
+ax.annotate(f"{np.mean(d['flow'][-10:]):.3f}", (200, d["flow"][-1]), xytext=(128, 0.458),
             fontsize=5.8, color=style.INK2, arrowprops=dict(arrowstyle="-", color=style.MUTED, lw=0.5))
 off = d["epoch"][np.argmax(d["aux"] == 0)]
 ax.axvline(off, color=style.AXIS, lw=0.7)
 ax.text(off + 3, 0.765, "aux\noff", fontsize=5.8, color=style.INK2, va="top")
-ax.set(xlabel="steps [k]", ylim=(0.5, 0.78), xlim=(0, 205))
+ax.set(xlabel="steps [k]", ylim=(0.45, 0.78), xlim=(0, 205))
 ax.set_title("B, warped clock (512 wide)", fontsize=6.8, color=style.INK2, pad=3)
 style.panel_label(ax, "c")
 style.save(fig, "training")
