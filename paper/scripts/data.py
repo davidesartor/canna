@@ -29,7 +29,7 @@ LOGS = {
     "XS-late-768-cool": [13719349, 13780234],  # the 768 run, then its 200k cooldown
     "XS-late-cool": [13474448, 13849421],  # XS-late, then its 200k cooldown
     "XS-aux10": [13395354],  # E1, stopped at epoch ~60
-    "B-late": [13882121, 13882123],  # B1, still running
+    "B-late": [13882121, 13882123, 13882124, 13882125],  # B1: four chained 24 h jobs
 }
 
 
@@ -41,6 +41,23 @@ def scorecard(name: str) -> dict:
 def window_coordinate() -> np.ndarray:
     """Each scored source's f0 flow coordinate in [-1, 1], scorecard row order (F15)."""
     return np.load(DATA / "scorecards" / "coord.npy")[0]
+
+
+# one unit of the f0 coordinate x_f is half the window interior: (64 - 16) / 2 bins on XS
+XS_BINS_PER_UNIT = 24.0
+
+
+def b_coordinate() -> dict:
+    """B's scored sources, scorecard row order: f0, its coordinate x_f, the bins one unit of
+    x_f spans there, and the bfloat16 cell of x_f in bins (outputs/scorecards/positions_B.py)."""
+    with np.load(DATA / "scorecards" / "coord_B.npz") as d:
+        return {k: d[k] for k in d.files}
+
+
+def mcmc(j: int) -> dict:
+    """compare_mcmc.py's summary of eval window j: per-source rows, coverage, loudest draws."""
+    with np.load(DATA / "mcmc" / f"compare_window{j}.npz") as d:
+        return {k: d[k] for k in d.files}
 
 
 def training_log(run: str) -> dict:
