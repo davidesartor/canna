@@ -1,4 +1,5 @@
 from typing import Optional
+import dataclasses
 import math
 import warnings
 
@@ -78,6 +79,52 @@ def max_f0(response_points: int, chirp_mass: float, t_obs: float) -> float:
     while response_span(f0, chirp_mass, t_obs) > budget:
         f0 = math.nextafter(f0, 0.0)
     return f0
+
+
+@dataclasses.dataclass(frozen=True)
+class WindowGeometry:
+    """Where things sit inside a window, in rfft bins from its first bin.
+
+    The network uses it to give the sources and the conditioning tokens positions in one
+    frame (LisaFlow's `positions`). It mirrors LisaGB.window_start, f0_window and the f0 leg
+    of flow_to_physical; a test holds the two to each other. Everything is computed relative
+    to the window start, because absolute bin numbers reach ~1e6 on B, where a float32 ulp
+    is a sizeable fraction of a bin.
+    """
+
+    t_obs: float
+    window_bins: int
+    wdm_times: int
+    guard: int
+    f0_range: tuple[float, float]
+
+    def start(self, f: Float[Array, ""]) -> Float[Array, ""]:
+        index = jnp.round((f * self.t_obs - self.window_bins / 2) / self.wdm_times)
+        return index * self.wdm_times
+
+    def source_bins(self, x_f: Float[Array, "..."], f: Float[Array, ""]) -> Float[Array, "..."]:
+        """The bin of f0 for the flow coordinate x_f, which is log f0 mapped onto [-1, 1]."""
+        start = self.start(f)
+        low = jnp.maximum(self.guard, self.f0_range[0] * self.t_obs - start)
+        high = jnp.minimum(
+            self.window_bins - self.guard, self.f0_range[1] * self.t_obs - start
+        )
+        # f0 = c exp(x_f h), with c the window's geometric centre and h half its log span;
+        # c - start, written so that start cancels exactly
+        half_log_span = 0.5 * jnp.log1p((high - low) / (start + low))
+        centre = jnp.sqrt((start + low) * (start + high))
+        centre_offset = (start * (low + high) + low * high) / (centre + start)
+        return centre_offset + centre * jnp.expm1(x_f * half_log_span)
+
+    def token_bins(self, n_tokens: int, patch: int) -> Float[Array, " N"]:
+        """The centre bin of each column of conditioning tokens, patch channels wide."""
+        return patch * jnp.arange(n_tokens, dtype=jnp.float32) + (patch - 1) / 2
+
+    def features(self, bins: Float[Array, "..."], n: int) -> Float[Array, "... 2n"]:
+        """sin and cos of 2 pi bins / P for n periods P from 2 bins to twice the window."""
+        periods = 2.0 * (self.window_bins ** jnp.linspace(0.0, 1.0, n, dtype=jnp.float32))
+        angles = 2 * jnp.pi * bins[..., None] / periods
+        return jnp.concat([jnp.sin(angles), jnp.cos(angles)], axis=-1)
 
 
 class LisaGB(eqx.Module):
@@ -268,6 +315,16 @@ class LisaGB(eqx.Module):
             start + self.window_bins - guard, self.f0_range[1] * self.t_obs
         )
         return low / self.t_obs, high / self.t_obs
+
+    @property
+    def window_geometry(self) -> WindowGeometry:
+        return WindowGeometry(
+            t_obs=self.t_obs,
+            window_bins=self.window_bins,
+            wdm_times=self.wdm_times,
+            guard=self.response_points // 2,
+            f0_range=tuple(self.f0_range),
+        )
 
     def window_freqs(self, f: Float[Array, ""]) -> Float[Array, " F"]:
         return (self.window_start(f) + jnp.arange(self.window_bins)) / self.t_obs

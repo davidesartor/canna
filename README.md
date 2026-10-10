@@ -90,6 +90,7 @@ window covers, and so in how many conditioning tokens the network sees:
 | `XS-late-768-cool`, `XS-late-cool` | 200k-step cooldowns continuing those two from 1M steps |
 | `S-late`, `S-late-768` | S with the full recipe, 1M steps of which the last 200k cool down |
 | `B-late`, `B-late-768` | B with the full recipe; a provisional 200k steps, set from a benchmark of B's cost per step |
+| `XS-pos` | XS-late-cool's recipe from scratch with `positions: 32`: sources and tokens get their positions in bins through one Fourier basis (`PositionedLisaFlow`, research log F26) |
 
 **Evaluating a run.**
 

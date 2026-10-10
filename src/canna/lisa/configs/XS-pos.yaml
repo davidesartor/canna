@@ -1,0 +1,41 @@
+# R1 (research log §6, F26): XS-late-cool's recipe from scratch, with position features.
+# The plain network places f0 only to ~2e-3 of its coordinate's range on XS and on B
+# alike, so 0.04 bins here and 3 bins on B. `positions` gives each source and each column
+# of conditioning tokens its position in the window, in bins, through one Fourier basis
+# (32 periods from 2 to 128 bins) computed in float32 (PositionedLisaFlow). Everything else
+# is XS-late-cool: 512 x 8, aux heads for the first 100k steps (warmup_frac 1/12 of
+# 1.2M), the warped clock, a constant lr and then a linear cooldown over the last 200k
+# steps. So its scorecard compares one to one with F24 (loud floor 0.039 bins). Rule,
+# written before the run: a loud floor <= 0.012 bins means representation was the limit,
+# and B reruns with positions. About 1200 x 39 s = 13 h on an A100, one slot.
+problem:
+  n_sources: 4
+  t_obs: 63115200.0
+  sampling_step: 0.25
+  response_points: 16
+  oms_noise: 15.0
+  acceleration_noise: 3.0
+  mass_range: [0.15, 1.4]
+  f0_range: [1.0e-4, 12.0e-3] # 16 response points truncate it to [1.0e-4, 1.3e-3]
+  snr_range: [7.0, 1000.0]
+
+network:
+  hidden_dim: 512
+  num_blocks: 8
+  num_heads: 8
+  patch_stages: 1
+  positions: 32
+
+batch_size: 256
+learning_rate: 1.0e-4
+weight_decay: 0.0
+total_steps: 1200000
+# the last 200k steps decay the lr linearly to 0, as XS-late-cool's did
+cooldown_steps: 200000
+log_interval: 1000
+# aux heads for the first 100k steps, as in XS-late (warmup_frac 0.1 of its 1M)
+warmup_frac: 0.08333333333333333
+# flow clock warp s = 1 - (1 - t)^3: more of training near the end of the path, where
+# a loud source's posterior is resolved (see path_position in train.py)
+time_power: 3.0
+seed: 0
