@@ -17,7 +17,7 @@ import orbax.checkpoint as ocp
 import equinox as eqx
 from tqdm import tqdm
 from .problem import LisaGB
-from .network import LisaFlow
+from .network import LisaFlow, PositionedLisaFlow
 
 
 class TrainSample(NamedTuple):
@@ -132,8 +132,15 @@ class TrainState(NamedTuple):
 
         # the network is shaped by one sample of the problem
         sample = train_sample(problem, key_sample)
-        flow = LisaFlow(
-            **args.network,
+        # a config asking for position features gets the subclass that has them
+        network = dict(args.network)
+        if network.get("positions"):
+            flow_cls, network["window"] = PositionedLisaFlow, problem.window_geometry
+        else:
+            flow_cls = LisaFlow
+            network.pop("positions", None)
+        flow = flow_cls(
+            **network,
             x_shape=sample.xt.shape,
             y_shape=sample.y.shape,
             dtype=jnp.dtype(args.dtype),
