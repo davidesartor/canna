@@ -1,7 +1,7 @@
 """Bring new run outputs into paper/data, in the small form the figure scripts read.
 
-Maintainer tool: it reads the local, gitignored run outputs, which collaborators do not
-have, and writes the compact files that are committed under paper/data.
+Maintainer tool: it reads the local, gitignored run outputs and writes the compact files
+under paper/data, which stay local too (git carries the figures and tables made from them).
 
     # a slurm log -> data/logs/<job>.csv (epoch lines only: no host, user or account info)
     python import_data.py logs path/to/canna-lisa-13882121.out [more.out ...]

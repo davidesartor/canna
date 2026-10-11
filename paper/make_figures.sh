@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Rebuild everything the paper reads that is not committed: figures/*.pdf (and the tables,
-# which are committed but regenerated from the same data). Run after every pull.
+# Rebuild the figures (figures/*.pdf) and the tables from scripts/ and the local data/, which
+# is not in git. Run after changing a script or importing a run, then commit the outputs too.
 #
 #   ./make_figures.sh              all figures and tables
 #   ./make_figures.sh --pdf        ... and then compile main.pdf with latexmk
@@ -15,6 +15,12 @@ set -euo pipefail
 PAPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(dirname "$PAPER")"
 
+if [[ ! -d "$PAPER/data" ]]; then
+    echo "no paper/data/: the inputs are not in git, only on the maintainer's PC." >&2
+    echo "The figures are committed, so to build the paper just run: latexmk -pdf main.tex" >&2
+    exit 1
+fi
+
 if [[ -n "${PYTHON:-}" ]]; then
     read -r -a PY <<< "$PYTHON"
 elif [[ -x "$REPO/.venv/bin/python" ]]; then
@@ -27,6 +33,9 @@ fi
 echo "python: ${PY[*]}"
 
 export JAX_PLATFORMS=cpu MPLBACKEND=Agg PYTHONWARNINGS=ignore
+# a fixed timestamp makes the pdfs byte-reproducible (matplotlib and pdflatex both read it),
+# so a rebuild leaves the committed figures unchanged unless a script or data/ changed
+export SOURCE_DATE_EPOCH=0
 
 BUILD_PDF=0
 SCRIPTS=()
@@ -64,6 +73,6 @@ else
 fi
 
 if [[ $BUILD_PDF -eq 1 ]]; then
-    (cd "$PAPER" && latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex > /dev/null 2>&1) \
+    (cd "$PAPER" && unset SOURCE_DATE_EPOCH && latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex > /dev/null 2>&1) \
         && echo "main.pdf built" || { echo "latexmk failed: see $PAPER/main.log"; exit 1; }
 fi

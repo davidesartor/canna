@@ -1,10 +1,11 @@
 """Inputs for the figures and tables: scorecards, training logs, and the eval injections.
 
-Everything lives under paper/data and is committed, so the paper builds from a clone,
-without the cluster or the local outputs/ folder: training logs as per-epoch CSVs, the
-scorecards, and the flow and Fisher draws of the eval injections the figures show
-(import_data.py makes them from the run outputs). The eval injections themselves are rebuilt
-with eval.py's own keys, checked against the stored truths, and cached (gitignored).
+Everything lives under paper/data, on the maintainer's PC and out of git (the figures and
+tables made from it are committed), so the scripts run without the cluster or the
+outputs/ folder: training logs as per-epoch CSVs, the scorecards, and the flow and Fisher
+draws of the eval injections the figures show (import_data.py makes them from the run
+outputs). The eval injections themselves are rebuilt with eval.py's own keys, checked
+against the stored truths, and cached.
 """
 
 import csv

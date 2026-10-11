@@ -60,7 +60,6 @@ def page(j, s, name):
         ax.grid(False)
         for side in ("top", "right"):
             ax.spines[side].set_visible(True)
-        ax.set_rasterized(True)
     import jax.numpy as jnp
     snr = float(np.asarray(problem.snr(jnp.asarray(truth[s])[None, None, :], f))[0])
     fig.text(0.62, 0.86, f"{name} eval source: SNR {snr:.1f}\nwindow at {f * 1e3:.4f} mHz\n"
