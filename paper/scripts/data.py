@@ -30,6 +30,7 @@ LOGS = {
     "XS-late-cool": [13474448, 13849421],  # XS-late, then its 200k cooldown
     "XS-aux10": [13395354],  # E1, stopped at epoch ~60
     "B-late": [13882121, 13882123, 13882124, 13882125],  # B1: four chained 24 h jobs
+    "XS-pos": [14263742],  # R1: XS-late-cool's recipe with position features, one job
 }
 
 
@@ -54,9 +55,10 @@ def b_coordinate() -> dict:
         return {k: d[k] for k in d.files}
 
 
-def mcmc(j: int) -> dict:
-    """compare_mcmc.py's summary of eval window j: per-source rows, coverage, loudest draws."""
-    with np.load(DATA / "mcmc" / f"compare_window{j}.npz") as d:
+def mcmc(j: int, tag: str = "") -> dict:
+    """compare_mcmc.py's summary of eval window j: per-source rows, coverage, loudest draws.
+    tag "_r1" is the same comparison for R1 (position features)."""
+    with np.load(DATA / "mcmc" / f"compare_window{j}{tag}.npz") as d:
         return {k: d[k] for k in d.files}
 
 

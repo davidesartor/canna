@@ -12,8 +12,8 @@ import style
 from style import plt
 
 style.setup()
-RUNS = ["XS-1M", "XS-late", "XS-late-768", "XS-late-cool", "XS-late-768-cool"]
-fig, axes = plt.subplots(1, 2, figsize=(style.FULL, 1.75), constrained_layout=True,
+RUNS = ["XS-1M", "XS-late", "XS-late-768", "XS-late-cool", "XS-late-768-cool", "XS-pos"]
+fig, axes = plt.subplots(1, 2, figsize=(style.FULL, 1.95), constrained_layout=True,
                          gridspec_kw=dict(width_ratios=[1.0, 1.15]))
 
 # (a) loud floor

@@ -26,8 +26,9 @@
 %         bounded power-law time prior of dax2023flow) and a cooldown that lower the floor
 %         fourfold (app:sensitivity, app:xs);
 %    (iii) the floor that remains is set by how the network represents a source's position:
-%          the same precision in coordinate units on XS and on the whole band, which position
-%          features cut 3.5-fold by mid-training (app:b; R1's final and B2 pending);
+%          the same precision in coordinate units on XS and on the whole band; Fourier
+%          position features cut it almost sixfold, to 4x ideal, with near-nominal coverage
+%          (app:b, tab:xs-ladder; B2 pending);
 %    (iv) validation against a joint 32-D MCMC on four windows (app:mcmc): 127/128 pairs inside
 %         the 95%, near-optimal for isolated sources it finds, too wide for loud ones, and
 %         misses faint sources next to loud ones (app:xs-crowding)

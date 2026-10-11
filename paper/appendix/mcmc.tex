@@ -153,6 +153,38 @@ flow's central 95\%.}
 \input{tables/mcmc}
 \end{table}
 
+\paragraph{With position features.}
+\Cref{tab:mcmc-r1} repeats the comparison for the model with position features (R1,
+\cref{app:b}), on the same windows and data, with its eval draws regenerated from the same keys.
+\begin{itemize}
+  \item \textbf{The frequency is fixed.} Loud sources are now 5--12 times the MCMC width in
+        $f_0$ instead of 38--84, and found moderate ones (SNR 26--235) 1.2--3.0 times. The
+        exception is the crowded SNR-64 source (19 times), 1.1 bins from the SNR-819 one.
+  \item \textbf{The other parameters are not.} The amplitude, sky, inclination and phases of the
+        loud sources stay 3--9 times too wide, and 12 times for the crowded SNR-64 one. So the
+        features remove the precision limit of the frequency coordinate, not that of the others.
+  \item \textbf{The same six sources are missed.}
+  \item \textbf{Coverage.} With narrower posteriors, three of the 128 entries fall outside the
+        flow's 95\% interval (125 of 128; 108 inside the 68\%). One is the sky latitude of the
+        missed SNR-9.3 source, as before. The other two are the amplitude and longitude of the
+        SNR-235 source in q0.30, shifted by 3 and 8 MCMC widths ($W_1$). That source sits 0.16
+        bins from the missed SNR-37 one, and the flow assigns part of the neighbour's signal to
+        it. A missed neighbour biases its loud companion, by an amount the wider posteriors
+        without the features covered and the sharper ones no longer do.
+\end{itemize}
+
+\begin{table}[h]
+\caption{Flow against MCMC for the final model and for R1 (position features), on the four
+windows. Width ratios (flow / MCMC) in $f_0$ and, as a median, over $\Amp$, the sky,
+$\cos\iota$, $\psi$ and $\phi_0$; and the share of the flow's draws more than a bin from the MCMC
+median in $f_0$. A star marks a source with a parameter whose MCMC median lies outside the
+flow's central 95\%.}
+\label{tab:mcmc-r1}
+\centering
+\small
+\input{tables/mcmc_r1}
+\end{table}
+
 \begin{figure}[h]
   \centering
   \includegraphics[width=0.92\textwidth]{figures/mcmc.pdf}

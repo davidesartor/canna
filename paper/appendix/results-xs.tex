@@ -11,7 +11,8 @@ XS is the smallest rung: $R=16$, 64-bin windows with a 48-bin interior, $f_0$ be
 decision was made. With a tight compute budget, we never ran single-variable sweeps. Each
 run combined the changes we believed in, read against the runs already paid for, and was
 followed by cheap evaluation-only tests that ruled out alternative explanations. The five
-models of \cref{tab:xs-ladder} form the ladder of this section:
+models of \cref{tab:xs-ladder} form the ladder of this section, and a sixth adds the remedy of
+\cref{app:b}:
 \begin{enumerate}
   \item \textbf{uniform clock}: width 512, uniform clock ($p=1$), auxiliary heads over the
         first half of training ($f_{\rm aux}=0.5$), constant learning rate, 500k steps then
@@ -21,7 +22,10 @@ models of \cref{tab:xs-ladder} form the ladder of this section:
   \item \textbf{warp, 768}: the same at width 768 (170M parameters);
   \item \textbf{warp, cooldown}: model 2 continued for 200k steps with the learning rate
         decaying linearly to zero;
-  \item \textbf{warp, 768, cooldown} (\emph{final}): model 3 continued the same way.
+  \item \textbf{warp, 768, cooldown} (\emph{final}): model 3 continued the same way;
+  \item \textbf{warp, cooldown, positions} (R1): model 4's recipe from scratch, 1.2M steps with
+        the last 200k cooling down, with Fourier features of the positions of the sources and
+        of the data tokens in bins (\cref{app:b}). It has the same cost as model 4.
 \end{enumerate}
 The evaluation is that of \cref{app:evaluation}: 840 sources in 210 windows, scored
 identically for every model.
@@ -69,7 +73,8 @@ over all sources.}
   uniform-clock baseline, the warped clock, and the final model. Dashed: the ideal width
   $\sqrt3/(\pi\snr)$. Every model has a floor at high SNR; the warped clock lowers it by a
   factor 0.6 and the cooldown by a further 0.44, and below SNR $\sim40$ the final model is
-  within a factor 2--3 of the ideal.}
+  within a factor 2--3 of the ideal. Red: the same recipe with position features
+  (\cref{app:b}), whose width keeps falling with SNR, to 4 times the ideal at SNR $\ge100$.}
   \label{fig:width-snr}
 \end{figure}
 
@@ -84,7 +89,8 @@ with a two-sided sign test.
   \includegraphics[width=\textwidth]{figures/ladder.pdf}
   \caption{The XS ladder. (a) The loud-source floor: median $f_0$ width at SNR $\ge100$, with
   its ratio to the ideal width. (b) Found fraction per SNR band. Same 840 sources for all
-  models.}
+  models. The last model adds position features (\cref{app:b}): its floor is 4 times the ideal
+  width.}
   \label{fig:ladder}
 \end{figure}
 
@@ -191,7 +197,12 @@ ones (0.050 against 0.033--0.035
 bins beyond five bins), while the coverage does not degrade with crowding. For comparison, the
 two-source tests of \citet{delmond2026neural} placed the sources 6.3 and 15.8 frequency bins
 apart at their resolution, 12.6 and 31.6 of ours. At those separations the final model finds
-every source above SNR 15.
+every source above SNR 15. With the position features of \cref{app:b}, the floor no
+longer hides the effect of crowding on the width: at SNR $\ge40$ the found sources are 0.006
+bins wide beyond five bins of a neighbour, 0.017 at two to five bins and 0.028 within two.
+Detection next to a louder source does not improve (63\% of the SNR 15--40 sources within
+five bins of a three-times louder one, as for the final model), so the sharper loud sources
+alone do not unmask their faint neighbours.
 
 \begin{table}[h]
 \caption{The final model by the distance from each source to the nearest other source in its

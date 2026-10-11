@@ -45,6 +45,8 @@ MODELS = {
     "XS-late-cool": dict(color=MAGENTA, label="512, warp, cooldown", short="warp + cool"),
     "XS-500k": dict(color=GREEN, label="512, uniform clock, 0.5M steps", short="0.5M"),
     "B-late": dict(color=VIOLET, label="B: 512, warp, cooldown", short="B"),
+    # R1, the position features (research log F30, F31)
+    "XS-pos": dict(color=RED, label="512, warp, cooldown, positions", short="positions"),
 }
 
 

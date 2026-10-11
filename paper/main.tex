@@ -123,8 +123,8 @@
   % claim and its source: one second per XS window (app:mcmc, cost); four sources, full
   % response, broad priors (app:priors); the set coupling (app:geometry); 127/128 and
   % 1-2.6x for isolated found sources (tab:mcmc); 25x ideal (tab:xs-final); fourfold
-  % (tab:xs-ladder, 0.147 -> 0.037 bins); the same precision on XS and B (app:b); 3.5-fold
-  % by mid-training with position features (R1, app:b).
+  % (tab:xs-ladder, 0.147 -> 0.037 bins); the same precision on XS and B (app:b); almost
+  % sixfold, 4x ideal, near-nominal coverage, +7 sources (R1 final, tab:xs-ladder, app:b).
   LISA will resolve some $10^4$ galactic binaries whose signals overlap in frequency, so their
   parameters must be inferred jointly, which a trans-dimensional MCMC global fit does at great
   cost and must repeat for every new stretch of data. We train a conditional flow-matching
@@ -138,12 +138,13 @@
   sources the flow finds are within one to three times the MCMC width; but loud sources stop
   at a floor of 25 times the ideal width in frequency, and faint sources next to loud ones are
   missed. We show that the flow-matching loss is nearly blind to this floor, that a warped time
-  schedule and a learning-rate cooldown lower it fourfold, and that what remains is set by how
-  the network represents where a source sits: the same precision in coordinate units on windows
-  64 times wider that cover the whole band, which Fourier features of the positions of sources
-  and data cut 3.5-fold by mid-training. \tbd[ R1 and B2: the final numbers]%
-  \draftnote{Draft abstract (2026-10-11), revised after the paper review; the last sentence
-  waits for R1's cooldown and B2.}
+  schedule and a learning-rate cooldown lower it fourfold, and that what remains is set by how the network represents where a source sits: the same
+  precision in coordinate units on windows 64 times wider that cover the whole band. Fourier
+  features of the positions of sources and data, in bins, remove most of it: the floor falls
+  almost sixfold, to 4 times the ideal width, with near-nominal coverage and no loss in
+  detection. \tbd[ B2: the whole band with the features]%
+  \draftnote{Draft abstract (2026-10-11), revised after the paper review and R1's final
+  scorecard; the last sentence waits for B2.}
 \end{abstract}
 
 \input{sections/introduction}

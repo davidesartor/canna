@@ -2,7 +2,7 @@
 \section{The Whole Band: B}
 \label{app:b}
 % =======================================================================================
-% STATUS (2026-10-11): R1 passed its rule mid-run; B2 launched. (2026-10-10:) B1 has finished (jobs 13882121 -> 13882125, 86 h; research log F26).
+% STATUS (2026-10-11): R1 passed its rule (final: 0.0067 bins, F31); B2 running. (2026-10-10:) B1 has finished (jobs 13882121 -> 13882125, 86 h; research log F26).
 % Its scorecard (13948963, 60 windows, 240 sources) and eval (13949002) are in. The tables and
 % fig:b-results are generated from data/scorecards/B-late.npz and coord_B.npz (positions of the
 % scored sources, outputs/scorecards/positions_B.py). The remedy at the end is under test on XS
@@ -154,18 +154,23 @@ the cooled 512 model, from scratch, with these features. A loud floor at or belo
 input representation of position (its encoding, or its bfloat16 rounding) was the limit, and
 B is then retrained with them.
 
-Halfway through its constant-learning-rate phase (step 474k of 1.2M, before any cooldown), the
-XS test already passes. Its loud sources are 0.010 bins wide (95\% CI 0.009--0.011,
-$4\times10^{-4}$ units of $x_f$): per source, 0.28 times the width of the cooled network
-without the features, and 7 times the ideal width instead of 26. The floor falls with SNR again,
-from 0.014 bins at SNR 100--200 to 0.007 above 800, and the coverage is close to nominal (in68
-0.71, in95 0.96 at SNR $\ge100$). The test finds 31 fewer of the 840 sources so far, and its flow
-loss is 0.05 above the baseline's at equal steps. At initialisation the features are seven times
-larger than the source embedding they are added to, which a zero-initialised projection would
-avoid. B is being retrained with the features (B2). \tbd[ the XS test after its cooldown, and
-B2]
-\draftnote{R1 (configs/XS-pos.yaml): mid-run scorecard at epoch 474 (2026-10-11); the run ends
-about 12:30 CEST on 11 Oct. B2 (configs/B-pos.yaml) started 11 Oct, about 87 h.}
+The XS test passes. After its cooldown, at the cost of the cooled 512 model it is compared
+with (13.3 A100-hours against 13.1), it places loud sources to 0.0067 bins (95\% CI
+0.0061--0.0076; $2.8\times10^{-4}$ units of $x_f$, \cref{tab:b-coordinate}). Source by source
+that is 0.19 times the width without the features (95\% CI 0.17--0.21), and 4 times the ideal
+width instead of 26 (\cref{tab:xs-ladder}). The width falls with SNR again, from 0.010 bins at SNR
+100--200 to 0.004 above 800 (\cref{fig:width-snr}), and below SNR 100 it is 1.8--2.0 times the
+ideal. The coverage is close to nominal (in68 0.71--0.78, in95 0.96--0.97 in every band), there
+is no bias ($+0.001\pm0.002$ bins), and the model finds 7 more of the 840 sources than the
+network without the features (17 against 10). Halfway through training it had already passed
+(0.010 bins at step 474k, before the cooldown). Its flow loss lagged its baseline's at equal
+steps, by 0.05 at step 380k, 0.008 at the end of the constant learning rate and 0.005 after the
+cooldown: at initialisation the features are seven times larger than the source embedding they
+are added to, which a zero-initialised projection would avoid. Since the features are computed
+before the bfloat16 cast, the test does not separate their encoding of position from the
+rounding they avoid. B is being retrained with them (B2). \tbd[ B2]
+\draftnote{R1 (configs/XS-pos.yaml) finished on 11 Oct (13.3 h, research log F31). B2
+(configs/B-pos.yaml) started on 11 Oct at 04:16 CEST, about 87 h.}
 
 % Predictions written before the result (2026-10-08), for the authors; not for the paper:
 %  - the loss drops at the cooldown (epoch 161) as on XS, by ~0.02;
