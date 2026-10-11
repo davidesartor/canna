@@ -58,7 +58,6 @@ for ax in fig.axes:
     ax.grid(False)
     for side in ("top", "right"):
         ax.spines[side].set_visible(True)
-    ax.set_rasterized(True)
 fig.text(0.62, 0.86, f"loudest eval source: SNR {z['snr'][s]:.1f}\nwindow at {f * 1e3:.4f} mHz\n"
          "blue: flow (final model)\nblack: MCMC, all four sources jointly\n"
          "grey, dashed: Fisher forecast\nred: truth", fontsize=8, color=style.INK, va="top")
