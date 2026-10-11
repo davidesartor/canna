@@ -8,6 +8,17 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-11)
 
+- **Update, 2026-10-11 afternoon (F31): R1's final model is the best XS model.**
+  - **f₀ floor:** the loud floor is **0.0067 bins, 4× ideal** (26× without the features):
+    5.3× narrower per source, with near-nominal coverage (in68 0.71–0.78), no bias, and 7
+    more sources found, at the 512's cost.
+  - **Against the MCMC:** loud f₀ goes from 38–84× to 5–12×. But A, sky, inclination and
+    phases stay 3–9× too wide, and the same six crowded faint sources are missed.
+  - **Coverage:** 125/128 pairs inside the 95%. The new misses are a loud source biased by
+    a missed neighbour 0.16 bins away.
+  - **Next:** B2 (running, ~87 h). Then one XS run (R2) for the remaining precision limit
+    of the other coordinates (§6).
+
 - **Update, 2026-10-11 (F28–F30): the position features work; B2 is running.**
   - **R1 at mid-run (F30).** A scorecard at epoch 474 of 1200, before its cooldown, puts the
     loud f₀ floor at **0.010 bins** (95% CI 0.009–0.011): 7× ideal, against 0.039 (26×)
@@ -218,11 +229,96 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13875770, 13875840 | B0: scorecard (`--n_random 10`) and eval of the 768 benchmark checkpoint | The scorecard runs at ~78 s per injection. The eval ran out of memory at 1024 draws, now fixed by chunking (F25). |
 | **13882121 → 13882126** | B1: `B-late` (512 wide), 200k steps, the last 40k cooling down; five 24 h links chained with `afterany`, the fifth a spare | **Completed** at 08:58 CEST on 10 Oct. It started at 18:46 CEST on 6 Oct; links 1–3 hit the 24 h limit at epochs 56, 112 and 167 (trexgpu05, 04, 04), link 4 ran 168–200, and the spare exited in 57 s. 1.54 s per step, peak 18.6 GiB, no NaN, no queue wait between links. Final 10-epoch flow loss 0.473 (0.498 before the cooldown). The y aux loss jumps from 0.005 to 2.4 the epoch the aux weight reaches 0, then climbs to 1508. XS-late and XS-late-768 did the same (y ended at 190 and 520): once the weight is 0 the aux heads stop training, and sampling uses only the velocity output (F26). |
 | 13948963, 13949002 | scorecard (`--n_random 50`) and eval of B-late, queued with `afterok:13882126` | Completed in 43 and 41 min, peak 5.5 GiB each. f₀ is 2.8–4.5 bins wide at every SNR; 1 of 240 sources found; calibration conservative (F26). Downloaded to `outputs/lisa-B-late` (checkpoint 200, verified on the CPU; corner pages; logs). |
-| **14263742** (+ 14263743, 14263745) | R1: `XS-pos` (PositionedLisaFlow, 32 periods), 1.2M steps from scratch, the last 200k cooling down; its scorecard and eval chained with `afterok` | Running since ~22:47 CEST on 10 Oct on trexgpu01 (TREX code f55ab93). 38 s per epoch, peak 2.3 GiB, no NaN. **It lags its baseline:** until epoch ~57 it tracks XS-late (13474448: same recipe, seed and aux phase), then XS-late's flow loss drops by ~0.03 in 15 epochs and R1's does not. At epoch 382 it is 0.524 against 0.476, and the gap is still growing (§6, update of 2026-10-11). |
+| **14263742** (+ 14263743, 14263745) | R1: `XS-pos` (PositionedLisaFlow, 32 periods), 1.2M steps from scratch, the last 200k cooling down; its scorecard and eval chained with `afterok` | **Completed** at 12:06 CEST on 11 Oct (13 h 18 min, trexgpu01); scorecard 4.7 min, eval 13.5 min. Loud floor 0.0067 bins (F31). Checkpoint 1200, corner pages and logs downloaded to `outputs/lisa-XS-pos` and verified. Earlier notes: running since ~22:47 CEST on 10 Oct on trexgpu01 (TREX code f55ab93). 38 s per epoch, peak 2.3 GiB, no NaN. **It lags its baseline:** until epoch ~57 it tracks XS-late (13474448: same recipe, seed and aux phase), then XS-late's flow loss drops by ~0.03 in 15 epochs and R1's does not. At epoch 382 it is 0.524 against 0.476, and the gap is still growing (§6, update of 2026-10-11). |
 | 14275317 | R1 mid-run scorecard (epoch 474, constant lr), submitted from here through the stdin shell | Completed in 4.6 min. Loud floor 0.010 bins, so the rule passes half-way; 31 fewer sources found (F30). Copied to `outputs/scorecards/XS-pos_ep474.npz`. |
 | **14275499 → 14275503** (+ 14275504, 14275505) | B2: `B-pos` (B-late + `positions: 32`), 200k steps, the last 40k cooling down; five 24 h links with `afterany`, then the scorecard (`--n_random 50`) and eval with `afterok` on the fifth | Submitted 04:15 CEST on 11 Oct (TREX at 3eb92aa, pulled from a bundle). |
 
 ## 4. Findings
+
+### F31 (2026-10-11): R1 final — the floor drops to 4× ideal with near-nominal coverage, and detection recovers
+
+**Runs.**
+- R1 training (14263742) completed at 12:06 CEST on 11 Oct: 13 h 18 min, trexgpu01,
+  38 s per epoch, no NaN.
+- Scorecard 14263743 (4.7 min) and eval 14263745 (13.5 min).
+- Downloaded to `outputs/lisa-XS-pos`:
+  - `checkpoints/1200`: 776 MB, file list and sizes identical to TREX's, restores on the
+    laptop as a `PositionedLisaFlow` at epoch 1200;
+  - `corner/` (23 pages, 140 MB), `losses.pdf` and the logs;
+  - `eval_draws.npz`, regenerated on the laptop GPU with eval.py's keys
+    (`outputs/lisa-XS/eval-tools/eval_draws.py`). The script reproduces the stored 768-cool
+    draws: median per-draw f₀ difference 0.004 bins, width ratio 1.0001.
+- Comparison: `outputs/scorecards/compare_r1.py`, against XS-late-cool (the same recipe
+  without the features, the same 840 sources).
+
+| SNR | n | found, 512-cool → R1 (768-cool) | f₀ width (bins), found by both | per-source ratio R1/512-cool [16–84%] | × ideal (R1) | in68 | in95 | rank |
+|---|---|---|---|---|---|---|---|---|
+| < 15 | 148 | 0.50 → **0.53** (0.54) | 0.118 → 0.090 | 0.74 [0.58–0.94] | 1.8 | 0.76 → 0.76 | 0.97 → 0.97 | 0.52 |
+| 15–40 | 157 | 0.85 → 0.85 (0.86) | 0.077 → 0.044 | 0.56 [0.40–0.74] | 1.9 | 0.92 → 0.78 | 1.00 → 0.97 | 0.51 |
+| 40–100 | 151 | 0.95 → 0.96 (0.97) | 0.043 → 0.016 | 0.40 [0.27–0.65] | 2.0 | 0.93 → 0.77 | 0.98 → 0.97 | 0.53 |
+| ≥ 100 | 384 | 0.995 → 0.995 (0.995) | **0.039 → 0.0067** | **0.19 [0.10–0.46]** | **4.2** | 0.93 → 0.71 | 0.99 → 0.96 | 0.50 |
+
+- **The rule passes, by a wide margin.** The loud floor is **0.0067 bins (95% CI
+  0.0061–0.0076)**, 2.8×10⁻⁴ units of x_f. The per-source ratio is 0.189 (95% CI
+  0.170–0.206): 5.3× narrower than the same recipe without the features, and 5.5× narrower
+  than the 768 final in median width.
+- **The floor follows SNR:** 0.0100 / 0.0063 / 0.0048 / 0.0037 bins at SNR 100–200 /
+  200–400 / 400–800 / ≥ 800. That still falls more slowly than 1/SNR (×2.7 over a factor
+  ~6.7 in SNR), so a residual floor remains, now at 4× ideal.
+- **Coverage is near nominal,** in68 0.71–0.78 and in95 0.96–0.97 in every band. The baseline
+  over-covered (in68 0.93).
+- **No bias:** +0.0012 ± 0.0017 bins, and the window-position profile at most 0.002.
+- **Detection recovered:** net +7 of 840 against 512-cool (17 against 10). That is close to
+  the 768 final (0.54 / 0.86 / 0.97 / 0.995), at 512 width and the 512's cost (13.3 h
+  against 10.9 + 2.2).
+- **Loss.** The 10-epoch mean is 0.4403 at the end, against 0.4352 for 512-cool. The lag was
+  0.048 at epoch ~380, 0.008 at epoch 1000 (0.4634 against 0.4557) and 0.005 after the
+  cooldown. R1 caught up during the constant-lr phase.
+- **F30's predictions held:** floor 0.004–0.008 bins (0.0067); detection within ~10 sources
+  of 512-cool (it is +7); in68 0.68–0.80 when loud (0.71).
+
+**Crowding with the floor gone (F29's cut, `paper/scripts/tables.py`).**
+- At SNR ≥ 40, found sources are **0.0062 bins** wide beyond 5 bins of a neighbour, 0.017 at
+  2–5 bins and 0.028 within 2 bins. Crowding now sets the remaining width; for the baselines
+  the floor hid it (0.036 / 0.046 / 0.057).
+- **Detection next to louder neighbours does not improve:** 63% of SNR 15–40 sources within 5
+  bins of a >3× louder one are found, as for the 768 final (59% for 512-cool). So F28's
+  reading (the loud source's imprecision masks its neighbour) is not supported. The misses
+  next to loud sources have another cause, perhaps how slots are assigned or a coarse
+  search near a dominant peak.
+
+**Against the MCMC (the four windows of F28; `compare_mcmc.py --flow
+outputs/lisa-XS-pos/eval_draws.npz --tag _r1`, log `outputs/mcmc/compare_r1.log`; table
+`tab:mcmc-r1`).**
+- **f₀ is fixed.**
+  - Loud sources go from 38–84 to **5–12× the MCMC width**: 7.3, 5.3, 5.0 and 12 at SNR
+    1366, 1245, 567 and 819.
+  - Found moderate sources (SNR 26–235) are at 1.2–3.0×.
+  - The crowded SNR-64 source (1.1 bins from the SNR-819 one) stays at 19×.
+- **The other parameters are not.** A, sky, inclination and phases of loud sources stay at
+  **3–9×** (median 3.2–6.5), and 12× for the crowded SNR-64 source. The features remove the
+  frequency coordinate's precision limit, not the others'. Those are O(1) bf16 coordinates
+  too: unit vectors on S², the amplitude in [−1, 1]. The same mechanism is the natural
+  suspect.
+- **The same six sources are missed.** Their f₀ ratios are 45–330, and 70–89% of their
+  draws sit > 1 bin off.
+- **Coverage is 125/128 inside the 95%** (108/128 inside the 68%), against 127/128 for the
+  768 final.
+  - One exception is again the missed SNR-9.3 source's sky latitude.
+  - The other two are the **amplitude and longitude of the SNR-235 source in q0.30, shifted
+    by 3.1 and 7.8 MCMC σ (W1)**, with widths only 1.3–2.4× the MCMC's.
+  - That source sits 0.16 bins from the missed SNR-37 source: the flow folds the
+    neighbour's signal into it. The wider posteriors without the features covered that
+    shift; R1's sharper ones expose it. Masking now costs bias as well as detection.
+
+**Paper.** R1 is in the following places:
+- the sixth rung of the XS ladder, table and figure;
+- a line in `fig:width-snr` and a row in `tab:b-coordinate`;
+- `tab:mcmc-r1` with its paragraph in `app:mcmc`;
+- the final numbers in `app:b` and `app:xs-crowding`;
+- the abstract and the last item of `app:related`.
+
+`style.MODELS["XS-pos"]` is red.
 
 ### F30 (2026-10-11): R1 at mid-run — the position features cut the loud floor 3.5× before any cooldown; B2 launched
 
@@ -1374,6 +1470,36 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
   - E1b (no aux) is dropped to save compute.
 
 ## 6. Roadmap (2026-10-03, updated 2026-10-11)
+
+### Update, 2026-10-11 afternoon (after R1's final, F31)
+
+R1 settles the frequency floor: 4× ideal on XS, with honest coverage. Two limits remain,
+both measured against the MCMC (F28, F31): the other coordinates of loud sources (3–9× too
+wide), and faint sources masked by a loud neighbour (missed, and they now bias it). In order:
+1. **B2 is the decisive run** (14275499 → 14275503, ~87 h, ends ~15 Oct).
+   - **Early read:** a scorecard at epoch ~60 (~27 h in, i.e. ~07:00 CEST on 12 Oct; 43 min
+     of GPU). It tells F30's hypotheses apart: loud widths 0.3–0.8 bins means the precision
+     is in window units, ~0.01–0.05 means it is in bins. Then the final at ~15 Oct.
+   - Submit it as `sbatch slurm/lisa-scorecard.sbatch B-pos --n_random 50`, and rename the
+     output before the chained final one overwrites it.
+2. **R2 on XS (~13 h), only after B2's early read, folding in everything we believe:**
+   - zero-initialised position projections (F30's lag);
+   - multi-scale fp32 Fourier features for every source coordinate, not only f₀: the sky and
+     orientation vectors and the amplitude. These are F31's next limit, by the same
+     mechanism;
+   - an fp32 velocity head;
+   - log f_w for the window-frequency embedding.
+
+   Rule, written now: R2 succeeds if the loud sources' A, sky and orientation widths fall to
+   ≤ 2× the MCMC's on the four windows (from 3–9×), with f₀ ≤ 0.007 bins and coverage
+   ≥ 125/128.
+3. **Masking** (F28, F29, F31) is not a precision problem: R1's sharper loud sources do not
+   unmask their neighbours. It needs its own idea, e.g. training with more close pairs (the
+   prior puts a pair within 1 bin in 22% of windows, within 2 bins in 39%), or a second pass on the
+   residual. It belongs to the next paper unless cheap.
+4. **Paper:** R1 is now the best XS model. Should it become "the final model" of the
+   XS appendix (tables, figures, corner pages)? That is the user's call; for now it is the
+   sixth rung, and the abstract leads with it.
 
 ### Update, 2026-10-11 (after R1's mid-run scorecard, F30)
 
