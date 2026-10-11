@@ -42,11 +42,11 @@ scripts run JAX on the CPU, so no GPU is needed.
 
 | path | what |
 |---|---|
-| `main.tex` | the ICML 2026 example paper, adapted: title, authors (blind), abstract placeholder, `\input`s |
+| `main.tex` | the ICML 2026 example paper, adapted: working title, authors (blind), draft abstract, `\input`s |
 | `macros.tex` | notation, plus drafting aids: `\tbd`, `\placeholderfig`, `\draftnote` |
 | `sections/` | main text: introduction, problem, method, experiments, conclusions (headings only) |
-| `appendix/` | the drafted material, A (notation) to N (comparison with MCMC) |
-| `references.bib` | arXiv entries checked against the arXiv API |
+| `appendix/` | the drafted material, A (notation), B (related work) to O (comparison with MCMC) |
+| `references.bib` | checked against the arXiv API (and INSPIRE-HEP for the related-work entries) |
 | `make_figures.sh` | rebuilds `figures/` (and `tables/`); `--pdf` also compiles the paper |
 | `scripts/fig_*.py` | one script per figure; `style.py` (palette, sizes), `data.py` (inputs), `tables.py` |
 | `scripts/import_data.py` | maintainer tool: new run outputs into `data/` (see below) |
@@ -88,8 +88,9 @@ not committed).
 ## Placeholders
 
 - `\tbd` (red) marks a value a pending run fills in. B1 and the flow-vs-MCMC comparison are
-  filled (2026-10-10); what is left is the outcome of the XS test of position features
-  (end of `appendix/results-b.tex`).
+  filled (2026-10-10); what is left is the outcome of the XS test of position features, R1
+  (end of `appendix/results-b.tex`, the last sentence of the abstract, and the last item of
+  `appendix/related-work.tex`).
 - `\placeholderfig` is an empty framed figure slot.
 - `\draftnote` puts a yellow margin note for the authors. Switch all of them off with the
   `disable` option of `todonotes` in `main.tex`.

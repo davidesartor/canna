@@ -45,7 +45,8 @@ which we verified numerically against the implementation. The conditioning image
 a lossless, real re-encoding of the whitened complex spectrum, two rows of unit-variance
 pixels per TDI channel, rather than a time--frequency map. More time rows would trade
 frequency resolution for time resolution, which the slowly evolving signals of this problem
-do not need inside a window.
+do not need inside a window. With many time rows, a WDM image is a natural input for gapped
+or non-stationary data, as in the convolutional summary of \citet{mao2025robust}.
 \draftnote{With $N_t=2$ the WDM step is a re-encoding of Re/Im. Present it that way in the
 main text, or justify the WDM framing (e.g.\ a path to longer windows or other sources).}
 

@@ -82,7 +82,12 @@ back to randomised pairwise swaps). The aligned path never sends two slots acros
 when swapping their targets would shorten it. \Cref{eq:set-log} is the logarithm map of the
 quotient wherever the minimiser is unique, which holds outside a set of measure zero. It is
 the single-sample analogue of the minibatch optimal-transport couplings of
-\citet{tong2024improving}, restricted to the permutation group. Three properties together
+\citet{tong2024improving}, restricted to the permutation group, and the alignment that
+equivariant flow matching applies to identical particles \citep{klein2023equivariant}. Other
+amortised estimators for overlapping sources break the symmetry instead, by ordering the sources
+in frequency \citep{delmond2026neural} or by Hungarian matching of per-source slots in the loss
+\citep{houba2025slotflow}; an ordering puts a boundary through the posterior wherever two
+sources are close in frequency. Three properties together
 make the sampled distribution exchangeable: the aligned coupling, the exchangeable base
 distribution (the prior), and a network that is equivariant to permutations of the source
 tokens (\cref{app:architecture-equivariance}). The auxiliary endpoint loss uses the same
@@ -109,8 +114,8 @@ constant learning rate, the 0.088-bin floor did not depend on the cell size (Spe
 $-0.10$ over 379 loud sources). After the cooldown, the 768 network's loud sources in the
 largest cells are $1.10\times$ (95\% CI 0.94--1.21) as wide as those in the smallest, and
 the 512 network's $1.22\times$ (1.02--1.40). On B one unit spans 1536 bins, and the cell
-reaches 6 bins over half of the window, about 160 times the XS floor. B's widths do not follow
-the cell either (\cref{fig:b-results}c). What limits both problems is a precision of about
-$2\times10^{-3}$ in $x_f$ wherever the source sits (\cref{app:b}).
-\draftnote{New 2026-10-08: the XS cell test after the cooldown; not yet in the research log.
-Decide whether it stays.}
+reaches 6 bins over half of the window, about 160 times the XS floor. B's widths follow the cell only weakly (\cref{fig:b-results}c). What limits the plain
+network on both problems is a precision of about $2\times10^{-3}$ in $x_f$ wherever the source
+sits, which features of the source's position in bins cut (\cref{app:b}).
+\draftnote{The XS cell test after the cooldown (2026-10-08); F26 settles the B side. Decide
+whether this paragraph stays or moves to the B appendix.}

@@ -2,7 +2,8 @@
 
 The width is 1.4826 x the MAD of the flow's f0 draws for that source, in bins of 1/T_obs.
 Points: the final model, every source. Lines: binned medians over found sources (width
-< 1 bin) for the uniform-clock baseline, the warped clock and the final model. Black: the
+< 1 bin) for the uniform-clock baseline, the warped clock, the final model and the same
+recipe with position features (R1). Black: the
 monochromatic Fisher bound sqrt(3) / (pi rho).
 """
 
@@ -19,7 +20,7 @@ centres = np.sqrt(edges[1:] * edges[:-1])
 
 final = data.scorecard("XS-late-768-cool")
 ax.scatter(final["snr"], final["width"], s=3.5, color=style.BLUE, alpha=0.35, lw=0, zorder=2)
-for run in ["XS-1M", "XS-late", "XS-late-768-cool"]:
+for run in ["XS-1M", "XS-late", "XS-late-768-cool", "XS-pos"]:
     sc = data.scorecard(run)
     found = sc["width"] < 1
     med = [np.median(sc["width"][found & (sc["snr"] >= a) & (sc["snr"] < b)])

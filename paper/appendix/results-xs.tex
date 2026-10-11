@@ -11,7 +11,8 @@ XS is the smallest rung: $R=16$, 64-bin windows with a 48-bin interior, $f_0$ be
 decision was made. With a tight compute budget, we never ran single-variable sweeps. Each
 run combined the changes we believed in, read against the runs already paid for, and was
 followed by cheap evaluation-only tests that ruled out alternative explanations. The five
-models of \cref{tab:xs-ladder} form the ladder of this section:
+models of \cref{tab:xs-ladder} form the ladder of this section, and a sixth adds the remedy of
+\cref{app:b}:
 \begin{enumerate}
   \item \textbf{uniform clock}: width 512, uniform clock ($p=1$), auxiliary heads over the
         first half of training ($f_{\rm aux}=0.5$), constant learning rate, 500k steps then
@@ -21,7 +22,10 @@ models of \cref{tab:xs-ladder} form the ladder of this section:
   \item \textbf{warp, 768}: the same at width 768 (170M parameters);
   \item \textbf{warp, cooldown}: model 2 continued for 200k steps with the learning rate
         decaying linearly to zero;
-  \item \textbf{warp, 768, cooldown} (\emph{final}): model 3 continued the same way.
+  \item \textbf{warp, 768, cooldown} (\emph{final}): model 3 continued the same way;
+  \item \textbf{warp, cooldown, positions} (R1): model 4's recipe from scratch, 1.2M steps with
+        the last 200k cooling down, with Fourier features of the positions of the sources and
+        of the data tokens in bins (\cref{app:b}). It has the same cost as model 4.
 \end{enumerate}
 The evaluation is that of \cref{app:evaluation}: 840 sources in 210 windows, scored
 identically for every model.
@@ -69,7 +73,8 @@ over all sources.}
   uniform-clock baseline, the warped clock, and the final model. Dashed: the ideal width
   $\sqrt3/(\pi\snr)$. Every model has a floor at high SNR; the warped clock lowers it by a
   factor 0.6 and the cooldown by a further 0.44, and below SNR $\sim40$ the final model is
-  within a factor 2--3 of the ideal.}
+  within a factor 2--3 of the ideal. Red: the same recipe with position features
+  (\cref{app:b}), whose width keeps falling with SNR, to 4 times the ideal at SNR $\ge100$.}
   \label{fig:width-snr}
 \end{figure}
 
@@ -84,7 +89,8 @@ with a two-sided sign test.
   \includegraphics[width=\textwidth]{figures/ladder.pdf}
   \caption{The XS ladder. (a) The loud-source floor: median $f_0$ width at SNR $\ge100$, with
   its ratio to the ideal width. (b) Found fraction per SNR band. Same 840 sources for all
-  models.}
+  models. The last model adds position features (\cref{app:b}): its floor is 4 times the ideal
+  width.}
   \label{fig:ladder}
 \end{figure}
 
@@ -94,7 +100,8 @@ windows by a median factor 0.78 (narrower for 27 of 29 sources) and localised tw
 13 sources at SNR 15--40, but the loud floor only moved from 92 to 76 times the Fisher width.
 
 \paragraph{The warped clock narrows every posterior, at a small cost in detection.}
-Against the uniform clock at the same 1M steps, the warp narrowed the loud floor from 0.147 to
+Against the uniform clock at the same 1M steps, the warp (with the shorter auxiliary phase that
+came with it) narrowed the loud floor from 0.147 to
 0.088 bins, by a median factor of 0.61 at SNR $\ge100$, 0.62 at 40--100 and 0.70 at
 15--40, and the posterior was narrower for 97\% of the loud sources. It also removed a bias:
 the uniform-clock model placed loud sources low by about 0.056 bins (mean rank 0.62, 8 standard
@@ -117,7 +124,7 @@ more steps. The loud floor fell from 0.087 to 0.037 bins, a median per-source ra
 not, and missed one ($p=10^{-5}$). Against the uniform clock it now finds more sources in every
 band (17 against 7). The 512 network gained exactly as much from the same cooldown (factor
 0.443), so the gain belongs to the schedule, not to the width. Once both are cooled, the floor
-does not depend on width (the 512 is 1.03 times the 768, 95\% interval 1.01--1.05), but the 768
+barely depends on width (the 512 is 1.03 times the 768, 95\% interval 1.01--1.05), but the 768
 is 11--15\% sharper below SNR 100 and finds 18 sources the 512 misses against 7 ($p=0.043$).
 
 \paragraph{What the floor is not.}
@@ -126,10 +133,12 @@ integrator (32, 64 and 128 RK4 steps agree), bfloat16 at evaluation (float32 on 
 width ratio of 0.991), the rounding of the input coordinate at constant learning rate
 (\cref{app:geometry-remarks}), and A100 numerics (the A100 and CPU tables agree). Width is ruled
 out above. The floor that remains is flat in SNR at 25 times the ideal width. By
-\cref{eq:sensitivity} it costs about $2\times10^{-3}$ of the logged loss under the warp, four
-times the epoch-to-epoch scatter: visible to the objective, unlike the floor under the uniform
-clock, but small next to the 0.022 the cooldown gained. Bfloat16 arithmetic inside the network
-during training, and the optimisation itself, are the candidates left untested.
+\cref{eq:sensitivity}, corrected for its finite true width ($0.59$ of the asymptote at
+$\sigma/\sigma_m=0.04$, \cref{app:sensitivity}), it costs about $1.1\times10^{-3}$ of the
+logged loss under the warp, twice the epoch-to-epoch scatter: visible to the objective, unlike the floor under the uniform
+clock, but small next to the 0.022 the cooldown gained. Bfloat16 arithmetic inside the network during training, the optimisation itself, and the way
+the network represents a source's position were the candidates left; the last, tested with
+position features, turns out to be the main one (\cref{app:b}).
 
 \subsection{Bias}
 
@@ -158,8 +167,9 @@ uniform-clock model's ranks lean to one side, its bias. The final model's are ce
 over-represented in the middle: the truth falls near the centre of the posterior more often
 than it should, the signature of posteriors that are wider than necessary, consistent with
 in68 = 0.93 at SNR $\ge100$. No model is over-confident in any band. The other parameters are
-conservative too: against a joint MCMC on two eval windows, the MCMC median lies inside the
-final model's central 95\% for all 64 source--parameter pairs (\cref{app:mcmc}).
+conservative too: against a joint MCMC on four eval windows, the MCMC median lies inside the
+final model's central 95\% for 127 of the 128 source--parameter pairs, the exception being a
+faint source the flow misses (\cref{app:mcmc}).
 
 \begin{figure}[h]
   \centering
@@ -171,6 +181,39 @@ final model's central 95\% for all 64 source--parameter pairs (\cref{app:mcmc}).
   95\% (squares) intervals by SNR band; dashed lines are the nominal levels.}
   \label{fig:calibration}
 \end{figure}
+
+\subsection{Crowding and Detection}
+\label{app:xs-crowding}
+
+Four sources log-uniform over a 48-bin interior are often close together: the nearest other
+source is a median 5.2 bins away, within one bin for 12\% of the sources and within five bins
+for 49\% (\cref{tab:xs-separation}). Detection depends on it. Beyond five bins the final model
+finds 98--100\% of the sources at SNR 15--40 and 71--82\% below SNR 15; within two bins it finds
+63--77\% and 19--35\%. The losses concentrate next to louder neighbours. Of the SNR 15--40
+sources within five bins of another source, 63\% are found when that source is more than three
+times louder, and 86\% otherwise. These misses are the flow's, not the data's: the joint MCMC
+localises each one we tested to the Fisher width (\cref{app:mcmc}). Sources at SNR $\ge40$ within two bins of a neighbour are about half as wide again as isolated
+ones (0.050 against 0.033--0.035
+bins beyond five bins), while the coverage does not degrade with crowding. For comparison, the
+two-source tests of \citet{delmond2026neural} placed the sources 6.3 and 15.8 frequency bins
+apart at their resolution, 12.6 and 31.6 of ours. At those separations the final model finds
+every source above SNR 15. With the position features of \cref{app:b}, the floor no
+longer hides the effect of crowding on the width: at SNR $\ge40$ the found sources are 0.006
+bins wide beyond five bins of a neighbour, 0.017 at two to five bins and 0.028 within two.
+Detection next to a louder source does not improve (63\% of the SNR 15--40 sources within
+five bins of a three-times louder one, as for the final model), so the sharper loud sources
+alone do not unmask their faint neighbours.
+
+\begin{table}[h]
+\caption{The final model by the distance from each source to the nearest other source in its
+window, in bins, on the 840 scored sources. Found fractions by SNR band; the width and its
+ratio to the ideal are medians over found sources at SNR $\ge40$; coverage over all sources in
+the row.}
+\label{tab:xs-separation}
+\centering
+\small
+\input{tables/xs_separation}
+\end{table}
 
 \subsection{Single-Source Posteriors}
 

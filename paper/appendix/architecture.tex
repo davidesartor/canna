@@ -7,7 +7,9 @@ The velocity field is a transformer with two token streams, one for the sources 
 the data, that attend to each other in every block: the multimodal diffusion transformer
 (MMDiT) of \citet{esser2024scaling}, with the adaptive-normalisation conditioning of
 \citet{peebles2023scalable}. \Cref{fig:architecture} shows it, and \cref{tab:network} gives
-the sizes.
+the sizes. Transformers also condition gravitational-wave posterior estimators for
+ground-based detectors \citep{kofler2026flexible}; here both streams are tokens, and the
+sources attend to the data and to each other.
 
 \begin{figure}[h]
   \centering

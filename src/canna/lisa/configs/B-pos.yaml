@@ -1,0 +1,41 @@
+# B2 (research log §6, F26): B-late's recipe with the position features of R1
+# (PositionedLisaFlow): each source and each column of conditioning tokens gets its position
+# in the window, in bins, through one Fourier basis of 32 periods from 2 bins to twice the
+# window (8192 bins here), computed in float32 before the bf16 cast. On B the plain network
+# placed f0 only to ~3 bins (2e-3 of the coordinate), and its 2048 token positions collapsed
+# to 641 in bf16; both are what the features address. Launch only if R1 passes its rule
+# (XS loud floor <= 0.012 bins). Same length and schedule as B1, so it compares one to one:
+# 200k steps, the last 40k cooling down, ~87 h in four chained 24 h jobs plus a spare.
+problem:
+  n_sources: 4
+  t_obs: 63115200.0
+  sampling_step: 0.25
+  # response_points autosizes to 1024 based on full f0 range
+  oms_noise: 15.0
+  acceleration_noise: 3.0
+  mass_range: [0.15, 1.4]
+  f0_range: [1.0e-4, 12.0e-3]
+  snr_range: [7.0, 1000.0]
+
+network:
+  hidden_dim: 512
+  num_blocks: 8
+  num_heads: 8
+  patch_stages: 1
+  positions: 32
+
+batch_size: 256
+learning_rate: 1.0e-4
+weight_decay: 0.0
+total_steps: 200000
+# the last 20% of the run decays the lr linearly to 0 (F23: halves the f0 floor)
+cooldown_steps: 40000
+log_interval: 1000
+# aux heads for the first 10% of the run, then pure flow
+warmup_frac: 0.1
+# flow clock warp s = 1 - (1 - t)^3 (see path_position in train.py)
+time_power: 3.0
+seed: 0
+# checkpoints without the optimizer state, to leave room in the home quota; a resume
+# then restarts the optimizer's moments, as B1's links did without harm
+save_opt_state: false

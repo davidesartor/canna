@@ -15,6 +15,7 @@ Writes outputs/mcmc/compare_window<j>.npz, with 4000 relabelled MCMC draws of th
 loudest source for the paper's figure, and one corner page per source.
 
 Run from the repo root with the project venv:  .venv/bin/python lisa_checks/compare_mcmc.py
+Another flow (same eval keys, so the same data):  --flow outputs/<run>/eval_draws.npz --tag _<run>
 """
 
 import argparse
@@ -110,9 +111,12 @@ def main():
     parser.add_argument("--windows", type=int, nargs="+", default=[9, 5])
     parser.add_argument("--out", type=Path, default=Path("outputs/mcmc"))
     parser.add_argument("--n_mcmc", type=int, default=40000, help="MCMC draws compared")
+    parser.add_argument("--flow", type=Path, default=FLOW_DRAWS,
+                        help="eval_draws.npz of the flow to compare (eval.py's keys)")
+    parser.add_argument("--tag", default="", help="suffix of the outputs, e.g. _r1")
     args = parser.parse_args()
 
-    flow_all = np.load(FLOW_DRAWS)["draws"]
+    flow_all = np.load(args.flow)["draws"]
     fisher_all = np.load(FISHER)["fisher"]
     for j in args.windows:
         s = setup(j)
@@ -158,18 +162,18 @@ def main():
             out[f"s{src}_far"] = far
             print(f"  flow draws > 1 bin from the MCMC median in f0: {far:.3f}")
             corner_source(
-                args.out / f"corner_window{j}_s{src}.pdf",
+                args.out / f"corner_window{j}{args.tag}_s{src}.pdf",
                 flow[:, src], ref[:, src], fisher[:, src], tru[src],
                 f"window {j} (window SNR {s['window_snr']:.0f}), source {src}, SNR {s['snr'][src]:.1f}",
             )
         loudest = int(np.argmax(s["snr"]))
         draws_loudest = np.concatenate(matched)[:, loudest]
         draws_loudest = draws_loudest[rng.choice(len(draws_loudest), 4000, replace=False)]
-        np.savez(args.out / f"compare_window{j}.npz", snr=s["snr"], columns=COLUMNS,
+        np.savez(args.out / f"compare_window{j}{args.tag}.npz", snr=s["snr"], columns=COLUMNS,
                  truth=truth, window=float(f), loudest=loudest, mcmc_loudest=draws_loudest,
                  rows=["mcmc width", "flow/mcmc width", "flow W1/sd", "fisher/mcmc width",
                        "seed1/seed0 width", "seed W1/sd"], **out)
-        print(f"\nsaved {args.out / f'compare_window{j}.npz'} and corner_window{j}_s*.pdf")
+        print(f"\nsaved {args.out / f'compare_window{j}{args.tag}.npz'} and corner_window{j}{args.tag}_s*.pdf")
 
 
 if __name__ == "__main__":

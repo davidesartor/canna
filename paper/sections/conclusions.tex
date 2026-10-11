@@ -2,8 +2,11 @@
 \section{Conclusions}
 \label{sec:conclusions}
 % =======================================================================================
-% Planned: what works (centred, calibrated-conservative posteriors that capture the
-% degeneracies; the recipe); the remaining f0 floor (25x the ideal width at high SNR);
-% limitations (fixed number of sources per window, no confusion foreground, windowing,
-% bf16 resolution of the inputs on wide windows); next steps (MCMC validation, B,
-% stitching windows into a global fit, a variable number of sources).
+% Planned: what works (centred, near-nominal posteriors that capture the degeneracies; the
+% recipe, with position features); the remaining limits: f0 at 4x the ideal width, the
+% other parameters of loud sources 3-9x the MCMC width, crowded faint sources missed
+% (app:mcmc, app:xs-crowding);
+% limitations (fixed number of sources per window, no confusion foreground, stationary noise
+% without gaps, windowing, the coordinate-precision floor that keeps B from localising f0);
+% next steps (R1's outcome and B2, stitching windows into a global fit, a variable number of
+% sources as in houba2025slotflow, gaps and non-stationary noise as in mao2025robust).

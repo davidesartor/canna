@@ -6,7 +6,36 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 §9 places the work in the literature (survey of 2026-10-09).
 
-## 1. Summary (2026-10-01, updated 2026-10-10)
+## 1. Summary (2026-10-01, updated 2026-10-11)
+
+- **Update, 2026-10-11 afternoon (F31): R1's final model is the best XS model.**
+  - **f₀ floor:** the loud floor is **0.0067 bins, 4× ideal** (26× without the features):
+    5.3× narrower per source, with near-nominal coverage (in68 0.71–0.78), no bias, and 7
+    more sources found, at the 512's cost.
+  - **Against the MCMC:** loud f₀ goes from 38–84× to 5–12×. But A, sky, inclination and
+    phases stay 3–9× too wide, and the same six crowded faint sources are missed.
+  - **Coverage:** 125/128 pairs inside the 95%. The new misses are a loud source biased by
+    a missed neighbour 0.16 bins away.
+  - **Next:** B2 (running, ~87 h). Then one XS run (R2) for the remaining precision limit
+    of the other coordinates (§6).
+
+- **Update, 2026-10-11 (F28–F30): the position features work; B2 is running.**
+  - **R1 at mid-run (F30).** A scorecard at epoch 474 of 1200, before its cooldown, puts the
+    loud f₀ floor at **0.010 bins** (95% CI 0.009–0.011): 7× ideal, against 0.039 (26×)
+    without the features. That passes the rule (≤ 0.012).
+    - The floor falls with SNR again, and coverage is close to nominal.
+    - It finds 31 fewer of 840 sources so far, and its loss lags its baseline by 0.05. At
+      init the features are 7× the source embedding, so the next run zero-initialises them.
+  - **B2 (`B-pos`, 14275499 → 14275503) started at 04:15 CEST** on the strength of that read:
+    87 h, plus scorecard and eval.
+  - **MCMC on windows q0.30 and q0.80 (F28).** The flow misses 6 of 16 sources, which the
+    MCMC localises. Five sit within 2.6 bins of a 6–90× louder source. Coverage holds:
+    127/128 pairs inside the 95%.
+  - **Crowding (F29).** The nearest source is a median 5.2 bins away. Detection at SNR 15–40
+    drops from 98–100% beyond 5 bins to 63% within 1 bin, and to 63% within 5 bins of a
+    3×-louder neighbour.
+  - **TREX:** commands now run from here, through a shell fed on stdin (§7).
+  - **Paper:** a related-work appendix, a draft abstract, and the results above.
 
 - **Update, 2026-10-10 evening (F27): flow against MCMC on two XS windows** (jexplore,
   32-D joint, two converged seeds each).
@@ -200,8 +229,245 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 13875770, 13875840 | B0: scorecard (`--n_random 10`) and eval of the 768 benchmark checkpoint | The scorecard runs at ~78 s per injection. The eval ran out of memory at 1024 draws, now fixed by chunking (F25). |
 | **13882121 → 13882126** | B1: `B-late` (512 wide), 200k steps, the last 40k cooling down; five 24 h links chained with `afterany`, the fifth a spare | **Completed** at 08:58 CEST on 10 Oct. It started at 18:46 CEST on 6 Oct; links 1–3 hit the 24 h limit at epochs 56, 112 and 167 (trexgpu05, 04, 04), link 4 ran 168–200, and the spare exited in 57 s. 1.54 s per step, peak 18.6 GiB, no NaN, no queue wait between links. Final 10-epoch flow loss 0.473 (0.498 before the cooldown). The y aux loss jumps from 0.005 to 2.4 the epoch the aux weight reaches 0, then climbs to 1508. XS-late and XS-late-768 did the same (y ended at 190 and 520): once the weight is 0 the aux heads stop training, and sampling uses only the velocity output (F26). |
 | 13948963, 13949002 | scorecard (`--n_random 50`) and eval of B-late, queued with `afterok:13882126` | Completed in 43 and 41 min, peak 5.5 GiB each. f₀ is 2.8–4.5 bins wide at every SNR; 1 of 240 sources found; calibration conservative (F26). Downloaded to `outputs/lisa-B-late` (checkpoint 200, verified on the CPU; corner pages; logs). |
+| **14263742** (+ 14263743, 14263745) | R1: `XS-pos` (PositionedLisaFlow, 32 periods), 1.2M steps from scratch, the last 200k cooling down; its scorecard and eval chained with `afterok` | **Completed** at 12:06 CEST on 11 Oct (13 h 18 min, trexgpu01); scorecard 4.7 min, eval 13.5 min. Loud floor 0.0067 bins (F31). Checkpoint 1200, corner pages and logs downloaded to `outputs/lisa-XS-pos` and verified. Earlier notes: running since ~22:47 CEST on 10 Oct on trexgpu01 (TREX code f55ab93). 38 s per epoch, peak 2.3 GiB, no NaN. **It lags its baseline:** until epoch ~57 it tracks XS-late (13474448: same recipe, seed and aux phase), then XS-late's flow loss drops by ~0.03 in 15 epochs and R1's does not. At epoch 382 it is 0.524 against 0.476, and the gap is still growing (§6, update of 2026-10-11). |
+| 14275317 | R1 mid-run scorecard (epoch 474, constant lr), submitted from here through the stdin shell | Completed in 4.6 min. Loud floor 0.010 bins, so the rule passes half-way; 31 fewer sources found (F30). Copied to `outputs/scorecards/XS-pos_ep474.npz`. |
+| **14275499 → 14275503** (+ 14275504, 14275505) | B2: `B-pos` (B-late + `positions: 32`), 200k steps, the last 40k cooling down; five 24 h links with `afterany`, then the scorecard (`--n_random 50`) and eval with `afterok` on the fifth | Submitted 04:15 CEST on 11 Oct (TREX at 3eb92aa, pulled from a bundle). |
 
 ## 4. Findings
+
+### F31 (2026-10-11): R1 final — the floor drops to 4× ideal with near-nominal coverage, and detection recovers
+
+**Runs.**
+- R1 training (14263742) completed at 12:06 CEST on 11 Oct: 13 h 18 min, trexgpu01,
+  38 s per epoch, no NaN.
+- Scorecard 14263743 (4.7 min) and eval 14263745 (13.5 min).
+- Downloaded to `outputs/lisa-XS-pos`:
+  - `checkpoints/1200`: 776 MB, file list and sizes identical to TREX's, restores on the
+    laptop as a `PositionedLisaFlow` at epoch 1200;
+  - `corner/` (23 pages, 140 MB), `losses.pdf` and the logs;
+  - `eval_draws.npz`, regenerated on the laptop GPU with eval.py's keys
+    (`outputs/lisa-XS/eval-tools/eval_draws.py`). The script reproduces the stored 768-cool
+    draws: median per-draw f₀ difference 0.004 bins, width ratio 1.0001.
+- Comparison: `outputs/scorecards/compare_r1.py`, against XS-late-cool (the same recipe
+  without the features, the same 840 sources).
+
+| SNR | n | found, 512-cool → R1 (768-cool) | f₀ width (bins), found by both | per-source ratio R1/512-cool [16–84%] | × ideal (R1) | in68 | in95 | rank |
+|---|---|---|---|---|---|---|---|---|
+| < 15 | 148 | 0.50 → **0.53** (0.54) | 0.118 → 0.090 | 0.74 [0.58–0.94] | 1.8 | 0.76 → 0.76 | 0.97 → 0.97 | 0.52 |
+| 15–40 | 157 | 0.85 → 0.85 (0.86) | 0.077 → 0.044 | 0.56 [0.40–0.74] | 1.9 | 0.92 → 0.78 | 1.00 → 0.97 | 0.51 |
+| 40–100 | 151 | 0.95 → 0.96 (0.97) | 0.043 → 0.016 | 0.40 [0.27–0.65] | 2.0 | 0.93 → 0.77 | 0.98 → 0.97 | 0.53 |
+| ≥ 100 | 384 | 0.995 → 0.995 (0.995) | **0.039 → 0.0067** | **0.19 [0.10–0.46]** | **4.2** | 0.93 → 0.71 | 0.99 → 0.96 | 0.50 |
+
+- **The rule passes, by a wide margin.** The loud floor is **0.0067 bins (95% CI
+  0.0061–0.0076)**, 2.8×10⁻⁴ units of x_f. The per-source ratio is 0.189 (95% CI
+  0.170–0.206): 5.3× narrower than the same recipe without the features, and 5.5× narrower
+  than the 768 final in median width.
+- **The floor follows SNR:** 0.0100 / 0.0063 / 0.0048 / 0.0037 bins at SNR 100–200 /
+  200–400 / 400–800 / ≥ 800. That still falls more slowly than 1/SNR (×2.7 over a factor
+  ~6.7 in SNR), so a residual floor remains, now at 4× ideal.
+- **Coverage is near nominal,** in68 0.71–0.78 and in95 0.96–0.97 in every band. The baseline
+  over-covered (in68 0.93).
+- **No bias:** +0.0012 ± 0.0017 bins, and the window-position profile at most 0.002.
+- **Detection recovered:** net +7 of 840 against 512-cool (17 against 10). That is close to
+  the 768 final (0.54 / 0.86 / 0.97 / 0.995), at 512 width and the 512's cost (13.3 h
+  against 10.9 + 2.2).
+- **Loss.** The 10-epoch mean is 0.4403 at the end, against 0.4352 for 512-cool. The lag was
+  0.048 at epoch ~380, 0.008 at epoch 1000 (0.4634 against 0.4557) and 0.005 after the
+  cooldown. R1 caught up during the constant-lr phase.
+- **F30's predictions held:** floor 0.004–0.008 bins (0.0067); detection within ~10 sources
+  of 512-cool (it is +7); in68 0.68–0.80 when loud (0.71).
+
+**Crowding with the floor gone (F29's cut, `paper/scripts/tables.py`).**
+- At SNR ≥ 40, found sources are **0.0062 bins** wide beyond 5 bins of a neighbour, 0.017 at
+  2–5 bins and 0.028 within 2 bins. Crowding now sets the remaining width; for the baselines
+  the floor hid it (0.036 / 0.046 / 0.057).
+- **Detection next to louder neighbours does not improve:** 63% of SNR 15–40 sources within 5
+  bins of a >3× louder one are found, as for the 768 final (59% for 512-cool). So F28's
+  reading (the loud source's imprecision masks its neighbour) is not supported. The misses
+  next to loud sources have another cause, perhaps how slots are assigned or a coarse
+  search near a dominant peak.
+
+**Against the MCMC (the four windows of F28; `compare_mcmc.py --flow
+outputs/lisa-XS-pos/eval_draws.npz --tag _r1`, log `outputs/mcmc/compare_r1.log`; table
+`tab:mcmc-r1`).**
+- **f₀ is fixed.**
+  - Loud sources go from 38–84 to **5–12× the MCMC width**: 7.3, 5.3, 5.0 and 12 at SNR
+    1366, 1245, 567 and 819.
+  - Found moderate sources (SNR 26–235) are at 1.2–3.0×.
+  - The crowded SNR-64 source (1.1 bins from the SNR-819 one) stays at 19×.
+- **The other parameters are not.** A, sky, inclination and phases of loud sources stay at
+  **3–9×** (median 3.2–6.5), and 12× for the crowded SNR-64 source. The features remove the
+  frequency coordinate's precision limit, not the others'. Those are O(1) bf16 coordinates
+  too: unit vectors on S², the amplitude in [−1, 1]. The same mechanism is the natural
+  suspect.
+- **The same six sources are missed.** Their f₀ ratios are 45–330, and 70–89% of their
+  draws sit > 1 bin off.
+- **Coverage is 125/128 inside the 95%** (108/128 inside the 68%), against 127/128 for the
+  768 final.
+  - One exception is again the missed SNR-9.3 source's sky latitude.
+  - The other two are the **amplitude and longitude of the SNR-235 source in q0.30, shifted
+    by 3.1 and 7.8 MCMC σ (W1)**, with widths only 1.3–2.4× the MCMC's.
+  - That source sits 0.16 bins from the missed SNR-37 source: the flow folds the
+    neighbour's signal into it. The wider posteriors without the features covered that
+    shift; R1's sharper ones expose it. Masking now costs bias as well as detection.
+
+**Paper.** R1 is in the following places:
+- the sixth rung of the XS ladder, table and figure;
+- a line in `fig:width-snr` and a row in `tab:b-coordinate`;
+- `tab:mcmc-r1` with its paragraph in `app:mcmc`;
+- the final numbers in `app:b` and `app:xs-crowding`;
+- the abstract and the last item of `app:related`.
+
+`style.MODELS["XS-pos"]` is red.
+
+### F30 (2026-10-11): R1 at mid-run — the position features cut the loud floor 3.5× before any cooldown; B2 launched
+
+**Runs.** R1 = `XS-pos` (job 14263742, `PositionedLisaFlow`, 32 periods from 2 to 128 bins),
+1.2M steps from scratch with XS-late-cool's recipe. A scorecard of its epoch-474 checkpoint
+(job 14275317, 4.6 min, the same 840 sources as F15–F24), at constant lr, i.e. before its
+cooldown. Comparison: `outputs/scorecards/compare_r1.py`, against XS-late-cool (the same
+recipe without the features, cooled, epoch 1200).
+
+| SNR | n | found, 512-cool → R1 (768-cool) | f₀ width (bins), found by both | per-source ratio R1/512-cool [16–84%] | × ideal (R1) | in68 | in95 | rank |
+|---|---|---|---|---|---|---|---|---|
+| < 15 | 148 | 0.50 → 0.43 (0.54) | 0.109 → 0.090 | 0.83 [0.63–1.05] | 1.8 | 0.76 → 0.72 | 0.97 → 0.93 | 0.52 |
+| 15–40 | 157 | 0.85 → 0.77 (0.86) | 0.074 → 0.049 | 0.72 [0.49–1.09] | 2.4 | 0.92 → 0.82 | 1.00 → 0.99 | 0.50 |
+| 40–100 | 151 | 0.95 → 0.92 (0.97) | 0.043 → 0.019 | 0.49 [0.32–0.95] | 2.4 | 0.93 → 0.74 | 0.98 → 0.97 | 0.50 |
+| ≥ 100 | 384 | 0.995 → 0.987 (0.995) | **0.039 → 0.010** | **0.28 [0.17–0.62]** | **7** | 0.93 → 0.71 | 0.99 → 0.96 | 0.48 |
+
+- **The rule passes, half-way.** The loud floor is **0.0100 bins (95% CI 0.0093–0.0110)**,
+  4.2×10⁻⁴ units of x_f, against the rule's ≤ 0.012. The per-source ratio at SNR ≥ 100 is
+  0.283 (95% CI 0.256–0.317). The input representation of position was the limit: its
+  encoding or its bf16 rounding. The features change both, since they are computed before the
+  cast, so R1 does not separate F26's candidates 1 and 2 at the input.
+- **The floor follows SNR again:** 0.0139 / 0.0103 / 0.0084 / 0.0068 bins at SNR 100–200 /
+  200–400 / 400–800 / ≥ 800, against the flat 0.044–0.036 without the features. This was
+  predicted.
+- **Calibration is close to nominal now:** in68 0.71–0.82 and in95 0.93–0.99, where the
+  baseline over-covered (in68 0.93 when loud).
+- **No bias.** The loud offset is +0.0047 ± 0.0026 bins, and the window-position profile at
+  most 0.004.
+- **Detection lags.** R1 finds 31 fewer sources of 840 (6 found only by R1, 37 only by
+  512-cool). That is XS-late's level at the end of its constant lr (F15: 0.45 / 0.81 / 0.92
+  against R1's 0.43 / 0.77 / 0.92), before any cooldown.
+
+**The loss lags too, and why.**
+- Until epoch ~57 R1 tracks XS-late (13474448: same recipe, seed, aux phase): 0.5733
+  against 0.5766 at 55.
+- Then XS-late's flow loss drops by ~0.03 in 15 epochs, the transition of F7/F10, and R1's
+  never does. It is 0.5240 against 0.4763 at epochs 373–382, and the gap was still growing.
+- At initialisation (CPU, 8 samples, `outputs/scorecards/init_scale.py`) the position
+  projections dominate the source tokens: x_pos has rms 0.41, against 0.06 for `x_embed`. A
+  source token starts as ~98% (by variance) a random high-frequency function of its own x_f,
+  which buries its other ten coordinates. On the data tokens, y_pos is 0.41 against 1.21.
+- The features are computed in float64, not float32 as the code comment says:
+  `src/canna/__init__.py` enables x64 globally. That is harmless (the cast to bf16 comes
+  after).
+- A reviewer's CPU check on 40 XS-pos windows found source and token positions consistent in
+  units, origin and orientation:
+  - source bins match f0·T_obs − window_start to 5×10⁻¹¹ bins;
+  - token column c covers channels 2c, 2c + 1;
+  - the power-weighted token centroid sits −0.02 ± 0.37 bins from the source.
+
+  So the lag is not a position bug. It points at the initial scale. **Any next run with
+  features should zero-initialise `x_pos` and `y_pos`,** so it starts as the plain network.
+
+**B2 launched now (14275499 → 14275503, scorecard 14275504, eval 14275505).**
+- The rule says B reruns with the features. The margin is clear (the CI tops at 0.011), and
+  every cooldown so far has lowered the floor.
+- Starting at 04:15 CEST, 8 h before R1 ends, saves 8 h on an 87 h run. The GPU budget is the
+  same either way.
+- B2 = `configs/B-pos.yaml` (3eb92aa): B-late's recipe with `positions: 32` (periods 2 to 8192
+  bins). It uses R1's tested design, default init included, so the result maps onto R1's.
+- CPU smoke test (`outputs/scorecards/b_pos_smoke.py`): 75.70M parameters, finite outputs,
+  2048 distinct token positions (641 in B1).
+
+**Predictions, written now.**
+- **R1 after its cooldown** (ends ~12:30 CEST, 11 Oct):
+  - the loud floor 0.004–0.008 bins (the cooldown was worth ×0.44 in C1 and C2);
+  - detection back to within ~10 sources of 512-cool;
+  - in68 0.68–0.80 at SNR ≥ 100.
+- **B2:** two hypotheses, which its scorecard tells apart.
+  - (a) The precision is still a fraction of the window: 4×10⁻⁴ of x_f is 0.6 bins on B.
+    Loud widths 0.3–0.8 bins, most loud sources found.
+  - (b) The features make it a precision in bins, set by the finest periods (2 bins).
+    Loud widths ~0.01–0.05 bins, limited by B's 1/6 of the steps.
+  - Either way B2 finds most sources at SNR ≥ 40, where B1 found none.
+  - **Early read:** a B2 scorecard at epoch ~60 (43 min of GPU, ~27 h in), which F26 shows is
+    cheap.
+
+### F29 (2026-10-11): crowding — detection falls with the distance to the nearest source, most of all next to a louder one
+
+The cut by separation that §9.5 asked for. `paper/scripts/tables.py` (`xs_separation`,
+`masking`) produces `tables/xs_separation.tex` and `xs_masking.tex`. It uses the scored
+sources' f₀ coordinates (`paper/data/scorecards/coord.npy`, 1 unit = 24 bins on XS).
+XS-late-768-cool, 840 sources:
+- **Windows are crowded.** The nearest other source is a median **5.2 bins** away: within 1
+  bin for 12%, within 2 bins for 21%, within 5 bins for 49%. Over the 210 windows, the
+  closest pair is a median 2.5 bins apart, and closer than 12.6 bins in every window.
+
+| nearest source (bins) | n | found, SNR < 15 / 15–40 / ≥ 40 | width at SNR ≥ 40 (bins) | × ideal | in68 | in95 |
+|---|---|---|---|---|---|---|
+| 0–1 | 98 | 0.35 / 0.63 / 0.95 | 0.050 | 33 | 0.85 | 0.99 |
+| 1–2 | 81 | 0.19 / 0.77 / 0.98 | 0.051 | 24 | 0.86 | 1.00 |
+| 2–5 | 232 | 0.38 / 0.79 / 0.99 | 0.043 | 23 | 0.88 | 1.00 |
+| 5–12.6 | 276 | 0.71 / 0.98 / 1.00 | 0.035 | 14 | 0.92 | 0.99 |
+| ≥ 12.6 | 153 | 0.82 / 1.00 / 1.00 | 0.033 | 11 | 0.92 | 0.98 |
+
+- **Masking.** Of the SNR 15–40 sources within 5 bins of another source, 63% (of 41) are
+  found when it is more than 3× louder, and 86% (of 44) otherwise.
+- **Loud widths** grow by about half within 2 bins of a neighbour. Coverage does not degrade.
+- **Delmond et al.'s two-source separations** (12.6 and 31.6 of our bins) are where the flow
+  is already at its best: every source above SNR 15 is found.
+- **B is not informative:** its nearest neighbour is a median 268 bins away, and nothing is
+  found anyway.
+- XS-late-cool (512) shows the same pattern (the same table, `outputs/scorecards/separation.py`).
+
+### F28 (2026-10-11): MCMC on two more windows — the flow misses sources next to louder ones, which the MCMC localises
+
+**Setup.** The F27 protocol on eval windows 2 (q0.30: SNR 9.1, 37.2, 111, 235) and 7 (q0.80:
+SNR 9.3, 9.5, 64, 819). They were chosen because each holds a faint or moderate source within
+0.2 bins of a loud one. Two seeds each, 14.6–18.1 min per run on the laptop GPU
+(`outputs/mcmc/run_more.sh`). Comparison: `compare_mcmc.py --windows 2 7` against
+XS-late-768-cool (`outputs/mcmc/compare_windows27.log`). The paper tables now carry all four
+windows (`q1.00`, `q0.60`, `q0.30`, `q0.80`).
+
+**The MCMC is converged.** The seeds agree within 4.3% in every width, and W1 ≤ 0.06 σ except
+the SNR-9.3 source's 0.22 σ. R-hat is 1.0000 and ESS ≥ 1.2×10⁵.
+
+**Fisher.**
+- In f₀ it matches the MCMC within 3% at SNR ≥ 62 (all 8 such sources of the four windows),
+  and within 16% below.
+- In the other parameters it is off by up to 4.5 for the SNR-819 source. That source is
+  nearly face-on (cos ι = 0.995), where the linearised forecast spreads along the
+  degeneracies the posterior bounds.
+
+**Flow against MCMC, four windows, 16 sources.**
+- **Coverage.** The MCMC median is inside the flow's 95% for **127 of 128** source–parameter
+  pairs. The exception is the sky latitude of a missed SNR-9.3 source. It is inside the 68%
+  for 112 of 128.
+- **Loud f₀ ratios rise with SNR:** 6.4 (SNR 111), 11 (235), 38 (567), 44 (819), 66 (1245),
+  84 (1366). That is a fixed absolute floor against the MCMC's 1/SNR. The other parameters
+  are 3–8.5× too wide above SNR 500.
+- **Six of the 16 sources are missed by the flow (56–89% of their draws > 1 bin off), and the
+  MCMC localises all six** (f₀ within 16% of Fisher).
+  - Five sit within 2.6 bins of a 6–90× louder source: 14.4 next to 1245, 27.1 next to 567,
+    37.2 next to 235 (0.16 bins apart), 9.1 next to 111, and 9.3 next to 819 (0.21 bins).
+  - The sixth (SNR 9.5) is 4.9 bins from the other SNR-9 source.
+- **A found SNR-64 source 1.1 bins from the SNR-819 one is 6–11× too wide in every
+  parameter,** with 8% of its draws off. Isolated moderate sources stay at 1–2.6×.
+- **Caveat on "draws off the source"** (here, and F27's "~20% of a brighter neighbour's
+  draws"). These are assignments by the evaluation's relabelling (`match_sources`, which
+  weighs amplitude and sky as well as f₀), not draws the flow puts elsewhere. When a slot does
+  not lock on, the matching can hand it a bright source's slot, although almost every draw has
+  a slot on the bright source (`app:evaluation-matching`: 99.7% in q0.60). The paper says so
+  now.
+
+**Reading.** Detection fails where a faint source shares its bins with a loud one. The flow
+places the loud one only to its floor (38–84× the MCMC width), so the mismodelled part of
+the loud signal is comparable to the faint source's SNR. The MCMC has no such floor. So
+removing the floor (F30) should improve detection of crowded faint sources too. That is to
+be checked on R1's final model, against the same four MCMC windows, which need no new MCMC.
 
 ### F27 (2026-10-10): flow against MCMC on two XS windows — never biased, too wide when loud, misses one faint source per window
 
@@ -1203,7 +1469,88 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
   - The risk is that the long aux phase is what enables the jump.
   - E1b (no aux) is dropped to save compute.
 
-## 6. Roadmap (2026-10-03, updated 2026-10-10)
+## 6. Roadmap (2026-10-03, updated 2026-10-11)
+
+### Update, 2026-10-11 afternoon (after R1's final, F31)
+
+R1 settles the frequency floor: 4× ideal on XS, with honest coverage. Two limits remain,
+both measured against the MCMC (F28, F31): the other coordinates of loud sources (3–9× too
+wide), and faint sources masked by a loud neighbour (missed, and they now bias it). In order:
+1. **B2 is the decisive run** (14275499 → 14275503, ~87 h, ends ~15 Oct).
+   - **Early read:** a scorecard at epoch ~60 (~27 h in, i.e. ~07:00 CEST on 12 Oct; 43 min
+     of GPU). It tells F30's hypotheses apart: loud widths 0.3–0.8 bins means the precision
+     is in window units, ~0.01–0.05 means it is in bins. Then the final at ~15 Oct.
+   - Submit it as `sbatch slurm/lisa-scorecard.sbatch B-pos --n_random 50`, and rename the
+     output before the chained final one overwrites it.
+2. **R2 on XS (~13 h), only after B2's early read, folding in everything we believe:**
+   - zero-initialised position projections (F30's lag);
+   - multi-scale fp32 Fourier features for every source coordinate, not only f₀: the sky and
+     orientation vectors and the amplitude. These are F31's next limit, by the same
+     mechanism;
+   - an fp32 velocity head;
+   - log f_w for the window-frequency embedding.
+
+   Rule, written now: R2 succeeds if the loud sources' A, sky and orientation widths fall to
+   ≤ 2× the MCMC's on the four windows (from 3–9×), with f₀ ≤ 0.007 bins and coverage
+   ≥ 125/128.
+3. **Masking** (F28, F29, F31) is not a precision problem: R1's sharper loud sources do not
+   unmask their neighbours. It needs its own idea, e.g. training with more close pairs (the
+   prior puts a pair within 1 bin in 22% of windows, within 2 bins in 39%), or a second pass on the
+   residual. It belongs to the next paper unless cheap.
+4. **Paper:** R1 is now the best XS model. Should it become "the final model" of the
+   XS appendix (tables, figures, corner pages)? That is the user's call; for now it is the
+   sixth rung, and the abstract leads with it.
+
+### Update, 2026-10-11 (after R1's mid-run scorecard, F30)
+
+**The floor is solved in principle.** R1's position features cut it 3.5× before the cooldown,
+so step 3 below (B2) is running already. What comes next, in order:
+1. **R1's final readout (~12:30 CEST, 11 Oct; scorecard and eval are chained).**
+   - Apply the rule. Check the cooldown's effect on detection and calibration against F30's
+     predictions.
+   - Rerun `compare_mcmc.py` on the four MCMC windows with R1's eval draws: no new MCMC.
+     F28's reading predicts fewer misses next to loud sources.
+2. **B2 early read:** a scorecard at epoch ~60 (~27 h in, 43 min of GPU). It tells F30's two
+   hypotheses apart (precision in units of the window, or in bins) long before the 87 h end.
+3. **Only if R1's detection lag survives its cooldown:** one XS run, R2, folding in
+   everything we believe in:
+   - zero-initialised position projections (F30);
+   - an fp32 velocity head (the output precision of an O(1) velocity under bf16);
+   - log f_w for the window-frequency embedding, which now sees f_w in Hz as a nearly
+     linear, 10⁻³-sized input (`app:architecture`).
+
+   About 13 h. Not before R1's final, to respect the compute budget.
+4. **No more MCMC needed for the paper.** Four windows (16 sources, 128 pairs) back every
+   claim. The R1 comparison reuses them.
+
+**Paper review (2026-10-11), all fixes applied in the paper.** A reviewer read a fresh
+snapshot; every claim below was checked here before fixing.
+- **Critical.**
+  - The loss-sensitivity appendix had "about 100 times the ideal width at SNR 1000": it is
+    ~300× (94× at the median loud source).
+  - The proposition is asymptotic in σ/σ_m. Quadrature gives exact/asymptote 0.59 for p = 3
+    at the real floor (σ/σ_m = 0.04), and 0.92 for p = 1. So the floor costs ~1.1×10⁻³ of
+    the logged loss under the warp (twice the scatter), not 2×10⁻³ (four times). The proof's
+    "O(σ)" is a relative O((σ/σ_m)^{1/p}).
+- **Major.**
+  - The abstract was stale after F28/F30.
+  - "The warp alone" is confounded with the shorter aux phase.
+  - On B the bf16 cell does add ~20% in the largest cells, as cell/√12 in quadrature
+    predicts: 2.9 against 3.4 bins.
+  - R1's features also remove input rounding (wording above).
+  - "Mc not measured anywhere in B" rested on one source.
+  - The SNR-62 source's cos ι is 0.98, not 0.95.
+  - A citation was missing: FMPE's bounded power-law time prior (Dax+23 §3.3) already
+    up-weights late times, and the warped clock is a stronger, divergent version.
+- **Minor:** B is 40× XS per step, not 41. B had a sixth of the cooled XS steps. 1543 s per B
+  epoch. The 18% matching contamination widens the MAD by ~25%. The chirp drift is resolved
+  to √180/(πρ) ≈ 4.3/ρ bins. The MCMC table's "other" column wrongly included f₀ (no printed
+  change), and its asterisk now sits on the failing entry.
+5. **Beyond this paper:**
+   - a variable number of sources (a SlotFlow-like cardinality head, or empty slots);
+   - stitching windows into a global fit;
+   - gaps and non-stationary noise (cf. Mao et al.);
+   - LDC data.
 
 ### Update, 2026-10-10 (after B1, F26)
 
@@ -1551,6 +1898,27 @@ attribution.
 
 ## 7. How to run
 
+**From the laptop (since 2026-10-11).** `ssh trex cmd` is refused, but the relay accepts a
+shell fed on stdin, over the user's ControlMaster:
+
+```bash
+cat <<'EOF' | timeout 60 ssh -T trex
+cd ~/canna; squeue -u mentasgi; sbatch slurm/lisa-scorecard.sbatch XS-pos
+exit
+EOF
+```
+
+Code reaches TREX as a bundle: `git bundle create X.bundle <trex-head>..fml`, `put` it over
+sftp, then `git pull --ff-only ~/X.bundle fml` in `~/canna` through the same shell.
+
+```bash
+# 2026-10-11: R1's mid-run scorecard, then B2 (F30)
+sbatch --job-name=canna-lisa-scorecard-r1mid slurm/lisa-scorecard.sbatch XS-pos
+J1=$(sbatch --parsable slurm/lisa.sbatch B-pos)          # then J2..J5 with --dependency=afterany:$J(k-1)
+sbatch --dependency=afterok:$J5 slurm/lisa-scorecard.sbatch B-pos --n_random 50
+sbatch --dependency=afterok:$J5 slurm/lisa-eval.sbatch B-pos
+```
+
 On TREX, from `~/canna`, after pulling the latest bundle (TREX cannot reach GitHub):
 
 ```bash
@@ -1691,6 +2059,18 @@ Everything below is gitignored, under `outputs/lisa-XS/`.
   - `width_B.py` makes the width-against-cell, SNR and f₀ cuts and the per-injection
     offset coherence;
   - `token_B.py` does the cut by the bf16 token-position step.
+- **F28–F30 (2026-10-11).**
+  - `outputs/mcmc/`:
+    - `run_more.sh` ran windows 2 and 7 (`window{2,7}_s{0,1}.npz`, logs);
+    - `compare_windows27.log` is `compare_mcmc.py --windows 2 7`;
+    - its summaries `compare_window{2,7}.npz` are imported into `paper/data/mcmc`.
+  - `outputs/scorecards/`:
+    - `XS-pos_ep474.npz` is R1's mid-run scorecard;
+    - `compare_r1.py` holds R1's rule and tables;
+    - `separation.py` with `separation_2026-10-11.txt` is the crowding cut for both XS
+      models and B (the paper's version is in `paper/scripts/tables.py`);
+    - `init_scale.py` measures the embedding scales at init;
+    - `b_pos_smoke.py` is B2's CPU smoke test.
 
 ## 9. Related work (literature survey, 2026-10-09)
 

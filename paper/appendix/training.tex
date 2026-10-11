@@ -68,7 +68,7 @@ rung & width & per 1000 steps & peak memory & runs \\
 XS & 512 & 38.9\,s & -- & 1M steps in 10.8\,h; 200k cooldown in 2.2\,h \\
 XS & 768 & 59.6\,s & -- & 1M steps in 16.6\,h; 200k cooldown in 3.6\,h \\
 S & 512 & 80\,s & -- & 500k steps in 11.1\,h (an early run that diverged; not retrained) \\
-B & 512 & 1536\,s & 18.6\,GiB & 200k steps in 86\,h (4 chained jobs) \\
+B & 512 & 1543\,s & 18.6\,GiB & 200k steps in 86\,h (4 chained jobs) \\
 B & 768 & 2570\,s & 29.4\,GiB & 300-step benchmark \\
 \bottomrule
 \end{tabular}
@@ -83,7 +83,8 @@ the 512-wide network (the B1 scorecard: 60 windows in 42 minutes) and 78 with th
 \label{app:training-numerics}
 
 Training and evaluation run in bfloat16. Three checks, on XS-late
-(\cref{tab:numerics}), show that the numerics do not set the results: the RK4 integrator is
+(\cref{tab:numerics}), show that the numerics of evaluation do not set the results (bfloat16 in training
+is not tested): the RK4 integrator is
 converged at 32 steps; float32 evaluation on a CPU gives the same widths as bfloat16 on the
 A100 (median ratio 0.991, 95\% interval 0.978--1.000, over 93 loud sources) and finds the same
 169 sources; and float32 on the A100 reproduces the CPU once XLA's GEMM autotuning is switched

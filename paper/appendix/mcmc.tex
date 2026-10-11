@@ -2,7 +2,7 @@
 \section{Comparison with MCMC}
 \label{app:mcmc}
 % =======================================================================================
-% STATUS (2026-10-10): filled. lisa_checks/mcmc_xs.py (jexplore, needs .venv313) ran on a laptop
+% STATUS (2026-10-11): filled; windows q0.30 and q0.80 added (research log F28). lisa_checks/mcmc_xs.py (jexplore, needs .venv313) ran on a laptop
 % GPU, two seeds per window; lisa_checks/compare_mcmc.py makes the per-window summaries, which
 % scripts/import_data.py mcmc copies into data/mcmc. Tables from scripts/tables.py, the figure
 % from scripts/fig_mcmc.py. Research log F27.
@@ -20,8 +20,12 @@ that are updated in turn, which is what makes the problem tractable and is also 
 windows imitate. Each new stretch of data, or each change of the noise model, means sampling
 again. An amortised posterior estimator costs one forward integration per window once
 trained, which is what makes it attractive as a proposal distribution, as a fast first pass, or
-for population studies that need many independent analyses \citep{srinivasan2025simulation}.
-Neural density estimation for galactic binaries was explored by \citet{korsakova2024neural}.
+for population studies that need many independent analyses.
+Normalising flows have been proposed as priors and proposals for these samplers
+\citep{korsakova2024neural,sasli2026learned}, and sequential Monte Carlo parallelises their
+trans-dimensional moves \citep{demasi2026massively}. Amortised posteriors for one or two
+binaries have been compared with MCMC by \citet{delmond2026neural}, and slot-based posteriors
+of sinusoidal mixtures with RJMCMC by \citet{houba2025slotflow} (\cref{app:related}).
 
 \subsection{Sampler}
 
@@ -50,12 +54,18 @@ independent seeds.
 \subsection{Flow against MCMC}
 
 \paragraph{Protocol.}
-Two XS eval windows, chosen to probe the two limitations of \cref{app:xs}:
+Four XS eval windows, named by their quantile in window SNR (\cref{app:evaluation}). The first
+two probe the two limitations of \cref{app:xs}; the last two were added to test the flow's
+misses, since each holds a faint or moderate source within 0.21 bins of a loud one:
 \begin{itemize}
-  \item the loudest (window SNR 1848, sources at SNR 14, 33, 1245 and 1366), where the $f_0$
-        floor and the amplitude--inclination width matter;
-  \item the crowded window of \cref{fig:corner-median} (sources at SNR 26, 27, 62 and 567),
-        where the flow misses an SNR-27 source.
+  \item q1.00, the loudest (window SNR 1848, sources at SNR 14, 33, 1245 and 1366), where the
+        $f_0$ floor and the amplitude--inclination width matter;
+  \item q0.60, the crowded window of \cref{fig:corner-median} (SNR 26, 27, 62 and 567), where
+        the flow misses an SNR-27 source;
+  \item q0.30 (SNR 9.1, 37, 111 and 235), with the SNR-37 source 0.16 bins from the SNR-235
+        one;
+  \item q0.80 (SNR 9.3, 9.5, 64 and 819), with an SNR-9.3 source 0.21 bins from the SNR-819
+        one and the SNR-64 source 1.1 bins from it.
 \end{itemize}
 For each window, the MCMC uses the same noise realisation as the flow. We relabel its samples
 as the flow's (\cref{app:evaluation-matching}), and fold $\psi$ and $\phi_0$ of both sample
@@ -67,18 +77,20 @@ parameters we then compare:
   \item the coverage of the MCMC medians by the flow's intervals.
 \end{itemize}
 
-\paragraph{The MCMC is converged, and Fisher holds where the floor is measured.}
+\paragraph{The MCMC is converged, and Fisher holds in $f_0$.}
 \Cref{tab:mcmc-checks} checks the sampler itself.
 \begin{itemize}
-  \item The two seeds agree within 7.5\% in every width and within $0.1\sigma$ in
-        $W_1$. The exception is the SNR-14 source ($0.49\sigma$), whose sky posterior is broad
-        and multimodal.
-  \item At SNR $\ge567$, the Fisher forecast matches the MCMC's $f_0$ width to 2\%, and every
-        other width within a factor 0.8--1.4. So the ``$\times$ ideal'' and ``$\times$
-        Fisher'' of \cref{app:xs} compare the flow with the true posterior where the floor is
-        quoted.
-  \item Below SNR $\sim60$, the forecast can be off by a factor of two: along the
-        amplitude--inclination direction near face-on, and on the sky of the SNR-14 source.
+  \item The two seeds agree within 7.5\% in every width and within $0.1\sigma$ in $W_1$. The
+        exceptions are the SNR-14 source ($0.49\sigma$), whose sky posterior is broad and
+        multimodal, and an SNR-9.3 source ($0.22\sigma$).
+  \item In $f_0$ the Fisher forecast matches the MCMC within 3\% for every source at SNR
+        $\ge62$, and within 16\% below. So the ``$\times$ ideal'' of \cref{app:xs} compares the
+        flow with the true posterior where the floor is quoted.
+  \item In the other parameters the forecast is within a factor 0.8--1.4 for most sources, but
+        it can be off by up to 2.5 at SNR $\lesssim60$, by 1.9 for the SNR-235 source, and by up to 4.5 for the nearly face-on
+        SNR-819 source of q0.80 ($\cos\iota = 0.995$), where the linearised forecast spreads
+        along the $(\psi,\phi_0)$ and amplitude--inclination degeneracies that the true
+        posterior bounds.
 \end{itemize}
 
 \begin{table}[h]
@@ -95,39 +107,82 @@ $|$width ratio $-1|$, and of $W_1$ in units of the MCMC width.}
 \paragraph{Flow against MCMC.}
 \Cref{tab:mcmc} gives the width ratios, and \cref{fig:mcmc} the loudest source.
 \begin{itemize}
-  \item \textbf{Never biased.} The MCMC median lies inside the flow's central 95\% interval for
-        all 64 source--parameter pairs, and inside its 68\% interval for 57 of them. The flow is
-        conservative, as the coverage of \cref{app:xs} said.
-  \item \textbf{Loud sources are too wide in every parameter.} $f_0$ is 38--84 times the MCMC
-        width, the floor of \cref{app:xs}. The sky, amplitude, inclination and the two
-        phases are 4--8 times too wide. The MCMC follows the same curved
-        amplitude--inclination degeneracy as the flow (\cref{fig:mcmc}), but is four times
-        narrower along it. So the flow's excess width there is not a non-Gaussianity that
-        the Fisher forecast misses, and the precision limit is not specific to $f_0$, though
-        $f_0$ is where it costs most.
-  \item \textbf{Faint sources, once found, are near-optimal.} At SNR 26--33 the flow is within
-        1.0--2.1 times the MCMC in every parameter but $f_0$ (2.3--4.8).
-  \item \textbf{One faint source per window is missed, by the flow, not by the data.} The MCMC
-        localises the SNR-27 source of the crowded window to 0.023 bins, as the Fisher
-        forecast predicts, while 87\% of the flow's draws for it are more than a bin away.
-        The SNR-14 source of the loudest window is similar (58\%). When one slot does not
-        lock on, a brighter neighbour loses about a fifth of its draws to the confusion (SNR
-        33 and 62).
-  \item $\psi$ and $\phi_0$ of the SNR-62 source are nearly face-on ($\cos\iota\approx0.95$).
-        Only a combination of them is constrained, in both methods, so the ratio of their
-        separate widths (0.5) means little; $W_1$ is $0.3\sigma$. The chirp mass is
-        prior-dominated in both (ratios 0.95--1.06).
+  \item \textbf{Not biased.} The MCMC median lies inside the flow's central 95\% interval for
+        127 of the 128 source--parameter pairs, and inside its 68\% interval for 112. The
+        exception is the sky latitude of an SNR-9.3 source that the flow misses. Where the
+        flow finds a source it is conservative, as the coverage of \cref{app:xs} said.
+  \item \textbf{Loud sources are too wide in every measured parameter.} In $f_0$ the flow is 6.4, 11,
+        38, 44, 66 and 84 times the MCMC width at SNR 111, 235, 567, 819, 1245 and 1366: a
+        width that stays near the floor of \cref{app:xs} while the MCMC's falls as
+        $1/\snr$. The sky, amplitude, inclination and the two phases are 3--8.5 times too wide
+        above SNR 500. The MCMC follows the same curved amplitude--inclination degeneracy as
+        the flow (\cref{fig:mcmc}), but is four times narrower along it. So the flow's excess
+        width there is not a non-Gaussianity that the Fisher forecast misses, and the
+        precision limit is not specific to $f_0$, though $f_0$ is where it costs most.
+  \item \textbf{Moderate sources, once found, are near-optimal when isolated.} At SNR 26--33
+        the flow is within 1.0--2.1 times the MCMC in every parameter but $f_0$ (2.3--4.8),
+        and at SNR 111 within 1.8--2.6. An SNR-64 source 1.1 bins from the SNR-819 one is
+        the exception: 6--11 times too wide in every parameter but $f_0$ (19), with 8\% of its draws
+        relabelled off it.
+  \item \textbf{The flow misses six of the sixteen sources, and the data do not.} The MCMC
+        localises every source, in $f_0$ as the Fisher forecast predicts (\cref{tab:mcmc-checks}),
+        while most of the flow's draws for the missed ones are more than a bin away (56--89\%).
+        Five of the six sit within 2.6 bins of a source 6 to 90 times louder: SNR 14 next to
+        1245, 27 next to 567, 37 next to 235 (at 0.16 bins), 9.1 next to 111 and 9.3 next to
+        819; the sixth, at SNR 9.5, is 4.9 bins from the other SNR-9 source. When one slot does
+        not lock on, the relabelling of \cref{app:evaluation-matching} can hand a brighter
+        neighbour's slot to the missed source in up to a fifth of the draws (SNR 33 and 62),
+        although almost every draw has a slot on the brighter source. The scorecard shows the same pattern over 840 sources: detection falls
+        with the distance to the nearest source, most of all next to a louder one
+        (\cref{tab:xs-separation}).
+  \item $\psi$ and $\phi_0$ of two nearly face-on sources ($\cos\iota=0.98$ at SNR 62 and
+        $0.87$ at SNR 235) are constrained mostly in a combination, in both methods, so
+        the ratio of their separate widths (0.45--0.5) means little. The chirp mass is
+        prior-dominated in both (ratios 0.92--1.06).
 \end{itemize}
 
 \begin{table}[h]
-\caption{Flow against MCMC on the two windows: ratio of marginal widths (flow / MCMC) per
+\caption{Flow against MCMC on the four windows: ratio of marginal widths (flow / MCMC) per
 parameter, after relabelling and folding $\psi$ and $\phi_0$ by their exact symmetries. The
-last column is the share of the flow's draws more than a bin from the MCMC median in $f_0$. In
-every entry the MCMC median lies inside the flow's central 95\%.}
+last column is the share of the flow's draws more than a bin from the MCMC median in $f_0$.
+In every entry but the one marked $^\ast$ (the sky latitude) the MCMC median lies inside the
+flow's central 95\%.}
 \label{tab:mcmc}
 \centering
 \small
 \input{tables/mcmc}
+\end{table}
+
+\paragraph{With position features.}
+\Cref{tab:mcmc-r1} repeats the comparison for the model with position features (R1,
+\cref{app:b}), on the same windows and data, with its eval draws regenerated from the same keys.
+\begin{itemize}
+  \item \textbf{The frequency is fixed.} Loud sources are now 5--12 times the MCMC width in
+        $f_0$ instead of 38--84, and found moderate ones (SNR 26--235) 1.2--3.0 times. The
+        exception is the crowded SNR-64 source (19 times), 1.1 bins from the SNR-819 one.
+  \item \textbf{The other parameters are not.} The amplitude, sky, inclination and phases of the
+        loud sources stay 3--9 times too wide, and 12 times for the crowded SNR-64 one. So the
+        features remove the precision limit of the frequency coordinate, not that of the others.
+  \item \textbf{The same six sources are missed.}
+  \item \textbf{Coverage.} With narrower posteriors, three of the 128 entries fall outside the
+        flow's 95\% interval (125 of 128; 108 inside the 68\%). One is the sky latitude of the
+        missed SNR-9.3 source, as before. The other two are the amplitude and longitude of the
+        SNR-235 source in q0.30, shifted by 3 and 8 MCMC widths ($W_1$). That source sits 0.16
+        bins from the missed SNR-37 one, and the flow assigns part of the neighbour's signal to
+        it. A missed neighbour biases its loud companion, by an amount the wider posteriors
+        without the features covered and the sharper ones no longer do.
+\end{itemize}
+
+\begin{table}[h]
+\caption{Flow against MCMC for the final model and for R1 (position features), on the four
+windows. Width ratios (flow / MCMC) in $f_0$ and, as a median, over $\Amp$, the sky,
+$\cos\iota$, $\psi$ and $\phi_0$; and the share of the flow's draws more than a bin from the MCMC
+median in $f_0$. A star marks a source with a parameter whose MCMC median lies outside the
+flow's central 95\%.}
+\label{tab:mcmc-r1}
+\centering
+\small
+\input{tables/mcmc_r1}
 \end{table}
 
 \begin{figure}[h]
@@ -137,13 +192,15 @@ every entry the MCMC median lies inside the flow's central 95\%.}
   MCMC of the window's four sources (black), the Fisher forecast (grey, dashed) and the truth
   (red). Contours enclose 39\% and 86\% of the mass. The MCMC draws are moved at random to
   the four exact $(\psi,\phi_0)$ copies, to show them on the flow's footing. MCMC and Fisher
-  agree. The flow covers both, but is 4--8 times wider in every parameter and 84 times wider in
+  agree. The flow covers both, but is 4--8 times wider in every parameter but the
+  prior-dominated $\Mc$, and 84 times wider in
   $f_0$.}
   \label{fig:mcmc}
 \end{figure}
 
 \paragraph{Cost.}
 Once trained, the flow draws 256 posterior samples of an XS window in about a second on an
-A100, and of a B window in about 42 seconds. The MCMC of one XS window takes 14 minutes per
-seed on a laptop GPU: 400\,000 iterations of 384 chains with a double-precision likelihood.
+A100, and of a B window in about 42 seconds. The MCMC of one XS window takes 14--18 minutes
+per seed on a laptop GPU: 400\,000 iterations of 384 chains with a double-precision
+likelihood.
 Training costs about 20 A100-hours on XS and 86 on B, paid once.
