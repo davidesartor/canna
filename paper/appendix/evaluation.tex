@@ -25,8 +25,8 @@ $F = \bigl(f_0/(f_{\rm hi}-f_{\rm lo}),\ \log_{10}\Amp,\ n_{\rm sky}\bigr)$. The
 sky position and amplitude as well as frequency. When a window also holds a source the flow
 has not localised, the matching can give a well-localised source's slot to that one: in the
 window of \cref{fig:corner-median}, 18\% of the draws are relabelled this way, although 99.7\%
-of them have a slot within one bin of the source. The robust width below is insensitive to this
-contamination, while the coverage it affects is, if anything, made conservative.
+of them have a slot within one bin of the source. The robust width below is less sensitive to this contamination than a standard deviation
+(18\% of contaminating draws widen it by about a quarter), while the coverage it affects is, if anything, made conservative.
 
 \subsection{Metrics}
 \label{app:evaluation-metrics}
@@ -76,7 +76,8 @@ diagonal, floor each eigenvalue at the prior precision along its eigenvector, an
 resulting Gaussian. The forecast is a reference width, not a posterior
 \citep{cutler1994gravitational,vallisneri2008use}. It is unimodal, so it cannot show the
 exact symmetries of \cref{eq:psi-phi-symmetry}, and Gaussian, so it cannot follow the curved
-amplitude--inclination degeneracy. For a parameter the data do not constrain, such as the
+amplitude--inclination degeneracy. For a parameter the data barely constrain, such as the
 chirp mass at low frequency, where the chirp drift over the mission is a small fraction of a
-bin (0.08 bins at 2\,mHz for $\Mc = 0.45\,\Msun$), it simply shows the prior's width centred on
-the truth.
+bin (0.08 bins at 2\,mHz for $\Mc = 0.45\,\Msun$, against a resolution of about
+$\sqrt{180}/(\pi\snr)\approx4.3/\snr$ bins), it shows little more than the prior's width
+centred on the truth.

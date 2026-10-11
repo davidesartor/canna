@@ -5,6 +5,8 @@
 %          scripts/ and data/ after every pull (see README.md).
 % Status:  the main-text sections are an empty skeleton on purpose; the drafted material
 %          lives in the appendices, to be moved into the main text section by section.
+%          2026-10-11: related work (app:related) from the survey of research log section 9;
+%          a draft abstract; the outcome of R1 (position features, app:b) is the open \tbd.
 
 \documentclass{article}
 
@@ -13,6 +15,7 @@
 \usepackage{graphicx}
 \usepackage{subcaption}
 \usepackage{booktabs} % for professional tables
+\usepackage{array}    % ragged-right paragraph columns (tab:related)
 
 % hyperref makes hyperlinks in the resulting PDF.
 % If your build breaks (sometimes temporarily if a hyperlink spans a page)
@@ -65,14 +68,16 @@
 
 % The \icmltitle you define below is probably too long as a header.
 % Therefore, a short form for the running title is supplied here:
-\icmltitlerunning{Flow Matching Posteriors for LISA Galactic Binaries}
+\icmltitlerunning{Joint Flow-Matching Posteriors for LISA Galactic Binaries}
 
 \begin{document}
 
 \twocolumn[
-  % working title, to be settled
-  \icmltitle{Amortised Posteriors for LISA Galactic Binaries\\
-    with Flow Matching on a Product Manifold}
+  % working title, to be settled. Since the survey (app:related) it leads with what is new:
+  % the joint posterior of several overlapping sources. Earlier working title:
+  % "Amortised Posteriors for LISA Galactic Binaries with Flow Matching on a Product Manifold"
+  \icmltitle{Joint Amortised Posteriors for Overlapping LISA Galactic Binaries\texorpdfstring{\\}{ }
+    with Riemannian Flow Matching}
 
   % It is OKAY to include author information, even for blind submissions: the
   % style file will automatically remove it for you unless you've provided
@@ -94,7 +99,7 @@
   % paper; these are used to populate the "keywords" metadata in the PDF but
   % will not be shown in the document
   \icmlkeywords{flow matching, simulation-based inference, gravitational waves, LISA,
-    Riemannian manifolds, amortised inference}
+    Riemannian manifolds, amortised inference, label switching, permutation invariance}
 
   \vskip 0.3in
 ]
@@ -114,8 +119,31 @@
 % \printAffiliationsAndNotice{\icmlEqualContribution}
 
 \begin{abstract}
-  % TODO: one paragraph, 4--6 sentences, once the main text is written.
-  \tbd[ abstract]
+  % Draft of 2026-10-11, from the appendices and the related-work survey (app:related). Each
+  % claim and its source: one second per XS window (app:mcmc, cost); four sources, full
+  % response, broad priors (app:priors); the set coupling (app:geometry); 127/128 and
+  % 1-2.6x for isolated found sources (tab:mcmc); 25x ideal (tab:xs-final); fourfold
+  % (tab:xs-ladder, 0.147 -> 0.037 bins); the same precision on XS and B (app:b); 3.5-fold
+  % by mid-training with position features (R1, app:b).
+  LISA will resolve some $10^4$ galactic binaries whose signals overlap in frequency, so their
+  parameters must be inferred jointly, which a trans-dimensional MCMC global fit does at great
+  cost and must repeat for every new stretch of data. We train a conditional flow-matching
+  model that returns, in about a second per window (under a minute for the widest windows), the
+  joint posterior of four overlapping binaries in a frequency window, under the full instrument response and broad priors. The flow
+  transports the prior to the posterior on the product manifold of the sources' parameters
+  (intervals, spheres and a circle) and treats the sources as an unordered set: each target is
+  aligned to its prior draw over the permutations of the sources, so the symmetry of the labels
+  never enters the learned velocity field. Against a joint 32-dimensional MCMC, the MCMC median
+  lies inside the flow's 95\% interval for 127 of 128 source--parameter pairs, and isolated
+  sources the flow finds are within one to three times the MCMC width; but loud sources stop
+  at a floor of 25 times the ideal width in frequency, and faint sources next to loud ones are
+  missed. We show that the flow-matching loss is nearly blind to this floor, that a warped time
+  schedule and a learning-rate cooldown lower it fourfold, and that what remains is set by how
+  the network represents where a source sits: the same precision in coordinate units on windows
+  64 times wider that cover the whole band, which Fourier features of the positions of sources
+  and data cut 3.5-fold by mid-training. \tbd[ R1 and B2: the final numbers]%
+  \draftnote{Draft abstract (2026-10-11), revised after the paper review; the last sentence
+  waits for R1's cooldown and B2.}
 \end{abstract}
 
 \input{sections/introduction}
@@ -148,6 +176,7 @@ specifically highlighted here.
 \onecolumn
 
 \input{appendix/notation}
+\input{appendix/related-work}
 \input{appendix/signal}
 \input{appendix/noise}
 \input{appendix/priors}

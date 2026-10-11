@@ -2,7 +2,7 @@
 \section{The Whole Band: B}
 \label{app:b}
 % =======================================================================================
-% STATUS (2026-10-10): B1 has finished (jobs 13882121 -> 13882125, 86 h; research log F26).
+% STATUS (2026-10-11): R1 passed its rule mid-run; B2 launched. (2026-10-10:) B1 has finished (jobs 13882121 -> 13882125, 86 h; research log F26).
 % Its scorecard (13948963, 60 windows, 240 sources) and eval (13949002) are in. The tables and
 % fig:b-results are generated from data/scorecards/B-late.npz and coord_B.npz (positions of the
 % scored sources, outputs/scorecards/positions_B.py). The remedy at the end is under test on XS
@@ -14,8 +14,7 @@ B covers the whole band, 0.1--12\,mHz, in windows of 4096 bins ($R=1024$, an int
 bins) with 2048 data tokens, 64 times as many as XS. Everything else is the XS recipe
 (\cref{app:xs}): four sources per window, the same priors, the 512-wide network (75.6M
 parameters, unchanged), the warped clock with $p=3$, auxiliary heads for the first 10\% of the
-steps, and a linear cooldown over the last 20\%. A step costs 1.54\,s on one A100 (41 times
-XS) with a peak of 18.6\,GiB, so B can afford a fifth of the steps of the XS runs:
+steps, and a linear cooldown over the last 20\%. A step costs 1.54\,s on one A100 (40 times XS) with a peak of 18.6\,GiB, so B can afford a sixth of the steps of the cooled XS runs:
 
 \begin{table}[h]
 \caption{Cost of a B run on one A100, with the last 20\% of the steps cooling down, in 24-hour
@@ -71,12 +70,14 @@ is lost, and $\psi$ with it.
 units of the flow coordinate $x_f$, which maps the window interior onto $[-1,1]$
 (\cref{app:geometry}). One unit of $x_f$ spans 24 bins on XS and about 1536 on B. In those
 units the two problems meet (\cref{fig:b-results}b). The cooled XS networks place loud
-sources to $1.5$--$1.6\times10^{-3}$ and B to $2.1\times10^{-3}$, within 30\%, with a window 64
-times wider and a sixth of the steps. The loud-source floor of \cref{app:xs} is therefore a
-fixed precision in the coordinate, about half a bfloat16 ulp of a number of order one
-($2^{-8}\approx3.9\times10^{-3}$): below a bin on XS, three bins on B. On XS only the
-learning-rate cooldown has moved it; the width of the network and the integrator did not
-(\cref{tab:xs-ladder,tab:numerics}).
+sources to $1.5$--$1.6\times10^{-3}$ and B to $2.1\times10^{-3}$, within 35\%, with a window 64
+times wider and a sixth of the steps. For the plain network, the loud-source floor of \cref{app:xs} is therefore a fixed precision in
+the coordinate, about half a bfloat16 ulp of a number of order one
+($2^{-8}\approx3.9\times10^{-3}$): below a bin on XS, three bins on B. Before the position
+features below, only the learning-rate cooldown had moved it on XS; the width of the network
+and the integrator did not (\cref{tab:xs-ladder,tab:numerics}). \citet{delmond2026neural} see the same trend with a
+normalising flow: widening their band from a few $\mu$Hz to 0.5\,mHz, with the band's centre
+as an input, made $f_0$ markedly harder to estimate.
 
 \begin{table}[h]
 \caption{The loud-source $f_0$ width ($\snr\ge100$), in bins and in units of the flow
@@ -92,9 +93,10 @@ coordinate $x_f$. XS widths are medians over found sources, B's over all sources
 Three effects that scale with the window are ruled out.
 \begin{itemize}
   \item \textbf{The bfloat16 cell of the input coordinate} (\cref{app:geometry-remarks}). On B
-        it spans 6 bins for $|x_f|>0.5$ and shrinks towards the window centre. Yet sources in
-        0.1--0.4-bin cells are as wide as those in 6-bin cells (\cref{fig:b-results}c;
-        Spearman $+0.21$ over 229 sources).
+        it spans 6 bins for $|x_f|>0.5$ and shrinks towards the window centre. Yet sources in 0.1--0.4-bin cells are already 2.9 bins wide, so the cell is not the
+        limit. In 6-bin cells they are about 20\% wider (3.4 bins; Spearman $+0.21$ over 229
+        sources), as the cell's rounding error, $\text{cell}/\sqrt{12}$ added in quadrature,
+        predicts (\cref{fig:b-results}c).
   \item \textbf{The positions of the data tokens.} The token index is built in the compute
         dtype, and bfloat16 holds integers exactly only up to 256. So on B the 2048 columns of
         tokens get only 641 distinct positions, in groups of 2, 4 and 8 above columns 256, 512
@@ -113,8 +115,7 @@ is the same. Below, it is about 40\% larger, and the posteriors are shifted: off
 bins, and in68 of 0.71. These low-frequency windows span almost a factor of two in frequency,
 so the map from $x_f$ to bins is most curved there. Their offsets are shared by the sources of
 a window: across all 60 windows, the standard deviation of a window's mean offset is 3.2 bins,
-against 1.6 within a window, as if the network misplaced the whole window. With $f_0$
-unresolved, the chirp mass is not measured anywhere in the band.
+against 1.6 within a window, as if the network misplaced the whole window. With $f_0$ unresolved, the chirp mass stays broad on the loudest eval source.
 
 \begin{table}[h]
 \caption{B by frequency, in thirds of the log band. Widths and offsets are medians over sources
@@ -132,7 +133,8 @@ with $\snr\ge40$, coverage is over all sources.}
   and the final XS model (blue), with the ideal width. (b) The same widths in units of the
   flow coordinate $x_f$: one unit is 24 bins on XS and about 1536 on B, and the loud floors
   meet (dashed: medians at $\snr\ge100$). (c) B's widths against the bfloat16 cell of its input
-  coordinate, in bins: they do not follow it.}
+  coordinate, in bins: they follow it only weakly, about 20\% wider in the largest cells, as
+  rounding in quadrature predicts.}
   \label{fig:b-results}
 \end{figure}
 
@@ -148,9 +150,22 @@ $\cos\big(2\pi(b_{\rm source}-b_{\rm token})/P\big)$.
 
 The remedy is tested on XS first, where the floor is the same in units of $x_f$: the recipe of
 the cooled 512 model, from scratch, with these features. A loud floor at or below 0.012 bins
-($5\times10^{-4}$ units of $x_f$, a third of the current one) would mean the representation was
-the limit, and B is then retrained with them. \tbd
-\draftnote{R1 (configs/XS-pos.yaml) launched 2026-10-10, about 13 h on one A100.}
+($5\times10^{-4}$ units of $x_f$, a third of the current one) would mean the
+input representation of position (its encoding, or its bfloat16 rounding) was the limit, and
+B is then retrained with them.
+
+Halfway through its constant-learning-rate phase (step 474k of 1.2M, before any cooldown), the
+XS test already passes. Its loud sources are 0.010 bins wide (95\% CI 0.009--0.011,
+$4\times10^{-4}$ units of $x_f$): per source, 0.28 times the width of the cooled network
+without the features, and 7 times the ideal width instead of 26. The floor falls with SNR again,
+from 0.014 bins at SNR 100--200 to 0.007 above 800, and the coverage is close to nominal (in68
+0.71, in95 0.96 at SNR $\ge100$). The test finds 31 fewer of the 840 sources so far, and its flow
+loss is 0.05 above the baseline's at equal steps. At initialisation the features are seven times
+larger than the source embedding they are added to, which a zero-initialised projection would
+avoid. B is being retrained with the features (B2). \tbd[ the XS test after its cooldown, and
+B2]
+\draftnote{R1 (configs/XS-pos.yaml): mid-run scorecard at epoch 474 (2026-10-11); the run ends
+about 12:30 CEST on 11 Oct. B2 (configs/B-pos.yaml) started 11 Oct, about 87 h.}
 
 % Predictions written before the result (2026-10-08), for the authors; not for the paper:
 %  - the loss drops at the cooldown (epoch 161) as on XS, by ~0.02;

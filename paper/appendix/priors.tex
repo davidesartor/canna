@@ -106,7 +106,8 @@ circle; the flow learns all four modes (\cref{fig:corner-median}).
 The sources in a window are i.i.d.\ under the prior and enter the likelihood through their
 sum, so prior, likelihood and posterior are invariant under the $S! = 24$ permutations of the
 source labels: the label-switching problem of mixture models
-\citep{stephens2000dealing,jasra2005markov}. Together with \cref{eq:psi-phi-symmetry}, every
+\citep{stephens2000dealing,jasra2005markov}, which MCMC analyses of gravitational-wave sources
+meet as well \citep{buscicchio2019label}. Together with \cref{eq:psi-phi-symmetry}, every
 mode of a window's posterior appears in $24\times4^4 = 6144$ exactly equivalent copies. We
 handle the permutations in the geometry and the architecture (\cref{app:geometry-set,app:architecture-equivariance}), so that the flow works on unordered sets, and let the
 network learn the four $(\psi,\phi_0)$ copies.
@@ -115,8 +116,10 @@ network learn the four $(\psi,\phi_0)$ copies.
 The data constrain some combinations much better than others: amplitude against inclination
 (a face-on source at larger distance looks like an inclined one nearer by), the
 $(\psi,\phi_0)$ combination that survives for nearly face-on sources, where the wave is close
-to circularly polarised, and, at low frequency, where the chirp is not resolved
-($\fdot\Tobs^2\ll1$ bin, \cref{fig:band}c), the chirp mass, whose posterior is the prior.
+to circularly polarised, and,
+at low frequency, where the chirp drift is a small fraction of a bin ($\fdot\Tobs^2\ll1$ bin,
+\cref{fig:band}c), the chirp mass, whose posterior is close to the prior unless the source is
+loud (the drift is resolved to about $4.3/\snr$ bins).
 
 \subsection{The Simulated Dataset}
 \label{app:priors-dataset}

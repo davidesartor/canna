@@ -42,7 +42,9 @@ $p_1 = p(\cdot\mid y,w)$ \citep{lipman2023flow,chen2024flow}. The base distribut
 prior itself, not a Gaussian: on most factors of $\manifold$ the prior is uniform
 (\cref{app:geometry-chart}), and starting from it means that a source the data say nothing
 about only needs to stay where it is. Flow-matching posterior estimation with a Gaussian base
-is studied by \citet{dax2023flow}.
+is studied by \citet{dax2023flow}, and has been applied to LISA signals: to massive black-hole
+binaries \citep{liang2024rapid} and to one galactic-binary-like source in gapped data
+\citep{mao2025robust}.
 
 \subsection{A Warped Clock}
 \label{app:fm-warp}
@@ -68,7 +70,11 @@ since only the weighting over $s$ moves, and the sampler restores the clock thro
 $\dot s(t) = p(1-t)^{p-1}$ in \cref{eq:ode}. Conditioning the network on $t$ rather than $s$
 stretches the end of the path: $1-s = 10^{-6}$ is $1-t = 10^{-2}$, which the sinusoidal time
 embedding resolves (\cref{app:architecture}). This plays the role of the non-uniform noise
-levels used to train diffusion models \citep{karras2022elucidating,kingma2023understanding,esser2024scaling}, applied here to the end of the path rather than to its middle.
+levels used to train diffusion models \citep{karras2022elucidating,kingma2023understanding,esser2024scaling},
+applied here to the end of the path rather than to its middle. Flow-matching posterior
+estimation already up-weights late times with a power-law time prior
+\citep[Sec.~3.3]{dax2023flow}, whose density stays bounded; ours diverges as $s\to1$, and
+\cref{app:sensitivity} shows why the end of the path needs that much weight.
 
 \subsection{Auxiliary Heads and the Full Loss}
 \label{app:fm-aux}
@@ -105,7 +111,7 @@ To sample a window we draw $N$ base sets from the prior, integrate \cref{eq:ode}
 classical fourth-order Runge--Kutta scheme on 32 uniform steps in $t$, and map back with
 $\varphi_w^{-1}$ (\cref{alg:sample}). The four stages are evaluated in the ambient
 coordinates and only the full step is retracted onto the manifold with $\Exp$. Under the
-warped clock, steps uniform in $t$ crowd towards the end of the path: the last of 32 ends at
+warped clock, steps uniform in $t$ crowd towards the end of the path: the last of 32 starts at
 $1-s = 32^{-3} = 3\times10^{-5}$. Each draw costs $4\times32 = 128$ network evaluations. Draws
 are independent, so we push them through in chunks of 256 to bound the memory on B. The
 integrator is converged at 32 steps: 64 and 128 steps change neither the widths nor the

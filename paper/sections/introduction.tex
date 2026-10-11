@@ -12,8 +12,22 @@
 %  - what is hard for a generative model here: unordered sets of sources (label
 %    switching), angles and spheres, exact degeneracies, posteriors 10^3 times narrower
 %    than the prior at high SNR
-%  - contributions: (i) flow matching on a product manifold for an unordered set of
-%    binaries; (ii) why the flow-matching loss is blind to narrow posteriors and a time
-%    warp that fixes it (app:sensitivity); (iii) a training recipe (warp, short auxiliary phase,
-%    lr cooldown) and an ablation ladder on XS (app:xs); (iv) the whole LISA band (B,
-%    app:b) and a comparison with MCMC (app:mcmc)
+%  - related work, the short version of app:related: amortised posteriors for one or two GBs
+%    with an ordering imposed (delmond2026neural), one source in gapped data with FMPE
+%    (mao2025robust), factorised slots on sinusoids (houba2025slotflow); flows inside the global
+%    fit (korsakova2024neural, sasli2026learned); population SBI (srinivasan2025simulation,
+%    desanti2026inferring); NPE for ground-based detectors (dax2021real, dax2025real,
+%    kofler2026flexible)
+%  - contributions (revised 2026-10-11 against app:related, see its last paragraph):
+%    (i) a joint, unfactorised posterior of four overlapping binaries per window with the full
+%        response, on a product manifold, with the labels' symmetry in the coupling
+%        (app:geometry; cf. klein2023equivariant);
+%    (ii) why the flow-matching loss is blind to narrow posteriors, and a warped clock (cf. the
+%         bounded power-law time prior of dax2023flow) and a cooldown that lower the floor
+%         fourfold (app:sensitivity, app:xs);
+%    (iii) the floor that remains is set by how the network represents a source's position:
+%          the same precision in coordinate units on XS and on the whole band, which position
+%          features cut 3.5-fold by mid-training (app:b; R1's final and B2 pending);
+%    (iv) validation against a joint 32-D MCMC on four windows (app:mcmc): 127/128 pairs inside
+%         the 95%, near-optimal for isolated sources it finds, too wide for loud ones, and
+%         misses faint sources next to loud ones (app:xs-crowding)
