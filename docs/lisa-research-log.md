@@ -8,6 +8,22 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-12)
 
+- **Update, 2026-10-12 night (F33): XS-fd matches R1 except at the loud end, where the
+  missing cooldown is the main suspect.**
+  - **Below SNR 100** XS-fd ties R1: f₀ widths ×0.93–1.07, the same detection (−8 of 840)
+    and coverage.
+  - **Loud floor:** **0.0103 bins (7.5× ideal)**, 1.54× R1's 0.0067 and 3.8× better than
+    the same WDM net without position features (0.039).
+  - **Against the MCMC:** loud f₀ is 8.7–13.5× wide; A, sky and orientation are unchanged
+    at 3–9×. So the bf16 rounding of the data (F32) was not their limit.
+  - **Schedule-free's average lags.** The evaluated weights x trail the training weights y
+    by **0.0118 ± 0.0004** of flow loss on identical samples. x averages the whole run,
+    including the weights from before the late loss drop (epochs 950–1100). y is closer
+    to R1 (+0.0116), but its loud f₀ is no sharper. Neither weight set is the equivalent
+    of a cooled model, and R1's cooldown took it from 0.010 bins at mid-run to 0.0067.
+  - **B-fd** is at epoch 40 of 200, still 0.024 behind B1's loss but closing.
+  - **Pending:** the scorecard of y (14401076, queued) and B-fd. Next step proposed in §6.
+
 - **Update, 2026-10-12 (F32): a new recipe, launched on XS and B together.** The user
   stopped B2 overnight and set a new direction.
   - **Data:** the whitened rfft window (real and imaginary parts of A, E and T) replaces
@@ -251,8 +267,106 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 14275499 | B2, link 1 | **Cancelled** at 03:22 CEST on 12 Oct, after 23 h 11 min (the user, together with an interactive session); links 2–5 never ran. Its checkpoint, at about epoch 56 of 200, is left in `outputs/lisa-B-pos` on TREX. |
 | **14326113 → 14326114** (+ 14326115, 14326116) | XS-fd (F32): frequency-domain input, PLE, schedule-free Muon, 1.2M steps; a spare link with `afterany`, then the scorecard and eval with `afterok` | Started 04:22 CEST on 12 Oct, trexgpu03. TREX at 6a0661c, from a bundle; the old head is on branch `trex-pre-fd`. |
 | **14326117 → 14326121** (+ 14326122, 14326123) | B-fd (F32): the same recipe on B, 200k steps; five 24 h links with `afterany`, then the scorecard (`--n_random 50`) and eval with `afterok` | Started 04:22 CEST on 12 Oct, trexgpu03. |
+| **14326113** (+ 14326114, 14326115, 14326116) | XS-fd: training, then its scorecard and eval | **Completed** at 22:14 CEST on 12 Oct: 17 h 52 min, trexgpu03, 52–53 s per epoch (38–39 s for the WDM nets), no NaN. Final training loss 0.4507, held-out loss of the average 0.4418. The spare link exited at once. Scorecard 4.2 min, eval 14 min. Downloaded to `outputs/lisa-XS-fd`: `checkpoints/1200` (59 files, sizes identical to TREX's, restores on the CPU, all 72.2M parameters finite), `corner/`, `scorecard.npz` and `logs/` (F33). |
+| 14401076 | XS-fd scorecard of the training weights y (`--weights training`), TREX at 7adfd3d | Queued at 23:16 CEST on 12 Oct; every A100 was busy. |
+| 14401101 | B-fd scorecard of y (`--n_random 50 --weights training`), `afterok` on link 5 | Queued with the B-fd chain. |
 
 ## 4. Findings
+
+### F33 (2026-10-12): XS-fd — R1's level below SNR 100, a 1.5× wider loud floor, and a lagging schedule-free average
+
+**Runs.**
+- XS-fd (14326113, F32's recipe) ran 1.2M steps: 17 h 52 min, no NaN, gradient norm
+  0.2–0.6, so the clip at 1 never bound.
+- Scorecard 14326115 and eval 14326116 scored the averaged weights x.
+- Locally:
+  - eval draws for x and for the training weights y (`eval_draws.py ... --weights
+    training`, laptop GPU);
+  - the MCMC comparison on windows 9, 5, 2 and 7 (`compare_mcmc.py --flow ... --tag _fd` and
+    `_fd_y`, logs `outputs/mcmc/compare_fd*.log`);
+  - the per-source comparison (`outputs/scorecards/compare_fd.py`, log `compare_fd.log`);
+  - the flow loss of x, y and R1 on 32 × 256 identical training samples
+    (`outputs/scorecards/common_loss.py`; R1 from a worktree at `wdm-r1`).
+
+**Scorecard against R1 (the same 840 sources).**
+
+| SNR | n | found, 512-cool / R1 / fd | f₀ width (bins), R1 → fd, found by both | per-source fd/R1 [16–84%] | × ideal R1 → fd | in68 R1 → fd | in95 R1 → fd | rank R1 → fd |
+|---|---|---|---|---|---|---|---|---|
+| < 15 | 148 | 0.50 / 0.53 / 0.50 | 0.090 → 0.075 | 0.93 [0.75–1.35] | 1.8 → 1.6 | 0.76 → 0.75 | 0.97 → 0.97 | 0.52 → 0.51 |
+| 15–40 | 157 | 0.85 / 0.85 / 0.84 | 0.044 → 0.043 | 1.00 [0.73–1.38] | 1.9 → 2.0 | 0.78 → 0.76 | 0.97 → 0.98 | 0.51 → 0.47 |
+| 40–100 | 151 | 0.95 / 0.96 / 0.95 | 0.016 → 0.017 | 1.07 [0.82–1.40] | 2.0 → 1.9 | 0.77 → 0.70 | 0.97 → 0.94 | 0.53 → 0.46 |
+| ≥ 100 | 384 | 0.995 / 0.995 / 0.997 | **0.0067 → 0.0102** | **1.54 [0.98–2.27]** | **4.2 → 7.5** | 0.71 → 0.69 | 0.96 → 0.95 | 0.50 → 0.41 |
+
+- **Loud floor 0.0103 bins (95% CI 0.0096–0.0110).**
+  - That is 1.54× R1 (CI 1.46–1.63) and 0.26× the same WDM net without features
+    (XS-late-cool, 0.039).
+  - By SNR band (100–200 / 200–400 / 400–800 / ≥ 800) it is 0.0127 / 0.0107 / 0.0094 /
+    0.0078 bins, against R1's 0.0100 / 0.0063 / 0.0048 / 0.0037. So it falls ×1.6 over
+    the range against R1's ×2.7: flatter, more like a precision limit.
+- **Everything else is R1's level.**
+  - Detection is 732 of 840 against 740, with 10 found only by fd and 18 only by R1.
+  - in95 is 0.95–0.98.
+  - There is no bias in bins (+0.0007 ± 0.0054, window profile ≤ 0.010). But the loud rank
+    is 0.41: the truth sits slightly low in the draws, a few tenths of a width.
+- **The scorecard part of §6's rule fails** (floor ≤ 0.0067, detection ≥ R1).
+
+**Against the MCMC (four windows, 128 source–parameter pairs).**
+
+| | R1 | fd, x | fd, y |
+|---|---|---|---|
+| loud f₀ (SNR ≥ 500), median × MCMC | 6.3 | 11.4 | 13.8 |
+| loud A, sky, orientation, median × MCMC | 5.0 | 6.1 | 5.6 |
+| MCMC median inside the flow's 95% / 68% | 125 / 108 | 126 / 109 | 125 / 106 |
+| sources missed (> 50% of draws > 1 bin off) | 6 | 6 | 5 |
+
+- A, sky and orientation stay **3–9×** with fp32 inputs and fp32 PLE coordinates. **F32's
+  hypothesis, that bf16 rounding of the data set this limit, is refuted.** Something
+  after the embeddings sets it: the bf16 backbone, the loss's insensitivity to it (F6), or
+  training.
+- R1's biased SNR-235 source (W1 3.1 and 7.8 σ in A and longitude, F31) is inside the 95%
+  now. The new outlier is the SNR-1366 source's sin ι.
+- The crowded SNR-64 source (1.1 bins from SNR 819) is worse: 27× in f₀, 22–61× elsewhere.
+- The same masked sources are missed, so masking is untouched, as expected.
+
+**Schedule-free's average lags the training weights.**
+
+Flow loss on identical samples (8192 each, paired):
+
+| | flow loss | paired difference |
+|---|---|---|
+| x (evaluated) | 0.4623 | x − y = **+0.0118 ± 0.0004** |
+| y (training) | 0.4504 | y − R1 = +0.0116 ± 0.0006 |
+| R1 | 0.4389 | x − R1 = +0.0234 ± 0.0006 |
+
+- **Why x lags.** With a constant lr, schedule-free's x is the uniform average of z over
+  the whole run. Both runs show the late loss drop of F10, at 75–90% of the run: R1 at
+  epochs 850–900 (−0.034), XS-fd at 950–1100 (−0.042). So x still carries the pre-drop
+  weights.
+- **The held-out loss of x shows it.** It sat 0.014 below the training median before the
+  drop, 0.009 above it at epoch 1000, and was catching up at the end (−0.022 over the last
+  100 epochs).
+- **Training curve.** XS-fd's training loss was 0.010 below R1's from epoch 50 to 850 (the
+  constant-lr phase of both). Its drop came 100–150 epochs later than R1's. At the end it
+  was still falling at −0.058 per doubling of steps.
+- **The y weights are not sharper at the loud end** (13.8× against x's 11.4× in f₀). So the
+  averaging lag explains the loss gap, not the floor.
+- **What R1 had instead.** R1's cooldown (as in C1, F23) took its floor from 0.010 bins at
+  mid-run, constant lr (F30), to 0.0067. XS-fd's x and y are both constant-lr models, one
+  averaged badly and one not averaged at all. The y scorecard (14401076) will show this on
+  all 840 sources.
+
+**Not the embedding cast.** The bf16 cast of the trained source embedding limits x_f, read
+along the embedding's gradient, to 1.0×10⁻³ bins. That is ten times finer than the floor.
+The worst case, all of the error along the wrong direction, is 0.03 bins. A, sky and
+orientation come out at 1–2×10⁻⁴ in coordinate units.
+
+**Cost.** 52 s per epoch against 38 s for the WDM nets (+37%). It is mostly Muon's
+Newton–Schulz on the 71M backbone parameters, which XS's small network does not amortise.
+B-fd costs 1614 s per epoch against B1's 1536 (+5%).
+
+**B-fd at epoch 40** (14326117): training loss 0.571 against B1's 0.547 at the same epoch.
+The gap is closing (0.053 at epoch 10, 0.037 at 30, 0.024 at 40), as XS-fd's did before it
+overtook R1. The gradient norm is rising (0.63 → 0.77).
 
 ### F32 (2026-10-12): Muon never trained the backbone, bf16 rounded the loud data; a new recipe for XS and B
 
@@ -1568,6 +1682,26 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
   - E1b (no aux) is dropped to save compute.
 
 ## 6. Roadmap (2026-10-03, updated 2026-10-12)
+
+### Update, 2026-10-12 night (after XS-fd, F33)
+
+The recipe is simpler than R1's and as good below SNR 100. The open question is the loud
+end. Is it the missing position features, or the missing cooldown, which schedule-free
+did not replace?
+1. **Read the y scorecard** (14401076) when it runs.
+2. **The cheapest decisive test (proposed, not launched): a cooldown continuation of
+   XS-fd,** about 200 epochs (~3 h), as C1 and C2 did for the WDM nets (F23, F24). It
+   would start from y and decay the lr linearly to 0, with Muon and AdamW and without the
+   schedule-free averaging, which would weight the cooled steps least. It needs the
+   cooldown back in `train.py` as an option.
+   - **Rule:** a loud floor at or below 0.0067 bins means FD + PLE replace the position
+     features and the schedule should be warmup-stable-decay. Near 0.010 means the
+     features are needed, and the next combined run puts them back (zero-initialised).
+3. **B-fd** runs to ~16 Oct. Its scorecards come in x and in y. The same cooldown
+   continuation would apply there (about 40 epochs, ~18 h).
+4. **A, sky and orientation (3–9× the MCMC)** are limited after the embeddings. Candidates:
+   the bf16 backbone (an fp32-eval scorecard of XS-fd on a CPU node, as T3' did), and the
+   flow loss's insensitivity to them (F6).
 
 ### Update, 2026-10-12 (F32): the frequency-domain recipe on XS and B at once
 
