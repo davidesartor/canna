@@ -23,6 +23,8 @@ batch_size: 256
 learning_rate: 1.0e-3 # Muon
 adam_learning_rate: 3.0e-4 # AdamW
 weight_decay: 1.0e-6
+# the parameter-reconstruction loss, at a constant weight beside the flow loss
+aux_weight: 0.1
 warmup_steps: 4000 # 2% of the run
 total_steps: 200000
 log_interval: 1000

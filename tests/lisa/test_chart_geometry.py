@@ -51,19 +51,13 @@ def test_geometry_property_is_referentially_stable():
     assert jnp.allclose(v1, v2)
 
 
-def test_geometry_log_exp_roundtrip_matches_up_to_source_permutation():
-    # Set geometry is permutation-invariant, so exp_map(x0, log_map(x0, x1))
-    # recovers *some* permutation of x1's rows, not necessarily x1's original order.
+def test_geometry_log_exp_roundtrip_keeps_every_slot():
+    # the slots are ordered, so exp_map(x0, log_map(x0, x1)) is x1 itself, row for row
     problem = LisaGB(n_sources=3)
     x0 = problem.sample_flow(jr.key(14), window(problem))
     x1 = problem.sample_flow(jr.key(15), window(problem))
-    v = problem.log_map(x0, x1)
-    x1_recovered = problem.exp_map(x0, v)
-    n = x1.shape[-2]
-    assert any(
-        jnp.allclose(x1_recovered, x1[jnp.array(perm)], atol=1e-4, rtol=1e-4)
-        for perm in itertools.permutations(range(n))
-    )
+    x1_recovered = problem.exp_map(x0, problem.log_map(x0, x1))
+    assert jnp.allclose(x1_recovered, x1, atol=1e-4, rtol=1e-4)
 
 
 def test_geometry_log_map_zero_at_identity():
@@ -84,7 +78,7 @@ def test_problem_log_map_matches_its_geometry():
 
 def test_geometry_blocks_are_in_the_jaxgb_order():
     problem = LisaGB(n_sources=2)
-    blocks = problem.geometry.local_geometry.local_geometries
+    blocks = problem.geometry.local_geometries
     assert [type(g).__name__ for g in blocks] == [
         "Bounded",
         "Euclidean",
@@ -102,7 +96,7 @@ def test_physical_blocks_sum_to_eight():
 
 def test_point_blocks_lift_the_spheres_to_vectors():
     problem = LisaGB(n_sources=2)
-    dims = tuple(g.dim for g in problem.geometry.local_geometry.local_geometries)
+    dims = tuple(g.dim for g in problem.geometry.local_geometries)
     assert dims == (1, 1, 1, 3, 3, 2)
 
 
@@ -118,10 +112,10 @@ def test_orientation_block_is_a_unit_vector():
     assert jnp.allclose(jnp.linalg.norm(orientation, axis=-1), 1.0)
 
 
-def test_geometry_is_a_set_of_products():
+def test_geometry_is_one_sources_product_applied_per_slot():
     problem = LisaGB(n_sources=2)
-    assert isinstance(problem.geometry, geometries.Set)
-    assert isinstance(problem.geometry.local_geometry, geometries.Product)
+    # the slots are ordered, so there is no Set and no matching: one Product, per slot
+    assert isinstance(problem.geometry, geometries.Product)
 
 
 def test_geodesic_starts_at_the_base_point():

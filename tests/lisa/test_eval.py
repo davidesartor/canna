@@ -67,10 +67,10 @@ def unrolled_rk4(problem, flow, u, y, f, ode_steps):
         dt = jnp.asarray(1.0 / ode_steps, u.dtype)
         for i in range(ode_steps):
             t = i * dt
-            k1 = flow(u, t, y, f)
-            k2 = flow(u + k1 * dt / 2, t + dt / 2, y, f)
-            k3 = flow(u + k2 * dt / 2, t + dt / 2, y, f)
-            k4 = flow(u + k3 * dt, t + dt, y, f)
+            k1 = flow(u, t, y, f)[0]
+            k2 = flow(u + k1 * dt / 2, t + dt / 2, y, f)[0]
+            k3 = flow(u + k2 * dt / 2, t + dt / 2, y, f)[0]
+            k4 = flow(u + k3 * dt, t + dt, y, f)[0]
             u = problem.exp_map(u, (k1 + 2 * k2 + 2 * k3 + k4) * dt / 6)
         return u
 
@@ -92,7 +92,8 @@ class ConstantVelocity(eqx.Module):
     v: jax.Array
 
     def __call__(self, x, t, y, f):
-        return jnp.broadcast_to(self.v, x.shape).astype(x.dtype)
+        v = jnp.broadcast_to(self.v, x.shape).astype(x.dtype)
+        return v, x
 
 
 @pytest.mark.parametrize("time_power", [1.0, 2.0, 3.0])
