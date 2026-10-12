@@ -125,7 +125,7 @@ def to_sampler(p, centres):
     return t.reshape(*t.shape[:-2], -1)
 
 
-def setup(window: int, config: str = "XS-late-768-cool"):
+def setup(window: int, config: str = "XS-fd"):
     cfg = yaml.safe_load(open(Path(lisa.__file__).parent / "configs" / f"{config}.yaml"))
     problem = LisaGB(**cfg["problem"])
     latents, windows, snrs, noise_keys = eval_injections(problem, cfg["seed"])
