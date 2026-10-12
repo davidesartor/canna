@@ -21,7 +21,7 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
     - every earlier run trained 89% of its parameters, the whole MMDiT backbone, with
       Adam, not Muon;
     - the bf16 cast of arcsinh(WDM) rounded the loudest pixels by 0.5–3.6 noise σ.
-  - **Runs:** XS-fd (14326113, ~15 h) and B-fd (14326117 → 14326121, ~4 days) started at
+  - **Runs:** XS-fd (14326113, 52 s per epoch, so ~17 h) and B-fd (14326117 → 14326121, ~4 days) started at
     04:22 CEST, each with its scorecard and eval chained. Their rule is in §6.
 
 - **Update, 2026-10-11 afternoon (F31): R1's final model is the best XS model.**
