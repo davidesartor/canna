@@ -20,6 +20,7 @@ and the first N_DRAWS of its base draws, so their rows compare one to one with t
 earlier per-source tables. N_RANDOM plain prior draws follow, for the statistics.
 Prints a summary and writes outputs/lisa-<config>/scorecard.npz. A non-default --ode_steps
 or --dtype adds _ode<N> or _<dtype> to the name (scorecard_ode64.npz, scorecard_float32.npz),
+--weights training adds _training (the schedule-free training weights y instead of the average x),
 and a run off the GPU adds the backend (scorecard_float32_cpu.npz), so integrator, precision
 and device checks sit beside the default one instead of over it. --n_random scores fewer
 random injections, for a slow device; the file records how many.
@@ -174,6 +175,7 @@ if __name__ == "__main__":
     name = "scorecard"
     name += "" if ode_steps == ODE_STEPS else f"_ode{ode_steps}"
     name += "" if args.dtype == "bfloat16" else f"_{args.dtype}"
+    name += "" if args.weights == "average" else f"_{args.weights}"
     name += "" if jax.default_backend() == "gpu" else f"_{jax.default_backend()}"
     name += ".npz"
     np.savez(out_dir / name, epoch=epoch, ode_steps=ode_steps, n_random=n_random, **rows)

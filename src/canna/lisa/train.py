@@ -334,7 +334,9 @@ def checkpoint_manager(out_dir: Path) -> ocp.CheckpointManager:
 def load_trained(args: argparse.Namespace) -> tuple[TrainState, int, Path]:
     """The latest trained state of the run args names, its epoch and its folder.
 
-    The state's flow is the averaged weights schedule-free evaluates, not the training ones.
+    The state's flow is the averaged weights x that schedule-free evaluates, unless
+    args.weights is "training": then it is the training weights y. x is a uniform average
+    over the whole run, so after a late drop in the loss it lags y (F33).
 
     For eval and scorecard. restore_from falls back to the fresh state when there is no
     checkpoint, which is right for a new training run but would quietly score an
@@ -346,6 +348,8 @@ def load_trained(args: argparse.Namespace) -> tuple[TrainState, int, Path]:
     if epoch == 0:
         raise SystemExit(f"no checkpoint in {checkpoints.directory}: nothing to evaluate")
     # schedule-free trains at y and evaluates the average x
+    if getattr(args, "weights", "average") == "training":
+        return state, epoch, out_dir
     return state._replace(flow=eval_flow(state.flow, state.opt_state)), epoch, out_dir
 
 
@@ -398,6 +402,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="scorecard only: random injections after the ten eval ones (default: scorecard.N_RANDOM)",
+    )
+    parser.add_argument(
+        "--weights",
+        default="average",
+        choices=("average", "training"),
+        help="eval and scorecard only: schedule-free's averaged weights x, or the training weights y",
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
