@@ -168,7 +168,7 @@ def test_modulation_constant_x_finite():
 
 def test_feedforward_at_the_origin_is_the_gated_bias_path():
     ff = FeedForward(3, 16, 7, key=key())
-    hidden, gate = jnp.split(ff.linear1.bias, 2)
+    hidden, gate = ff.linear1.bias
     reference = ff.linear2.weight @ (hidden * jax.nn.silu(gate)) + ff.linear2.bias
     close(ff(jnp.zeros((3,))), reference, atol=1e-12)
 
@@ -185,14 +185,15 @@ def test_feedforward_hidden_dim_is_post_split_width():
     wide = FeedForward(3, 16, 7, key=key())
     narrow = FeedForward(3, 8, 7, key=key())
     assert wide.linear2.weight.shape == (7, 16)
-    assert narrow.linear1.weight.shape == (16, 3)
+    # value and gate are two stacked maps, so Muon orthogonalises each on its own
+    assert narrow.linear1.weight.shape == (2, 8, 3)
 
 
-def test_feedforward_gate_half_is_second_half_of_the_projection():
+def test_feedforward_gate_is_the_second_stacked_map():
     ff = FeedForward(2, 4, 2, key=key())
     ff = eqx.tree_at(lambda m: m.linear1.weight, ff, jnp.zeros_like(ff.linear1.weight))
     ff = eqx.tree_at(
-        lambda m: m.linear1.bias, ff, jnp.concat([jnp.ones((4,)), jnp.zeros((4,))])
+        lambda m: m.linear1.bias, ff, jnp.stack([jnp.ones((4,)), jnp.zeros((4,))])
     )
     # gate half is exactly zero, so the whole hidden activation is gated off
     close(ff(rand((2,))), ff.linear2.bias, atol=1e-12)

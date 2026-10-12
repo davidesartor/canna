@@ -1,6 +1,9 @@
 from .utils import (
     FeedForward,
     Modulation,
+    PiecewiseLinear,
+    stacked_linear,
+    apply_stacked,
     SinusoidalEmbed,
     PositionalEmbed,
     Fold2d,
@@ -14,6 +17,9 @@ from .mmdit import MultiStreamAttention, MMDiTBlock, MMDiT
 __all__ = [
     "FeedForward",
     "Modulation",
+    "PiecewiseLinear",
+    "stacked_linear",
+    "apply_stacked",
     "SinusoidalEmbed",
     "PositionalEmbed",
     "Fold2d",

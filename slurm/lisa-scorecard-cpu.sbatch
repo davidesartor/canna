@@ -25,7 +25,7 @@
 set -euo pipefail
 mkdir -p .slurm-logs
 
-CONFIG="${1:-B}"
+CONFIG="${1:-B-fd}"
 
 # the venv has the CUDA plugin installed; keep JAX off it on a node with no GPU
 export JAX_PLATFORMS=cpu

@@ -1,8 +1,8 @@
 #!/bin/bash
 # Train the LISA galactic-binary flow. Submit from the repo root:
-#     sbatch slurm/lisa.sbatch            # config B
-#     sbatch slurm/lisa.sbatch XS         # some other config
-#     sbatch slurm/lisa.sbatch XS --total_steps 1000000   # flags after it go to train
+#     sbatch slurm/lisa.sbatch            # config B-fd
+#     sbatch slurm/lisa.sbatch XS-fd      # some other config
+#     sbatch slurm/lisa.sbatch XS-fd --total_steps 1000000   # flags after it go to train
 # Resuming is automatic: the run picks up from the latest checkpoint in
 # outputs/lisa-<config>/checkpoints, so re-submitting after a time limit
 # continues rather than restarting.
@@ -28,7 +28,7 @@
 set -euo pipefail
 mkdir -p .slurm-logs
 
-CONFIG="${1:-B}"
+CONFIG="${1:-B-fd}"
 
 # one JAX process, one GPU; let it grow into the card rather than preallocating
 export XLA_PYTHON_CLIENT_PREALLOCATE=false

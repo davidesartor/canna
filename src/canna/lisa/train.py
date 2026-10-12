@@ -1,5 +1,4 @@
 from functools import partial
-import math
 import time
 from typing import NamedTuple, Self
 from jaxtyping import Array, Float, Key
@@ -17,16 +16,14 @@ import orbax.checkpoint as ocp
 import equinox as eqx
 from tqdm import tqdm
 from .problem import LisaGB
-from .network import LisaFlow, PositionedLisaFlow
+from .network import LisaFlow
 
 
 class TrainSample(NamedTuple):
     xt: Float[Array, "S 11"]
     dx: Float[Array, "S 11"]
     t: Float[Array, ""]
-    y: Float[Array, "t f 3"]
-    x_target: Float[Array, "S 11"]
-    y_target: Float[Array, "t f 3"]
+    y: Float[Array, "F 6"]
     f: Float[Array, ""]
 
 
@@ -66,9 +63,8 @@ def train_sample(
     f = problem.sample_f(key_c)
     p = problem.sample_physical(key_p, f)
 
-    # noisy observation to condition on, clean one to reconstruct
+    # the noisy observation to condition on
     y = problem.preprocess(problem.sample_observation(key_o, p, f), f)
-    y_target = problem.preprocess(problem.clean_signal(p, f), f)
 
     # sample and process flow quantities: t is uniform, the point sits at s(t) along the
     # path, and the target is the velocity along the path at s
@@ -79,39 +75,77 @@ def train_sample(
     path = partial(geodesic, problem)
     xt = path(s, x0, x1)
     dx = jax.jacobian(path)(s, x0, x1)
-    return TrainSample(xt=xt, dx=dx, t=t, y=y, x_target=x1, y_target=y_target, f=f)
+    return TrainSample(xt=xt, dx=dx, t=t, y=y, f=f)
 
 
-class Welford(NamedTuple):
-    """Running count/mean/sum-of-squares over every value ever passed to update."""
+# Muon takes the matrices of these fields, AdamW everything else: the encodings (the PLE
+# maps and the token positions), the last layer of the velocity head, and anything 1-D
+MUON_FIELDS = ("backbone", "t_embed", "t_mlp", "f_mlp", "x_modulation")
 
-    count: Float[Array, ""]
-    mean: Float[Array, ""]
-    m2: Float[Array, ""]
 
-    @classmethod
-    def empty(cls) -> Self:
-        zero = jnp.zeros((), jnp.float32)
-        return cls(count=zero, mean=zero, m2=zero)
+def muon_dimensions(params: LisaFlow) -> LisaFlow:
+    """Muon's view of each parameter: the matrix axes of a weight it takes, None otherwise.
 
-    def update(self, values: Float[Array, "..."]) -> Self:
-        batch_count = jnp.asarray(values.size, jnp.float32)
-        batch_mean = jnp.mean(values)
-        batch_m2 = jnp.sum(jnp.square(values - batch_mean))
+    optax's default rule takes exactly the 2-D arrays. That missed every weight of the
+    MMDiT blocks, which are stacked into (blocks, out, in) and (blocks, 3, out, in) arrays,
+    and sent them to Adam, while it orthogonalised the stacked (blocks, D) biases across
+    blocks -- the case in every run up to R1 and B2. Here the last two axes of an
+    eqx.nn.Linear weight are the matrix, (out, in), and any axes before them are batch
+    axes, each slice orthogonalised on its own.
+    """
 
-        delta = batch_mean - self.mean
-        count = self.count + batch_count
-        return Welford(
-            count=count,
-            mean=self.mean + delta * batch_count / count,
-            m2=self.m2
-            + batch_m2
-            + jnp.square(delta) * self.count * batch_count / count,
+    def dims(path, leaf):
+        names = [k.name for k in path if isinstance(k, jax.tree_util.GetAttrKey)]
+        hidden = names[0] in MUON_FIELDS or names[:2] == ["x_unembed", "linear1"]
+        if names[-1] != "weight" or not hidden:
+            return None
+        return optax.contrib.MuonDimensionNumbers(
+            reduction_axis=leaf.ndim - 1, output_axis=leaf.ndim - 2
         )
 
-    @property
-    def variance(self) -> Float[Array, ""]:
-        return self.m2 / self.count
+    return jax.tree_util.tree_map_with_path(dims, params)
+
+
+def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
+    """Schedule-free Muon, with AdamW for the parameters Muon does not take.
+
+    Schedule-free (Defazio et al. 2024, "The Road Less Scheduled", arXiv:2405.15682) keeps
+    a fast sequence z, takes the gradient at y = (1 - b1) z + b1 x, and evaluates the
+    average x, weighted by the squared lr. It needs no cooldown and no total length, only a
+    warmup. Muon keeps its own momentum inside it, as SF-Muon does in AMUSE (Kim et al.
+    2026, arXiv:2605.22432, eq. 4); AdamW runs without a first moment, as in SF-AdamW,
+    since the averaging stands in for it. consistent_rms scales Muon's update to AdamW's
+    RMS, so the two learning rates are in the same units.
+    """
+    warmup = lambda peak: optax.linear_schedule(0.0, peak, args.warmup_steps)
+    base = optax.contrib.muon(
+        warmup(args.learning_rate),
+        beta=0.95,
+        weight_decay=args.weight_decay,
+        mu_dtype=jnp.bfloat16,
+        consistent_rms=0.2,
+        adam_b1=0.0,
+        adam_b2=0.95,
+        adam_learning_rate=warmup(args.adam_learning_rate),
+        adam_weight_decay=args.weight_decay,
+        muon_weight_dimension_numbers=muon_dimensions,
+    )
+    return optax.chain(
+        optax.clip_by_global_norm(1.0),
+        optax.contrib.schedule_free(base, warmup(args.learning_rate), b1=0.9),
+    )
+
+
+def eval_flow(flow: LisaFlow, opt_state: optax.OptState) -> LisaFlow:
+    """The averaged weights x that schedule-free evaluates, from the training weights y."""
+    (state,) = [s for s in opt_state if isinstance(s, optax.contrib.ScheduleFreeState)]
+    params, static = eqx.partition(flow, eqx.is_inexact_array)
+    return eqx.combine(optax.contrib.schedule_free_eval_params(state, params), static)
+
+
+def flow_loss(flow: LisaFlow, batch: TrainSample) -> Float[Array, ""]:
+    du_pred = jax.vmap(flow)(batch.xt, batch.t, batch.y, batch.f)
+    return jnp.mean(jnp.square(du_pred - batch.dx))
 
 
 class TrainState(NamedTuple):
@@ -119,9 +153,6 @@ class TrainState(NamedTuple):
     flow: LisaFlow
     tx: optax.GradientTransformation
     opt_state: optax.OptState
-    flow_metrics: Welford
-    x_metrics: Welford
-    y_metrics: Welford
     key: Key[Array, ""]
 
     @classmethod
@@ -132,138 +163,107 @@ class TrainState(NamedTuple):
 
         # the network is shaped by one sample of the problem
         sample = train_sample(problem, key_sample)
-        # a config asking for position features gets the subclass that has them
-        network = dict(args.network)
-        if network.get("positions"):
-            flow_cls, network["window"] = PositionedLisaFlow, problem.window_geometry
-        else:
-            flow_cls = LisaFlow
-            network.pop("positions", None)
-        flow = flow_cls(
-            **network,
+        flow = LisaFlow(
+            **args.network,
             x_shape=sample.xt.shape,
             y_shape=sample.y.shape,
+            f_range=problem.f0_range,
             dtype=jnp.dtype(args.dtype),
             param_dtype=jnp.float32,
             key=key_network,
         )
 
-        tx = optax.chain(
-            optax.clip_by_global_norm(1.0),
-            (optax.contrib.muon if args.muon else optax.adamw)(
-                args.learning_rate, weight_decay=args.weight_decay
-            ),
-        )
-
+        tx = optimizer(args)
         return cls(
             problem=problem,
             flow=flow,
             tx=tx,
             opt_state=tx.init(eqx.filter(flow, eqx.is_inexact_array)),
-            flow_metrics=Welford.empty(),
-            x_metrics=Welford.empty(),
-            y_metrics=Welford.empty(),
             key=key_train,
         )
 
+    def routing_report(self) -> str:
+        """How many parameters Muon and AdamW each take; Muon must have the backbone."""
+        params = eqx.filter(self.flow, eqx.is_inexact_array)
+        # Muon's size per parameter and AdamW's, labelled the way optax labels them
+        is_dims = lambda d: d is None or isinstance(d, optax.contrib.MuonDimensionNumbers)
+        split = lambda muon: jax.tree.map(
+            lambda d, p: jax.tree.map(lambda a: a.size * ((d is not None) == muon), p),
+            muon_dimensions(params),
+            params,
+            is_leaf=is_dims,
+        )
+        muon, adam = sum(jax.tree.leaves(split(True))), sum(jax.tree.leaves(split(False)))
+        assert sum(jax.tree.leaves(split(False).backbone)) == 0, (
+            "a backbone parameter is not on Muon"
+        )
+        return (
+            f"[optimizer] Muon {muon / 1e6:.2f}M of {(muon + adam) / 1e6:.2f}M parameters"
+            f" ({muon / (muon + adam):.1%}), AdamW the other {adam / 1e6:.2f}M"
+        )
+
     @eqx.filter_jit
-    def train_step(
-        self,
-        batch: TrainSample,
-        aux_weight: Float[Array, ""],
-        lr_scale: Float[Array, ""] | float = 1.0,
-    ) -> tuple[Self, Float[Array, "3"]]:
-        """Take one variance-reweighted optimizer step on a batch, update running metrics.
-
-        lr_scale multiplies the update. With no weight decay, Muon's and Adam's updates are
-        linear in the lr, so this is exactly a scaled lr. Unlike an optax schedule, it keeps
-        no step count in the optimizer state, so a resume with a fresh optimizer state still
-        lands at the right point of the schedule.
-        """
-        flow_metrics = self.flow_metrics.update(batch.dx.astype(jnp.float32))
-        x_metrics = self.x_metrics.update(batch.x_target.astype(jnp.float32))
-        y_metrics = self.y_metrics.update(batch.y_target.astype(jnp.float32))
-
-        # running variance, this batch included -- undefined on an empty Welford
-        target_var = jnp.array(
-            [m.variance for m in (flow_metrics, x_metrics, y_metrics)]
-        )
-        weights = jnp.array([1.0, aux_weight, aux_weight]) / jnp.maximum(
-            target_var, 1e-12
-        )
-
-        def train_loss(flow: LisaFlow) -> tuple[Float[Array, ""], Float[Array, "3"]]:
-            du_pred, u_pred, y_recon = jax.vmap(flow)(
-                batch.xt, batch.t, batch.y, batch.f
-            )
-            flow_loss = jnp.mean(jnp.square(du_pred - batch.dx))
-            x_loss = jnp.mean(jnp.square(self.problem.log_map(batch.x_target, u_pred)))
-            y_loss = jnp.mean(jnp.square(y_recon - batch.y_target))
-
-            losses = jnp.stack([flow_loss, x_loss, y_loss])
-            return jnp.sum(weights * losses), losses
-
-        (_, losses), grads = eqx.filter_value_and_grad(train_loss, has_aux=True)(
-            self.flow
-        )
-        updates, opt_state = self.tx.update(
-            grads, self.opt_state, eqx.filter(self.flow, eqx.is_inexact_array)
-        )
-        updates = jax.tree.map(lambda u: lr_scale * u, updates)
+    def train_step(self, batch: TrainSample) -> tuple[Self, Float[Array, "2"]]:
+        """One optimizer step on a batch; returns the flow loss and the gradient norm."""
+        loss, grads = eqx.filter_value_and_grad(flow_loss)(self.flow, batch)
+        params = eqx.filter(self.flow, eqx.is_inexact_array)
+        updates, opt_state = self.tx.update(grads, self.opt_state, params)
         flow = eqx.apply_updates(self.flow, updates)
-
-        state = self._replace(
-            flow=flow,
-            opt_state=opt_state,
-            flow_metrics=flow_metrics,
-            x_metrics=x_metrics,
-            y_metrics=y_metrics,
-        )
-        return state, losses
+        state = self._replace(flow=flow, opt_state=opt_state)
+        return state, jnp.stack([loss, optax.global_norm(grads)])
 
     @eqx.filter_jit
     def train_epoch(
-        self,
-        aux_weight: Float[Array, ""],
-        batch_size: int,
-        n_steps: int,
-        time_power: float = 1.0,
-        lr_scale: Float[Array, ""] | float = 1.0,
-    ) -> tuple[Self, Float[Array, "S 3"]]:
+        self, batch_size: int, n_steps: int, time_power: float = 1.0
+    ) -> tuple[Self, Float[Array, "S 2"]]:
         """Fuse n_steps (gen + train_step) pairs into one XLA dispatch via lax.scan."""
         dynamic, static = eqx.partition(self, eqx.is_array)
 
-        def scan_step(dynamic: Self, _) -> tuple[Self, Float[Array, "3"]]:
+        def scan_step(dynamic: Self, _) -> tuple[Self, Float[Array, "2"]]:
             state = eqx.combine(dynamic, static)
             key, key_batch = jr.split(state.key)
             batch = jax.vmap(partial(train_sample, state.problem, time_power=time_power))(
                 jr.split(key_batch, batch_size)
             )
-            state, losses = state._replace(key=key).train_step(batch, aux_weight, lr_scale)
+            state, losses = state._replace(key=key).train_step(batch)
             return eqx.filter(state, eqx.is_array), losses
 
         dynamic, losses = jax.lax.scan(scan_step, dynamic, length=n_steps)
         return eqx.combine(dynamic, static), losses
 
+    @eqx.filter_jit
+    def heldout_loss(
+        self, key: Key[Array, ""], batch_size: int, time_power: float = 1.0
+    ) -> Float[Array, ""]:
+        """The flow loss of the averaged weights x on a batch drawn from `key`.
+
+        The training loss is measured at y, where schedule-free takes its gradients; this is
+        the model the eval and the scorecard sample from. The same key every epoch scores
+        the same batch, so the curve is free of batch noise.
+        """
+        batch = jax.vmap(partial(train_sample, self.problem, time_power=time_power))(
+            jr.split(key, batch_size)
+        )
+        return flow_loss(eval_flow(self.flow, self.opt_state), batch)
+
     def save_to(
         self,
         checkpoints: ocp.CheckpointManager,
         epoch: int,
-        loss_hist: Float[Array, "E S 3"],
-        save_opt_state: bool = True,
+        loss_hist: Float[Array, "E S 2"],
+        heldout_hist: Float[Array, " E"],
     ) -> None:
-        """Save each array-carrying field, plus the losses, as its own named checkpoint item.
+        """Save the weights, the optimizer state and the histories as named checkpoint items.
 
-        The optimizer state is about two thirds of a checkpoint, and the manager holds the
-        old checkpoint until the new one lands. save_opt_state=False leaves it out, so a
-        quota that fits barely two full checkpoints still fits the run; a resume then
-        restarts the optimizer's moments, which only matters at a job boundary.
+        The optimizer state always goes in: schedule-free's averaged weights, the ones to
+        evaluate, are rebuilt from the training weights and the z sequence it holds.
         """
-        skip = ("problem", "tx", "key") + (() if save_opt_state else ("opt_state",))
+        skip = ("problem", "tx", "key")
         checkpoints.save(
             epoch,
             args=ocp.args.Composite(
                 loss_hist=ocp.args.ArraySave(loss_hist),
+                heldout_hist=ocp.args.ArraySave(heldout_hist),
                 # a bare key array is not a pytree StandardSave will take
                 key=ocp.args.ArraySave(jr.key_data(self.key)),
                 **{
@@ -276,23 +276,20 @@ class TrainState(NamedTuple):
 
     def restore_from(
         self, checkpoints: ocp.CheckpointManager
-    ) -> tuple[Self, int, Float[Array, "E S 3"] | None]:
-        """Return the state, epoch and losses to resume from, or self at epoch 0."""
+    ) -> tuple[Self, int, tuple[np.ndarray, np.ndarray] | None]:
+        """Return the state, epoch and (loss, held-out) histories to resume from, or self at 0."""
         latest_epoch = checkpoints.latest_step()
         if latest_epoch is None:
             return self, 0, None
 
-        # a checkpoint saved with save_opt_state=False has no optimizer state: keep the
-        # fresh one this state was built with
-        has_opt_state = (checkpoints.directory / str(latest_epoch) / "opt_state").exists()
-        skip = ("problem", "tx", "key") + (() if has_opt_state else ("opt_state",))
+        skip = ("problem", "tx", "key")
         skeleton = {
             name: eqx.filter(field, eqx.is_array)
             for name, field in zip(self._fields, self)
             if name not in skip
         }
-        # loss_hist and key are bare arrays, with no skeleton to take a sharding from, so
-        # orbax would fall back to the one recorded at save time -- a device that need
+        # the histories and key are bare arrays, with no skeleton to take a sharding from,
+        # so orbax would fall back to the one recorded at save time -- a device that need
         # not exist here, e.g. a GPU checkpoint read back on a CPU. Place them locally.
         local = ocp.ArrayRestoreArgs(
             sharding=jax.sharding.SingleDeviceSharding(jax.devices()[0])
@@ -301,6 +298,7 @@ class TrainState(NamedTuple):
             latest_epoch,
             args=ocp.args.Composite(
                 loss_hist=ocp.args.ArrayRestore(restore_args=local),
+                heldout_hist=ocp.args.ArrayRestore(restore_args=local),
                 key=ocp.args.ArrayRestore(restore_args=local),
                 **{
                     name: ocp.args.StandardRestore(tree)
@@ -316,12 +314,8 @@ class TrainState(NamedTuple):
                 for name in skeleton
             },
         )
-        print(
-            f"[checkpoint] resuming at epoch {latest_epoch}"
-            + ("" if has_opt_state else " (no optimizer state saved: starting it afresh)"),
-            flush=True,
-        )
-        return state, latest_epoch, restored["loss_hist"]
+        print(f"[checkpoint] resuming at epoch {latest_epoch}", flush=True)
+        return state, latest_epoch, (restored["loss_hist"], restored["heldout_hist"])
 
 
 def run_dir(args: argparse.Namespace) -> Path:
@@ -340,6 +334,8 @@ def checkpoint_manager(out_dir: Path) -> ocp.CheckpointManager:
 def load_trained(args: argparse.Namespace) -> tuple[TrainState, int, Path]:
     """The latest trained state of the run args names, its epoch and its folder.
 
+    The state's flow is the averaged weights schedule-free evaluates, not the training ones.
+
     For eval and scorecard. restore_from falls back to the fresh state when there is no
     checkpoint, which is right for a new training run but would quietly score an
     untrained network here, so stop instead.
@@ -349,7 +345,8 @@ def load_trained(args: argparse.Namespace) -> tuple[TrainState, int, Path]:
     state, epoch, _ = TrainState.from_config(args).restore_from(checkpoints)
     if epoch == 0:
         raise SystemExit(f"no checkpoint in {checkpoints.directory}: nothing to evaluate")
-    return state, epoch, out_dir
+    # schedule-free trains at y and evaluates the average x
+    return state._replace(flow=eval_flow(state.flow, state.opt_state)), epoch, out_dir
 
 
 def peak_memory_report() -> str:
@@ -361,29 +358,10 @@ def peak_memory_report() -> str:
     return f"[memory] peak {stats['peak_bytes_in_use'] / 2**30:.1f} GiB of {limit:.0f} GiB"
 
 
-def aux_weight_schedule(step: int, total_steps: int, warmup_frac: float) -> float:
-    """Cosine anneal of the auxiliary heads, from 1 at the start to 0 after warmup_frac."""
-    warmup_steps = warmup_frac * total_steps
-    frac = min(step / warmup_steps, 1.0) if warmup_steps > 0 else 1.0
-    return 0.5 + 0.5 * math.cos(math.pi * frac)
-
-
-def lr_scale_schedule(epoch: int, epochs: int, cooldown_epochs: int) -> float:
-    """1 until the last cooldown_epochs, then a linear decay to 0 (warmup-stable-decay).
-
-    Each epoch takes the ramp's value at its midpoint, so a cooldown starts just below 1,
-    ends just above 0 and averages 1/2.
-    """
-    start = epochs - cooldown_epochs
-    if cooldown_epochs <= 0 or epoch < start:
-        return 1.0
-    return (epochs - epoch - 0.5) / cooldown_epochs
-
-
 def parse_args() -> argparse.Namespace:
     """Read the named run .yaml as argparse defaults, so any CLI flag overrides it."""
     config_parser = argparse.ArgumentParser(add_help=False)
-    config_parser.add_argument("--config", default="B", help="name of a run .yaml")
+    config_parser.add_argument("--config", default="B-fd", help="name of a run .yaml")
     config_parser.add_argument(
         "--config_root", type=Path, default=Path(__file__).parent / "configs"
     )
@@ -392,17 +370,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(parents=[config_parser])
     parser.add_argument("--output_dir", type=Path, default=Path("outputs"))
     parser.add_argument("--batch_size", type=int, default=256)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
-    parser.add_argument("--weight_decay", type=float, default=0.0)
+    parser.add_argument("--learning_rate", type=float, default=1e-3, help="Muon's")
+    parser.add_argument("--adam_learning_rate", type=float, default=3e-4, help="AdamW's")
+    parser.add_argument("--weight_decay", type=float, default=1e-6)
+    parser.add_argument(
+        "--warmup_steps",
+        type=int,
+        default=10_000,
+        help="linear lr warmup from 0; schedule-free needs no other schedule",
+    )
     parser.add_argument("--total_steps", type=int, default=500_000)
     parser.add_argument("--log_interval", type=int, default=1000)
-    parser.add_argument("--warmup_frac", type=float, default=0.5)
-    parser.add_argument(
-        "--cooldown_steps",
-        type=int,
-        default=0,
-        help="decay the lr linearly to 0 over the last N of total_steps (0: constant lr)",
-    )
     parser.add_argument(
         "--time_power",
         type=float,
@@ -427,19 +405,6 @@ def parse_args() -> argparse.Namespace:
         default="bfloat16",
         choices=("bfloat16", "float32"),
         help="compute dtype for the network; params are kept in float32",
-    )
-    parser.add_argument("--muon", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument(
-        "--save_opt_state",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="include the optimizer state in checkpoints (about 2/3 of their size)",
-    )
-    parser.add_argument(
-        "--require_checkpoint",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="stop instead of starting from scratch when there is no checkpoint to resume",
     )
 
     with open(config_args.config_root / f"{config_args.config}.yaml") as f:
@@ -470,50 +435,42 @@ if __name__ == "__main__":
 
     # setup the training state
     state = TrainState.from_config(args)
-    state, start_epoch, loss_history = state.restore_from(checkpoints)
-    if args.require_checkpoint and start_epoch == 0:
-        raise SystemExit(
-            f"no checkpoint in {checkpoints.directory}: {args.config} only continues a run,"
-            " see the header of its config"
-        )
+    print(state.routing_report(), flush=True)
+    state, start_epoch, histories = state.restore_from(checkpoints)
     epochs = args.total_steps // args.log_interval
+    # one fixed batch, never trained on, for the averaged weights' loss
+    key_heldout = jr.fold_in(jr.key(args.seed), 1)
 
     # the checkpoint carries the (epochs, log_interval) grid it was written on, and
     # total_steps or log_interval may well have changed since -- extending a run is how
     # you spend more wall time -- so re-allocate at the current shape and copy the
     # overlap in, rather than indexing off the end of the restored array
-    restored, loss_history = loss_history, np.full(
-        (epochs, args.log_interval, 3), np.nan
-    )
-    if restored is not None:
+    loss_history = np.full((epochs, args.log_interval, 2), np.nan)
+    heldout_history = np.full((epochs,), np.nan)
+    if histories is not None:
+        restored, restored_heldout = histories
         rows = min(restored.shape[0], epochs)
         cols = min(restored.shape[1], args.log_interval)
         loss_history[:rows, :cols] = restored[:rows, :cols]
+        heldout_history[:rows] = restored_heldout[:rows]
 
-    cooldown_epochs = args.cooldown_steps // args.log_interval
     pbar = tqdm(range(start_epoch, epochs), initial=start_epoch, total=epochs)
     for epoch in pbar:
-        aux_weight = aux_weight_schedule(epoch, epochs, args.warmup_frac)
-        lr_scale = lr_scale_schedule(epoch, epochs, cooldown_epochs)
-
-        # one fused XLA dispatch for the whole epoch, instead of log_interval separate
-        # ones. aux_weight and lr_scale go in as arrays, not python floats: filter_jit treats
-        # non-arrays as static, so a float re-traces the whole epoch every time it changes
+        # one fused XLA dispatch for the whole epoch, instead of log_interval separate ones
         started = time.perf_counter()
         state, epoch_losses = state.train_epoch(
-            jnp.asarray(aux_weight),
-            args.batch_size,
-            args.log_interval,
-            args.time_power,
-            jnp.asarray(lr_scale, dtype=jnp.float32),
+            args.batch_size, args.log_interval, args.time_power
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
+        heldout_history[epoch] = float(
+            state.heldout_loss(key_heldout, args.batch_size, args.time_power)
+        )
         seconds = time.perf_counter() - started  # the first epoch includes the compile
 
         # a non-finite loss has already poisoned the weights: stop, and leave the last
         # finite checkpoint in place instead of saving over it
         finite = np.isfinite(loss_history[epoch]).all(axis=-1)
-        if not finite.all():
+        if not finite.all() or not np.isfinite(heldout_history[epoch]):
             checkpoints.close()
             raise SystemExit(
                 f"[epoch {epoch + 1}] non-finite loss at step"
@@ -521,30 +478,31 @@ if __name__ == "__main__":
             )
 
         # save a checkpoint and log the median of the epoch's losses
-        state.save_to(checkpoints, epoch + 1, loss_history, args.save_opt_state)
-        flow_l, x_l, y_l = np.median(loss_history[epoch], axis=0)
-        pbar.set_postfix(flow=f"{flow_l:.5f}", x=f"{x_l:.5f}", y=f"{y_l:.5f}")
+        state.save_to(checkpoints, epoch + 1, loss_history, heldout_history)
+        flow_l, grad_norm = np.median(loss_history[epoch], axis=0)
+        pbar.set_postfix(flow=f"{flow_l:.5f}", heldout=f"{heldout_history[epoch]:.5f}")
         print(
-            f"[epoch {epoch + 1}/{epochs}] flow={flow_l:.5f} x={x_l:.5f}"
-            f" y={y_l:.5f} aux_weight={aux_weight:.3f}"
-            + (f" lr_scale={lr_scale:.4f}" if cooldown_epochs else "")
-            + f" time={seconds:.0f}s",
+            f"[epoch {epoch + 1}/{epochs}] flow={flow_l:.5f}"
+            f" heldout={heldout_history[epoch]:.5f} grad_norm={grad_norm:.3f}"
+            f" time={seconds:.0f}s",
             flush=True,
         )
         if epoch == start_epoch and peak_memory_report():
             print(peak_memory_report(), flush=True)
 
-        # redraw loss curve: median per epoch, shaded 10-90 percentile spread
+        # redraw loss curve: median per epoch, shaded 10-90 percentile spread, and the
+        # averaged weights' held-out loss
         xs = np.arange(1, epoch + 2) * args.log_interval
         l_lo, l_med, l_up = np.percentile(
-            loss_history[: epoch + 1], [10, 50, 90], axis=1
+            loss_history[: epoch + 1, :, 0], [10, 50, 90], axis=1
         )
         fig, ax = plt.subplots()
-        # keys are in the column order of the stacked losses
-        loss_colors = {"flow": "#2a86cf", "x": "#1a9e6a", "y": "#8a4bd0"}
-        for i, (name, color) in enumerate(loss_colors.items()):
-            ax.loglog(xs, l_med[:, i], label=name, color=color, lw=2)
-            ax.fill_between(xs, l_lo[:, i], l_up[:, i], color=color, alpha=0.15)
+        ax.loglog(xs, l_med, label="flow (training weights y)", color="#2a86cf", lw=2)
+        ax.fill_between(xs, l_lo, l_up, color="#2a86cf", alpha=0.15)
+        ax.loglog(
+            xs, heldout_history[: epoch + 1], label="held out (averaged weights x)",
+            color="#d0622a", lw=2,
+        )
         ax.set(xlabel="step", ylabel="loss", title=f"training losses ({run_id})")
         ax.grid(True, which="both", alpha=0.25)
         ax.legend(frameon=False)

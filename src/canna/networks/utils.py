@@ -8,7 +8,27 @@ from einops import rearrange
 DType = jnp.dtype | None
 
 
+def stacked_linear(
+    copies: int, in_dim: int, out_dim: int, *, key: Key[Array, ""], **kwargs
+) -> eqx.nn.Linear:
+    """`copies` independent linear maps in one module, stacked on a leading axis.
+
+    A fused map (q, k and v, say, as one 3*D-wide matrix) would be orthogonalised by Muon as
+    a single matrix; stacked, Muon sees the leading axis as a batch axis and treats each
+    map on its own. Apply with `apply_stacked`.
+    """
+    make = lambda key: eqx.nn.Linear(in_dim, out_dim, key=key, **kwargs)
+    return eqx.filter_vmap(make)(jr.split(key, copies))
+
+
+def apply_stacked(linear: eqx.nn.Linear, x: Float[Array, " I"]) -> Float[Array, "K O"]:
+    """Every map of a `stacked_linear` applied to the same input."""
+    return eqx.filter_vmap(lambda linear: linear(x))(linear)
+
+
 class FeedForward(eqx.Module):
+    """SwiGLU: linear2(value * silu(gate)), with value and gate as two stacked maps."""
+
     linear1: eqx.nn.Linear
     linear2: eqx.nn.Linear
 
@@ -22,11 +42,11 @@ class FeedForward(eqx.Module):
         **kwargs,
     ):
         key1, key2 = jr.split(key)
-        self.linear1 = eqx.nn.Linear(in_dim, 2 * hidden_dim, key=key1, **kwargs)
+        self.linear1 = stacked_linear(2, in_dim, hidden_dim, key=key1, **kwargs)
         self.linear2 = eqx.nn.Linear(hidden_dim, out_dim, key=key2, **kwargs)
 
     def __call__(self, x: Float[Array, " I"]) -> Float[Array, " O"]:
-        x, gate = jnp.split(self.linear1(x), 2)
+        x, gate = apply_stacked(self.linear1, x)
         return self.linear2(x * jax.nn.silu(gate))
 
 
@@ -34,15 +54,64 @@ class Modulation(eqx.Module):
     linear: eqx.nn.Linear
 
     def __init__(self, dim: int, *, key: Key[Array, ""], **kwargs):
-        linear = eqx.nn.Linear(dim, 3 * dim, key=key, **kwargs)
-        # zero-init, so every gated residual branch starts as the exact identity
+        # shift, scale and gate as three stacked maps. Zero-init, so every gated residual
+        # branch starts as the exact identity
+        linear = stacked_linear(3, dim, dim, key=key, **kwargs)
         self.linear = jax.tree.map(jnp.zeros_like, linear)
 
     def __call__(
         self, x: Float[Array, "... D"], c: Float[Array, " D"]
     ) -> tuple[Float[Array, "... D"], Float[Array, " D"]]:
-        shift, scale, gate = jnp.split(self.linear(jax.nn.silu(c)), 3)
+        shift, scale, gate = apply_stacked(self.linear, jax.nn.silu(c))
         return jax.nn.standardize(x, axis=-1) * (1 + scale) + shift, gate
+
+
+class PiecewiseLinear(eqx.Module):
+    """Piecewise linear encoding of each input scalar, then one linear map to the model dim.
+
+    Gorishniy, Rubachev & Babenko 2022 (arXiv:2203.05556). A scalar x with bin edges
+    b_0 < ... < b_T becomes T components, (x - b_{t-1}) / (b_t - b_{t-1}) clipped to [0, 1];
+    the first is not clipped below and the last not above, so values past the outer edges
+    still extrapolate linearly. Each component ramps over its own bin only, so the code
+    resolves x to a fraction of the local bin width whatever the input's dynamic range.
+
+    `edges` holds one tuple of edges per input scalar, and the tuples may differ in length.
+    They are static: the encoding has no trainable part, only the linear map after it.
+    """
+
+    edges: tuple[tuple[float, ...], ...] = eqx.field(static=True)
+    linear: eqx.nn.Linear
+
+    def __init__(
+        self,
+        edges: tuple[tuple[float, ...], ...],
+        out_dim: int,
+        *,
+        key: Key[Array, ""],
+        **kwargs,
+    ):
+        assert all(len(e) >= 3 for e in edges), "each scalar needs at least two bins"
+        assert all(
+            b > a for e in edges for a, b in zip(e, e[1:])
+        ), "bin edges must increase"
+        self.edges = tuple(tuple(float(b) for b in e) for e in edges)
+        n_features = sum(len(e) - 1 for e in self.edges)
+        self.linear = eqx.nn.Linear(n_features, out_dim, key=key, **kwargs)
+
+    def encode(self, x: Float[Array, " C"]) -> Float[Array, " F"]:
+        features = []
+        for i, e in enumerate(self.edges):
+            e = jnp.asarray(e, x.dtype)
+            ramp = (x[i] - e[:-1]) / (e[1:] - e[:-1])
+            n = ramp.shape[0]
+            low = jnp.full((n,), -jnp.inf).at[1:].set(0.0)
+            high = jnp.full((n,), jnp.inf).at[:-1].set(1.0)
+            features.append(jnp.clip(ramp, low, high))
+        return jnp.concat(features)
+
+    def __call__(self, x: Float[Array, " C"]) -> Float[Array, " D"]:
+        assert x.shape == (len(self.edges),), f"expected {len(self.edges)} scalars"
+        return self.linear(self.encode(x))
 
 
 class SinusoidalEmbed(eqx.Module):

@@ -1,3 +1,5 @@
+import math
+
 from jaxtyping import Array, Float, Key
 import jax
 import jax.numpy as jnp
@@ -5,44 +7,70 @@ import jax.random as jr
 import equinox as eqx
 from einops import rearrange
 
-from ..networks import (
-    MMDiT,
-    FeedForward,
-    Modulation,
-    Patchify,
-    PositionalEmbed,
-    SinusoidalEmbed,
-    UnPatchify,
-)
+from ..networks import MMDiT, FeedForward, Modulation, PiecewiseLinear, SinusoidalEmbed
 from ..networks.utils import DType
-from .problem import WindowGeometry
+
+# PLE bins. The data are whitened to unit noise per real and imaginary part, and reach
+# ~700 sigma for the loudest sources on XS; their edges are uniform in arcsinh out to
+# DATA_REACH, so a bin is 0.24 sigma wide near the noise and ~70 sigma wide at 300 sigma.
+# Quantile edges would leave everything from ~80 sigma up in one bin. f0 gets four times
+# the bins of the other coordinates: it is the one the posterior resolves most finely
+# against its prior range (F26).
+DATA_BINS, DATA_REACH = 64, 1000.0
+COORD_BINS, F0_BINS, WINDOW_BINS = 64, 256, 64
+# the flow coordinates' ranges: log f0 and log A are mapped onto [-1, 1], log Mc is
+# standardised, and the sky, orientation and phase are unit vectors
+COORD_RANGES = ((-1.0, 1.0), (-4.0, 4.0)) + ((-1.0, 1.0),) * 9
+
+
+def uniform_edges(low: float, high: float, bins: int) -> tuple[float, ...]:
+    return tuple(low + (high - low) * i / bins for i in range(bins + 1))
+
+
+def arcsinh_edges(reach: float, bins: int) -> tuple[float, ...]:
+    """Edges symmetric about 0 and uniform in arcsinh, out to +-reach."""
+    return tuple(math.sinh(u) for u in uniform_edges(-math.asinh(reach), math.asinh(reach), bins))
 
 
 class LisaFlow(eqx.Module):
-    """Velocity field over a set of binaries conditioned on a whitened WDM window."""
+    """Velocity field over a set of binaries, conditioned on a whitened frequency-domain window.
+
+    The data are the window's rfft bins, whitened, with the real and imaginary parts of A, E
+    and T stacked as six channels. `patch` neighbouring bins make one token. Every scalar
+    the network takes in -- each data value, each source coordinate, the window frequency --
+    goes through a piecewise linear encoding (`PiecewiseLinear`) and one linear map.
+
+    Precision: the embeddings, the conditioning and the velocity head run in float32 and
+    only the MMDiT backbone in `dtype`. The arcsinh(WDM) input of the earlier networks was
+    cast to bf16 before its first layer, which rounded the loudest pixels by 0.5-3.6 noise
+    sigmas rms; here the cast comes after the encoding.
+
+    The x stream gets no positional embedding: that is what keeps it permutation invariant
+    over sources. The y tokens get a learned one, one vector per token position.
+    """
 
     dtype: DType = eqx.field(static=True)
-    x_embed: FeedForward
-    y_patchify: Patchify
-    y_pos_h: PositionalEmbed
-    y_pos_w: PositionalEmbed
+    patch: int = eqx.field(static=True)
+    x_embed: PiecewiseLinear
+    y_embed: PiecewiseLinear
+    y_pos: Float[Array, "N D"]
     t_embed: SinusoidalEmbed
     t_mlp: FeedForward
-    f_embed: SinusoidalEmbed
+    f_embed: PiecewiseLinear
     f_mlp: FeedForward
     backbone: MMDiT
     x_modulation: Modulation
     x_unembed: FeedForward
-    y_unembed: UnPatchify
 
     def __init__(
         self,
         x_shape: tuple[int, int],
-        y_shape: tuple[int, int, int],
+        y_shape: tuple[int, int],
         hidden_dim: int,
         num_heads: int,
         num_blocks: int,
-        patch_stages: int = 1,
+        f_range: tuple[float, float],
+        patch: int = 2,
         expand: int = 2,
         dtype: DType = jnp.float32,
         param_dtype: jnp.dtype = jnp.float32,
@@ -50,156 +78,58 @@ class LisaFlow(eqx.Module):
         key: Key[Array, ""],
         **kwargs,
     ):
-        (*_, x_dim), (*_, height, width, y_dim) = x_shape, y_shape
-
-        patch = 2**patch_stages
-        assert (
-            height % patch == 0 and width % patch == 0
-        ), f"conditioning image {height}x{width} is not divisible by {patch}"
-        self.dtype = dtype
+        (*_, x_dim), (*_, n_bins, y_dim) = x_shape, y_shape
+        assert x_dim == len(COORD_RANGES), f"expected {len(COORD_RANGES)} flow coordinates"
+        assert n_bins % patch == 0, f"window of {n_bins} bins is not divisible by {patch}"
+        self.dtype, self.patch = dtype, patch
 
         # eqx.nn's dtype is the parameter dtype; the compute dtype is applied in __call__
         kwargs = dict(kwargs, dtype=param_dtype)
-        keys = iter(jr.split(key, 12))
+        keys = iter(jr.split(key, 10))
 
-        # the x stream gets no positional embedding: that is what keeps it permutation
-        # invariant over sources
-        self.x_embed = FeedForward(
-            x_dim, hidden_dim, hidden_dim, key=next(keys), **kwargs
+        coord_edges = tuple(
+            uniform_edges(lo, hi, F0_BINS if i == 0 else COORD_BINS)
+            for i, (lo, hi) in enumerate(COORD_RANGES)
         )
-        self.y_patchify = Patchify(
-            y_dim, hidden_dim, patch_stages, key=next(keys), **kwargs
+        self.x_embed = PiecewiseLinear(coord_edges, hidden_dim, key=next(keys), **kwargs)
+        data_edges = (arcsinh_edges(DATA_REACH, DATA_BINS),) * (patch * y_dim)
+        self.y_embed = PiecewiseLinear(data_edges, hidden_dim, key=next(keys), **kwargs)
+        self.y_pos = 0.02 * jr.normal(
+            next(keys), (n_bins // patch, hidden_dim), param_dtype
         )
-        self.y_pos_h = PositionalEmbed(
-            hidden_dim, height // patch, axis=-3, key=next(keys), **kwargs
-        )
-        self.y_pos_w = PositionalEmbed(
-            hidden_dim, width // patch, axis=-2, key=next(keys), **kwargs
-        )
+
         self.t_embed = SinusoidalEmbed(hidden_dim, key=next(keys), **kwargs)
-        self.t_mlp = FeedForward(
-            hidden_dim, hidden_dim, hidden_dim, key=next(keys), **kwargs
-        )
-        self.f_embed = SinusoidalEmbed(hidden_dim, key=next(keys), **kwargs)
-        self.f_mlp = FeedForward(
-            hidden_dim, hidden_dim, hidden_dim, key=next(keys), **kwargs
-        )
+        self.t_mlp = FeedForward(hidden_dim, hidden_dim, hidden_dim, key=next(keys), **kwargs)
+        log_f = (uniform_edges(math.log(f_range[0]), math.log(f_range[1]), WINDOW_BINS),)
+        self.f_embed = PiecewiseLinear(log_f, hidden_dim, key=next(keys), **kwargs)
+        self.f_mlp = FeedForward(hidden_dim, hidden_dim, hidden_dim, key=next(keys), **kwargs)
 
+        # no biases inside the blocks: every parameter there is a matrix Muon can take
         self.backbone = MMDiT(
-            hidden_dim, num_heads, num_blocks, expand, key=next(keys), **kwargs
+            hidden_dim, num_heads, num_blocks, expand, key=next(keys), use_bias=False, **kwargs
         )
 
         self.x_modulation = Modulation(hidden_dim, key=next(keys), **kwargs)
-        self.x_unembed = FeedForward(
-            hidden_dim, hidden_dim, 2 * x_dim, key=next(keys), **kwargs
-        )
-        self.y_unembed = UnPatchify(
-            y_dim, hidden_dim, patch_stages, key=next(keys), **kwargs
-        )
+        self.x_unembed = FeedForward(hidden_dim, hidden_dim, x_dim, key=next(keys), **kwargs)
 
     def __call__(
         self,
         x: Float[Array, "S X"],
         t: Float[Array, ""],
-        y: Float[Array, "H W C"],
+        y: Float[Array, "F C"],
         f: Float[Array, ""],
-    ) -> tuple[
-        Float[Array, "S X"],
-        Float[Array, "S X"],
-        Float[Array, "H W C"],
-    ]:
-        # mixed precision: the stored params keep param_dtype, this forward runs in dtype
-        params, static = eqx.partition(self, eqx.is_inexact_array)
-        net = eqx.combine(jax.tree.map(lambda p: p.astype(self.dtype), params), static)
-        x_in = x  # float32, for the position features of a PositionedLisaFlow
-        x, y = x.astype(self.dtype), y.astype(self.dtype)
+    ) -> Float[Array, "S X"]:
+        f32 = jnp.float32
+        c = self.t_mlp(self.t_embed(t.astype(f32)))
+        c = c + self.f_mlp(self.f_embed(jnp.log(f.astype(f32))[None]))
+        x = jax.vmap(self.x_embed)(x.astype(f32))
+        y = rearrange(y.astype(f32), "(n p) c -> n (p c)", p=self.patch)
+        y = jax.vmap(self.y_embed)(y) + self.y_pos
 
-        c = net.t_mlp(net.t_embed(t).astype(self.dtype))
-        c = c + net.f_mlp(net.f_embed(f).astype(self.dtype))
-        y_width = y.shape[-2]
-        x = jax.vmap(net.x_embed)(x)
-        y = net.y_pos_w(net.y_pos_h(net.y_patchify(y)))
-        x, y = net.add_positions(x, y, x_in, y_width, f)
+        # mixed precision: the stored params keep param_dtype, the backbone runs in dtype
+        params, static = eqx.partition(self.backbone, eqx.is_inexact_array)
+        backbone = eqx.combine(jax.tree.map(lambda p: p.astype(self.dtype), params), static)
+        x, _ = backbone(x.astype(self.dtype), y.astype(self.dtype), c.astype(self.dtype))
 
-        h, w = y.shape[-3], y.shape[-2]
-        x, y = net.backbone(x, rearrange(y, "h w d -> (h w) d"), c)
-
-        x, _ = net.x_modulation(x, c)
-        dx, x = jnp.split(jax.vmap(net.x_unembed)(x), 2, axis=-1)
-
-        y = rearrange(y, "(h w) d -> h w d", h=h, w=w)
-        return dx, x, net.y_unembed(y)
-
-    def add_positions(self, x, y, x_in, y_width, f):
-        """Hook for PositionedLisaFlow; the plain network has no position features."""
-        return x, y
-
-
-class PositionedLisaFlow(LisaFlow):
-    """LisaFlow with each source and each column of conditioning tokens given its position.
-
-    The positions are in bins from the window start, through one Fourier basis for both
-    streams: sin and cos of 2 pi b / P for `positions` periods P from 2 bins to twice the
-    window (WindowGeometry.features). They enter through plain linear maps, so the residual
-    streams carry the sinusoids themselves and a query can score a key by a weighted sum of
-    cos(2 pi (b_source - b_token) / P), which peaks where a source's tokens are.
-
-    It exists because the plain network places f0 only to ~2e-3 of its coordinate's range,
-    whatever the window (F26): 0.04 bins on XS, 3 bins on B. There the source enters as a
-    raw scalar and the tokens as sinusoids no finer than the window, both in bf16, where the
-    token index is not even exact above 256. Here the features are computed in float32 from
-    the float32 inputs, before the cast. A subclass, so that LisaFlow's fields -- and every
-    checkpoint saved from it -- stay as they were.
-    """
-
-    positions: int = eqx.field(static=True)
-    window: WindowGeometry = eqx.field(static=True)
-    x_pos: eqx.nn.Linear
-    y_pos: eqx.nn.Linear
-
-    def __init__(
-        self,
-        x_shape: tuple[int, int],
-        y_shape: tuple[int, int, int],
-        hidden_dim: int,
-        num_heads: int,
-        num_blocks: int,
-        patch_stages: int = 1,
-        expand: int = 2,
-        *,
-        positions: int,
-        window: WindowGeometry,
-        dtype: DType = jnp.float32,
-        param_dtype: jnp.dtype = jnp.float32,
-        key: Key[Array, ""],
-        **kwargs,
-    ):
-        super().__init__(
-            x_shape,
-            y_shape,
-            hidden_dim,
-            num_heads,
-            num_blocks,
-            patch_stages,
-            expand,
-            dtype,
-            param_dtype,
-            key=key,
-            **kwargs,
-        )
-        assert positions > 0, "a PositionedLisaFlow needs at least one period"
-        self.positions, self.window = positions, window
-        key_x, key_y = jr.split(jr.fold_in(key, 1))
-        kwargs = dict(kwargs, dtype=param_dtype)
-        self.x_pos = eqx.nn.Linear(2 * positions, hidden_dim, key=key_x, **kwargs)
-        self.y_pos = eqx.nn.Linear(2 * positions, hidden_dim, key=key_y, **kwargs)
-
-    def add_positions(self, x, y, x_in, y_width, f):
-        # x_in is the float32 input: the f0 coordinate is its first column
-        patch = 2 ** len(self.y_patchify.linears)
-        x_bins = self.window.source_bins(x_in[:, 0].astype(jnp.float32), f)
-        y_bins = self.window.token_bins(y_width // patch, patch)
-        x_pos = jax.vmap(self.x_pos)(self.window.features(x_bins, self.positions))
-        y_pos = jax.vmap(self.y_pos)(self.window.features(y_bins, self.positions))
-        # the token grid is (h w): the frequency columns are the same in every time row
-        return x + x_pos.astype(x.dtype), y + y_pos.astype(y.dtype)[None]
+        x, _ = self.x_modulation(x.astype(f32), c)
+        return jax.vmap(self.x_unembed)(x)

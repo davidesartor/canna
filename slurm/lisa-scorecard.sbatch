@@ -22,7 +22,7 @@
 set -euo pipefail
 mkdir -p .slurm-logs
 
-CONFIG="${1:-B}"
+CONFIG="${1:-B-fd}"
 
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 

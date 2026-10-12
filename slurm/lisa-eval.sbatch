@@ -1,6 +1,6 @@
 #!/bin/bash
 # Evaluate a trained LISA flow against its latest checkpoint. Submit from the repo root:
-#     sbatch slurm/lisa-eval.sbatch            # config B
+#     sbatch slurm/lisa-eval.sbatch            # config B-fd
 #     sbatch slurm/lisa-eval.sbatch XS         # some other config
 #     sbatch slurm/lisa-eval.sbatch XS --output_dir outputs/500k   # flags go to eval
 # Writes ten corner plots -- one per SNR decile, flow against a Fisher approximation --
@@ -26,7 +26,7 @@
 set -euo pipefail
 mkdir -p .slurm-logs
 
-CONFIG="${1:-B}"
+CONFIG="${1:-B-fd}"
 
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 

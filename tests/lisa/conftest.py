@@ -15,7 +15,7 @@ from canna.lisa import LisaFlow, LisaGB, train_sample
 @pytest.fixture(scope="module")
 def small_flow():
     """The XS problem with a deliberately tiny network: the integrator is under test."""
-    with open(Path(lisa.__file__).parent / "configs" / "XS.yaml") as f:
+    with open(Path(lisa.__file__).parent / "configs" / "XS-fd.yaml") as f:
         problem = LisaGB(**yaml.safe_load(f)["problem"])
     sample = train_sample(problem, jr.key(0))
     flow = LisaFlow(
@@ -24,6 +24,7 @@ def small_flow():
         hidden_dim=32,
         num_heads=2,
         num_blocks=1,
+        f_range=problem.f0_range,
         dtype=jnp.float32,
         param_dtype=jnp.float32,
         key=jr.key(1),

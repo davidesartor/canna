@@ -92,13 +92,14 @@ def test_snr_preserves_leading_batch_axis():
     assert s.shape == (4,)
 
 
-def test_preprocess_output_has_three_channels():
+def test_preprocess_output_has_six_channels():
     problem = LisaGB(n_sources=1)
     p = problem.sample_physical(jr.key(0), window(problem))
     o = problem.clean_signal(p, window(problem))
     img = problem.preprocess(o, window(problem))
-    assert img.shape[-1] == 3
-    assert img.ndim == o.ndim + 1
+    # real and imaginary parts of A, E and T, one row per rfft bin of the window
+    assert img.shape[-1] == 6
+    assert img.ndim == o.ndim
 
 
 def test_preprocess_preserves_leading_batch_axis():
@@ -109,17 +110,7 @@ def test_preprocess_preserves_leading_batch_axis():
     o = problem.clean_signal(p, window(problem))
     img = problem.preprocess(o, window(problem))
     assert img.shape[0] == 4
-    assert img.shape[-1] == 3
-
-
-def test_preprocess_time_axis_is_two_rows():
-    # the image is wdm_times x wdm_freq_bands, and wdm_times is pinned at 2: the one
-    # patch stage of LisaFlow folds it into a single token row
-    problem = LisaGB(n_sources=1)
-    p = problem.sample_physical(jr.key(48), window(problem))
-    o = problem.clean_signal(p, window(problem))
-    img = problem.preprocess(o, window(problem))
-    assert img.shape[-3] == 2
+    assert img.shape[-1] == 6
 
 
 def test_train_sample_shapes_line_up():
@@ -129,7 +120,7 @@ def test_train_sample_shapes_line_up():
     assert sample.xt.shape == (3, width)
     assert sample.dx.shape == (3, width)
     assert sample.t.shape == ()
-    assert sample.x_target.shape == (3, width)
+    assert sample.y.shape == (problem.window_bins, 6)
 
 
 def test_train_sample_is_finite():
@@ -149,12 +140,12 @@ def test_train_sample_same_key_gives_same_sample():
     assert jnp.allclose(a.t, b.t)
 
 
-def test_preprocess_frequency_axis_is_wdm_freq_bands():
+def test_preprocess_frequency_axis_is_the_window():
     problem = LisaGB(n_sources=1)
     p = problem.sample_physical(jr.key(49), window(problem))
     o = problem.clean_signal(p, window(problem))
     img = problem.preprocess(o, window(problem))
-    assert img.shape[-2] == problem.wdm_freq_bands
+    assert img.shape[-2] == problem.window_bins
 
 
 def test_clean_signal_broadcasts_over_two_leading_batch_axes():

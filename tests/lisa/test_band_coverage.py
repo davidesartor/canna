@@ -28,13 +28,11 @@ def test_the_loudest_pixel_sits_at_the_injected_frequency():
         jnp.array([[f0, CHIRP_MASS, 1e-22, 1.0, 0.3, 2.0, 0.5, 0.0]]), window(problem)
     )
 
-    # each wdm frequency channel is wdm_times // 2 rfft bins of the window
-    image = problem.preprocess(signal, window(problem))
-    channel = (f0 * problem.t_obs - int(problem.window_start(window(problem)))) / (
-        problem.wdm_times / 2
-    )
-    loudest = int(jnp.argmax(jnp.abs(image[..., 0]).max(axis=0)))
-    assert abs(loudest - channel) < 2
+    # preprocess keeps one row per rfft bin of the window; A's power peaks at f0
+    stream = problem.preprocess(signal, window(problem))
+    bin_ = f0 * problem.t_obs - int(problem.window_start(window(problem)))
+    loudest = int(jnp.argmax(stream[:, 0] ** 2 + stream[:, 3] ** 2))
+    assert abs(loudest - bin_) < 2
 
 
 def test_no_signal_energy_lives_outside_the_sources_response_segment():

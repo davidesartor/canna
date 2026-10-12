@@ -1,5 +1,5 @@
-"""clean_signal's F axis is exactly the sliding window, and preprocess folds that window
-into a wdm_times x wdm_freq_bands image."""
+"""clean_signal's F axis is exactly the sliding window, and preprocess keeps it: one row
+of six channels per rfft bin."""
 
 import jax.random as jr
 
@@ -42,38 +42,26 @@ def test_clean_signal_f_axis_does_not_move_with_the_baseline():
     )
 
 
-def test_wdm_shape_invariants_hold_across_a_range_of_observation_baselines():
-    # preprocess consumes the whole window, so the image axes are wdm_times and
-    # wdm_freq_bands whether t_obs is a day, the shipped 30-day baseline, or two years
+def test_stream_shape_invariants_hold_across_a_range_of_observation_baselines():
+    # preprocess consumes the whole window, so the stream is window_bins x 6 whether
+    # t_obs is a day, the shipped 30-day baseline, or two years
     p_key = jr.key(69)
     for t_obs in (86400.0, 2592000.0, 2 * 365.25 * 24 * 60 * 60):
         problem = LisaGB(n_sources=1, t_obs=t_obs, f0_range=BAND)
         p = problem.sample_physical(p_key, window(problem))
-        img = problem.preprocess(
+        stream = problem.preprocess(
             problem.clean_signal(p, window(problem)), window(problem)
         )
-        assert img.shape == (problem.wdm_times, problem.wdm_freq_bands, 3)
-        assert img.shape[-3] == 2
+        assert stream.shape == (problem.window_bins, 6)
 
 
-def test_conditioning_image_shape_at_the_shipped_two_year_config():
-    # regression pin for B.yaml: t_obs=2yr, response_points auto-sized to 1024, so
-    # the window is 4096 bins and the image 2 x 4096
+def test_conditioning_shape_at_the_shipped_two_year_config():
+    # regression pin for B-fd.yaml: t_obs=2yr, response_points auto-sized to 1024, so
+    # the window is 4096 bins, and LisaFlow's 2-bin tokens make 2048 of them
     problem = LisaGB(**SHIPPED)
     p = problem.sample_physical(jr.key(60), window(problem))
     o = problem.clean_signal(p, window(problem))
-    img = problem.preprocess(o, window(problem))
+    stream = problem.preprocess(o, window(problem))
     assert problem.response_points == 1024
     assert o.shape == (4096, 3)
-    assert img.shape[-3] == 2
-    assert img.shape[-2] == 4096
-
-
-def test_conditioning_frequency_axis_is_divisible_by_mmdit_b_patch_stages():
-    # LisaFlow's single Fold2d halving needs both image axes divisible by 2
-    problem = LisaGB(**SHIPPED)
-    p = problem.sample_physical(jr.key(61), window(problem))
-    o = problem.clean_signal(p, window(problem))
-    img = problem.preprocess(o, window(problem))
-    assert img.shape[-2] % 2 == 0
-    assert img.shape[-3] % 2 == 0
+    assert stream.shape == (4096, 6)

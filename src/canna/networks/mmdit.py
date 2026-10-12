@@ -1,3 +1,4 @@
+from functools import partial
 from jaxtyping import Array, Float, Key
 import jax
 import jax.numpy as jnp
@@ -5,7 +6,7 @@ import jax.random as jr
 import equinox as eqx
 from einops import rearrange
 
-from .utils import FeedForward, Modulation
+from .utils import FeedForward, Modulation, apply_stacked, stacked_linear
 
 
 class MultiStreamAttention(eqx.Module):
@@ -27,11 +28,12 @@ class MultiStreamAttention(eqx.Module):
         assert dim % num_heads == 0, "dim should be divisible by num_heads"
         keys = iter(jr.split(key, 4))
         self.num_heads = num_heads
-        self.qkv_proj_x = eqx.nn.Linear(
-            dim, dim * 3, use_bias, key=next(keys), **kwargs
+        # q, k and v as three stacked maps, so Muon orthogonalises each on its own
+        self.qkv_proj_x = stacked_linear(
+            3, dim, dim, use_bias=use_bias, key=next(keys), **kwargs
         )
-        self.qkv_proj_y = eqx.nn.Linear(
-            dim, dim * 3, use_bias, key=next(keys), **kwargs
+        self.qkv_proj_y = stacked_linear(
+            3, dim, dim, use_bias=use_bias, key=next(keys), **kwargs
         )
         self.out_proj_x = eqx.nn.Linear(dim, dim, use_bias, key=next(keys), **kwargs)
         self.out_proj_y = eqx.nn.Linear(dim, dim, use_bias, key=next(keys), **kwargs)
@@ -40,11 +42,9 @@ class MultiStreamAttention(eqx.Module):
         self, x: Float[Array, "N D"], y: Float[Array, "M D"]
     ) -> tuple[Float[Array, "N D"], Float[Array, "M D"]]:
         n = x.shape[-2]
-        x = jax.vmap(self.qkv_proj_x)(x)
-        y = jax.vmap(self.qkv_proj_y)(y)
-
-        qkv = rearrange(jnp.concat([x, y]), "n (h d) -> n h d", h=self.num_heads)
-        q, k, v = jnp.split(qkv, 3, axis=-1)
+        project = lambda linear, z: jax.vmap(partial(apply_stacked, linear), out_axes=1)(z)
+        qkv = jnp.concat([project(self.qkv_proj_x, x), project(self.qkv_proj_y, y)], axis=1)
+        q, k, v = rearrange(qkv, "s n (h d) -> s n h d", h=self.num_heads)
 
         # qk norm is purely functional: per-head rms, no learned scale
         rms = lambda z: jax.lax.rsqrt(

@@ -66,7 +66,7 @@ def sample_posterior(
         dt = jnp.asarray(1.0 / ode_steps, u.dtype)
 
         def velocity(u: Array, t: Array) -> Array:
-            v = flow(u, t, y, f)[0]
+            v = flow(u, t, y, f)
             return v if time_power == 1 else path_speed(t, time_power) * v
 
         def step(i: Array, u: Array) -> Array:

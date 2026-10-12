@@ -1,4 +1,4 @@
-"""Checkpoints with and without the optimizer state round-trip through restore_from."""
+"""Checkpoints round-trip through restore_from, optimizer state and histories included."""
 
 from pathlib import Path
 
@@ -8,26 +8,24 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint as ocp
-import pytest
 import yaml
 
 import canna.lisa as lisa
-from canna.lisa.train import TrainState
+from canna.lisa.train import TrainState, eval_flow
 
 
 def small_args():
-    with open(Path(lisa.__file__).parent / "configs" / "XS.yaml") as f:
+    with open(Path(lisa.__file__).parent / "configs" / "XS-fd.yaml") as f:
         config = yaml.safe_load(f)
-    config["network"] = dict(hidden_dim=32, num_blocks=1, num_heads=2, patch_stages=1)
-    return argparse.Namespace(**config, dtype="float32", muon=True)
+    config["network"] = dict(hidden_dim=32, num_blocks=1, num_heads=2, patch=2)
+    return argparse.Namespace(**config, dtype="float32")
 
 
-def params(state):
-    return jax.tree.leaves(eqx.filter(state.flow, eqx.is_inexact_array))
+def params(flow):
+    return jax.tree.leaves(eqx.filter(flow, eqx.is_inexact_array))
 
 
-@pytest.mark.parametrize("save_opt_state", [True, False])
-def test_restore_brings_back_the_weights_with_or_without_optimizer_state(tmp_path, save_opt_state):
+def test_restore_brings_back_the_weights_the_optimizer_state_and_the_histories(tmp_path):
     args = small_args()
     state = TrainState.from_config(args)
     # move the weights and the optimizer state off their initial values
@@ -36,14 +34,33 @@ def test_restore_brings_back_the_weights_with_or_without_optimizer_state(tmp_pat
         opt_state=jax.tree.map(lambda a: a + 1.0 if eqx.is_inexact_array(a) else a, state.opt_state),
     )
     manager = ocp.CheckpointManager(tmp_path, options=ocp.CheckpointManagerOptions(max_to_keep=1))
-    state.save_to(manager, 3, np.zeros((5, 2, 3)), save_opt_state)
+    state.save_to(manager, 3, np.ones((5, 2, 2)), np.arange(5.0))
     manager.wait_until_finished()
-    assert (tmp_path / "3" / "opt_state").exists() == save_opt_state
 
-    fresh = TrainState.from_config(args)
-    restored, epoch, hist = fresh.restore_from(manager)
-    assert epoch == 3 and hist.shape == (5, 2, 3)
-    assert all(jnp.array_equal(a, b) for a, b in zip(params(restored), params(state)))
+    restored, epoch, (hist, heldout) = TrainState.from_config(args).restore_from(manager)
+    assert epoch == 3 and hist.shape == (5, 2, 2)
+    assert np.array_equal(heldout, np.arange(5.0))
+    assert all(jnp.array_equal(a, b) for a, b in zip(params(restored.flow), params(state.flow)))
     opt = lambda s: [a for a in jax.tree.leaves(s.opt_state) if eqx.is_inexact_array(a)]
-    expected = opt(state) if save_opt_state else opt(fresh)
-    assert all(jnp.array_equal(a, b) for a, b in zip(opt(restored), expected))
+    assert all(jnp.array_equal(a, b) for a, b in zip(opt(restored), opt(state)))
+    # and so the averaged weights the eval uses come back too
+    assert all(
+        jnp.array_equal(a, b)
+        for a, b in zip(
+            params(eval_flow(restored.flow, restored.opt_state)),
+            params(eval_flow(state.flow, state.opt_state)),
+        )
+    )
+
+
+def test_every_backbone_parameter_is_on_muon():
+    report = TrainState.from_config(small_args()).routing_report()
+    assert report.startswith("[optimizer] Muon")
+
+
+def test_the_averaged_weights_start_at_the_initial_ones():
+    state = TrainState.from_config(small_args())
+    assert all(
+        jnp.allclose(a, b)
+        for a, b in zip(params(eval_flow(state.flow, state.opt_state)), params(state.flow))
+    )

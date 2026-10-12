@@ -14,7 +14,7 @@ from canna.lisa.scorecard import match_sources, score
 
 @pytest.fixture(scope="module")
 def setup():
-    with open(Path(lisa.__file__).parent / "configs" / "XS.yaml") as f:
+    with open(Path(lisa.__file__).parent / "configs" / "XS-fd.yaml") as f:
         problem = LisaGB(**yaml.safe_load(f)["problem"])
     f = problem.sample_f(jr.key(0))
     truth = np.asarray(problem.sample_physical(jr.key(1), f))
