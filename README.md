@@ -49,7 +49,7 @@ uv run python -m canna.<problem>.eval  --config <name>   # corner plots from tha
 ```
 
 `<problem>` is `point`, `sinusoid` or `lisa`; `<name>` is a run `.yaml` in that
-package's `configs/` (`B`, `XS`). Every CLI flag overrides the config.
+package's `configs/` (e.g. `XS-fd`, `B-fd` for `lisa`). Every CLI flag overrides the config.
 
 ## The LISA problem (`canna.lisa`)
 
@@ -62,35 +62,36 @@ run, what it found, and the decision rules written before its result.
 **Sizes.** The configs come in rungs that differ only in how much of the band a
 window covers, and so in how many conditioning tokens the network sees:
 
-| rung | window | f₀ reach | tokens |
+| rung | window | f₀ reach | tokens (2 bins each) |
 |---|---|---|---|
 | `XS` | 64 bins | ≤ 1.3 mHz | 32 |
 | `S` | 256 bins | ≤ 4.2 mHz | 128 |
 | `B` | 4096 bins | the whole 0.1–12 mHz | 2048 |
 
-**Training recipe.** The `*-late` configs carry what the XS runs settled on:
+**Training recipe** (since 2026-10-12, research log F32). The network sees the whitened
+rfft window, the real and imaginary parts of A, E and T as six channels.
 
-- `warmup_frac: 0.1`: the auxiliary heads train for the first 10% of the steps
-  only, then pure flow matching.
-- `time_power: 3`: a warped flow clock, `s = 1 − (1 − t)³`, that spends more of
-  the training near the end of the path, where a loud source's posterior is
-  resolved.
-- `cooldown_steps`: the last steps decay the learning rate linearly to 0. Over
-  the last 20% of a run this halved the frequency error floor and removed a
-  run-specific bias, the largest gain so far.
-- `save_opt_state: false` leaves the optimiser state out of checkpoints, for a
-  tight disk quota. `require_checkpoint: true` makes a continuation config
-  (`*-cool`) stop rather than train from scratch when its checkpoint is missing.
+- **Embeddings.** Every input scalar (each data value, each source coordinate, the window
+  frequency) goes through a piecewise linear encoding and one linear map, in float32. Only
+  the MMDiT backbone runs in bf16.
+- **Optimiser.** Schedule-free Muon. Muon (lr 1e-3, RMS-matched) takes every matrix of the
+  backbone; q, k, v, SwiGLU's value and gate, and adaLN's shift, scale and gate are separate
+  matrices. AdamW (lr 3e-4, b2 0.95) takes the encodings, the token positions, the last head
+  layer and anything 1-D. There is a linear warmup, then a constant lr, and no cooldown.
+- **Checkpoints and eval.** Checkpoints keep the optimiser state, because the evaluated
+  weights are schedule-free's average, rebuilt from it. Eval and the scorecard load that
+  average.
+- **Clock.** `time_power: 3`: a warped flow clock, `s = 1 − (1 − t)³`, that spends more of
+  the training near the end of the path, where a loud source's posterior is resolved.
 
 | config | what it is |
 |---|---|
-| `XS`, `S`, `B` | the original runs: a constant lr and a long auxiliary phase |
-| `XS-late` | the recipe without the cooldown, 512 × 8, 1M steps |
-| `XS-late-768` | the same with a 768 × 8 network |
-| `XS-late-768-cool`, `XS-late-cool` | 200k-step cooldowns continuing those two from 1M steps |
-| `S-late`, `S-late-768` | S with the full recipe, 1M steps of which the last 200k cool down |
-| `B-late`, `B-late-768` | B with the full recipe; a provisional 200k steps, set from a benchmark of B's cost per step |
-| `XS-pos` | XS-late-cool's recipe from scratch with `positions: 32`: sources and tokens get their positions in bins through one Fourier basis (`PositionedLisaFlow`, research log F26) |
+| `XS-fd` | XS with the recipe, 512 × 8, 1.2M steps: R1's problem, seed and length |
+| `B-fd` | B with the recipe, 200k steps in 24 h links that resume from the checkpoint |
+
+The WDM-input code and configs of the earlier runs (`XS-late*`, `XS-pos`, `B-late`,
+`B-pos`, …) live at the tag `wdm-r1`. To rescore one of those checkpoints, check that tag out
+in a worktree.
 
 **Evaluating a run.**
 

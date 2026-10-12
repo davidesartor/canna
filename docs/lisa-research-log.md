@@ -6,7 +6,23 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 §9 places the work in the literature (survey of 2026-10-09).
 
-## 1. Summary (2026-10-01, updated 2026-10-11)
+## 1. Summary (2026-10-01, updated 2026-10-12)
+
+- **Update, 2026-10-12 (F32): a new recipe, launched on XS and B together.** The user
+  stopped B2 overnight and set a new direction.
+  - **Data:** the whitened rfft window (real and imaginary parts of A, E and T) replaces
+    arcsinh(WDM).
+  - **Embeddings:** piecewise linear encodings (PLE) of every input scalar, computed in
+    fp32.
+  - **Optimiser:** schedule-free Muon. Muon at lr 1e-3, RMS-matched; AdamW at 3e-4 with
+    b2 0.95 for the encodings and the head; weight decay 1e-6.
+  - **Out:** the aux heads, the cooldown and the position features.
+  - **Two findings behind it:**
+    - every earlier run trained 89% of its parameters, the whole MMDiT backbone, with
+      Adam, not Muon;
+    - the bf16 cast of arcsinh(WDM) rounded the loudest pixels by 0.5–3.6 noise σ.
+  - **Runs:** XS-fd (14326113, ~15 h) and B-fd (14326117 → 14326121, ~4 days) started at
+    04:22 CEST, each with its scorecard and eval chained. Their rule is in §6.
 
 - **Update, 2026-10-11 afternoon (F31): R1's final model is the best XS model.**
   - **f₀ floor:** the loud floor is **0.0067 bins, 4× ideal** (26× without the features):
@@ -185,7 +201,7 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
   combined run (E2) carrying every change: `warmup_frac 0.1`, the 768 × 8 network,
   late-time emphasis and an lr cooldown. Then S, with that recipe, only if E2 works.
 
-## 2. Setup (`fml` @ dff3ef2)
+## 2. Setup (`fml` @ dff3ef2; the WDM-era recipe, superseded on 2026-10-12 by F32)
 
 | | XS as trained |
 |---|---|
@@ -232,8 +248,90 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14263742** (+ 14263743, 14263745) | R1: `XS-pos` (PositionedLisaFlow, 32 periods), 1.2M steps from scratch, the last 200k cooling down; its scorecard and eval chained with `afterok` | **Completed** at 12:06 CEST on 11 Oct (13 h 18 min, trexgpu01); scorecard 4.7 min, eval 13.5 min. Loud floor 0.0067 bins (F31). Checkpoint 1200, corner pages and logs downloaded to `outputs/lisa-XS-pos` and verified. Earlier notes: running since ~22:47 CEST on 10 Oct on trexgpu01 (TREX code f55ab93). 38 s per epoch, peak 2.3 GiB, no NaN. **It lags its baseline:** until epoch ~57 it tracks XS-late (13474448: same recipe, seed and aux phase), then XS-late's flow loss drops by ~0.03 in 15 epochs and R1's does not. At epoch 382 it is 0.524 against 0.476, and the gap is still growing (§6, update of 2026-10-11). |
 | 14275317 | R1 mid-run scorecard (epoch 474, constant lr), submitted from here through the stdin shell | Completed in 4.6 min. Loud floor 0.010 bins, so the rule passes half-way; 31 fewer sources found (F30). Copied to `outputs/scorecards/XS-pos_ep474.npz`. |
 | **14275499 → 14275503** (+ 14275504, 14275505) | B2: `B-pos` (B-late + `positions: 32`), 200k steps, the last 40k cooling down; five 24 h links with `afterany`, then the scorecard (`--n_random 50`) and eval with `afterok` on the fifth | Submitted 04:15 CEST on 11 Oct (TREX at 3eb92aa, pulled from a bundle). |
+| 14275499 | B2, link 1 | **Cancelled** at 03:22 CEST on 12 Oct, after 23 h 11 min (the user, together with an interactive session); links 2–5 never ran. Its checkpoint, at about epoch 56 of 200, is left in `outputs/lisa-B-pos` on TREX. |
+| **14326113 → 14326114** (+ 14326115, 14326116) | XS-fd (F32): frequency-domain input, PLE, schedule-free Muon, 1.2M steps; a spare link with `afterany`, then the scorecard and eval with `afterok` | Started 04:22 CEST on 12 Oct, trexgpu03. TREX at 6a0661c, from a bundle; the old head is on branch `trex-pre-fd`. |
+| **14326117 → 14326121** (+ 14326122, 14326123) | B-fd (F32): the same recipe on B, 200k steps; five 24 h links with `afterany`, then the scorecard (`--n_random 50`) and eval with `afterok` | Started 04:22 CEST on 12 Oct, trexgpu03. |
 
 ## 4. Findings
+
+### F32 (2026-10-12): Muon never trained the backbone, bf16 rounded the loud data; a new recipe for XS and B
+
+**Muon routing.**
+- `optax.contrib.muon` (0.2.8) with no dimension numbers takes exactly the 2-D arrays.
+- `MMDiT` stacks its blocks with `filter_vmap`, so every block weight is
+  `(blocks, out, in)` and went to Adam.
+- On XS-pos that is **67.1M of 75.7M parameters (89%) on Adam at lr 1e-4**, in every run
+  from 11000056 to R1 and B2.
+- Muon got the embeddings and heads, where it is usually not used. It also got the
+  stacked `(8, D)` biases of the blocks, which it orthogonalised across blocks.
+- optax reads a weight as `x W`, `(in, out)`, while equinox stores `(out, in)`. So Jordan's
+  width scaling was applied to the wrong side of the 2-D weights it did take.
+- So §2's "Muon at lr 1e-4" and F9's small steps describe Adam.
+
+**bf16 rounding of the data.** `LisaFlow` cast `y = arcsinh(WDM)` to bf16 before its
+first layer. The round-trip error `sinh(bf16(y)) − sinh(y)` over 2048 XS prior windows, in
+noise σ:
+
+| pixel | share | rms error | max |
+|---|---|---|---|
+| < 4σ | 74% | ≈ 0 | 0.03 |
+| 4–30σ | 16% | 0.07 | 0.23 |
+| 30–100σ | 7.1% | 0.53 | 1.6 |
+| 100–300σ | 2.5% | 1.5 | 4.6 |
+| > 300σ | 0.2% | 3.6 | 10.6 |
+
+F26 ruled out the bf16 cell of the source's f₀ coordinate, not this one. It is a candidate
+for the loud sources' A, sky and orientation widths, 3–9× the MCMC's (F31). The
+frequency-domain stream reaches ~735σ per part on XS; T stays below ~5σ.
+
+**The recipe (6a0661c; the WDM code is tagged `wdm-r1`).**
+- **Data.** `preprocess` returns the whitened rfft window, real and imaginary parts of A, E
+  and T, at unit noise variance per part. The window keeps its WDM-era geometry, so priors,
+  windows and scorecards compare one to one. Two bins make a token: 32 on XS and 2048 on
+  B, as before.
+- **PLE** (Gorishniy et al. 2022, arXiv:2203.05556) for every scalar the network takes in,
+  each followed by one linear map, all in fp32:
+  - data: 64 bins per value, uniform in arcsinh out to 1000σ, so 0.24σ wide near zero and
+    ~70σ at 300σ (quantile edges would put everything above ~80σ in one bin);
+  - source coordinates: 64 uniform bins, f₀ 256;
+  - window frequency: 64 bins in log f. The old embedding fed f in Hz to a sinusoid, so
+    its angles spanned 1e-4–0.08 rad.
+
+  The y tokens get a learned position each. The velocity head and the conditioning run in
+  fp32, the MMDiT in bf16.
+- **Optimiser.** Schedule-free (Defazio et al. 2024, arXiv:2405.15682) around optax's
+  Muon:
+  - Muon keeps its own momentum inside the wrapper, as SF-Muon in AMUSE (arXiv:2605.22432,
+    eq. 4);
+  - Muon: lr 1e-3 with `consistent_rms=0.2`, momentum in bf16;
+  - AdamW: b1 0 and b2 0.95, lr 3e-4, for the encodings, the token positions, the last
+    head layer and 1-D params;
+  - weight decay 1e-6, a 2% linear warmup, clip at 1.
+
+  q/k/v, SwiGLU value/gate and adaLN shift/scale/gate are stacked maps, orthogonalised one
+  by one, and the blocks have no biases. **Muon now takes 71.3M of 72.2M (98.7%)**,
+  asserted at startup.
+- **Removed:**
+  - the aux heads (x₁ prediction, clean-signal reconstruction), `warmup_frac` and the
+    Welford reweighting;
+  - the cooldown and `save_opt_state`;
+  - `PositionedLisaFlow` (the user's call).
+
+  The flow loss is the plain velocity MSE.
+- **Checkpoints and logs.** Checkpoints keep the optimiser state, since the evaluated
+  weights are the schedule-free average, rebuilt from z: ~610 MB on XS. `load_trained`
+  returns that average. Each epoch logs it on a fixed held-out batch (`heldout=`), next to
+  the training loss at y and the gradient norm.
+- **Checks.**
+  - The full test suite passes on the CPU.
+  - A 300-step bf16 run on the laptop GPU is clean: peak 2.0 GiB, gradient norm ~0.35, so
+    the clip is mostly idle.
+  - On the CPU the averaged weights move off y as they should.
+
+**What is confounded.** One run per rung changes the data, the embedding, the optimiser
+(Adam to Muon) and the schedule, and drops three features at once. A miss will not say
+which change caused it. The held-out loss of x against the training loss at y, the
+gradient norm and the routing printout are the cheapest diagnostics.
 
 ### F31 (2026-10-11): R1 final — the floor drops to 4× ideal with near-nominal coverage, and detection recovers
 
@@ -1469,7 +1567,27 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
   - The risk is that the long aux phase is what enables the jump.
   - E1b (no aux) is dropped to save compute.
 
-## 6. Roadmap (2026-10-03, updated 2026-10-11)
+## 6. Roadmap (2026-10-03, updated 2026-10-12)
+
+### Update, 2026-10-12 (F32): the frequency-domain recipe on XS and B at once
+
+The user set the recipe and asked for both runs together.
+- **XS-fd** replaces R2. Same problem, seed, batch, length (1.2M) and clock as R1, so its
+  scorecard compares one to one with F31.
+- **B-fd** replaces B2.
+
+**Rule for XS-fd, written before its result (R2's rule, plus "no worse than R1"):**
+- the loud f₀ floor at or below 0.0067 bins;
+- loud A, sky and orientation widths at most 2× the MCMC's on the four windows;
+- coverage at least 125/128 inside the 95%;
+- detection at least R1's.
+
+**B-fd** passes if its loud f₀ floor falls under a bin, against B1's 2.8–4.5 bins, with
+in95 ≥ 0.95.
+
+**Intermediate reads.** Schedule-free needs no cooldown, so mid-run scorecards of XS-fd at
+~400k and ~800k steps score a model as good as it will be at that point. The held-out
+loss of the averaged weights should fall below the training loss at y.
 
 ### Update, 2026-10-11 afternoon (after R1's final, F31)
 
@@ -1912,6 +2030,17 @@ Code reaches TREX as a bundle: `git bundle create X.bundle <trex-head>..fml`, `p
 sftp, then `git pull --ff-only ~/X.bundle fml` in `~/canna` through the same shell.
 
 ```bash
+# 2026-10-12: XS-fd and B-fd (F32), after `git fetch` of the bundle + `git reset --hard`
+X1=$(sbatch --parsable slurm/lisa.sbatch XS-fd)
+X2=$(sbatch --parsable --dependency=afterany:$X1 slurm/lisa.sbatch XS-fd)   # spare link
+sbatch --dependency=afterok:$X2 slurm/lisa-scorecard.sbatch XS-fd
+sbatch --dependency=afterok:$X2 slurm/lisa-eval.sbatch XS-fd
+B1=$(sbatch --parsable slurm/lisa.sbatch B-fd)          # then B2..B5 with --dependency=afterany:$B(k-1)
+sbatch --dependency=afterok:$B5 slurm/lisa-scorecard.sbatch B-fd --n_random 50
+sbatch --dependency=afterok:$B5 slurm/lisa-eval.sbatch B-fd
+# a mid-run XS-fd scorecard; rename its npz before the final one overwrites it
+sbatch --job-name=canna-lisa-scorecard-xsfd-mid slurm/lisa-scorecard.sbatch XS-fd
+
 # 2026-10-11: R1's mid-run scorecard, then B2 (F30)
 sbatch --job-name=canna-lisa-scorecard-r1mid slurm/lisa-scorecard.sbatch XS-pos
 J1=$(sbatch --parsable slurm/lisa.sbatch B-pos)          # then J2..J5 with --dependency=afterany:$J(k-1)
