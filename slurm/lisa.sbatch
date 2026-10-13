@@ -53,4 +53,11 @@ nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader ||
 # --frozen: use the lockfile as-is, so the job never needs to reach the network --
 # compute nodes commonly cannot. Run `uv sync --extra cuda` once on a login/visu
 # node first, so the venv is already built when the job starts.
-srun uv run --extra cuda --frozen python -m canna.lisa.train --config "${CONFIG}" "${@:2}"
+# PYTHON runs another clone's interpreter on this checkout's src, so a scratch checkout
+# (e.g. ~/canna-dev) needs no venv of its own and leaves the venv's editable install alone
+if [[ -n "${PYTHON:-}" ]]; then
+    export PYTHONPATH="$PWD/src"
+    srun "$PYTHON" -m canna.lisa.train --config "${CONFIG}" "${@:2}"
+else
+    srun uv run --extra cuda --frozen python -m canna.lisa.train --config "${CONFIG}" "${@:2}"
+fi

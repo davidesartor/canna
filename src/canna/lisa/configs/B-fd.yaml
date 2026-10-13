@@ -17,7 +17,7 @@ network:
   hidden_dim: 512
   num_blocks: 8
   num_heads: 8
-  patch: 2 # rfft bins per token: 2048 tokens, as the WDM networks had
+  patch: 16 # rfft bins per token: 256 tokens, 9x faster per step than 2 bins (F34)
 
 batch_size: 256
 learning_rate: 1.0e-3 # Muon

@@ -50,4 +50,11 @@ echo "config    : ${CONFIG}"
 echo "XLA_FLAGS : ${XLA_FLAGS}"
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader || true
 
-srun uv run --extra cuda --frozen python -m canna.lisa.scorecard --config "${CONFIG}" "${@:2}"
+# PYTHON runs another clone's interpreter on this checkout's src, so a scratch checkout
+# (e.g. ~/canna-dev) needs no venv of its own and leaves the venv's editable install alone
+if [[ -n "${PYTHON:-}" ]]; then
+    export PYTHONPATH="$PWD/src"
+    srun "$PYTHON" -m canna.lisa.scorecard --config "${CONFIG}" "${@:2}"
+else
+    srun uv run --extra cuda --frozen python -m canna.lisa.scorecard --config "${CONFIG}" "${@:2}"
+fi

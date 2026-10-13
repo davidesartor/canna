@@ -144,7 +144,7 @@ def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
     warmup = lambda peak: optax.linear_schedule(0.0, peak, args.warmup_steps)
     base = optax.contrib.muon(
         warmup(args.learning_rate),
-        beta=0.95,
+        beta=getattr(args, "muon_momentum", 0.95),
         weight_decay=args.weight_decay,
         mu_dtype=jnp.bfloat16,
         consistent_rms=0.2,
@@ -157,15 +157,30 @@ def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
     ns_dtype = getattr(args, "newton_schulz_dtype", "bfloat16")
     if ns_dtype != "float32":
         base = optax.chain(cast_muon_gradients(jnp.dtype(ns_dtype)), base)
+    if not getattr(args, "schedule_free", True):
+        # plain Muon and AdamW at a constant lr after the warmup: the weights trained are the
+        # weights evaluated
+        return optax.chain(optax.clip_by_global_norm(1.0), base)
     return optax.chain(
         optax.clip_by_global_norm(1.0),
         optax.contrib.schedule_free(base, warmup(args.learning_rate), b1=0.9),
     )
 
 
+def schedule_free_state(opt_state: optax.OptState):
+    """The ScheduleFreeState in the optimizer chain, or None for a plain optimizer."""
+    found = [s for s in opt_state if isinstance(s, optax.contrib.ScheduleFreeState)]
+    return found[0] if found else None
+
+
 def eval_flow(flow: LisaFlow, opt_state: optax.OptState) -> LisaFlow:
-    """The averaged weights x that schedule-free evaluates, from the training weights y."""
-    (state,) = [s for s in opt_state if isinstance(s, optax.contrib.ScheduleFreeState)]
+    """The averaged weights x that schedule-free evaluates, from the training weights y.
+
+    Without schedule-free the training weights are the ones to evaluate.
+    """
+    state = schedule_free_state(opt_state)
+    if state is None:
+        return flow
     params, static = eqx.partition(flow, eqx.is_inexact_array)
     return eqx.combine(optax.contrib.schedule_free_eval_params(state, params), static)
 
@@ -282,26 +297,47 @@ class TrainState(NamedTuple):
         return eqx.combine(dynamic, static), losses
 
     @eqx.filter_jit
-    def heldout_loss(
+    @eqx.filter_jit
+    def diagnostics(
         self, key: Key[Array, ""], batch_size: int, time_power: float = 1.0
-    ) -> Float[Array, ""]:
-        """The flow loss of the averaged weights x on a batch drawn from `key`.
+    ) -> Float[Array, "4"]:
+        """Per-epoch health of the optimizer, on a batch drawn from `key`.
 
-        The training loss is measured at y, where schedule-free takes its gradients; this is
-        the model the eval and the scorecard sample from. The same key every epoch scores
-        the same batch, so the curve is free of batch noise.
+        - the flow loss of the averaged weights x, the model the eval samples from;
+        - the flow loss of the training weights y, where the gradients are taken (the
+          training loss is also at y, but on fresh batches);
+        - the RMS of the backbone's weights in x, which Muon's fixed-size steps grow unless
+          the weight decay holds them;
+        - the RMS of z - x, how far schedule-free's fast sequence sits from its average
+          (0 without schedule-free).
+
+        The same key every epoch scores the same batch, so the curves are free of batch noise.
         """
         batch = jax.vmap(partial(train_sample, self.problem, time_power=time_power))(
             jr.split(key, batch_size)
         )
-        return flow_loss(eval_flow(self.flow, self.opt_state), batch)
+        x = eval_flow(self.flow, self.opt_state)
+        rms = lambda tree: jnp.sqrt(
+            sum(jnp.sum(jnp.square(a.astype(jnp.float32))) for a in jax.tree.leaves(tree))
+            / sum(a.size for a in jax.tree.leaves(tree))
+        )
+        w_rms = rms(eqx.filter(x.backbone, eqx.is_inexact_array))
+        sf = schedule_free_state(self.opt_state)
+        if sf is None:
+            spread = jnp.zeros(())
+        else:
+            x_params = eqx.filter(x, eqx.is_inexact_array)
+            spread = rms(jax.tree.map(lambda z, a: z - a, sf.z, x_params))
+        return jnp.stack(
+            [flow_loss(x, batch), flow_loss(self.flow, batch), w_rms, spread]
+        )
 
     def save_to(
         self,
         checkpoints: ocp.CheckpointManager,
         epoch: int,
         loss_hist: Float[Array, "E S 3"],
-        heldout_hist: Float[Array, " E"],
+        heldout_hist: Float[Array, "E 4"],
     ) -> None:
         """Save the weights, the optimizer state and the histories as named checkpoint items.
 
@@ -440,6 +476,18 @@ def parse_args() -> argparse.Namespace:
         help="constant weight of the parameter-reconstruction loss beside the flow loss",
     )
     parser.add_argument(
+        "--schedule_free",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="schedule-free averaging around Muon and AdamW; off is a constant lr after warmup",
+    )
+    parser.add_argument(
+        "--muon_momentum",
+        type=float,
+        default=0.95,
+        help="Muon's own momentum, kept inside schedule-free's base optimizer (0: none)",
+    )
+    parser.add_argument(
         "--newton_schulz_dtype",
         default="bfloat16",
         choices=("bfloat16", "float32"),
@@ -518,13 +566,13 @@ if __name__ == "__main__":
     # you spend more wall time -- so re-allocate at the current shape and copy the
     # overlap in, rather than indexing off the end of the restored array
     loss_history = np.full((epochs, args.log_interval, 3), np.nan)
-    heldout_history = np.full((epochs,), np.nan)
+    heldout_history = np.full((epochs, 4), np.nan)
     if histories is not None:
         restored, restored_heldout = histories
         rows = min(restored.shape[0], epochs)
         cols = min(restored.shape[1], args.log_interval)
         loss_history[:rows, :cols] = restored[:rows, :cols]
-        heldout_history[:rows] = restored_heldout[:rows]
+        heldout_history[:rows] = np.reshape(restored_heldout, (len(restored_heldout), -1))[:rows]
 
     pbar = tqdm(range(start_epoch, epochs), initial=start_epoch, total=epochs)
     for epoch in pbar:
@@ -534,15 +582,15 @@ if __name__ == "__main__":
             args.batch_size, args.log_interval, args.time_power, args.aux_weight
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
-        heldout_history[epoch] = float(
-            state.heldout_loss(key_heldout, args.batch_size, args.time_power)
+        heldout_history[epoch] = jax.device_get(
+            state.diagnostics(key_heldout, args.batch_size, args.time_power)
         )
         seconds = time.perf_counter() - started  # the first epoch includes the compile
 
         # a non-finite loss has already poisoned the weights: stop, and leave the last
         # finite checkpoint in place instead of saving over it
         finite = np.isfinite(loss_history[epoch]).all(axis=-1)
-        if not finite.all() or not np.isfinite(heldout_history[epoch]):
+        if not finite.all() or not np.isfinite(heldout_history[epoch]).all():
             checkpoints.close()
             raise SystemExit(
                 f"[epoch {epoch + 1}] non-finite loss at step"
@@ -552,10 +600,12 @@ if __name__ == "__main__":
         # save a checkpoint and log the median of the epoch's losses
         state.save_to(checkpoints, epoch + 1, loss_history, heldout_history)
         flow_l, x_l, grad_norm = np.median(loss_history[epoch], axis=0)
-        pbar.set_postfix(flow=f"{flow_l:.5f}", heldout=f"{heldout_history[epoch]:.5f}")
+        held_x, held_y, w_rms, spread = heldout_history[epoch]
+        pbar.set_postfix(flow=f"{flow_l:.5f}", heldout=f"{held_x:.5f}")
         print(
             f"[epoch {epoch + 1}/{epochs}] flow={flow_l:.5f} x={x_l:.5f}"
-            f" heldout={heldout_history[epoch]:.5f} grad_norm={grad_norm:.3f}"
+            f" heldout={held_x:.5f} heldout_y={held_y:.5f} grad_norm={grad_norm:.3f}"
+            f" w_rms={w_rms:.4f} z_x={spread:.4f}"
             f" time={seconds:.0f}s",
             flush=True,
         )
@@ -572,7 +622,7 @@ if __name__ == "__main__":
         ax.loglog(xs, l_med, label="flow (training weights y)", color="#2a86cf", lw=2)
         ax.fill_between(xs, l_lo, l_up, color="#2a86cf", alpha=0.15)
         ax.loglog(
-            xs, heldout_history[: epoch + 1], label="held out (averaged weights x)",
+            xs, heldout_history[: epoch + 1, 0], label="held out (averaged weights x)",
             color="#d0622a", lw=2,
         )
         ax.loglog(
