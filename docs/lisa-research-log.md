@@ -2279,7 +2279,44 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
   - The risk is that the long aux phase is what enables the jump.
   - E1b (no aux) is dropped to save compute.
 
-## 6. Roadmap (2026-10-03, updated 2026-10-13)
+## 6. Roadmap (2026-10-03, updated 2026-10-14)
+
+### Update, 2026-10-14 (after the TREX reads, F41)
+
+F41 refines F40's plan; it does not replace it.
+- **XS:** the new recipe regressed (1.5× XS-fd's widths, 50 fewer sources found), with three
+  candidate causes.
+- **B:** the same recipe matched B1's 85-h model in 10 h, against the same ~3-bin floor.
+- So the 16-bin tokens and the new data path cost nothing on B. What hurt XS is either
+  XS-specific (4 tokens for a 64-bin window, about one token per source) or shared and
+  masked on B by the floor.
+
+1. **The float32 test of B's floor** (14507218: x, the 10 eval and 10 random injections,
+   paired with the bf16 scorecard's first 20). Rule:
+   - **The cast is the limit** if the loud median falls below ~1.5 bins (from ~3). Then
+     give f₀ a finer encoding: a two-level PLE, 256 coarse bins plus a PLE of the
+     within-bin fraction (~0.05 bins on B).
+   - **Otherwise** the limit is elsewhere: the 12-bin f₀ PLE bin, the learned token
+     positions, or training.
+2. **Optimizer (code, no GPU).** The 1/L1 weighting goes off by default (F40's loop). λ 0.05 at
+   lr 1e-3 stays.
+3. **The XS bisect** (F40's step 2: three 300k-step runs in parallel, ~3.5 h wall, the fixed
+   optimizer, x and y scored):
+   - **a.** XS-fd's representation (unordered with the `Set` coupling, 32 tokens, no head);
+   - **b.** a + 16 bins per token;
+   - **c.** a + SNR order + the reconstruction head.
+
+   Rule as in F40: > 1.2× in per-source width or > 3% fewer sources found, against a, is
+   reverted.
+4. **Then one B run** (~10 h at 16 bins) and **one full XS run** with the fixed optimizer,
+   the bisect's verdict and step 1's f₀ encoding if needed.
+5. **Unchanged from before:**
+   - the masking of faint sources near loud ones;
+   - the loud sources' A, sky and orientation (3–9× the MCMC);
+   - R1 as the paper's XS model.
+
+   B's loudest eval source also shows a new symptom: ~20% of its draws at another location,
+   ~160 bins away.
 
 ### Update, 2026-10-13 evening (after XS-sfplus, F40)
 
