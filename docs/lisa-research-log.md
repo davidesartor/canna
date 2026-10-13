@@ -329,6 +329,8 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 14401101 | B-fd scorecard of y (`--n_random 50 --weights training`), `afterok` on link 5 | Queued with the B-fd chain. |
 | 14326117 → 14326121 | B-fd | **Cancelled by the user** at 02:11 CEST on 13 Oct, at epoch 48 of 200 (training loss 0.558, x's held-out loss 0.542); the later links never ran. The user had scored epoch 45 (14404725, 14404726, eval 14404727). |
 | 14408555, 14408558, 14408559, 14408560 | schedule-free Muon comparison A–D (F35), from `~/canna-dev` at 9bdc2d4 | Cancelled at 02:23 CEST on 13 Oct, after 9 epochs of A and B; C and D produced nothing. |
+| **14410743** | XS-fd with schedule-free + the SF-NorMuon/ScheduleFree+ fixes, NorMuon rows, 1/L1 weighting, 16 bins per token, ordered sources, reconstruction head (F39, a4da413); `slurm/lisa-local.sbatch` (trains in the node's /tmp, then scorecards x and y and the eval, then copies `outputs/lisa-XS-fd` home) | Started 03:13 CEST on 13 Oct, trexgpu03, 33 s per epoch (~11 h). Epoch 15: training loss 0.941, held out 0.945, weight RMS 0.0187 steady, z − x 0 in the warm start (48k steps). |
+| **14410744** | B-fd with the same recipe, 200k steps, scorecards with `--n_random 50` | Started 03:13 CEST on 13 Oct, trexgpu03, 177 s per epoch (~10 h), peak 5.5 GiB. Epoch 2: training loss 1.010. |
 | 14404725, 14404726 (+ 14404727) | B-fd mid-run: scorecards of x and y (`--n_random 50`, `--output_dir outputs/B-fd-ep45`) and the corner eval of x, on checkpoint 45 hard-linked out of the running link 1 | Submitted 00:52 CEST on 13 Oct. Scorecards completed in 46 min each (trexgpu01): loud f₀ 9.5 bins, 3.3× B1's final, but falling with SNR (F38). Copied to `outputs/lisa-B-fd/ep45/`. |
 
 ## 4. Findings
