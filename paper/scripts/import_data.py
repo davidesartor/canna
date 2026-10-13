@@ -7,8 +7,8 @@ under paper/data, which stay local too (git carries the figures and tables made 
     python import_data.py logs path/to/canna-lisa-13882121.out [more.out ...]
 
     # eval draws -> data/eval/: only the injections the figures use, in float64
-    python import_data.py eval ../../outputs/lisa-XS-late-768-cool/eval_draws.npz \
-        ../../outputs/lisa-XS/eval-tools/fisher_eval_injections.npz --injections 1 5 9
+    python import_data.py eval ../../outputs/05-lisa-XS-late-768-cool/eval_draws.npz \
+        ../../outputs/01-lisa-XS/eval-tools/fisher_eval_injections.npz --injections 1 5 9
 
     # flow against MCMC -> data/mcmc/: lisa_checks/compare_mcmc.py's per-window summaries
     python import_data.py mcmc ../../outputs/mcmc/compare_window9.npz \

@@ -1,7 +1,7 @@
 """Flow against MCMC on XS eval windows: the numbers and pages of the paper's MCMC appendix.
 
 Reads the cold chains of lisa_checks/mcmc_xs.py (outputs/mcmc/window<j>_s<seed>.npz), the
-flow's eval draws (outputs/lisa-XS-late-768-cool/eval_draws.npz, eval.py's keys, so the same
+flow's eval draws (outputs/05-lisa-XS-late-768-cool/eval_draws.npz, eval.py's keys, so the same
 noise realisation) and the window's Fisher draws. Every sample set is relabelled onto the
 true sources by eval.match_sources, and its angles folded by the likelihood's exact
 symmetries: psi -> psi + pi, and (psi, phi0) -> (psi + pi/2, phi0 + pi). Per source and
@@ -37,8 +37,8 @@ from mcmc_xs import setup  # noqa: E402
 from canna.lisa.eval import match_sources  # noqa: E402
 
 COLUMNS = ["f0 [bins]", "log Mc", "log A", "lon", "sin lat", "psi", "sin iota", "phi0"]
-FLOW_DRAWS = Path("outputs/lisa-XS-late-768-cool/eval_draws.npz")
-FISHER = Path("outputs/lisa-XS/eval-tools/fisher_eval_injections.npz")
+FLOW_DRAWS = Path("outputs/05-lisa-XS-late-768-cool/eval_draws.npz")
+FISHER = Path("outputs/01-lisa-XS/eval-tools/fisher_eval_injections.npz")
 
 
 def fold(p, truth, t_obs):
@@ -135,7 +135,10 @@ def main():
             matched.append(match_sources(problem, draws, truth, f))
             mcmc.append(fold(matched[-1], truth, t_obs))
         flow = fold(match_sources(problem, flow_all[j], truth, f), truth, t_obs)
-        fisher = fold(fisher_all[j], truth, t_obs)
+        # the cached Fisher draws keep the source order of the eval that wrote them; since the
+        # sources are listed loudest first (b9bb3ef) that is no longer the truth's order, so
+        # relabel them onto the truth like the MCMC and flow draws
+        fisher = fold(match_sources(problem, fisher_all[j], truth, f), truth, t_obs)
         ref = np.concatenate(mcmc)
         tru = fold(truth[None], truth, t_obs)[0]
 

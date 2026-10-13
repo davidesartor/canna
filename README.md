@@ -100,6 +100,10 @@ uv run python -m canna.lisa.scorecard --config <name>   # outputs/lisa-<name>/sc
 uv run python -m canna.lisa.eval      --config <name>   # outputs/lisa-<name>/corner/*.pdf
 ```
 
+A finished run is archived locally as `outputs/NN-lisa-<name>`, numbered in the order the runs
+were made (research log §8 maps the numbers to runs). To re-evaluate one, point
+`--output_dir` at a folder holding a `lisa-<name>` symlink to it.
+
 The scorecard scores every source of 210 injections: its frequency width
 against the ideal one, whether it was found, the offset from the truth, and
 whether the 68% and 95% intervals cover it. The eval draws corner plots, flow

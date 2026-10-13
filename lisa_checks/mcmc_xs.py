@@ -37,7 +37,7 @@ from canna.lisa.eval import N_CANDIDATES, N_QUANTILES
 N_PARAMS = 8
 NAMES = ["log f0", "log Mc", "log A", "lon", "sin lat", "psi", "sin iota", "phi0"]
 ANGLES = [3, 5, 7]
-FISHER = Path("outputs/lisa-XS/eval-tools/fisher_eval_injections.npz")
+FISHER = Path("outputs/01-lisa-XS/eval-tools/fisher_eval_injections.npz")
 
 
 def eval_injections(problem: LisaGB, seed: int):
