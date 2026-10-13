@@ -8,6 +8,18 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-13)
 
+- **Update, 2026-10-13 (F38): B-fd's last read, at epoch 45 of 200 (scorecards of x and y,
+  and the eval). The run was cancelled at epoch 48 (F35), so this is the read it ended on.**
+  - **Loud f₀ 9.5 bins**, 3.3× B1's *final* 3.2. Nothing found yet (< 1 bin), and faint
+    sources are not localised.
+  - **But the width now falls with SNR** (log-log slope −0.28, B1's −0.05). The run is
+    unbiased and conservative, and x and y are equal in f₀.
+  - **Loss:** 0.018 behind B1 at the same epoch and closing 3.5× faster, so it would have crossed
+    B1 near epoch 50–55.
+  - **Verdict:** undecided. It was on a better trajectory than B1, but the rule (< 1 bin)
+    needed another ~10× it never got to try. It also ran the schedule-free setup that F34–F36
+    found broken.
+
 - **Update, 2026-10-13 night (F37): the literature.**
   - No flow-matching or diffusion paper uses schedule-free.
   - SF-NorMuon (arXiv:2605.23061) reports our failure: without weight decay on z, z
@@ -44,17 +56,6 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
   - **Ordered sources.** Sources are now ordered loudest first, the `Set` geometry is gone,
     and the reconstruction head is back. Fixed labels make transport paths 38% longer.
   - **Next run** waits on the user's choice of weight decay, sort key and patch.
-
-- **Update, 2026-10-13 (F36): B-fd at epoch 45 of 200 (mid-run scorecards of x and y, and
-  the eval).**
-  - **Loud f₀ 9.5 bins**, 3.3× B1's *final* 3.2. Nothing found yet (< 1 bin), and faint
-    sources are not localised.
-  - **But the width now falls with SNR** (log-log slope −0.28, B1's −0.05). The run is
-    unbiased and conservative, and x and y are equal in f₀.
-  - **Loss:** 0.018 behind B1 at the same epoch and closing 3.5× faster, so it should cross
-    B1 near epoch 50–55.
-  - **Verdict:** on track, not yet decisive. The rule (< 1 bin) needs another ~10× in 155
-    epochs, with no cooldown and, per F34, no effective weight decay.
 
 - **Update, 2026-10-12 night (F33): XS-fd matches R1 except at the loud end, where the
   missing cooldown is the main suspect.**
@@ -320,9 +321,84 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 14401101 | B-fd scorecard of y (`--n_random 50 --weights training`), `afterok` on link 5 | Queued with the B-fd chain. |
 | 14326117 → 14326121 | B-fd | **Cancelled by the user** at 02:11 CEST on 13 Oct, at epoch 48 of 200 (training loss 0.558, x's held-out loss 0.542); the later links never ran. The user had scored epoch 45 (14404725, 14404726, eval 14404727). |
 | 14408555, 14408558, 14408559, 14408560 | schedule-free Muon comparison A–D (F35), from `~/canna-dev` at 9bdc2d4 | Cancelled at 02:23 CEST on 13 Oct, after 9 epochs of A and B; C and D produced nothing. |
-| 14404725, 14404726 (+ 14404727) | B-fd mid-run: scorecards of x and y (`--n_random 50`, `--output_dir outputs/B-fd-ep45`) and the corner eval of x, on checkpoint 45 hard-linked out of the running link 1 | Submitted 00:52 CEST on 13 Oct. Scorecards completed in 46 min each (trexgpu01): loud f₀ 9.5 bins, 3.3× B1's final, but falling with SNR (F36). Copied to `outputs/lisa-B-fd/ep45/`. |
+| 14404725, 14404726 (+ 14404727) | B-fd mid-run: scorecards of x and y (`--n_random 50`, `--output_dir outputs/B-fd-ep45`) and the corner eval of x, on checkpoint 45 hard-linked out of the running link 1 | Submitted 00:52 CEST on 13 Oct. Scorecards completed in 46 min each (trexgpu01): loud f₀ 9.5 bins, 3.3× B1's final, but falling with SNR (F38). Copied to `outputs/lisa-B-fd/ep45/`. |
 
 ## 4. Findings
+
+### F38 (2026-10-13): B-fd's last read, epoch 45 of 200 — 10 bins wide, but no longer flat in SNR
+
+**Runs.**
+- B-fd's link 1 (14326117) saved checkpoint 45 at 00:34 CEST on 13 Oct, 20.5 h in. It was
+  hard-linked into `outputs/B-fd-ep45/lisa-B-fd` on TREX, so the epoch-50 save could not
+  replace it under the jobs, at no quota cost.
+- Scored there with `--output_dir outputs/B-fd-ep45`:
+  - scorecards of the average x (14404725) and of the training weights y (14404726), with
+    `--n_random 50`, as B1's: 46 min each, side by side on trexgpu01;
+  - the corner eval of x (14404727).
+- Locally: `outputs/lisa-B-fd/ep45/`, and `outputs/scorecards/compare_bfd.py 45` (log
+  `compare_bfd_ep45.log`).
+- **Caveat:** the only B reference is B1's *final, cooled* model (epoch 200). B1 kept one
+  checkpoint and was never scored mid-run.
+
+**Loss.** B-fd's training loss minus B1's at the same epoch: +0.053 (epoch 10), +0.050
+(20), +0.037 (30), +0.024 (40), **+0.018 (45)**. B-fd falls 3.5× faster per epoch
+(−0.0019 against −0.0005 over epochs 40–45), so it would have crossed B1 near epoch 50–55, as
+XS-fd crossed R1. The gradient norm is still rising (0.78).
+
+**Scorecard: the same 240 sources as B1's (F26).**
+
+| SNR | n | median f₀ width (bins), B1 final / x / y | × ideal B1 / x / y | in68 B1 / x / y | in95 B1 / x / y | rank B1 / x / y |
+|---|---|---|---|---|---|---|
+| < 15 | 40 | 5.0 / 342 / 331 | 98 / 6488 / 5073 | 0.90 / 0.78 / 0.70 | 1.00 / 0.95 / 0.93 | 0.49 / 0.53 / 0.53 |
+| 15–40 | 38 | 3.8 / 16.7 / 13.5 | 197 / 668 / 595 | 0.84 / 0.95 / 0.92 | 0.97 / 1.00 / 1.00 | 0.38 / 0.48 / 0.49 |
+| 40–100 | 47 | 2.9 / 10.5 / 10.5 | 361 / 1263 / 1164 | 0.89 / 0.94 / 0.96 | 0.98 / 1.00 / 1.00 | 0.43 / 0.51 / 0.53 |
+| ≥ 100 | 115 | **3.2 / 9.5 / 9.9** | 2148 / 5756 / 5693 | 0.89 / 0.98 / 0.93 | 1.00 / 1.00 / 1.00 | 0.45 / 0.49 / 0.49 |
+
+- **Width.** The loud median is 9.5 bins (95% CI 9.0–10.5), 3.3× B1's final 3.2. No source
+  is found (< 1 bin) by x; y has one source under 2 bins, B1 has two. Faint sources
+  (SNR < 15) are not localised at all: 340 bins in a 4096-bin window, against B1's 5.
+- **x against y.** Per source, y/x = 0.98 [0.71–1.14]. Unlike XS-fd at its end (F33), the
+  average does not lag y in f₀ yet.
+- **The width now falls with SNR.** The log-log slope of width against SNR (SNR ≥ 15) is
+  **−0.28 for x and −0.20 for y, against B1's −0.05**. B1's width was flat in SNR, a
+  resolution floor (F26). B-fd's shrinks from 16.7 to 9.5 bins between SNR 15–40 and
+  ≥ 100. So at epoch 45 it is still training-limited, not yet against a wall.
+- **Calibration.** Unbiased (ranks 0.48–0.53 at every SNR, where B1's sat at 0.38–0.45)
+  and conservative (in68 0.93–0.98 above SNR 15), so the width is honest. The
+  offsets of the found-and-loud sources are a few bins; the mean is dominated by
+  unlocalised faint sources (|offset| up to 2000 bins).
+- **In the flow coordinate.** 9.5 bins is 6.2×10⁻³ of x_f (1 unit = 1536 bins on B, F26),
+  against B1's 2.1×10⁻³ and XS-fd's final 4.3×10⁻⁴. It is also 0.8 of an f₀ PLE bin
+  (2/256 of x_f = 12 bins on B, 0.19 bins on XS). XS-fd ended at 1/20 of a PLE bin. Matching
+  that on B would give ~0.6 bins, just inside the rule.
+
+**Weight decay (F34).** B-fd runs with the same weight decay of 1e-6 × lr, effectively
+none, so its weights grow as XS-fd's did (18–19×), with an implicit, uneven lr decay. Its
+rising gradient norm (0.54 at epoch 6 → 0.78 at 45) fits that. Nothing here separates it
+from ordinary training.
+
+**Epoch 48, the last checkpoint.** The user cancelled B-fd at 02:11 CEST on 13 Oct, at
+epoch 48, while these jobs ran (F35). Checkpoint 48 (training loss 0.5580, 0.0155 behind B1)
+is on TREX and has not been scored: three epochs, −0.004 in loss. Checkpoint 45 is backed up
+locally in `outputs/lisa-B-fd/ep45/checkpoints/45`: 35 files, sizes identical to TREX's.
+
+**Reading.** Mid-run, at constant lr, B-fd is 3× wider than B1's cooled final, but its
+loss is about to cross B1's, its width depends on SNR as B1's never did, and it is
+calibrated. Nothing here failed the rule (< 1 bin at the end), and nothing yet showed it
+would pass: it needs another 10× in width over 155 epochs, without the cooldown that gave
+the WDM nets their last ×2–3 (F23, F31).
+- **A risk for the final rule:** F33's bf16-cast bound on the source embedding, scaled from
+  XS to B's coordinate (×64 in bins), is ~0.06 bins typical and ~2 bins worst case. If
+  the next B run stalls at 1–3 bins, check that first.
+
+**Eval (corner pages, 14404727, 42 min).** `outputs/lisa-B-fd/ep45/corner/` (23 pages).
+- **Loudest eval source (SNR 1668):** f₀ is centred. But λ has three or four separate modes,
+  A has a low-amplitude tail, and ψ and φ₀ are close to their prior, all against a tight
+  Fisher ellipse.
+- **Median source (SNR 61):** f₀, sky and A sit on the Fisher ellipse, with a few small
+  outlier islands. ψ and φ₀ are broad.
+- So the loud sources are where the run is still immature, in every coordinate, not only
+  f₀. That fits a mid-run model rather than a defect.
 
 ### F37 (2026-10-13): the literature on schedule-free failures — F36's runaway is documented for LLMs; no flow-matching reports
 
@@ -574,76 +650,6 @@ question (x lagging after the loss drop) can only be settled by a full-length ru
   earlier runs'. A laptop smoke run starts at 1.08 against 0.78.
 - **Label ambiguity.** Near-equal SNRs swap labels within one posterior (SNR is known to
   ±1). f₀ is known to ~0.01 bins, so f₀ order would rarely swap.
-
-### F36 (2026-10-13): B-fd at epoch 45 of 200 — 10 bins wide, but no longer flat in SNR
-
-**Runs.**
-- B-fd's link 1 (14326117) saved checkpoint 45 at 00:34 CEST on 13 Oct, 20.5 h in. It was
-  hard-linked into `outputs/B-fd-ep45/lisa-B-fd` on TREX, so the epoch-50 save could not
-  replace it under the jobs, at no quota cost.
-- Scored there with `--output_dir outputs/B-fd-ep45`:
-  - scorecards of the average x (14404725) and of the training weights y (14404726), with
-    `--n_random 50`, as B1's: 46 min each, side by side on trexgpu01;
-  - the corner eval of x (14404727).
-- Locally: `outputs/lisa-B-fd/ep45/`, and `outputs/scorecards/compare_bfd.py 45` (log
-  `compare_bfd_ep45.log`).
-- **Caveat:** the only B reference is B1's *final, cooled* model (epoch 200). B1 kept one
-  checkpoint and was never scored mid-run.
-
-**Loss.** B-fd's training loss minus B1's at the same epoch: +0.053 (epoch 10), +0.050
-(20), +0.037 (30), +0.024 (40), **+0.018 (45)**. B-fd falls 3.5× faster per epoch
-(−0.0019 against −0.0005 over epochs 40–45), so it should cross B1 near epoch 50–55, as
-XS-fd crossed R1. The gradient norm is still rising (0.78).
-
-**Scorecard: the same 240 sources as B1's (F26).**
-
-| SNR | n | median f₀ width (bins), B1 final / x / y | × ideal B1 / x / y | in68 B1 / x / y | in95 B1 / x / y | rank B1 / x / y |
-|---|---|---|---|---|---|---|
-| < 15 | 40 | 5.0 / 342 / 331 | 98 / 6488 / 5073 | 0.90 / 0.78 / 0.70 | 1.00 / 0.95 / 0.93 | 0.49 / 0.53 / 0.53 |
-| 15–40 | 38 | 3.8 / 16.7 / 13.5 | 197 / 668 / 595 | 0.84 / 0.95 / 0.92 | 0.97 / 1.00 / 1.00 | 0.38 / 0.48 / 0.49 |
-| 40–100 | 47 | 2.9 / 10.5 / 10.5 | 361 / 1263 / 1164 | 0.89 / 0.94 / 0.96 | 0.98 / 1.00 / 1.00 | 0.43 / 0.51 / 0.53 |
-| ≥ 100 | 115 | **3.2 / 9.5 / 9.9** | 2148 / 5756 / 5693 | 0.89 / 0.98 / 0.93 | 1.00 / 1.00 / 1.00 | 0.45 / 0.49 / 0.49 |
-
-- **Width.** The loud median is 9.5 bins (95% CI 9.0–10.5), 3.3× B1's final 3.2. No source
-  is found (< 1 bin) by x; y has one source under 2 bins, B1 has two. Faint sources
-  (SNR < 15) are not localised at all: 340 bins in a 4096-bin window, against B1's 5.
-- **x against y.** Per source, y/x = 0.98 [0.71–1.14]. Unlike XS-fd at its end (F33), the
-  average does not lag y in f₀ yet.
-- **The width now falls with SNR.** The log-log slope of width against SNR (SNR ≥ 15) is
-  **−0.28 for x and −0.20 for y, against B1's −0.05**. B1's width was flat in SNR, a
-  resolution floor (F26). B-fd's shrinks from 16.7 to 9.5 bins between SNR 15–40 and
-  ≥ 100. So at epoch 45 it is still training-limited, not yet against a wall.
-- **Calibration.** Unbiased (ranks 0.48–0.53 at every SNR, where B1's sat at 0.38–0.45)
-  and conservative (in68 0.93–0.98 above SNR 15), so the width is honest. The
-  offsets of the found-and-loud sources are a few bins; the mean is dominated by
-  unlocalised faint sources (|offset| up to 2000 bins).
-- **In the flow coordinate.** 9.5 bins is 6.2×10⁻³ of x_f (1 unit = 1536 bins on B, F26),
-  against B1's 2.1×10⁻³ and XS-fd's final 4.3×10⁻⁴. It is also 0.8 of an f₀ PLE bin
-  (2/256 of x_f = 12 bins on B, 0.19 bins on XS). XS-fd ended at 1/20 of a PLE bin. Matching
-  that on B would give ~0.6 bins, just inside the rule.
-
-**Weight decay (F34).** B-fd runs with the same weight decay of 1e-6 × lr, effectively
-none, so its weights grow as XS-fd's did (18–19×), with an implicit, uneven lr decay. Its
-rising gradient norm (0.54 at epoch 6 → 0.78 at 45) fits that. Nothing here separates it
-from ordinary training.
-
-**Reading.** Mid-run, at constant lr, B-fd is 3× wider than B1's cooled final, but its
-loss is about to cross B1's, its width depends on SNR as B1's never did, and it is
-calibrated. Nothing here fails the rule (< 1 bin at the end), and nothing yet shows it
-will pass: it needs another 10× in width over 155 epochs, without the cooldown that gave
-the WDM nets their last ×2–3 (F23, F31).
-- **A risk for the final rule:** F33's bf16-cast bound on the source embedding, scaled from
-  XS to B's coordinate (×64 in bins), is ~0.06 bins typical and ~2 bins worst case. If
-  B-fd stalls at 1–3 bins, check that first.
-
-**Eval (corner pages, 14404727, 42 min).** `outputs/lisa-B-fd/ep45/corner/` (23 pages).
-- **Loudest eval source (SNR 1668):** f₀ is centred. But λ has three or four separate modes,
-  A has a low-amplitude tail, and ψ and φ₀ are close to their prior, all against a tight
-  Fisher ellipse.
-- **Median source (SNR 61):** f₀, sky and A sit on the Fisher ellipse, with a few small
-  outlier islands. ψ and φ₀ are broad.
-- So the loud sources are where the run is still immature, in every coordinate, not only
-  f₀. That fits a mid-run model rather than a defect.
 
 ### F33 (2026-10-12): XS-fd — R1's level below SNR 100, a 1.5× wider loud floor, and a lagging schedule-free average
 
