@@ -8,6 +8,15 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-13)
 
+- **Update, 2026-10-13 night (F36): why schedule-free failed.**
+  - Schedule-free steps z with Muon's fixed-size updates. With no weight decay, z ran away to
+    twice the weights' size, and its loss is 2.7×10²¹.
+  - Only a thin neighbourhood of the training point y = 0.9x + 0.1z is a good network. The
+    average x sits on the steep side of it (0.467 against 0.4575 at y; 85 at 30% of the way
+    to z).
+  - Next run: weight decay ~0.05, and evaluate an EMA or a cooldown of y, or test whether
+    schedule-free works once z is held.
+
 - **Update, 2026-10-13 night (F35): the comparison was stopped at 9k steps.**
   - Decay 0.05 cuts the backbone's weight growth by ~40% at no cost in loss.
   - Schedule-free's z drifts from its average at the same rate with or without decay.
@@ -27,6 +36,17 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
   - **Ordered sources.** Sources are now ordered loudest first, the `Set` geometry is gone,
     and the reconstruction head is back. Fixed labels make transport paths 38% longer.
   - **Next run** waits on the user's choice of weight decay, sort key and patch.
+
+- **Update, 2026-10-13 (F35): B-fd at epoch 45 of 200 (mid-run scorecards of x and y, and
+  the eval).**
+  - **Loud f₀ 9.5 bins**, 3.3× B1's *final* 3.2. Nothing found yet (< 1 bin), and faint
+    sources are not localised.
+  - **But the width now falls with SNR** (log-log slope −0.28, B1's −0.05). The run is
+    unbiased and conservative, and x and y are equal in f₀.
+  - **Loss:** 0.018 behind B1 at the same epoch and closing 3.5× faster, so it should cross
+    B1 near epoch 50–55.
+  - **Verdict:** on track, not yet decisive. The rule (< 1 bin) needs another ~10× in 155
+    epochs, with no cooldown and, per F34, no effective weight decay.
 
 - **Update, 2026-10-12 night (F33): XS-fd matches R1 except at the loud end, where the
   missing cooldown is the main suspect.**
@@ -296,6 +316,56 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 4. Findings
 
+### F36 (2026-10-13): why schedule-free failed on XS-fd — its fast sequence z ran away, and only the training point y stayed good
+
+Diagnosis of XS-fd's final schedule-free state (`lisa_checks/sf_anatomy.py`,
+`lisa_checks/sf_line.py`, run on 7adfd3d, the code that trained it; 8 × 256 common samples).
+
+**The three weight sets.**
+- **z is about twice the size of x.** Over the backbone, |z|/|x| = 1.92 and cos(x, z) = 0.80.
+  In the MLP input weights, x's RMS is 0.46–0.49 and z's is 0.88–1.01; at initialisation it
+  was 0.0255.
+- **x is not a denoised z.** If |z| grows in proportion to t, the uniform average sits at
+  half its final norm, so x is mostly a radially shrunk z, plus some averaging of directions.
+- **z has run off.** It has moved ~1.0 RMS per element in 1.2M steps. A pure random walk of
+  Muon's steps (2×10⁻⁴) would move 0.22, so z carries a persistent drift.
+
+**Loss along the line from x to z:**
+
+| point | flow loss |
+|---|---|
+| x (α = 0) | 0.467 |
+| α = 0.05 | 0.459 |
+| **y (α = 0.111)** | **0.4575** |
+| α = 0.2 | 0.574 |
+| α = 0.3 | 85 |
+| α = 0.5 | 1.9×10⁹ |
+| z (α = 1) | 2.7×10²¹ |
+
+- **Only a thin neighbourhood of y is a good network,** and x sits on the steep side of it.
+- **It is not a per-layer scale lag.** x rescaled layer by layer to y's norms scores 0.519,
+  and y rescaled to x's scores 0.522.
+
+**The mechanism.**
+1. Schedule-free takes the gradient at y = 0.9x + 0.1z, and the base optimizer steps z. Late
+   in the run x hardly moves (c_t ≈ 10⁻⁶), so y moves by 0.1 of z's step. For y to follow
+   the gradient, z must travel ~10× as far.
+2. Muon's step has a fixed size (RMS 0.2·lr per element) whatever the gradient: Newton–Schulz
+   normalises its magnitude away. So z never slows down near convergence, unlike with SGD.
+3. With no restoring force (weight decay 1e-9 per step, F34), z drifts without bound and
+   leaves the basin.
+4. Schedule-free's average assumes the segment from x to z lies in one basin, as in a convex
+   problem. Here it crosses a cliff, so the average cannot beat y: XS-fd's x trails y by
+   0.012 (F33), and the late loss drop (F10) leaves x carrying the pre-drop iterates on top.
+
+**Consequences.**
+- **Weight decay ~0.05 is necessary** (F35: ~40% slower growth at 9k steps). It may not be
+  sufficient: in F35, z drifted from x at the same rate with or without decay.
+- **Unbounded steps inside schedule-free.** The interpolation multiplies them by 10 in z.
+  Whether dropping Muon's own momentum helps (F35's variant C) is untested.
+- **The robust option** keeps Muon and evaluates something on y's trajectory: an EMA of y, or
+  a short cooldown of y. Those weights never leave the region where the gradients are taken.
+
 ### F35 (2026-10-13): schedule-free Muon comparison, stopped at 9k steps — weight decay slows the growth; z drifts from x regardless
 
 **Runs.**
@@ -508,7 +578,14 @@ the WDM nets their last ×2–3 (F23, F31).
   XS to B's coordinate (×64 in bins), is ~0.06 bins typical and ~2 bins worst case. If
   B-fd stalls at 1–3 bins, check that first.
 
-**Eval (corner pages).** See the addendum below once 14404727 is read.
+**Eval (corner pages, 14404727, 42 min).** `outputs/lisa-B-fd/ep45/corner/` (23 pages).
+- **Loudest eval source (SNR 1668):** f₀ is centred. But λ has three or four separate modes,
+  A has a low-amplitude tail, and ψ and φ₀ are close to their prior, all against a tight
+  Fisher ellipse.
+- **Median source (SNR 61):** f₀, sky and A sit on the Fisher ellipse, with a few small
+  outlier islands. ψ and φ₀ are broad.
+- So the loud sources are where the run is still immature, in every coordinate, not only
+  f₀. That fits a mid-run model rather than a defect.
 
 ### F33 (2026-10-12): XS-fd — R1's level below SNR 100, a 1.5× wider loud floor, and a lagging schedule-free average
 
