@@ -8,6 +8,14 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-13)
 
+- **Update, 2026-10-13 night (F38): the fixes are in.** Our own schedule-free wrapper has:
+  - decay 0.05 on z;
+  - Muon momentum 0.8 and AdamW b1 0.9 inside;
+  - averaging weights t·lr² and a warm-started average;
+  - β annealed from 0.9 to 0.965.
+
+  Tested, smoke-run on the laptop, not yet trained at scale.
+
 - **Update, 2026-10-13 (F38): B-fd's last read, at epoch 45 of 200 (scorecards of x and y,
   and the eval). The run was cancelled at epoch 48 (F35), so this is the read it ended on.**
   - **Loud f₀ 9.5 bins**, 3.3× B1's *final* 3.2. Nothing found yet (< 1 bin), and faint
@@ -399,6 +407,40 @@ the WDM nets their last ×2–3 (F23, F31).
   outlier islands. ψ and φ₀ are broad.
 - So the loud sources are where the run is still immature, in every coordinate, not only
   f₀. That fits a mid-run model rather than a defect.
+
+### F38 (2026-10-13): SF-NorMuon's and ScheduleFree+'s fixes, integrated (not yet run)
+
+`src/canna/lisa/schedule_free.py` replaces `optax.contrib.schedule_free`. The configs
+(XS-fd, B-fd) use it with:
+- **Weight decay on z** (SF-NorMuon): z ← z − η λ z + base step, λ = 0.05, each parameter at
+  its group's lr (Muon's or AdamW's), matrices and embedding tables only. The base optimizer
+  no longer decays. Without `--schedule_free`, decay stays optax's decoupled one on the
+  weights.
+- **Inner momentum** (both papers): Muon momentum 0.8 (SF-NorMuon's), AdamW b1 0.9 (was 0).
+- **Averaging weights t^r lr², r = 1** (ScheduleFree+): late iterates weigh more.
+- **Warm-started averaging** (ScheduleFree+): x follows z for the first 2 × warmup_steps.
+- **Interpolation β from 0.9 to 0.965**, log-linear in t over total_steps (ScheduleFree+).
+- **x kept in the state**, not rebuilt from y and z: a varying β needs it, and it removes
+  F34's float32 reconstruction error.
+
+Not taken over: ScheduleFree+'s lr-free parts (Polyak step, inverse gradient-L1 weighting),
+since our lr is set; and NorMuon's row-wise normalisation, which is a different base
+optimizer, not a fix (SF-NorMuon credits it with ~12% faster convergence).
+
+**Checks.**
+- `tests/lisa/test_schedule_free.py`:
+  - with the fixes off (r = 0, fixed β, no decay, no warm start) it matches
+    `optax.contrib.schedule_free` step for step, in y and in x;
+  - decay on z holds a constantly pushed z at u/(ηλ), where it would otherwise grow
+    linearly;
+  - x follows z until the warm start;
+  - r = 1 brings x to the late iterates faster;
+  - β runs monotonically from its start to its end.
+- The full suite passes (844).
+- A 400-step laptop run (XS-fd, warmup 50): z − x stays 0 for the 100 warm-start steps, then
+  opens; the backbone weight RMS holds at 0.019.
+
+Checkpoints now carry x as well: one more copy of the weights, ~0.3 GB on XS.
 
 ### F37 (2026-10-13): the literature on schedule-free failures — F36's runaway is documented for LLMs; no flow-matching reports
 
