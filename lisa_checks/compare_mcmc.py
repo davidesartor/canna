@@ -135,7 +135,10 @@ def main():
             matched.append(match_sources(problem, draws, truth, f))
             mcmc.append(fold(matched[-1], truth, t_obs))
         flow = fold(match_sources(problem, flow_all[j], truth, f), truth, t_obs)
-        fisher = fold(fisher_all[j], truth, t_obs)
+        # the cached Fisher draws keep the source order of the eval that wrote them; since the
+        # sources are listed loudest first (b9bb3ef) that is no longer the truth's order, so
+        # relabel them onto the truth like the MCMC and flow draws
+        fisher = fold(match_sources(problem, fisher_all[j], truth, f), truth, t_obs)
         ref = np.concatenate(mcmc)
         tru = fold(truth[None], truth, t_obs)[0]
 

@@ -8,6 +8,17 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-13)
 
+- **Update, 2026-10-13 evening (F40): the schedule-free fixes work, the run regressed.**
+  - **Mechanism fixed:** z stays bounded (0.013 against 0.49), and the average x beats the
+    training weights (−0.009 in held-out loss).
+  - **XS-sfplus's training weights are worse than XS-fd's** on the same 840 sources: f₀
+    1.5–1.7× wider at every SNR, 673 found against 732, loud floor 0.015 bins. Calibration
+    stays good.
+  - **Optimizer regime:** the 1/L1 weighting, coupled to the decay, drove the weights 3.6×
+    below their initial size, and the gradient clip binds throughout.
+  - **Confounded:** that regime, the cut to 4 tokens and the SNR ordering cannot be told
+    apart from one run. B-sfplus's scorecards are on TREX (the SSH session closed).
+
 - **Update, 2026-10-13 night (F39): the fixes are in.** Our own schedule-free wrapper has:
   - decay 0.05 on z;
   - Muon momentum 0.8 and AdamW b1 0.9 inside;
@@ -329,11 +340,96 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 14401101 | B-fd scorecard of y (`--n_random 50 --weights training`), `afterok` on link 5 | Queued with the B-fd chain. |
 | 14326117 → 14326121 | B-fd | **Cancelled by the user** at 02:11 CEST on 13 Oct, at epoch 48 of 200 (training loss 0.558, x's held-out loss 0.542); the later links never ran. The user had scored epoch 45 (14404725, 14404726, eval 14404727). |
 | 14408555, 14408558, 14408559, 14408560 | schedule-free Muon comparison A–D (F35), from `~/canna-dev` at 9bdc2d4 | Cancelled at 02:23 CEST on 13 Oct, after 9 epochs of A and B; C and D produced nothing. |
-| **14410743** | XS-fd with schedule-free + the SF-NorMuon/ScheduleFree+ fixes, NorMuon rows, 1/L1 weighting, 16 bins per token, ordered sources, reconstruction head (F39, a4da413); `slurm/lisa-local.sbatch` (trains in the node's /tmp, then scorecards x and y and the eval, then copies `outputs/lisa-XS-fd` home) | Started 03:13 CEST on 13 Oct, trexgpu03, 33 s per epoch (~11 h). Epoch 15: training loss 0.941, held out 0.945, weight RMS 0.0187 steady, z − x 0 in the warm start (48k steps). |
-| **14410744** | B-fd with the same recipe, 200k steps, scorecards with `--n_random 50` | Started 03:13 CEST on 13 Oct, trexgpu03, 177 s per epoch (~10 h), peak 5.5 GiB. Epoch 2: training loss 1.010. |
+| **14410743** | XS-fd with schedule-free + the SF-NorMuon/ScheduleFree+ fixes, NorMuon rows, 1/L1 weighting, 16 bins per token, ordered sources, reconstruction head (F39, a4da413); `slurm/lisa-local.sbatch` (trains in the node's /tmp, then scorecards x and y and the eval, then copies `outputs/lisa-XS-fd` home) | **Completed** 14:37 CEST on 13 Oct (11 h 30 min with scorecards and eval). Final: training loss 0.739, held out x 0.727 / y 0.736, weight RMS 0.0070, gradient norm 8.8, z − x 0.013 (F40). On TREX in `outputs/lisa-XS-fd`. Locally as `outputs/lisa-XS-sfplus`: checkpoint `flow` and histories complete; `opt_state` (x, z) truncated by a dropped connection; TREX's scorecards and eval not yet fetched. |
+| **14410744** | B-fd with the same recipe, 200k steps, scorecards with `--n_random 50` | **Completed** 13:34 CEST on 13 Oct (10 h 27 min with scorecards and eval). Final: training loss 0.669, held out x 0.645 / y 0.654, weight RMS 0.0118, gradient norm 8.4, z − x 0.021. On TREX in `outputs/lisa-B-fd` (beside the cancelled B-fd's `checkpoints/48`); not yet fetched. |
 | 14404725, 14404726 (+ 14404727) | B-fd mid-run: scorecards of x and y (`--n_random 50`, `--output_dir outputs/B-fd-ep45`) and the corner eval of x, on checkpoint 45 hard-linked out of the running link 1 | Submitted 00:52 CEST on 13 Oct. Scorecards completed in 46 min each (trexgpu01): loud f₀ 9.5 bins, 3.3× B1's final, but falling with SNR (F38). Copied to `outputs/lisa-B-fd/ep45/`. |
 
 ## 4. Findings
+
+### F40 (2026-10-13): XS-sfplus — schedule-free now works as a mechanism, but the run regressed on every comparable metric
+
+**Runs.** XS-sfplus (14410743) and B-sfplus (14410744): F39's recipe, both completed with
+their scorecards and eval on TREX. The ControlMaster closed during the download (18:30 CEST).
+- **Local:** XS's trained weights y and its full histories.
+- **Not yet fetched:** XS's x (opt_state was truncated), both runs' TREX scorecards and
+  corner pages, and all of B.
+- **Scored locally from y:** `lisa_checks/scorecard_weights.py` (840 sources, 5 min on the
+  laptop GPU), and `lisa_checks/eval_draws_weights.py` with `compare_mcmc.py --tag
+  _sfplus_y` (four windows; `lisa_checks/mcmc_table.py`).
+- **Fixed on the way:** `compare_mcmc.py` now relabels the cached Fisher draws onto the
+  truth. They kept the old source order, and the loudest-first ordering broke it.
+
+**The schedule-free mechanism is fixed** (per-epoch diagnostics):
+- z − x stays bounded at 0.013 RMS from epoch ~75. XS-fd ended at 0.49.
+- The average beats the training weights: held-out x − y = −0.005 to −0.009 from epoch 200
+  on, growing. XS-fd ended at +0.012.
+
+**But the optimizer drove the weights down.**
+
+| epoch | backbone weight RMS | gradient norm (pre-clip) |
+|---|---|---|
+| 48 (end of warm start) | 0.027 | 0.29 |
+| 200 | 0.015 | 2.4 |
+| 1200 | **0.0070** | **8.8** |
+
+- **The clip at 1 binds from epoch ~100 on.** Most of the backbone sits behind
+  normalisations, so its gradient grows as 1/|w|.
+- **The loop.** The 1/L1 weighting reads the *clipped* gradient. Its L1 rises over the
+  warm-start reference, so the step shrinks. The decay was tied to the same weighted lr, so
+  the equilibrium weight norm, ≈ 0.2·√(s·lr/2λ), falls with the weighting factor s, and the
+  gradient grows further.
+- **Without the weighting,** λ = 0.05 at lr 1e-3 balances near 0.020, close to the initial
+  0.0255.
+- **The paper's warning.** ScheduleFree+ pairs its adaptive step with "fully decoupled" decay
+  ∝ γ², whose equilibrium does not depend on γ, and warns that the coupled form "WILL break
+  learning rate adaptation". That is what happened. F39's integration was wrong on this
+  point.
+- **No late loss drop.** The effective (angular) step grows ~4× over the run, the opposite
+  of an annealing. In R1 and XS-fd the late loss drop coincided with growing weights
+  (F34). That supports reading the drop as their weight growth's implicit lr decay.
+
+**Scorecard of y, the same 840 sources as F33** (`scorecard_training.npz`, matched by
+injection and SNR):
+
+| SNR | found: R1 / XS-fd (x) / **XS-sfplus (y)** | f₀ width per source, XS-sfplus / XS-fd [16–84%] | in95 | rank |
+|---|---|---|---|---|
+| < 15 | 0.53 / 0.50 / **0.35** | 1.67 [1.07–2.98] | 0.92 | 0.49 |
+| 15–40 | 0.85 / 0.84 / **0.69** | 1.46 [1.13–2.66] | 0.98 | 0.50 |
+| 40–100 | 0.96 / 0.95 / **0.89** | 1.58 [1.17–2.42] | 0.98 | 0.50 |
+| ≥ 100 | 0.995 / 0.997 / 0.98 | 1.54 [1.07–2.25] | 0.95 | 0.50 |
+
+- **Loud floor 0.015 bins** (12× ideal), against XS-fd's 0.0103 and R1's 0.0067.
+- **673 of 840 found**, against 732 and 740: 67 found only by XS-fd, 8 only by XS-sfplus.
+- **Calibration is good** (rank 0.49–0.50, in95 0.92–0.98). The posteriors are honest but
+  wider.
+
+**Against the MCMC** (y, four windows, median ratio to the MCMC width):
+
+| | R1 | XS-fd x | XS-fd y | XS-sfplus y |
+|---|---|---|---|---|
+| loud f₀ (SNR ≥ 500) | 6.3 | 11.4 | 13.8 | **20.4** |
+| loud A, sky, orientation | 5.0 | 6.1 | 5.6 | 7.5 |
+| f₀ at SNR 50–500 | 2.7 | 3.7 | 3.6 | 6.4 |
+| MCMC median inside the 95% | 125/128 | 126/128 | 125/128 | 127/128 |
+| sources missed, of 16 | 6 | 6 | 5 | 7 |
+
+The new miss is window 9's SNR-33 source, found by every earlier model. Window 9's SNR-14
+source is better than ever (f₀ 15× against 27–45×; sky 1.1–1.7× against 6–10×).
+
+**Why: not separable from one run.** XS-sfplus changed six things against XS-fd (F34, F39).
+Three can each plausibly widen everything:
+1. **4 tokens instead of 32.** The backbone's work on the data drops ~8×, and close pairs
+   share a token.
+2. **SNR-ordered labels.** Paths are 38% longer (F34), and faint near-equal-SNR sources swap
+   labels inside one posterior.
+3. **The optimizer regime above:** weights 3.6× below their initial size, a rising effective
+   step, a permanently binding clip.
+
+The other three (NorMuon, the reconstruction head at weight 0.1, and the averaging fixes) are
+less likely to cost 1.5× everywhere. The averaging fixes demonstrably helped (x beats y).
+
+**B-sfplus.** Its losses (0.669 training, x 0.645) and diagnostics (weights 0.0118, gradient
+8.4, z − x 0.021) show the same pattern. Its scorecards are on TREX, not yet read.
 
 ### F38 (2026-10-13): B-fd's last read, epoch 45 of 200 — 10 bins wide, but no longer flat in SNR
 
@@ -2115,7 +2211,41 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
   - The risk is that the long aux phase is what enables the jump.
   - E1b (no aux) is dropped to save compute.
 
-## 6. Roadmap (2026-10-03, updated 2026-10-12)
+## 6. Roadmap (2026-10-03, updated 2026-10-13)
+
+### Update, 2026-10-13 evening (after XS-sfplus, F40)
+
+Where things stand:
+- **Best XS model:** R1 (WDM, position features, cooled).
+- **XS-fd** matched R1 below SNR 100 with a simpler recipe (F33).
+- **XS-sfplus** regressed. Folding six changes into one run has now hidden the cause of a
+  regression, so the next step bisects, cheaply, before another full run.
+
+0. **Fetch from TREX** (needs the user's `ssh trex`):
+   - B-sfplus (scorecards x and y, eval) and XS-sfplus's x scorecard and eval;
+   - the full XS checkpoint.
+
+   Then delete the TREX copies once verified (the quota is at 9.0 of 9.2 GB).
+1. **Fix the optimizer interaction.** No new run is needed for that alone.
+   - Drop the 1/L1 weighting, or give it ScheduleFree+'s decay ∝ lr², which it needs.
+   - Keep λ = 0.05 at lr 1e-3: equilibrium weight RMS ≈ 0.020, near the initial 0.0255.
+2. **Bisect, three short XS runs in parallel** (300k steps, ~3–4 h wall at the 3-GPU limit),
+   all with the fixed optimizer, each scored (x and y) at the end:
+   - **a.** XS-fd's representation: unordered sources with the `Set` coupling (back as an
+     option), 32 tokens, no reconstruction head. Against XS-fd's own loss history at equal
+     steps (the same loss definition), it isolates the optimizer.
+   - **b.** a + 16 bins per token: the token cut. This decides whether B can keep its 9× speed.
+   - **c.** a + SNR order + the reconstruction head: the labelling.
+
+   Rule: a change that costs more than 1.2× in median per-source f₀ width or more than 3%
+   of sources found, against a, at equal steps, is reverted.
+3. **Then one full XS run** (1.2M) and **one B run** with whatever passes. For B, if b fails,
+   8 bins per token (512 tokens, 325 ms per step, ~18 h for 200k) is the fallback.
+4. **Still open from before:**
+   - masking of faint sources near loud ones (F28, F29);
+   - the loud sources' A, sky and orientation at 3–9× the MCMC, limited after the
+     embeddings (F33);
+   - whether R1 stays the paper's final XS model.
 
 ### Update, 2026-10-12 night (after XS-fd, F33)
 
