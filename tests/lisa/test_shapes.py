@@ -121,6 +121,7 @@ def test_train_sample_shapes_line_up():
     assert sample.dx.shape == (3, width)
     assert sample.t.shape == ()
     assert sample.y.shape == (problem.window_bins, 6)
+    assert sample.x_target.shape == (3, width)
 
 
 def test_train_sample_is_finite():

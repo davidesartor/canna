@@ -24,6 +24,7 @@ class TrainSample(NamedTuple):
     dx: Float[Array, "S 11"]
     t: Float[Array, ""]
     y: Float[Array, "F 6"]
+    x_target: Float[Array, "S 11"]
     f: Float[Array, ""]
 
 
@@ -75,7 +76,7 @@ def train_sample(
     path = partial(geodesic, problem)
     xt = path(s, x0, x1)
     dx = jax.jacobian(path)(s, x0, x1)
-    return TrainSample(xt=xt, dx=dx, t=t, y=y, f=f)
+    return TrainSample(xt=xt, dx=dx, t=t, y=y, x_target=x1, f=f)
 
 
 # Muon takes the matrices of these fields, AdamW everything else: the encodings (the PLE
@@ -106,6 +107,29 @@ def muon_dimensions(params: LisaFlow) -> LisaFlow:
     return jax.tree_util.tree_map_with_path(dims, params)
 
 
+def cast_muon_gradients(dtype) -> optax.GradientTransformation:
+    """Cast the gradients Muon takes to dtype, leaving AdamW's alone.
+
+    optax runs Newton-Schulz in the dtype of the momentum estimate, which follows the
+    gradient: float32 here, even with the momentum stored in bf16. That is ~1 TFLOP per XS
+    step, about a quarter of the network's own, at float32 speed. Keller Jordan's reference
+    Muon orthogonalises in bf16; casting the gradient first does the same here.
+    """
+
+    def update(updates, state, params=None):
+        del params
+        is_dims = lambda d: d is None or isinstance(d, optax.contrib.MuonDimensionNumbers)
+        updates = jax.tree.map(
+            lambda d, u: u if d is None else jax.tree.map(lambda a: a.astype(dtype), u),
+            muon_dimensions(updates),
+            updates,
+            is_leaf=is_dims,
+        )
+        return updates, state
+
+    return optax.GradientTransformation(lambda params: optax.EmptyState(), update)
+
+
 def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
     """Schedule-free Muon, with AdamW for the parameters Muon does not take.
 
@@ -120,7 +144,7 @@ def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
     warmup = lambda peak: optax.linear_schedule(0.0, peak, args.warmup_steps)
     base = optax.contrib.muon(
         warmup(args.learning_rate),
-        beta=0.95,
+        beta=getattr(args, "muon_momentum", 0.95),
         weight_decay=args.weight_decay,
         mu_dtype=jnp.bfloat16,
         consistent_rms=0.2,
@@ -130,22 +154,53 @@ def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
         adam_weight_decay=args.weight_decay,
         muon_weight_dimension_numbers=muon_dimensions,
     )
+    ns_dtype = getattr(args, "newton_schulz_dtype", "bfloat16")
+    if ns_dtype != "float32":
+        base = optax.chain(cast_muon_gradients(jnp.dtype(ns_dtype)), base)
+    if not getattr(args, "schedule_free", True):
+        # plain Muon and AdamW at a constant lr after the warmup: the weights trained are the
+        # weights evaluated
+        return optax.chain(optax.clip_by_global_norm(1.0), base)
     return optax.chain(
         optax.clip_by_global_norm(1.0),
         optax.contrib.schedule_free(base, warmup(args.learning_rate), b1=0.9),
     )
 
 
+def schedule_free_state(opt_state: optax.OptState):
+    """The ScheduleFreeState in the optimizer chain, or None for a plain optimizer."""
+    found = [s for s in opt_state if isinstance(s, optax.contrib.ScheduleFreeState)]
+    return found[0] if found else None
+
+
 def eval_flow(flow: LisaFlow, opt_state: optax.OptState) -> LisaFlow:
-    """The averaged weights x that schedule-free evaluates, from the training weights y."""
-    (state,) = [s for s in opt_state if isinstance(s, optax.contrib.ScheduleFreeState)]
+    """The averaged weights x that schedule-free evaluates, from the training weights y.
+
+    Without schedule-free the training weights are the ones to evaluate.
+    """
+    state = schedule_free_state(opt_state)
+    if state is None:
+        return flow
     params, static = eqx.partition(flow, eqx.is_inexact_array)
     return eqx.combine(optax.contrib.schedule_free_eval_params(state, params), static)
 
 
+def losses(flow: LisaFlow, batch: TrainSample) -> Float[Array, "2"]:
+    """The flow-matching loss and the parameter-reconstruction loss.
+
+    The sources are ordered (loudest first), so slot k is compared with source k: no
+    matching. The reconstruction is scored in the flow coordinates' ambient space -- the
+    chord, not the arc, on the spheres -- which needs no log map of an off-manifold
+    prediction (the source of F2's NaN).
+    """
+    du_pred, x_pred = jax.vmap(flow)(batch.xt, batch.t, batch.y, batch.f)
+    flow_loss = jnp.mean(jnp.square(du_pred - batch.dx))
+    x_loss = jnp.mean(jnp.square(x_pred - batch.x_target))
+    return jnp.stack([flow_loss, x_loss])
+
+
 def flow_loss(flow: LisaFlow, batch: TrainSample) -> Float[Array, ""]:
-    du_pred = jax.vmap(flow)(batch.xt, batch.t, batch.y, batch.f)
-    return jnp.mean(jnp.square(du_pred - batch.dx))
+    return losses(flow, batch)[0]
 
 
 class TrainState(NamedTuple):
@@ -203,55 +258,86 @@ class TrainState(NamedTuple):
         )
 
     @eqx.filter_jit
-    def train_step(self, batch: TrainSample) -> tuple[Self, Float[Array, "2"]]:
-        """One optimizer step on a batch; returns the flow loss and the gradient norm."""
-        loss, grads = eqx.filter_value_and_grad(flow_loss)(self.flow, batch)
+    def train_step(
+        self, batch: TrainSample, aux_weight: float = 0.0
+    ) -> tuple[Self, Float[Array, "3"]]:
+        """One optimizer step on flow + aux_weight * reconstruction.
+
+        Returns the two losses and the gradient norm.
+        """
+
+        def total(flow):
+            parts = losses(flow, batch)
+            return parts[0] + aux_weight * parts[1], parts
+
+        (_, parts), grads = eqx.filter_value_and_grad(total, has_aux=True)(self.flow)
         params = eqx.filter(self.flow, eqx.is_inexact_array)
         updates, opt_state = self.tx.update(grads, self.opt_state, params)
         flow = eqx.apply_updates(self.flow, updates)
         state = self._replace(flow=flow, opt_state=opt_state)
-        return state, jnp.stack([loss, optax.global_norm(grads)])
+        return state, jnp.concat([parts, optax.global_norm(grads)[None]])
 
     @eqx.filter_jit
     def train_epoch(
-        self, batch_size: int, n_steps: int, time_power: float = 1.0
-    ) -> tuple[Self, Float[Array, "S 2"]]:
+        self, batch_size: int, n_steps: int, time_power: float = 1.0, aux_weight: float = 0.0
+    ) -> tuple[Self, Float[Array, "S 3"]]:
         """Fuse n_steps (gen + train_step) pairs into one XLA dispatch via lax.scan."""
         dynamic, static = eqx.partition(self, eqx.is_array)
 
-        def scan_step(dynamic: Self, _) -> tuple[Self, Float[Array, "2"]]:
+        def scan_step(dynamic: Self, _) -> tuple[Self, Float[Array, "3"]]:
             state = eqx.combine(dynamic, static)
             key, key_batch = jr.split(state.key)
             batch = jax.vmap(partial(train_sample, state.problem, time_power=time_power))(
                 jr.split(key_batch, batch_size)
             )
-            state, losses = state._replace(key=key).train_step(batch)
-            return eqx.filter(state, eqx.is_array), losses
+            state, parts = state._replace(key=key).train_step(batch, aux_weight)
+            return eqx.filter(state, eqx.is_array), parts
 
         dynamic, losses = jax.lax.scan(scan_step, dynamic, length=n_steps)
         return eqx.combine(dynamic, static), losses
 
     @eqx.filter_jit
-    def heldout_loss(
+    @eqx.filter_jit
+    def diagnostics(
         self, key: Key[Array, ""], batch_size: int, time_power: float = 1.0
-    ) -> Float[Array, ""]:
-        """The flow loss of the averaged weights x on a batch drawn from `key`.
+    ) -> Float[Array, "4"]:
+        """Per-epoch health of the optimizer, on a batch drawn from `key`.
 
-        The training loss is measured at y, where schedule-free takes its gradients; this is
-        the model the eval and the scorecard sample from. The same key every epoch scores
-        the same batch, so the curve is free of batch noise.
+        - the flow loss of the averaged weights x, the model the eval samples from;
+        - the flow loss of the training weights y, where the gradients are taken (the
+          training loss is also at y, but on fresh batches);
+        - the RMS of the backbone's weights in x, which Muon's fixed-size steps grow unless
+          the weight decay holds them;
+        - the RMS of z - x, how far schedule-free's fast sequence sits from its average
+          (0 without schedule-free).
+
+        The same key every epoch scores the same batch, so the curves are free of batch noise.
         """
         batch = jax.vmap(partial(train_sample, self.problem, time_power=time_power))(
             jr.split(key, batch_size)
         )
-        return flow_loss(eval_flow(self.flow, self.opt_state), batch)
+        x = eval_flow(self.flow, self.opt_state)
+        rms = lambda tree: jnp.sqrt(
+            sum(jnp.sum(jnp.square(a.astype(jnp.float32))) for a in jax.tree.leaves(tree))
+            / sum(a.size for a in jax.tree.leaves(tree))
+        )
+        w_rms = rms(eqx.filter(x.backbone, eqx.is_inexact_array))
+        sf = schedule_free_state(self.opt_state)
+        if sf is None:
+            spread = jnp.zeros(())
+        else:
+            x_params = eqx.filter(x, eqx.is_inexact_array)
+            spread = rms(jax.tree.map(lambda z, a: z - a, sf.z, x_params))
+        return jnp.stack(
+            [flow_loss(x, batch), flow_loss(self.flow, batch), w_rms, spread]
+        )
 
     def save_to(
         self,
         checkpoints: ocp.CheckpointManager,
         epoch: int,
-        loss_hist: Float[Array, "E S 2"],
-        heldout_hist: Float[Array, " E"],
+        loss_hist: Float[Array, "E S 3"],
+        heldout_hist: Float[Array, "E 4"],
     ) -> None:
         """Save the weights, the optimizer state and the histories as named checkpoint items.
 
@@ -383,6 +469,30 @@ def parse_args() -> argparse.Namespace:
         default=10_000,
         help="linear lr warmup from 0; schedule-free needs no other schedule",
     )
+    parser.add_argument(
+        "--aux_weight",
+        type=float,
+        default=0.1,
+        help="constant weight of the parameter-reconstruction loss beside the flow loss",
+    )
+    parser.add_argument(
+        "--schedule_free",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="schedule-free averaging around Muon and AdamW; off is a constant lr after warmup",
+    )
+    parser.add_argument(
+        "--muon_momentum",
+        type=float,
+        default=0.95,
+        help="Muon's own momentum, kept inside schedule-free's base optimizer (0: none)",
+    )
+    parser.add_argument(
+        "--newton_schulz_dtype",
+        default="bfloat16",
+        choices=("bfloat16", "float32"),
+        help="dtype Muon orthogonalises its momentum in",
+    )
     parser.add_argument("--total_steps", type=int, default=500_000)
     parser.add_argument("--log_interval", type=int, default=1000)
     parser.add_argument(
@@ -455,32 +565,32 @@ if __name__ == "__main__":
     # total_steps or log_interval may well have changed since -- extending a run is how
     # you spend more wall time -- so re-allocate at the current shape and copy the
     # overlap in, rather than indexing off the end of the restored array
-    loss_history = np.full((epochs, args.log_interval, 2), np.nan)
-    heldout_history = np.full((epochs,), np.nan)
+    loss_history = np.full((epochs, args.log_interval, 3), np.nan)
+    heldout_history = np.full((epochs, 4), np.nan)
     if histories is not None:
         restored, restored_heldout = histories
         rows = min(restored.shape[0], epochs)
         cols = min(restored.shape[1], args.log_interval)
         loss_history[:rows, :cols] = restored[:rows, :cols]
-        heldout_history[:rows] = restored_heldout[:rows]
+        heldout_history[:rows] = np.reshape(restored_heldout, (len(restored_heldout), -1))[:rows]
 
     pbar = tqdm(range(start_epoch, epochs), initial=start_epoch, total=epochs)
     for epoch in pbar:
         # one fused XLA dispatch for the whole epoch, instead of log_interval separate ones
         started = time.perf_counter()
         state, epoch_losses = state.train_epoch(
-            args.batch_size, args.log_interval, args.time_power
+            args.batch_size, args.log_interval, args.time_power, args.aux_weight
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
-        heldout_history[epoch] = float(
-            state.heldout_loss(key_heldout, args.batch_size, args.time_power)
+        heldout_history[epoch] = jax.device_get(
+            state.diagnostics(key_heldout, args.batch_size, args.time_power)
         )
         seconds = time.perf_counter() - started  # the first epoch includes the compile
 
         # a non-finite loss has already poisoned the weights: stop, and leave the last
         # finite checkpoint in place instead of saving over it
         finite = np.isfinite(loss_history[epoch]).all(axis=-1)
-        if not finite.all() or not np.isfinite(heldout_history[epoch]):
+        if not finite.all() or not np.isfinite(heldout_history[epoch]).all():
             checkpoints.close()
             raise SystemExit(
                 f"[epoch {epoch + 1}] non-finite loss at step"
@@ -489,11 +599,13 @@ if __name__ == "__main__":
 
         # save a checkpoint and log the median of the epoch's losses
         state.save_to(checkpoints, epoch + 1, loss_history, heldout_history)
-        flow_l, grad_norm = np.median(loss_history[epoch], axis=0)
-        pbar.set_postfix(flow=f"{flow_l:.5f}", heldout=f"{heldout_history[epoch]:.5f}")
+        flow_l, x_l, grad_norm = np.median(loss_history[epoch], axis=0)
+        held_x, held_y, w_rms, spread = heldout_history[epoch]
+        pbar.set_postfix(flow=f"{flow_l:.5f}", heldout=f"{held_x:.5f}")
         print(
-            f"[epoch {epoch + 1}/{epochs}] flow={flow_l:.5f}"
-            f" heldout={heldout_history[epoch]:.5f} grad_norm={grad_norm:.3f}"
+            f"[epoch {epoch + 1}/{epochs}] flow={flow_l:.5f} x={x_l:.5f}"
+            f" heldout={held_x:.5f} heldout_y={held_y:.5f} grad_norm={grad_norm:.3f}"
+            f" w_rms={w_rms:.4f} z_x={spread:.4f}"
             f" time={seconds:.0f}s",
             flush=True,
         )
@@ -510,8 +622,12 @@ if __name__ == "__main__":
         ax.loglog(xs, l_med, label="flow (training weights y)", color="#2a86cf", lw=2)
         ax.fill_between(xs, l_lo, l_up, color="#2a86cf", alpha=0.15)
         ax.loglog(
-            xs, heldout_history[: epoch + 1], label="held out (averaged weights x)",
+            xs, heldout_history[: epoch + 1, 0], label="held out (averaged weights x)",
             color="#d0622a", lw=2,
+        )
+        ax.loglog(
+            xs, np.median(loss_history[: epoch + 1, :, 1], axis=1),
+            label="parameter reconstruction", color="#1a9e6a", lw=2,
         )
         ax.set(xlabel="step", ylabel="loss", title=f"training losses ({run_id})")
         ax.grid(True, which="both", alpha=0.25)

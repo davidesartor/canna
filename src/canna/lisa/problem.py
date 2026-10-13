@@ -108,8 +108,10 @@ class LisaGB(eqx.Module):
     # built once here: its whitening quadrature must not be re-run under every trace
     chirp_mass_prior: ChirpMass = eqx.field(init=False)
     # f0 and amplitude are log-uniform boxes, the chirp mass is log-normal-ish, the two
-    # angle pairs are spheres, the initial phase a circle
-    geometry: geometries.Set = eqx.field(init=False)
+    # angle pairs are spheres, the initial phase a circle. One source's geometry, applied
+    # to every source slot independently: the slots are ordered (loudest first, see
+    # sample_physical), so no slot is ever matched to another
+    geometry: geometries.Product = eqx.field(init=False)
     # static too: JaxGB is a plain object, not a pytree, so it cannot be traced
     response: jaxgb.JaxGB = eqx.field(init=False, static=True)
 
@@ -117,15 +119,13 @@ class LisaGB(eqx.Module):
         self.chirp_mass_prior = ChirpMass(
             m_min=self.mass_range[0], m_max=self.mass_range[1]
         )
-        self.geometry = geometries.Set(
-            geometries.Product(
-                geometries.Bounded(1),
-                geometries.Euclidean(1),
-                geometries.Bounded(1),
-                geometries.Spherical(3),
-                geometries.Spherical(3),
-                geometries.Spherical(2),
-            )
+        self.geometry = geometries.Product(
+            geometries.Bounded(1),
+            geometries.Euclidean(1),
+            geometries.Bounded(1),
+            geometries.Spherical(3),
+            geometries.Spherical(3),
+            geometries.Spherical(2),
         )
 
         # the window and the band it can hold determine each other, and which way round
@@ -355,7 +355,26 @@ class LisaGB(eqx.Module):
         psi = jr.uniform(keys[5], shape, maxval=2 * jnp.pi)
         iota = jnp.arcsin(jr.uniform(keys[6], shape, minval=-1.0, maxval=1.0))
         phi0 = jr.uniform(keys[7], shape, maxval=2 * jnp.pi)
-        return jnp.concat([f0, mc, amp, sky_lon, sky_lat, psi, iota, phi0], axis=-1)
+        p = jnp.concat([f0, mc, amp, sky_lon, sky_lat, psi, iota, phi0], axis=-1)
+        return self.loudest_first(p, f)
+
+    def source_snrs(
+        self, p: Float[Array, "... S 8"], f: Float[Array, ""]
+    ) -> Float[Array, "... S"]:
+        """Each source's own matched-filter snr, as if it were alone in the window."""
+        return self.snr(p[..., :, None, :], f)
+
+    def loudest_first(
+        self, p: Float[Array, "... S 8"], f: Float[Array, ""]
+    ) -> Float[Array, "... S 8"]:
+        """The sources reordered by decreasing snr.
+
+        This labels the sources, so the flow learns an ordered set rather than an
+        interchangeable one: slot 0 is always the loudest source of the window. Every draw
+        of the prior goes through it, the training targets and the injections alike.
+        """
+        order = jnp.argsort(-self.source_snrs(p, f), axis=-1)
+        return jnp.take_along_axis(p, order[..., None], axis=-2)
 
     def sample_flow(
         self, key: Key[Array, ""], f: Float[Array, ""]

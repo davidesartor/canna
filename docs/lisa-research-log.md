@@ -6,7 +6,27 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 §9 places the work in the literature (survey of 2026-10-09).
 
-## 1. Summary (2026-10-01, updated 2026-10-12)
+## 1. Summary (2026-10-01, updated 2026-10-13)
+
+- **Update, 2026-10-13 night (F35): the comparison was stopped at 9k steps.**
+  - Decay 0.05 cuts the backbone's weight growth by ~40% at no cost in loss.
+  - Schedule-free's z drifts from its average at the same rate with or without decay.
+  - Early on, the average x beats the training weights y, as intended.
+  - Muon momentum inside schedule-free and schedule-free versus plain Muon are not yet
+    tested.
+  - B-fd was cancelled at epoch 48.
+
+- **Update, 2026-10-13 (F34): no real weight decay; the cost of Muon; ordered sources.**
+  - **Weight decay.** 1e-6 times the lr is ~0 per step, so XS-fd's backbone weights grew
+    19× (R1 3–4×), and z ended further from its average than the weights' own size.
+    Schedule-free averaged a wide cloud. The training weights y are no sharper: loud floor
+    0.012 bins, unbiased.
+  - **Muon's cost** is Newton–Schulz in float32 (21 ms per XS step on an A100); in bf16 it
+    is 12 ms.
+  - **Fewer tokens** make B 4.9× (patch 8) to 9× (patch 16) faster per step.
+  - **Ordered sources.** Sources are now ordered loudest first, the `Set` geometry is gone,
+    and the reconstruction head is back. Fixed labels make transport paths 38% longer.
+  - **Next run** waits on the user's choice of weight decay, sort key and patch.
 
 - **Update, 2026-10-12 night (F33): XS-fd matches R1 except at the loud end, where the
   missing cooldown is the main suspect.**
@@ -270,8 +290,225 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14326113** (+ 14326114, 14326115, 14326116) | XS-fd: training, then its scorecard and eval | **Completed** at 22:14 CEST on 12 Oct: 17 h 52 min, trexgpu03, 52–53 s per epoch (38–39 s for the WDM nets), no NaN. Final training loss 0.4507, held-out loss of the average 0.4418. The spare link exited at once. Scorecard 4.2 min, eval 14 min. Downloaded to `outputs/lisa-XS-fd`: `checkpoints/1200` (59 files, sizes identical to TREX's, restores on the CPU, all 72.2M parameters finite), `corner/`, `scorecard.npz` and `logs/` (F33). |
 | 14401076 | XS-fd scorecard of the training weights y (`--weights training`), TREX at 7adfd3d | Queued at 23:16 CEST on 12 Oct; every A100 was busy. |
 | 14401101 | B-fd scorecard of y (`--n_random 50 --weights training`), `afterok` on link 5 | Queued with the B-fd chain. |
+| 14326117 → 14326121 | B-fd | **Cancelled by the user** at 02:11 CEST on 13 Oct, at epoch 48 of 200 (training loss 0.558, x's held-out loss 0.542); the later links never ran. The user had scored epoch 45 (14404725, 14404726, eval 14404727). |
+| 14408555, 14408558, 14408559, 14408560 | schedule-free Muon comparison A–D (F35), from `~/canna-dev` at 9bdc2d4 | Cancelled at 02:23 CEST on 13 Oct, after 9 epochs of A and B; C and D produced nothing. |
+| 14404725, 14404726 (+ 14404727) | B-fd mid-run: scorecards of x and y (`--n_random 50`, `--output_dir outputs/B-fd-ep45`) and the corner eval of x, on checkpoint 45 hard-linked out of the running link 1 | Submitted 00:52 CEST on 13 Oct. Scorecards completed in 46 min each (trexgpu01): loud f₀ 9.5 bins, 3.3× B1's final, but falling with SNR (F35). Copied to `outputs/lisa-B-fd/ep45/`. |
 
 ## 4. Findings
+
+### F35 (2026-10-13): schedule-free Muon comparison, stopped at 9k steps — weight decay slows the growth; z drifts from x regardless
+
+**Runs.**
+- Four 150k-step XS variants (`slurm/lisa-compare.sbatch`), all with 16 bins per token, the
+  ordered sources and the reconstruction head (b9bb3ef, 9bdc2d4).
+- **Cancelled at 02:23 CEST on 13 Oct**: there was no more GPU time that day.
+  - A (14408555, schedule-free, Muon momentum 0.95, decay 1e-6, XS-fd's settings) and
+    B (14408558, the same with decay 0.05) ran 9 epochs (9k steps, the warmup ending at 3k)
+    at 31–32 s per epoch.
+  - C (no Muon momentum) never finished an epoch, and D (no schedule-free) never started.
+- Logs in `outputs/compare/{A,B}`. No scorecards: the checkpoints lived in the nodes' /tmp.
+
+**Diagnostics on the fixed batch** (epoch 9; growth per 1k steps over epochs 5–9):
+
+| | A (decay 1e-6) | B (decay 0.05) |
+|---|---|---|
+| held-out loss, averaged weights x | 0.9660 | 0.9655 |
+| held-out loss, training weights y | 0.9684 | 0.9663 |
+| backbone weight RMS (initial 0.0192) | 0.0287 (+50%) | 0.0251 (+31%) |
+| its growth per 1k steps | 0.0013, steady | 0.0008, slowing |
+| z − x RMS | 0.0214 | 0.0203 |
+
+**Preliminary readings (9k steps, one seed).**
+- **Decay 0.05 does what F34 predicted.** Weight growth is ~40% slower and still slowing,
+  at no cost in loss so far. A grows at an undiminished rate, on the path to XS-fd's 19×.
+- **z drifts away from x at the same rate either way** (~0.002 RMS per 1k steps). After
+  9k steps it is already 0.7–0.8 of the weights' own RMS. Decay does not hold z close to its
+  average; only the lr or the averaging can. This is the part of the interaction that 150k
+  steps were meant to follow.
+- **Early on, the average is the better model,** as schedule-free intends: x's held-out
+  loss is 0.001–0.002 below y's from epoch 4. XS-fd's reversal (x worse by 0.012) belongs to
+  late training, which this test never reached.
+- **Not answered:** whether Muon's own momentum hurts inside schedule-free (C), and whether
+  schedule-free beats plain constant-lr Muon at all (D).
+
+**What this supports.** Run the next model with weight decay ~0.05. Keep logging x and y,
+the weight RMS and z − x (now on by default), and score both x and y. The late-phase
+question (x lagging after the loss drop) can only be settled by a full-length run.
+
+### F34 (2026-10-13): schedule-free Muon ran with no weight decay; Muon's cost is Newton–Schulz in float32; sources now ordered
+
+**Training weights y (scorecard 14401076, all 840 sources).**
+
+| | loud floor (bins) | loud in68 | loud rank | detection |
+|---|---|---|---|---|
+| y (training weights) | 0.012 | 0.74 | 0.48 | 731 / 840 |
+| x (average) | 0.0103 | 0.69 | 0.41 | 732 / 840 |
+
+- y is unbiased but wider than x. The averaging does not hide a sharper model, so neither
+  weight set is a converged one.
+
+**The schedule-free integration (`lisa_checks/sf_precision.py`, the XS-fd checkpoint).**
+- **Mechanics are correct.**
+  - Parameters and z stay float32.
+  - The only float64 in the update is in scalars: the Newton–Schulz coefficients and the
+    bias correction.
+  - The wrapper costs 0.7 ms per step over Muon alone.
+- **float32 averaging error is small.** Replaying optax's recursion over 1.2M steps,
+  float32 lands 1% of x's movement away from float64, with a +0.8% rescale. Late on,
+  1 − c_t (c_t = 8.4×10⁻⁷) rounds to a value that stays fixed for ~10⁵ steps, which is
+  where that comes from. Minor.
+- **The real problem is weight decay.** 1e-6 is multiplied by the lr in optax (as in PyTorch
+  AdamW), so the decay was 1e-9 per step, effectively zero. Muon's steps have a fixed size,
+  2×10⁻⁴ RMS whatever the gradient.
+  - **Weights:** the backbone grew **18–19×** from its initial RMS (0.0255 → 0.46–0.49).
+    R1, with Adam at 1e-4, grew 3–4×.
+  - **Spread of z:** z sits 0.49 RMS from its own average x, more than |x| = 0.37.
+- **Consequences.**
+  - Most of the backbone sits behind normalisations, so the effective step falls as the
+    weights grow: an implicit lr decay of up to ~19×, varying by layer.
+  - Schedule-free averages iterates spread over a region larger than the weights
+    themselves.
+- **Schedule-free and Muon both rely on weight decay** (AdamW 0.05–0.1 in the schedule-free
+  experiments; 0.1 with the RMS-matched lr in Moonshot's Muon). Run without it, this is not
+  the regime where "no schedule needed" was shown.
+- **Fix for the next run (not yet set in the configs):** weight decay of order 1e-2 to 1e-1
+  in optax's convention. The equilibrium weight RMS is about 0.2·√(lr / 2λ): 0.045 at lr 1e-3
+  and λ = 0.01, 0.014 at λ = 0.1.
+
+**Where the step time goes.** On the laptop GPU (XS, batch 256, 50-step loops):
+
+| part | time | share |
+|---|---|---|
+| batch generation | 1.3 ms | 0.2% |
+| forward + backward | 344 ms | 42% |
+| optimizer, schedule-free Muon | 326 ms | 40% |
+| optimizer, Muon alone | 325 ms | 40% |
+| optimizer, AdamW alone | 37 ms | 4.6% |
+
+- Muon's cost is Newton–Schulz: ~1 TFLOP per step on 71M parameters, about a quarter of the
+  network's own FLOPs. optax runs it in the dtype of the momentum estimate, which follows
+  the float32 gradient, even with the momentum stored in bf16.
+- That cost is fixed per step: parameters × width, not batch × tokens. With only 256 × 36
+  token rows on XS it shows (+37%); with 2048 tokens on B it does not (+5%).
+- `newton_schulz_dtype: bfloat16` (b9bb3ef, the default) casts Muon's gradients first, as
+  the reference Muon does.
+
+**A100 timings** (jobs 14405794 and 14405795; `lisa_checks/bench_step.py`, logs in
+`~/canna-dev/.slurm-logs` on TREX). XS at batch 256, 32 tokens:
+
+| part | time | share |
+|---|---|---|
+| batch generation | 0.6 ms | 1.5% |
+| forward | 6.6 ms | 15% |
+| forward + backward | 26.5 ms | 61% |
+| optimizer, schedule-free Muon, NS bf16 | **12.1 ms** | 28% |
+| optimizer, schedule-free Muon, NS float32 | 21.2 ms | 49% |
+| optimizer, Muon alone, NS float32 | 20.8 ms | 48% |
+| optimizer, AdamW alone | 1.3 ms | 3% |
+| **full step, NS bf16** | **43.4 ms** | |
+
+- float32 NS reproduces XS-fd's 52 ms per step: 43.4 − 12.1 + 21.2 = 52.5.
+- bf16 NS saves 9 ms of it. What remains is Muon's own ~12 ms against R1's 38 ms Adam
+  step.
+- On B the optimizer is under 1% of the step (forward + backward 1550 ms of 1592).
+
+**Fewer tokens** (A100, bf16 NS, full step):
+
+| | patch 2 | patch 4 | patch 8 | patch 16 |
+|---|---|---|---|---|
+| XS (32 / 16 / 8 / 4 tokens) | 43.4 ms | 36.7 ms | 33.3 ms | 31.1 ms |
+| B (2048 / – / 512 / 256 tokens) | 1592 ms | – | **325 ms (4.9×)** | **177 ms (9.0×)** |
+
+- XS gains little: its fixed costs (the optimizer and the batch) dominate.
+- On B, patch 8 would make 200k steps ~18 h instead of ~88 h, and patch 16 ~10 h.
+
+**Ordered sources (b9bb3ef).**
+- `sample_physical` lists each window's sources loudest first, by each source's own SNR,
+  so training targets, prior draws and injections are ordered alike.
+- The geometry is one source's `Product`, applied per slot. The `Set` geometry and its
+  assignment code are gone.
+- LisaFlow gives each slot a learned embedding, and has a second head that reconstructs the
+  parameters x1. Its loss is the per-slot squared ambient distance, at a constant weight
+  `aux_weight: 0.1`.
+- Scoring keeps `match_sources`, so scorecards compare with earlier ones and with the MCMC.
+- **Cost of fixed labels: transport paths ~38% longer.** Mean squared path length per
+  source, in flow coordinates (4096 XS windows):
+
+| pairing | total | f₀ part | amplitude part |
+|---|---|---|---|
+| `Set`, nearest permutation (before) | 8.73 | 0.58 | 0.58 |
+| SNR order | 12.04 | 0.67 | 0.29 |
+| f₀ order | 12.04 | 0.26 | 0.66 |
+| random labels | 12.44 | 0.66 | 0.66 |
+
+  Most of the excess is in the angles, which no ordering shortens. SNR order shortens the
+  amplitude paths, f₀ order the f₀ paths. Flow losses are therefore not comparable with
+  earlier runs'. A laptop smoke run starts at 1.08 against 0.78.
+- **Label ambiguity.** Near-equal SNRs swap labels within one posterior (SNR is known to
+  ±1). f₀ is known to ~0.01 bins, so f₀ order would rarely swap.
+
+### F35 (2026-10-13): B-fd at epoch 45 of 200 — 10 bins wide, but no longer flat in SNR
+
+**Runs.**
+- B-fd's link 1 (14326117) saved checkpoint 45 at 00:34 CEST on 13 Oct, 20.5 h in. It was
+  hard-linked into `outputs/B-fd-ep45/lisa-B-fd` on TREX, so the epoch-50 save could not
+  replace it under the jobs, at no quota cost.
+- Scored there with `--output_dir outputs/B-fd-ep45`:
+  - scorecards of the average x (14404725) and of the training weights y (14404726), with
+    `--n_random 50`, as B1's: 46 min each, side by side on trexgpu01;
+  - the corner eval of x (14404727).
+- Locally: `outputs/lisa-B-fd/ep45/`, and `outputs/scorecards/compare_bfd.py 45` (log
+  `compare_bfd_ep45.log`).
+- **Caveat:** the only B reference is B1's *final, cooled* model (epoch 200). B1 kept one
+  checkpoint and was never scored mid-run.
+
+**Loss.** B-fd's training loss minus B1's at the same epoch: +0.053 (epoch 10), +0.050
+(20), +0.037 (30), +0.024 (40), **+0.018 (45)**. B-fd falls 3.5× faster per epoch
+(−0.0019 against −0.0005 over epochs 40–45), so it should cross B1 near epoch 50–55, as
+XS-fd crossed R1. The gradient norm is still rising (0.78).
+
+**Scorecard: the same 240 sources as B1's (F26).**
+
+| SNR | n | median f₀ width (bins), B1 final / x / y | × ideal B1 / x / y | in68 B1 / x / y | in95 B1 / x / y | rank B1 / x / y |
+|---|---|---|---|---|---|---|
+| < 15 | 40 | 5.0 / 342 / 331 | 98 / 6488 / 5073 | 0.90 / 0.78 / 0.70 | 1.00 / 0.95 / 0.93 | 0.49 / 0.53 / 0.53 |
+| 15–40 | 38 | 3.8 / 16.7 / 13.5 | 197 / 668 / 595 | 0.84 / 0.95 / 0.92 | 0.97 / 1.00 / 1.00 | 0.38 / 0.48 / 0.49 |
+| 40–100 | 47 | 2.9 / 10.5 / 10.5 | 361 / 1263 / 1164 | 0.89 / 0.94 / 0.96 | 0.98 / 1.00 / 1.00 | 0.43 / 0.51 / 0.53 |
+| ≥ 100 | 115 | **3.2 / 9.5 / 9.9** | 2148 / 5756 / 5693 | 0.89 / 0.98 / 0.93 | 1.00 / 1.00 / 1.00 | 0.45 / 0.49 / 0.49 |
+
+- **Width.** The loud median is 9.5 bins (95% CI 9.0–10.5), 3.3× B1's final 3.2. No source
+  is found (< 1 bin) by x; y has one source under 2 bins, B1 has two. Faint sources
+  (SNR < 15) are not localised at all: 340 bins in a 4096-bin window, against B1's 5.
+- **x against y.** Per source, y/x = 0.98 [0.71–1.14]. Unlike XS-fd at its end (F33), the
+  average does not lag y in f₀ yet.
+- **The width now falls with SNR.** The log-log slope of width against SNR (SNR ≥ 15) is
+  **−0.28 for x and −0.20 for y, against B1's −0.05**. B1's width was flat in SNR, a
+  resolution floor (F26). B-fd's shrinks from 16.7 to 9.5 bins between SNR 15–40 and
+  ≥ 100. So at epoch 45 it is still training-limited, not yet against a wall.
+- **Calibration.** Unbiased (ranks 0.48–0.53 at every SNR, where B1's sat at 0.38–0.45)
+  and conservative (in68 0.93–0.98 above SNR 15), so the width is honest. The
+  offsets of the found-and-loud sources are a few bins; the mean is dominated by
+  unlocalised faint sources (|offset| up to 2000 bins).
+- **In the flow coordinate.** 9.5 bins is 6.2×10⁻³ of x_f (1 unit = 1536 bins on B, F26),
+  against B1's 2.1×10⁻³ and XS-fd's final 4.3×10⁻⁴. It is also 0.8 of an f₀ PLE bin
+  (2/256 of x_f = 12 bins on B, 0.19 bins on XS). XS-fd ended at 1/20 of a PLE bin. Matching
+  that on B would give ~0.6 bins, just inside the rule.
+
+**Weight decay (F34).** B-fd runs with the same weight decay of 1e-6 × lr, effectively
+none, so its weights grow as XS-fd's did (18–19×), with an implicit, uneven lr decay. Its
+rising gradient norm (0.54 at epoch 6 → 0.78 at 45) fits that. Nothing here separates it
+from ordinary training.
+
+**Reading.** Mid-run, at constant lr, B-fd is 3× wider than B1's cooled final, but its
+loss is about to cross B1's, its width depends on SNR as B1's never did, and it is
+calibrated. Nothing here fails the rule (< 1 bin at the end), and nothing yet shows it
+will pass: it needs another 10× in width over 155 epochs, without the cooldown that gave
+the WDM nets their last ×2–3 (F23, F31).
+- **A risk for the final rule:** F33's bf16-cast bound on the source embedding, scaled from
+  XS to B's coordinate (×64 in bins), is ~0.06 bins typical and ~2 bins worst case. If
+  B-fd stalls at 1–3 bins, check that first.
+
+**Eval (corner pages).** See the addendum below once 14404727 is read.
 
 ### F33 (2026-10-12): XS-fd — R1's level below SNR 100, a 1.5× wider loud floor, and a lagging schedule-free average
 

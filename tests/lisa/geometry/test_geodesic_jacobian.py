@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from canna.lisa.geometries import Bounded, Euclidean, Product, Set, Spherical
+from canna.lisa.geometries import Bounded, Euclidean, Product, Spherical
 
 GEOMETRIES = {
     "euclidean": (Euclidean(3), jnp.array([0.3, -1.2, 0.7])),
@@ -17,8 +17,8 @@ GEOMETRIES = {
         Product(Bounded(1), Spherical(2), Spherical(3)),
         jnp.array([0.5, 0.6, 0.8, 0.0, 1.0, 0.0]),
     ),
-    "set": (
-        Set(Product(Bounded(1), Spherical(2))),
+    "product over sources": (
+        Product(Bounded(1), Spherical(2)),
         jnp.array([[0.5, 0.6, 0.8], [-0.3, 0.0, 1.0]]),
     ),
 }

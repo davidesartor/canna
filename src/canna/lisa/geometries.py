@@ -1,10 +1,10 @@
 import itertools
 from abc import abstractmethod
-from typing import Callable, Optional
-from jaxtyping import Array, Float, Int
+
+from jaxtyping import Array, Float
 import jax
 import jax.numpy as jnp
-import jax.random as jr
+
 import optax
 import equinox as eqx
 
@@ -128,91 +128,3 @@ class Product(Geometry):
             jnp.split(dx, edges, axis=-1),
         )
         return jnp.concat([g.exp_map(a, d) for g, a, d in blocks], axis=-1)
-
-
-class Set(Geometry):
-    """Interchangeable points on a shared geometry: the flow only sees the unordered set."""
-
-    local_geometry: Geometry
-    rank: Optional[Callable[[Float[Array, "... X"]], Float[Array, "..."]]] = eqx.field(
-        static=True, default=None
-    )
-    brute_force_limit: int = eqx.field(static=True, default=6)
-
-    @property
-    def dim(self) -> int:
-        return self.local_geometry.dim
-
-    def log_map(
-        self, x0: Float[Array, "... S X"], x1: Float[Array, "... S X"]
-    ) -> Float[Array, "... S X"]:
-        return self.local_geometry.log_map(x0, self.assign(x0, x1))
-
-    def exp_map(
-        self, x0: Float[Array, "... S X"], dx: Float[Array, "... S X"]
-    ) -> Float[Array, "... S X"]:
-        return self.local_geometry.exp_map(x0, dx)
-
-    def assign(
-        self, x0: Float[Array, "... S X"], x1: Float[Array, "... S X"]
-    ) -> Float[Array, "... S X"]:
-        exact = x1.shape[-2] <= self.brute_force_limit
-        assign_by = self.assign_by_brute_force if exact else self.assign_by_pairswaps
-        return jnp.take_along_axis(x1, assign_by(x0, x1)[..., None], axis=-2)
-
-    def assign_by_rank(
-        self, x0: Float[Array, "... S X"], x1: Float[Array, "... S X"]
-    ) -> Int[Array, "... S"]:
-        if self.rank is None:
-            n_points = x0.shape[-2]
-            return jnp.broadcast_to(
-                jnp.arange(n_points, dtype=jnp.int32), x0.shape[:-1]
-            )
-
-        order0 = jnp.argsort(self.rank(x0), axis=-1)
-        order1 = jnp.argsort(self.rank(x1), axis=-1)
-        return jnp.take_along_axis(order1, jnp.argsort(order0, axis=-1), axis=-1)
-
-    def assign_by_brute_force(
-        self, x0: Float[Array, "... S X"], x1: Float[Array, "... S X"]
-    ) -> Int[Array, "... S"]:
-        n_points = x0.shape[-2]
-        pairs = self.local_geometry.log_map(x1[..., :, None, :], x0[..., None, :, :])
-        cost = jnp.sum(jnp.square(pairs), axis=-1)
-
-        perms = jnp.array(list(itertools.permutations(range(n_points))))
-        costs = jnp.sum(cost[..., perms, jnp.arange(n_points)], axis=-1)
-        return perms[jnp.argmin(costs, axis=-1)]
-
-    def assign_by_pairswaps(
-        self,
-        x0: Float[Array, "... S X"],
-        x1: Float[Array, "... S X"],
-        key: Array = jr.key(0),
-    ) -> Int[Array, "... S"]:
-        n_points = x0.shape[-2]
-        n_paired = n_points - n_points % 2
-
-        def cost(
-            assigned: Int[Array, "... P"], slots: Int[Array, "P"]
-        ) -> Float[Array, "... P"]:
-            points = jnp.take_along_axis(x1, assigned[..., None], axis=-2)
-            dx = self.local_geometry.log_map(points, x0[..., slots, :])
-            return jnp.sum(jnp.square(dx), axis=-1)
-
-        # randomly pair up the slots and swap any pair that lowers the total cost
-        def sweep(i: int, a: Int[Array, "... S"]) -> Int[Array, "... S"]:
-            shuffled = jr.permutation(jr.fold_in(key, i), n_points)
-            p, q = shuffled[:n_paired].reshape(2, -1)
-            ap, aq = a[..., p], a[..., q]
-            gain = cost(ap, p) + cost(aq, q) - cost(aq, p) - cost(ap, q)
-            swap = gain > 0.0
-            return (
-                a.at[..., p]
-                .set(jnp.where(swap, aq, ap))
-                .at[..., q]
-                .set(jnp.where(swap, ap, aq))
-            )
-
-        start = self.assign_by_rank(x0, x1)
-        return jax.lax.fori_loop(0, 8 * n_points.bit_length(), sweep, start)

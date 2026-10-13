@@ -1,5 +1,6 @@
-"""Sources are an unordered set: reordering rows must not change physics."""
+"""Reordering sources must not change the physics; sampling lists them loudest first."""
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 
@@ -65,3 +66,20 @@ def test_iota_change_on_one_source_leaves_a_siblings_band_untouched():
     band0 = slice(kmin0, kmin0 + problem.response_points)
     assert float(jnp.abs(o[band0]).max()) > 0.0
     assert jnp.allclose(o[band0], o_pert[band0], atol=1e-30)
+
+
+def test_sample_physical_lists_the_sources_loudest_first():
+    problem = LisaGB(n_sources=4)
+    f = window(problem)
+    p = jax.vmap(problem.sample_physical, in_axes=(0, None))(jr.split(jr.key(30), 64), f)
+    snrs = problem.source_snrs(p, f)
+    assert snrs.shape == (64, 4)
+    assert jnp.all(jnp.diff(snrs, axis=-1) <= 0)
+
+
+def test_loudest_first_is_a_reordering():
+    problem = LisaGB(n_sources=3)
+    f = window(problem)
+    p = problem.sample_physical(jr.key(31), f)
+    shuffled = p[jnp.array([2, 0, 1])]
+    assert jnp.array_equal(problem.loudest_first(shuffled, f), p)

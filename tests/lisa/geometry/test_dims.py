@@ -4,7 +4,6 @@ import pytest
 from canna.lisa.geometries import Euclidean, Bounded
 from canna.lisa.geometries import Spherical as SphericalGeometry
 from canna.lisa.geometries import Product as ProductGeometry
-from canna.lisa.geometries import Set as SetGeometry
 
 
 def test_euclidean_dim_default():
@@ -80,30 +79,3 @@ def test_product_geometry_dim_named_kwargs_same_as_positional():
 def test_product_geometry_dim_is_python_int():
     prod = ProductGeometry(Euclidean(dim=2), SphericalGeometry(dim=4))
     assert isinstance(prod.dim, int)
-
-
-def test_set_geometry_dim_equals_local_geometry_dim():
-    local = Euclidean(dim=3)
-    setgeom = SetGeometry(local_geometry=local)
-    assert setgeom.dim == local.dim
-
-
-def test_set_geometry_dim_independent_of_brute_force_limit():
-    local = Euclidean(dim=3)
-    a = SetGeometry(local_geometry=local, brute_force_limit=1)
-    b = SetGeometry(local_geometry=local, brute_force_limit=10)
-    assert a.dim == b.dim == 3
-
-
-def test_set_geometry_dim_is_python_int():
-    setgeom = SetGeometry(local_geometry=Euclidean(dim=3))
-    assert isinstance(setgeom.dim, int)
-
-
-def test_set_geometry_log_map_last_axis_matches_dim_with_set_axis():
-    local = Euclidean(dim=3)
-    setgeom = SetGeometry(local_geometry=local)
-    x0 = jnp.zeros((5, 3))
-    x1 = jnp.ones((5, 3))
-    out = setgeom.log_map(x0, x1)
-    assert out.shape[-1] == setgeom.dim

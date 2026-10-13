@@ -19,12 +19,14 @@ network:
   hidden_dim: 512
   num_blocks: 8
   num_heads: 8
-  patch: 2 # rfft bins per token: 32 tokens, as the WDM networks had
+  patch: 16 # rfft bins per token: 4 tokens (F34: 2 bins gave 32)
 
 batch_size: 256
 learning_rate: 1.0e-3 # Muon
 adam_learning_rate: 3.0e-4 # AdamW
 weight_decay: 1.0e-6
+# the parameter-reconstruction loss, at a constant weight beside the flow loss
+aux_weight: 0.1
 warmup_steps: 24000 # 2% of the run
 total_steps: 1200000
 log_interval: 1000

@@ -45,8 +45,11 @@ class LisaFlow(eqx.Module):
     cast to bf16 before its first layer, which rounded the loudest pixels by 0.5-3.6 noise
     sigmas rms; here the cast comes after the encoding.
 
-    The x stream gets no positional embedding: that is what keeps it permutation invariant
-    over sources. The y tokens get a learned one, one vector per token position.
+    The sources come loudest first (LisaGB.loudest_first), so each source slot gets a learned
+    embedding of its own, as each y token gets one for its position.
+
+    Two heads read the source stream: the velocity, and the reconstructed parameters x1 (the
+    auxiliary target: at t = 0 it is the posterior mean of each slot's parameters).
     """
 
     dtype: DType = eqx.field(static=True)
@@ -54,6 +57,7 @@ class LisaFlow(eqx.Module):
     x_embed: PiecewiseLinear
     y_embed: PiecewiseLinear
     y_pos: Float[Array, "N D"]
+    x_slot: Float[Array, "S D"]
     t_embed: SinusoidalEmbed
     t_mlp: FeedForward
     f_embed: PiecewiseLinear
@@ -78,14 +82,14 @@ class LisaFlow(eqx.Module):
         key: Key[Array, ""],
         **kwargs,
     ):
-        (*_, x_dim), (*_, n_bins, y_dim) = x_shape, y_shape
+        (n_sources, x_dim), (*_, n_bins, y_dim) = x_shape, y_shape
         assert x_dim == len(COORD_RANGES), f"expected {len(COORD_RANGES)} flow coordinates"
         assert n_bins % patch == 0, f"window of {n_bins} bins is not divisible by {patch}"
         self.dtype, self.patch = dtype, patch
 
         # eqx.nn's dtype is the parameter dtype; the compute dtype is applied in __call__
         kwargs = dict(kwargs, dtype=param_dtype)
-        keys = iter(jr.split(key, 10))
+        keys = iter(jr.split(key, 11))
 
         coord_edges = tuple(
             uniform_edges(lo, hi, F0_BINS if i == 0 else COORD_BINS)
@@ -97,6 +101,7 @@ class LisaFlow(eqx.Module):
         self.y_pos = 0.02 * jr.normal(
             next(keys), (n_bins // patch, hidden_dim), param_dtype
         )
+        self.x_slot = 0.02 * jr.normal(next(keys), (n_sources, hidden_dim), param_dtype)
 
         self.t_embed = SinusoidalEmbed(hidden_dim, key=next(keys), **kwargs)
         self.t_mlp = FeedForward(hidden_dim, hidden_dim, hidden_dim, key=next(keys), **kwargs)
@@ -110,7 +115,9 @@ class LisaFlow(eqx.Module):
         )
 
         self.x_modulation = Modulation(hidden_dim, key=next(keys), **kwargs)
-        self.x_unembed = FeedForward(hidden_dim, hidden_dim, x_dim, key=next(keys), **kwargs)
+        self.x_unembed = FeedForward(
+            hidden_dim, hidden_dim, 2 * x_dim, key=next(keys), **kwargs
+        )
 
     def __call__(
         self,
@@ -118,11 +125,14 @@ class LisaFlow(eqx.Module):
         t: Float[Array, ""],
         y: Float[Array, "F C"],
         f: Float[Array, ""],
-    ) -> Float[Array, "S X"]:
+    ) -> tuple[Float[Array, "S X"], Float[Array, "S X"]]:
+        assert x.shape[0] == self.x_slot.shape[0], (
+            f"built for {self.x_slot.shape[0]} source slots, got {x.shape[0]} sources"
+        )
         f32 = jnp.float32
         c = self.t_mlp(self.t_embed(t.astype(f32)))
         c = c + self.f_mlp(self.f_embed(jnp.log(f.astype(f32))[None]))
-        x = jax.vmap(self.x_embed)(x.astype(f32))
+        x = jax.vmap(self.x_embed)(x.astype(f32)) + self.x_slot
         y = rearrange(y.astype(f32), "(n p) c -> n (p c)", p=self.patch)
         y = jax.vmap(self.y_embed)(y) + self.y_pos
 
@@ -132,4 +142,5 @@ class LisaFlow(eqx.Module):
         x, _ = backbone(x.astype(self.dtype), y.astype(self.dtype), c.astype(self.dtype))
 
         x, _ = self.x_modulation(x.astype(f32), c)
-        return jax.vmap(self.x_unembed)(x)
+        dx, x1 = jnp.split(jax.vmap(self.x_unembed)(x), 2, axis=-1)
+        return dx, x1

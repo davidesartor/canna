@@ -100,11 +100,12 @@ def test_config_problem_and_network_agree_on_the_conditioning_shape(package, pat
     # shape error the first time the flow is actually called
     _, flow, sample = build(package, path)
 
-    # point and lisa have no reconstruction heads: their flows return the velocity alone
+    # point has no reconstruction head: its flow returns the velocity alone
     if package == "point":
         assert flow(sample.xt, sample.t, sample.y).shape == sample.dx.shape
     elif package == "lisa":
-        assert flow(sample.xt, sample.t, sample.y, sample.f).shape == sample.dx.shape
+        dx, x_target = flow(sample.xt, sample.t, sample.y, sample.f)
+        assert dx.shape == sample.dx.shape and x_target.shape == sample.x_target.shape
     else:
         outs = flow(*(sample.xt, sample.t, sample.y, *sample[6:]))
         dx, x_target, y_target = outs
