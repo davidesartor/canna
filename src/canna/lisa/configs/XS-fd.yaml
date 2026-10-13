@@ -24,7 +24,18 @@ network:
 batch_size: 256
 learning_rate: 1.0e-3 # Muon
 adam_learning_rate: 3.0e-4 # AdamW
-weight_decay: 1.0e-6
+# schedule-free with the fixes of SF-NorMuon and ScheduleFree+ (F37): decay on z (0.05 per
+# unit lr), Muon momentum 0.8 and AdamW b1 0.9 inside, beta 0.9 -> 0.965 log-linearly,
+# averaging weights t lr^2, x following z for the first 2 x warmup_steps
+weight_decay: 0.05
+muon_momentum: 0.8
+adam_b1: 0.9
+sf_beta: 0.9
+sf_beta_end: 0.965
+sf_r: 1.0
+# ScheduleFree+'s 1 / EMA |g|_1 step weighting, and NorMuon's row normalisation (SF-NorMuon)
+sf_l1_weighting: true
+normuon: true
 # the parameter-reconstruction loss, at a constant weight beside the flow loss
 aux_weight: 0.1
 warmup_steps: 24000 # 2% of the run

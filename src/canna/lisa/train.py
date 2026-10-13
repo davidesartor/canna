@@ -17,6 +17,7 @@ import equinox as eqx
 from tqdm import tqdm
 from .problem import LisaGB
 from .network import LisaFlow
+from . import schedule_free as sf
 
 
 class TrainSample(NamedTuple):
@@ -130,59 +131,157 @@ def cast_muon_gradients(dtype) -> optax.GradientTransformation:
     return optax.GradientTransformation(lambda params: optax.EmptyState(), update)
 
 
+def normuon_rows(beta2: float = 0.95, eps: float = 1e-8) -> optax.GradientTransformation:
+    """NorMuon's row-wise normalisation of Muon's orthogonalised update.
+
+    NorMuon (Li et al. 2025, arXiv:2510.05491; the base of SF-NorMuon, arXiv:2605.23061)
+    keeps a second moment per neuron, v <- beta2 v + (1 - beta2) mean_row(O^2), and divides
+    each row of the orthogonalised update O by sqrt(v) + eps, so no output neuron's update
+    dominates. A row is an output neuron: axis -2 of an eqx.nn.Linear weight (out, in),
+    each slice of a stacked weight on its own. It runs after optax's Muon, on the leaves Muon
+    takes, and rescales each matrix back to the Frobenius norm Muon gave it: the update's
+    RMS stays 0.2 lr (consistent_rms), only its distribution over rows changes.
+    """
+    is_dims = lambda d: d is None or isinstance(d, optax.contrib.MuonDimensionNumbers)
+
+    def init(params):
+        return jax.tree.map(
+            lambda d, p: jax.tree.map(
+                lambda a: jnp.zeros(a.shape[:-1] if d is not None else (), jnp.float32), p
+            ),
+            muon_dimensions(params),
+            params,
+            is_leaf=is_dims,
+        )
+
+    def normalise(u, v):
+        u32 = u.astype(jnp.float32)
+        frob = lambda a: jnp.sqrt(jnp.sum(jnp.square(a), axis=(-2, -1), keepdims=True))
+        unit = u32 / jnp.maximum(frob(u32) / jnp.sqrt(u32.shape[-2] * u32.shape[-1]), 1e-30)
+        v = beta2 * v + (1.0 - beta2) * jnp.mean(jnp.square(unit), axis=-1)
+        rows = unit / (jnp.sqrt(v)[..., None] + eps)
+        out = rows * frob(u32) / jnp.maximum(frob(rows), 1e-30)
+        return out.astype(u.dtype), v
+
+    def update(updates, state, params=None):
+        del params
+        dims = muon_dimensions(updates)
+        pairs = jax.tree.map(
+            lambda d, u, v: jax.tree.map(lambda a, b: normalise(a, b) if d is not None else (a, b), u, v),
+            dims,
+            updates,
+            state,
+            is_leaf=is_dims,
+        )
+        is_pair = lambda t: isinstance(t, tuple) and len(t) == 2
+        new_updates = jax.tree.map(lambda t: t[0], pairs, is_leaf=is_pair)
+        new_state = jax.tree.map(lambda t: t[1], pairs, is_leaf=is_pair)
+        return new_updates, new_state
+
+    return optax.GradientTransformation(init, update)
+
+
+def decoupled_decay(weight_decay: float, decay_lr) -> optax.GradientTransformation:
+    """Decoupled weight decay on the trained weights, each at its group's lr (no schedule-free).
+
+    Kept outside the base optimizer so that NorMuon's row normalisation never touches it.
+    Matrices and embedding tables only, as in schedule_free.
+    """
+
+    def update(updates, state, params):
+        lrs = decay_lr(state, params)
+        updates = jax.tree.map(
+            lambda u, p, li: u - li * weight_decay * p if p.ndim >= 2 else u, updates, params, lrs
+        )
+        return updates, optax.safe_increment(state)
+
+    return optax.GradientTransformation(lambda params: jnp.zeros((), jnp.int32), update)
+
+
 def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
     """Schedule-free Muon, with AdamW for the parameters Muon does not take.
 
-    Schedule-free (Defazio et al. 2024, "The Road Less Scheduled", arXiv:2405.15682) keeps
-    a fast sequence z, takes the gradient at y = (1 - b1) z + b1 x, and evaluates the
-    average x, weighted by the squared lr. It needs no cooldown and no total length, only a
-    warmup. Muon keeps its own momentum inside it, as SF-Muon does in AMUSE (Kim et al.
-    2026, arXiv:2605.22432, eq. 4); AdamW runs without a first moment, as in SF-AdamW,
-    since the averaging stands in for it. consistent_rms scales Muon's update to AdamW's
-    RMS, so the two learning rates are in the same units.
+    The base is Muon (RMS-matched, consistent_rms=0.2, so its lr is in AdamW's units) with
+    its own momentum, and AdamW with an inner first moment: both are "inner momentum" in
+    ScheduleFree+'s sense. Neither decays the weights: the decay acts on schedule-free's
+    fast sequence z, inside `schedule_free.schedule_free`, where SF-NorMuon shows it must
+    (F36, F37). Without --schedule_free the decay is optax's usual decoupled one, on the
+    trained weights.
     """
+    get = lambda name, default: getattr(args, name, default)
     warmup = lambda peak: optax.linear_schedule(0.0, peak, args.warmup_steps)
+    muon_lr, adam_lr = warmup(args.learning_rate), warmup(args.adam_learning_rate)
+    use_sf = get("schedule_free", True)
+    # the base never decays: schedule-free decays z, the plain path adds a decoupled decay
     base = optax.contrib.muon(
-        warmup(args.learning_rate),
-        beta=getattr(args, "muon_momentum", 0.95),
-        weight_decay=args.weight_decay,
+        muon_lr,
+        beta=get("muon_momentum", 0.8),
+        weight_decay=0.0,
         mu_dtype=jnp.bfloat16,
         consistent_rms=0.2,
-        adam_b1=0.0,
+        adam_b1=get("adam_b1", 0.9),
         adam_b2=0.95,
-        adam_learning_rate=warmup(args.adam_learning_rate),
-        adam_weight_decay=args.weight_decay,
+        adam_learning_rate=adam_lr,
+        adam_weight_decay=0.0,
         muon_weight_dimension_numbers=muon_dimensions,
     )
-    ns_dtype = getattr(args, "newton_schulz_dtype", "bfloat16")
+    if get("normuon", False):
+        base = optax.chain(base, normuon_rows())
+    ns_dtype = get("newton_schulz_dtype", "bfloat16")
     if ns_dtype != "float32":
         base = optax.chain(cast_muon_gradients(jnp.dtype(ns_dtype)), base)
-    if not getattr(args, "schedule_free", True):
+
+    def decay_lr(step, params):
+        """Each parameter's decay goes at its own group's lr, Muon's or AdamW's."""
+        is_dims = lambda d: d is None or isinstance(d, optax.contrib.MuonDimensionNumbers)
+        lr_m, lr_a = muon_lr(step), adam_lr(step)
+        return jax.tree.map(
+            lambda d, p: jax.tree.map(lambda _: lr_a if d is None else lr_m, p),
+            muon_dimensions(params),
+            params,
+            is_leaf=is_dims,
+        )
+
+    if not use_sf:
         # plain Muon and AdamW at a constant lr after the warmup: the weights trained are the
         # weights evaluated
-        return optax.chain(optax.clip_by_global_norm(1.0), base)
+        return optax.chain(
+            optax.clip_by_global_norm(1.0), base, decoupled_decay(args.weight_decay, decay_lr)
+        )
+
+    warm_start = get("sf_warm_start", None)
     return optax.chain(
         optax.clip_by_global_norm(1.0),
-        optax.contrib.schedule_free(base, warmup(args.learning_rate), b1=0.9),
+        sf.schedule_free(
+            base,
+            muon_lr,
+            weight_decay=args.weight_decay,
+            decay_lr=decay_lr,
+            beta_start=get("sf_beta", 0.9),
+            beta_end=get("sf_beta_end", 0.965),
+            total_steps=args.total_steps,
+            warm_start=2 * args.warmup_steps if warm_start is None else warm_start,
+            r=get("sf_r", 1.0),
+            l1_weighting=get("sf_l1_weighting", False),
+        ),
     )
 
 
 def schedule_free_state(opt_state: optax.OptState):
     """The ScheduleFreeState in the optimizer chain, or None for a plain optimizer."""
-    found = [s for s in opt_state if isinstance(s, optax.contrib.ScheduleFreeState)]
+    found = [s for s in opt_state if isinstance(s, sf.ScheduleFreeState)]
     return found[0] if found else None
 
 
 def eval_flow(flow: LisaFlow, opt_state: optax.OptState) -> LisaFlow:
-    """The averaged weights x that schedule-free evaluates, from the training weights y.
+    """The averaged weights x that schedule-free evaluates (kept in its state).
 
     Without schedule-free the training weights are the ones to evaluate.
     """
     state = schedule_free_state(opt_state)
     if state is None:
         return flow
-    params, static = eqx.partition(flow, eqx.is_inexact_array)
-    return eqx.combine(optax.contrib.schedule_free_eval_params(state, params), static)
+    return eqx.combine(state.x, eqx.filter(flow, eqx.is_inexact_array, inverse=True))
 
 
 def losses(flow: LisaFlow, batch: TrainSample) -> Float[Array, "2"]:
@@ -462,7 +561,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--learning_rate", type=float, default=1e-3, help="Muon's")
     parser.add_argument("--adam_learning_rate", type=float, default=3e-4, help="AdamW's")
-    parser.add_argument("--weight_decay", type=float, default=1e-6)
+    parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=0.05,
+        help="decay per unit lr; with schedule-free it acts on z (SF-NorMuon), else on the weights",
+    )
     parser.add_argument(
         "--warmup_steps",
         type=int,
@@ -484,8 +588,50 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--muon_momentum",
         type=float,
-        default=0.95,
-        help="Muon's own momentum, kept inside schedule-free's base optimizer (0: none)",
+        default=0.8,
+        help="Muon's own momentum, kept inside schedule-free's base optimizer (SF-NorMuon: 0.8)",
+    )
+    parser.add_argument(
+        "--adam_b1",
+        type=float,
+        default=0.9,
+        help="AdamW's inner first moment inside schedule-free (ScheduleFree+)",
+    )
+    parser.add_argument(
+        "--sf_beta",
+        type=float,
+        default=0.9,
+        help="schedule-free interpolation y = (1 - beta) z + beta x, at the start",
+    )
+    parser.add_argument(
+        "--sf_beta_end",
+        type=float,
+        default=0.965,
+        help="the interpolation at total_steps, reached log-linearly (ScheduleFree+)",
+    )
+    parser.add_argument(
+        "--sf_r",
+        type=float,
+        default=1.0,
+        help="averaging weights t^r lr^2: 1 weights late iterates up (ScheduleFree+), 0 is uniform",
+    )
+    parser.add_argument(
+        "--sf_l1_weighting",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="ScheduleFree+'s step weighting 1 / EMA |g|_1, referenced to the warm start",
+    )
+    parser.add_argument(
+        "--normuon",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="NorMuon's row-wise normalisation of Muon's update (as in SF-NorMuon)",
+    )
+    parser.add_argument(
+        "--sf_warm_start",
+        type=int,
+        default=None,
+        help="steps before the averaging starts, x following z (default: twice the warmup)",
     )
     parser.add_argument(
         "--newton_schulz_dtype",
