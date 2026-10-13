@@ -131,6 +131,73 @@ def cast_muon_gradients(dtype) -> optax.GradientTransformation:
     return optax.GradientTransformation(lambda params: optax.EmptyState(), update)
 
 
+def normuon_rows(beta2: float = 0.95, eps: float = 1e-8) -> optax.GradientTransformation:
+    """NorMuon's row-wise normalisation of Muon's orthogonalised update.
+
+    NorMuon (Li et al. 2025, arXiv:2510.05491; the base of SF-NorMuon, arXiv:2605.23061)
+    keeps a second moment per neuron, v <- beta2 v + (1 - beta2) mean_row(O^2), and divides
+    each row of the orthogonalised update O by sqrt(v) + eps, so no output neuron's update
+    dominates. A row is an output neuron: axis -2 of an eqx.nn.Linear weight (out, in),
+    each slice of a stacked weight on its own. It runs after optax's Muon, on the leaves Muon
+    takes, and rescales each matrix back to the Frobenius norm Muon gave it: the update's
+    RMS stays 0.2 lr (consistent_rms), only its distribution over rows changes.
+    """
+    is_dims = lambda d: d is None or isinstance(d, optax.contrib.MuonDimensionNumbers)
+
+    def init(params):
+        return jax.tree.map(
+            lambda d, p: jax.tree.map(
+                lambda a: jnp.zeros(a.shape[:-1] if d is not None else (), jnp.float32), p
+            ),
+            muon_dimensions(params),
+            params,
+            is_leaf=is_dims,
+        )
+
+    def normalise(u, v):
+        u32 = u.astype(jnp.float32)
+        frob = lambda a: jnp.sqrt(jnp.sum(jnp.square(a), axis=(-2, -1), keepdims=True))
+        unit = u32 / jnp.maximum(frob(u32) / jnp.sqrt(u32.shape[-2] * u32.shape[-1]), 1e-30)
+        v = beta2 * v + (1.0 - beta2) * jnp.mean(jnp.square(unit), axis=-1)
+        rows = unit / (jnp.sqrt(v)[..., None] + eps)
+        out = rows * frob(u32) / jnp.maximum(frob(rows), 1e-30)
+        return out.astype(u.dtype), v
+
+    def update(updates, state, params=None):
+        del params
+        dims = muon_dimensions(updates)
+        pairs = jax.tree.map(
+            lambda d, u, v: jax.tree.map(lambda a, b: normalise(a, b) if d is not None else (a, b), u, v),
+            dims,
+            updates,
+            state,
+            is_leaf=is_dims,
+        )
+        is_pair = lambda t: isinstance(t, tuple) and len(t) == 2
+        new_updates = jax.tree.map(lambda t: t[0], pairs, is_leaf=is_pair)
+        new_state = jax.tree.map(lambda t: t[1], pairs, is_leaf=is_pair)
+        return new_updates, new_state
+
+    return optax.GradientTransformation(init, update)
+
+
+def decoupled_decay(weight_decay: float, decay_lr) -> optax.GradientTransformation:
+    """Decoupled weight decay on the trained weights, each at its group's lr (no schedule-free).
+
+    Kept outside the base optimizer so that NorMuon's row normalisation never touches it.
+    Matrices and embedding tables only, as in schedule_free.
+    """
+
+    def update(updates, state, params):
+        lrs = decay_lr(state, params)
+        updates = jax.tree.map(
+            lambda u, p, li: u - li * weight_decay * p if p.ndim >= 2 else u, updates, params, lrs
+        )
+        return updates, optax.safe_increment(state)
+
+    return optax.GradientTransformation(lambda params: jnp.zeros((), jnp.int32), update)
+
+
 def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
     """Schedule-free Muon, with AdamW for the parameters Muon does not take.
 
@@ -145,26 +212,24 @@ def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
     warmup = lambda peak: optax.linear_schedule(0.0, peak, args.warmup_steps)
     muon_lr, adam_lr = warmup(args.learning_rate), warmup(args.adam_learning_rate)
     use_sf = get("schedule_free", True)
-    base_decay = 0.0 if use_sf else args.weight_decay
+    # the base never decays: schedule-free decays z, the plain path adds a decoupled decay
     base = optax.contrib.muon(
         muon_lr,
         beta=get("muon_momentum", 0.8),
-        weight_decay=base_decay,
+        weight_decay=0.0,
         mu_dtype=jnp.bfloat16,
         consistent_rms=0.2,
         adam_b1=get("adam_b1", 0.9),
         adam_b2=0.95,
         adam_learning_rate=adam_lr,
-        adam_weight_decay=base_decay,
+        adam_weight_decay=0.0,
         muon_weight_dimension_numbers=muon_dimensions,
     )
+    if get("normuon", False):
+        base = optax.chain(base, normuon_rows())
     ns_dtype = get("newton_schulz_dtype", "bfloat16")
     if ns_dtype != "float32":
         base = optax.chain(cast_muon_gradients(jnp.dtype(ns_dtype)), base)
-    if not use_sf:
-        # plain Muon and AdamW at a constant lr after the warmup: the weights trained are the
-        # weights evaluated
-        return optax.chain(optax.clip_by_global_norm(1.0), base)
 
     def decay_lr(step, params):
         """Each parameter's decay goes at its own group's lr, Muon's or AdamW's."""
@@ -175,6 +240,13 @@ def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
             muon_dimensions(params),
             params,
             is_leaf=is_dims,
+        )
+
+    if not use_sf:
+        # plain Muon and AdamW at a constant lr after the warmup: the weights trained are the
+        # weights evaluated
+        return optax.chain(
+            optax.clip_by_global_norm(1.0), base, decoupled_decay(args.weight_decay, decay_lr)
         )
 
     warm_start = get("sf_warm_start", None)
@@ -190,6 +262,7 @@ def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
             total_steps=args.total_steps,
             warm_start=2 * args.warmup_steps if warm_start is None else warm_start,
             r=get("sf_r", 1.0),
+            l1_weighting=get("sf_l1_weighting", False),
         ),
     )
 
@@ -541,6 +614,18 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=1.0,
         help="averaging weights t^r lr^2: 1 weights late iterates up (ScheduleFree+), 0 is uniform",
+    )
+    parser.add_argument(
+        "--sf_l1_weighting",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="ScheduleFree+'s step weighting 1 / EMA |g|_1, referenced to the warm start",
+    )
+    parser.add_argument(
+        "--normuon",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="NorMuon's row-wise normalisation of Muon's update (as in SF-NorMuon)",
     )
     parser.add_argument(
         "--sf_warm_start",

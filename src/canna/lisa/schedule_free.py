@@ -22,6 +22,11 @@ this module replaces it, because XS-fd showed its failure mode with Muon (F36): 
   AMUSE, arXiv:2605.22432, also does).
 - x is stored, not rebuilt from y and z as optax does, which a varying beta would break
   (and which costs some float32 accuracy late in a long run).
+- Optionally (`l1_weighting`), ScheduleFree+'s inverse gradient-L1 step weighting (its
+  Eq. 10): the step goes as 1 / EMA(|g|_1), against the upward drift of the gradient norm.
+  The paper sets the numerator by grid search; here it is the lr times the EMA at the warm
+  start, so the lr keeps its units and the weighting is 1 until then. The averaging weights
+  and the decay follow the weighted step.
 
 The base optimizer must carry its own momentum (ScheduleFree+'s inner momentum; SF-NorMuon's
 ablation loses 0.14 nats without it) and no weight decay of its own.
@@ -40,6 +45,8 @@ class ScheduleFreeState(NamedTuple):
     base_state: optax.OptState
     z: optax.Params
     x: optax.Params
+    l1_ema: jax.Array  # EMA of the gradient's L1 norm
+    l1_ref: jax.Array  # its value at the warm start, the reference of the weighting
 
 
 def interpolation(
@@ -64,6 +71,8 @@ def schedule_free(
     warm_start: int = 0,
     r: float = 1.0,
     weight_lr_power: float = 2.0,
+    l1_weighting: bool = False,
+    l1_beta: float = 0.9,
 ) -> optax.GradientTransformation:
     """Wrap `base` (which must not decay the weights itself) into schedule-free training.
 
@@ -80,6 +89,8 @@ def schedule_free(
             base_state=base.init(params),
             z=params,
             x=params,
+            l1_ema=jnp.zeros((), jnp.float32),
+            l1_ref=jnp.zeros((), jnp.float32),
         )
 
     def update(grads, state, params):
@@ -87,12 +98,22 @@ def schedule_free(
         lr = jnp.asarray(learning_rate(state.step), jnp.float32)
         base_updates, base_state = base.update(grads, state.base_state, params)
 
+        # inverse gradient-L1 weighting (ScheduleFree+), referenced to the warm start
+        warm = step <= max(warm_start, 1)
+        g1 = sum(jnp.sum(jnp.abs(g.astype(jnp.float32))) for g in jax.tree.leaves(grads))
+        l1_ema = jnp.where(step == 1, g1, l1_beta * state.l1_ema + (1.0 - l1_beta) * g1)
+        l1_ref = jnp.where(warm, l1_ema, state.l1_ref)
+        scale = jnp.where(warm | (not l1_weighting), 1.0, l1_ref / jnp.maximum(l1_ema, 1e-30))
+        base_updates = jax.tree.map(lambda u: (scale * u).astype(u.dtype), base_updates)
+
         # the base step, and the decay on z itself (SF-NorMuon), each at its own lr
         lrs = (
             decay_lr(state.step, params)
             if decay_lr is not None
             else jax.tree.map(lambda _: lr, params)
         )
+        lrs = jax.tree.map(lambda li: scale * li, lrs)
+        lr = scale * lr  # the step actually taken, which weights the average
         z = jax.tree.map(
             lambda zi, ui, li: (
                 zi + ui - (li * weight_decay * zi if zi.ndim >= 2 else 0.0)
@@ -112,6 +133,6 @@ def schedule_free(
         beta = interpolation(step, beta_start, beta_end, warm_start, total_steps)
         y = jax.tree.map(lambda xi, zi: beta * xi + (1.0 - beta) * zi, x, z)
         updates = jax.tree.map(lambda yi, pi: (yi - pi).astype(pi.dtype), y, params)
-        return updates, ScheduleFreeState(step, weight_sum, base_state, z, x)
+        return updates, ScheduleFreeState(step, weight_sum, base_state, z, x, l1_ema, l1_ref)
 
     return optax.GradientTransformation(init, update)

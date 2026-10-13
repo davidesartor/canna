@@ -8,7 +8,7 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-13)
 
-- **Update, 2026-10-13 night (F38): the fixes are in.** Our own schedule-free wrapper has:
+- **Update, 2026-10-13 night (F39): the fixes are in.** Our own schedule-free wrapper has:
   - decay 0.05 on z;
   - Muon momentum 0.8 and AdamW b1 0.9 inside;
   - averaging weights t·lr² and a warm-started average;
@@ -408,7 +408,7 @@ the WDM nets their last ×2–3 (F23, F31).
 - So the loud sources are where the run is still immature, in every coordinate, not only
   f₀. That fits a mid-run model rather than a defect.
 
-### F38 (2026-10-13): SF-NorMuon's and ScheduleFree+'s fixes, integrated (not yet run)
+### F39 (2026-10-13): SF-NorMuon's and ScheduleFree+'s fixes, integrated (renumbered from F38, which a parallel session also used)
 
 `src/canna/lisa/schedule_free.py` replaces `optax.contrib.schedule_free`. The configs
 (XS-fd, B-fd) use it with:
