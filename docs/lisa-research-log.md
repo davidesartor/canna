@@ -8,6 +8,14 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-13)
 
+- **Update, 2026-10-13 night (F35): the comparison was stopped at 9k steps.**
+  - Decay 0.05 cuts the backbone's weight growth by ~40% at no cost in loss.
+  - Schedule-free's z drifts from its average at the same rate with or without decay.
+  - Early on, the average x beats the training weights y, as intended.
+  - Muon momentum inside schedule-free and schedule-free versus plain Muon are not yet
+    tested.
+  - B-fd was cancelled at epoch 48.
+
 - **Update, 2026-10-13 (F34): no real weight decay; the cost of Muon; ordered sources.**
   - **Weight decay.** 1e-6 times the lr is ~0 per step, so XS-fd's backbone weights grew
     19× (R1 3–4×), and z ended further from its average than the weights' own size.
@@ -282,9 +290,50 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14326113** (+ 14326114, 14326115, 14326116) | XS-fd: training, then its scorecard and eval | **Completed** at 22:14 CEST on 12 Oct: 17 h 52 min, trexgpu03, 52–53 s per epoch (38–39 s for the WDM nets), no NaN. Final training loss 0.4507, held-out loss of the average 0.4418. The spare link exited at once. Scorecard 4.2 min, eval 14 min. Downloaded to `outputs/lisa-XS-fd`: `checkpoints/1200` (59 files, sizes identical to TREX's, restores on the CPU, all 72.2M parameters finite), `corner/`, `scorecard.npz` and `logs/` (F33). |
 | 14401076 | XS-fd scorecard of the training weights y (`--weights training`), TREX at 7adfd3d | Queued at 23:16 CEST on 12 Oct; every A100 was busy. |
 | 14401101 | B-fd scorecard of y (`--n_random 50 --weights training`), `afterok` on link 5 | Queued with the B-fd chain. |
+| 14326117 → 14326121 | B-fd | **Cancelled by the user** at 02:11 CEST on 13 Oct, at epoch 48 of 200 (training loss 0.558, x's held-out loss 0.542); the later links never ran. The user had scored epoch 45 (14404725, 14404726, eval 14404727). |
+| 14408555, 14408558, 14408559, 14408560 | schedule-free Muon comparison A–D (F35), from `~/canna-dev` at 9bdc2d4 | Cancelled at 02:23 CEST on 13 Oct, after 9 epochs of A and B; C and D produced nothing. |
 | 14404725, 14404726 (+ 14404727) | B-fd mid-run: scorecards of x and y (`--n_random 50`, `--output_dir outputs/B-fd-ep45`) and the corner eval of x, on checkpoint 45 hard-linked out of the running link 1 | Submitted 00:52 CEST on 13 Oct. Scorecards completed in 46 min each (trexgpu01): loud f₀ 9.5 bins, 3.3× B1's final, but falling with SNR (F35). Copied to `outputs/lisa-B-fd/ep45/`. |
 
 ## 4. Findings
+
+### F35 (2026-10-13): schedule-free Muon comparison, stopped at 9k steps — weight decay slows the growth; z drifts from x regardless
+
+**Runs.**
+- Four 150k-step XS variants (`slurm/lisa-compare.sbatch`), all with 16 bins per token, the
+  ordered sources and the reconstruction head (b9bb3ef, 9bdc2d4).
+- **Cancelled at 02:23 CEST on 13 Oct**: there was no more GPU time that day.
+  - A (14408555, schedule-free, Muon momentum 0.95, decay 1e-6, XS-fd's settings) and
+    B (14408558, the same with decay 0.05) ran 9 epochs (9k steps, the warmup ending at 3k)
+    at 31–32 s per epoch.
+  - C (no Muon momentum) never finished an epoch, and D (no schedule-free) never started.
+- Logs in `outputs/compare/{A,B}`. No scorecards: the checkpoints lived in the nodes' /tmp.
+
+**Diagnostics on the fixed batch** (epoch 9; growth per 1k steps over epochs 5–9):
+
+| | A (decay 1e-6) | B (decay 0.05) |
+|---|---|---|
+| held-out loss, averaged weights x | 0.9660 | 0.9655 |
+| held-out loss, training weights y | 0.9684 | 0.9663 |
+| backbone weight RMS (initial 0.0192) | 0.0287 (+50%) | 0.0251 (+31%) |
+| its growth per 1k steps | 0.0013, steady | 0.0008, slowing |
+| z − x RMS | 0.0214 | 0.0203 |
+
+**Preliminary readings (9k steps, one seed).**
+- **Decay 0.05 does what F34 predicted.** Weight growth is ~40% slower and still slowing,
+  at no cost in loss so far. A grows at an undiminished rate, on the path to XS-fd's 19×.
+- **z drifts away from x at the same rate either way** (~0.002 RMS per 1k steps). After
+  9k steps it is already 0.7–0.8 of the weights' own RMS. Decay does not hold z close to its
+  average; only the lr or the averaging can. This is the part of the interaction that 150k
+  steps were meant to follow.
+- **Early on, the average is the better model,** as schedule-free intends: x's held-out
+  loss is 0.001–0.002 below y's from epoch 4. XS-fd's reversal (x worse by 0.012) belongs to
+  late training, which this test never reached.
+- **Not answered:** whether Muon's own momentum hurts inside schedule-free (C), and whether
+  schedule-free beats plain constant-lr Muon at all (D).
+
+**What this supports.** Run the next model with weight decay ~0.05. Keep logging x and y,
+the weight RMS and z − x (now on by default), and score both x and y. The late-phase
+question (x lagging after the loss drop) can only be settled by a full-length run.
 
 ### F34 (2026-10-13): schedule-free Muon ran with no weight decay; Muon's cost is Newton–Schulz in float32; sources now ordered
 
