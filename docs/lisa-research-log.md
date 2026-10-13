@@ -2897,6 +2897,30 @@ sbatch slurm/lisa-eval.sbatch S-late-768
 
 ## 8. Provenance
 
+**Local run folders, renamed 2026-10-14 in the order the runs were made.** Earlier entries
+cite the old local names. TREX keeps `outputs/lisa-<config>`, which is where a job writes;
+a finished run gets its number when it is archived here.
+
+| folder | was | run |
+|---|---|---|
+| `01-lisa-XS` | `lisa-XS` | 500k XS (13264195, 29 Sep); also holds `eval-tools/` |
+| `02-lisa-XS-1M` | `1M/lisa-XS` | E0, the 1M continuation (13378657, 1 Oct) |
+| `03-lisa-XS-late` | `lisa-XS-late` | E2, warped clock and aux 10% (13474448, 2 Oct) |
+| `04-lisa-XS-late-768` | `lisa-XS-late-768` | E3', 768 × 8 (13719349, 5 Oct) |
+| `05-lisa-XS-late-768-cool` | `lisa-XS-late-768-cool` | C1, its cooldown (13780234, 5 Oct) |
+| `06-lisa-XS-late-cool` | `lisa-XS-late-cool` | C2, the 512's cooldown (13849421, 6 Oct) |
+| `07-lisa-B-late` | `lisa-B-late` | B1 (13882121 → 26, 6–10 Oct) |
+| `08-lisa-XS-pos` | `lisa-XS-pos` | R1, position features (14263742, 10–11 Oct) |
+| `09-lisa-B-pos` | `lisa-B-pos` | B2, cancelled after link 1 (14275499, 11–12 Oct) |
+| `10-lisa-XS-fd` | `lisa-XS-fd` | XS-fd (14326113, 12 Oct) |
+| `11-lisa-B-fd` | `lisa-B-fd` | B-fd, cancelled at epoch 48 (14326117, 12–13 Oct) |
+| `12-lisa-XS-compare-sf` | `compare` | the schedule-free comparison A–D, stopped at 9k steps (13 Oct) |
+| `13-lisa-XS-sfplus` | `lisa-XS-sfplus` | XS-sfplus (14410743, 13 Oct) |
+| `14-lisa-B-sfplus` | `lisa-B-sfplus` | B-sfplus (14410744, 13 Oct) |
+
+`outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
+(the code finds a run at `<output_dir>/lisa-<config>`).
+
 Everything below is gitignored, under `outputs/lisa-XS/`.
 
 - **Logs.** `logs/canna-lisa-*.out|err` are the TREX slurm logs, fetched on 2026-10-01 at

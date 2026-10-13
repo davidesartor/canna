@@ -1,10 +1,10 @@
 """eval.py's ten injections, sampled with a run's training weights y alone.
 
 For a checkpoint whose optimizer state did not arrive (an interrupted transfer): restores
-only `flow`, the trained weights, and draws as outputs/lisa-XS/eval-tools/eval_draws.py does
+only `flow`, the trained weights, and draws as outputs/01-lisa-XS/eval-tools/eval_draws.py does
 (the same keys, injections and base draws), for compare_mcmc.py.
 
-    .venv/bin/python lisa_checks/eval_draws_weights.py XS-fd outputs/lisa-XS-sfplus [out.npz]
+    .venv/bin/python lisa_checks/eval_draws_weights.py XS-fd outputs/13-lisa-XS-sfplus [out.npz]
 """
 import sys
 import time

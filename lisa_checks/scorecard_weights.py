@@ -1,7 +1,7 @@
 """scorecard.py on a run's training weights y alone, for a checkpoint whose optimizer state
 did not arrive (it restores only `flow`). Writes <run>/scorecard_training.npz.
 
-    .venv/bin/python lisa_checks/scorecard_weights.py XS-fd outputs/lisa-XS-sfplus [scorecard flags]
+    .venv/bin/python lisa_checks/scorecard_weights.py XS-fd outputs/13-lisa-XS-sfplus [scorecard flags]
 """
 import runpy
 import sys

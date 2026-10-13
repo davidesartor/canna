@@ -1,10 +1,10 @@
 """The schedule-free Muon comparison (research log F35): curves and scorecards of each variant.
 
-Reads outputs/compare/<tag>/ (scorecard.npz, scorecard_training.npz) and the variant's slurm
+Reads outputs/12-lisa-XS-compare-sf/<tag>/ (scorecard.npz, scorecard_training.npz) and the variant's slurm
 log, whose epoch lines carry the optimizer diagnostics (train.py: heldout = x, heldout_y = y,
 w_rms = backbone weight RMS, z_x = RMS of schedule-free's z - x).
 
-    .venv/bin/python lisa_checks/compare_variants.py outputs/compare A B C D
+    .venv/bin/python lisa_checks/compare_variants.py outputs/12-lisa-XS-compare-sf A B C D
 """
 
 import re
