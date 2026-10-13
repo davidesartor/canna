@@ -8,6 +8,14 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-13)
 
+- **Update, 2026-10-13 night (F37): the literature.**
+  - No flow-matching or diffusion paper uses schedule-free.
+  - SF-NorMuon (arXiv:2605.23061) reports our failure: without weight decay on z, z
+    diverges and contaminates x. Decay at y, which is what optax does, is also unstable.
+  - ScheduleFree+ (arXiv:2605.19095) weights later iterates more (r = 1) for long runs.
+  - **To do before the next schedule-free run:** decay on z (our own wrapper), and r = 1 or
+    an annealed β.
+
 - **Update, 2026-10-13 night (F36): why schedule-free failed.**
   - Schedule-free steps z with Muon's fixed-size updates. With no weight decay, z ran away to
     twice the weights' size, and its loss is 2.7×10²¹.
@@ -37,7 +45,7 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
     and the reconstruction head is back. Fixed labels make transport paths 38% longer.
   - **Next run** waits on the user's choice of weight decay, sort key and patch.
 
-- **Update, 2026-10-13 (F35): B-fd at epoch 45 of 200 (mid-run scorecards of x and y, and
+- **Update, 2026-10-13 (F36): B-fd at epoch 45 of 200 (mid-run scorecards of x and y, and
   the eval).**
   - **Loud f₀ 9.5 bins**, 3.3× B1's *final* 3.2. Nothing found yet (< 1 bin), and faint
     sources are not localised.
@@ -312,9 +320,59 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 14401101 | B-fd scorecard of y (`--n_random 50 --weights training`), `afterok` on link 5 | Queued with the B-fd chain. |
 | 14326117 → 14326121 | B-fd | **Cancelled by the user** at 02:11 CEST on 13 Oct, at epoch 48 of 200 (training loss 0.558, x's held-out loss 0.542); the later links never ran. The user had scored epoch 45 (14404725, 14404726, eval 14404727). |
 | 14408555, 14408558, 14408559, 14408560 | schedule-free Muon comparison A–D (F35), from `~/canna-dev` at 9bdc2d4 | Cancelled at 02:23 CEST on 13 Oct, after 9 epochs of A and B; C and D produced nothing. |
-| 14404725, 14404726 (+ 14404727) | B-fd mid-run: scorecards of x and y (`--n_random 50`, `--output_dir outputs/B-fd-ep45`) and the corner eval of x, on checkpoint 45 hard-linked out of the running link 1 | Submitted 00:52 CEST on 13 Oct. Scorecards completed in 46 min each (trexgpu01): loud f₀ 9.5 bins, 3.3× B1's final, but falling with SNR (F35). Copied to `outputs/lisa-B-fd/ep45/`. |
+| 14404725, 14404726 (+ 14404727) | B-fd mid-run: scorecards of x and y (`--n_random 50`, `--output_dir outputs/B-fd-ep45`) and the corner eval of x, on checkpoint 45 hard-linked out of the running link 1 | Submitted 00:52 CEST on 13 Oct. Scorecards completed in 46 min each (trexgpu01): loud f₀ 9.5 bins, 3.3× B1's final, but falling with SNR (F36). Copied to `outputs/lisa-B-fd/ep45/`. |
 
 ## 4. Findings
+
+### F37 (2026-10-13): the literature on schedule-free failures — F36's runaway is documented for LLMs; no flow-matching reports
+
+Search of 13 Oct. No paper I found trains a diffusion or flow-matching model with a
+schedule-free optimizer, so there is no report of issues specific to flow matching. The
+failure of F36 is documented for language models:
+
+- **SF-NorMuon** (Apte, Deshpande, Kumar, Chakrabarti, Kim, arXiv:2605.23061, May/Sep 2026).
+  Schedule-free with a normalised-Muon base. In their words, "for SF methods, the validation
+  loss at X diverges without weight decaying specifically at Z".
+  - SF-NorMuon with no decay "diverges faster" than SF-AdamW.
+  - Decay at Y, the original schedule-free recommendation, is unstable too.
+  - **Mechanism, as in F36:** Z runs at a constant lr and its loss "often diverges". X
+    averages all past Z, so Z "eventually contaminates" X.
+  - **Fix:** decay on Z, Z ← Z − ηλZ − η̂P, as part of the base dynamics, not as an ℓ2 term.
+    It bounds every iterate, and |Z| converges to a steady state.
+  - **Settings (125M LM):** η = 0.01, λ = 0.05, interpolation β1 = 0.9, Muon momentum 0.8.
+  - **Ablation:** with Muon's momentum removed (μ = 0), the final loss is worse (3.14 →
+    3.28). So keeping Muon's own momentum inside schedule-free, as XS-fd did, is right.
+- **ScheduleFree+** (Defazio, arXiv:2605.19095, May 2026). Fixes needed to scale
+  schedule-free:
+  - inner momentum in the base (large-batch divergence without it);
+  - fully decoupled weight decay;
+  - warm-started averaging (no averaging for ~2× the warmup);
+  - interpolation β annealed from 0.9 to 0.965;
+  - **averaging weights r = 1 for long runs.** The default, uniform after the warmup,
+    "underweights later iterates", which is F33's lag after the late loss drop.
+  - Evaluate x, the average, not y.
+- **AMUSE** (Kim et al., arXiv:2605.22432): a fixed interpolation β trades early speed
+  against late stability; it moves β towards 1 over time.
+- **Diffusion, weight growth and averaging** (from prior knowledge, not this search):
+  - Karras et al., "Analyzing and Improving the Training Dynamics of Diffusion Models"
+    (EDM2, arXiv:2312.02696), found uncontrolled growth of weight magnitudes during
+    diffusion training. With normalisations, the growth acts as an uncontrolled, uneven
+    decay of the effective lr. They removed it by forcing the weights to unit norm.
+  - The same paper fits a power-function EMA of the training weights after the fact. The
+    diffusion literature evaluates EMAs of the training iterate, not schedule-free
+    averages.
+
+**Consequences for our code.**
+- **Weight decay at y is the wrong place.** optax's `schedule_free` passes y to the base
+  optimizer, so `optax.contrib.muon`'s decay acts at y. Even with λ = 0.05 that is the
+  placement SF-NorMuon finds unstable. Decay must act on z: a schedule-free wrapper of our
+  own (~40 lines, optax's plus the −ηλz term), or decay off in the base with z decayed in
+  the wrapper.
+- **Averaging weights.** For long runs, take ScheduleFree+'s r = 1 and warm-started
+  averaging, or AMUSE's annealed β. They address the lag after the late loss drop
+  (F33, F36).
+- **Alternative with the most precedent in diffusion:** constant-lr Muon with decay, and an
+  EMA (or post-hoc EMA) of the training weights.
 
 ### F36 (2026-10-13): why schedule-free failed on XS-fd — its fast sequence z ran away, and only the training point y stayed good
 
@@ -517,7 +575,7 @@ question (x lagging after the loss drop) can only be settled by a full-length ru
 - **Label ambiguity.** Near-equal SNRs swap labels within one posterior (SNR is known to
   ±1). f₀ is known to ~0.01 bins, so f₀ order would rarely swap.
 
-### F35 (2026-10-13): B-fd at epoch 45 of 200 — 10 bins wide, but no longer flat in SNR
+### F36 (2026-10-13): B-fd at epoch 45 of 200 — 10 bins wide, but no longer flat in SNR
 
 **Runs.**
 - B-fd's link 1 (14326117) saved checkpoint 45 at 00:34 CEST on 13 Oct, 20.5 h in. It was
