@@ -423,9 +423,21 @@ the WDM nets their last ×2–3 (F23, F31).
 - **x kept in the state**, not rebuilt from y and z: a varying β needs it, and it removes
   F34's float32 reconstruction error.
 
-Not taken over: ScheduleFree+'s lr-free parts (Polyak step, inverse gradient-L1 weighting),
-since our lr is set; and NorMuon's row-wise normalisation, which is a different base
-optimizer, not a fix (SF-NorMuon credits it with ~12% faster convergence).
+Not taken over (corrected 2026-10-13 after reading ScheduleFree+ in full):
+- **The Polyak step** (its Eq. 12, Algorithm 1). It is the lr-free mechanism and needs the
+  loss minimum f*; Algorithm 1 drops it, i.e. takes f* = 0. Flow matching has a large
+  irreducible loss (~0.4 on XS), so f* = 0 would scale the steps with the whole loss, not
+  the excess.
+- **AdamC's fully decoupled decay** (γ_t² λ z, λ 5–50; Eq. 14). The paper calls it
+  "necessary when using the Polyak step size". With a set lr, the SF-NorMuon form used here
+  (γ λ z) differs from it only through the warmup.
+- **NorMuon's row-wise normalisation**: a different base optimizer, not a fix (SF-NorMuon
+  credits it with ~12% faster convergence).
+- **Inverse gradient-L1 step weighting** (Eq. 10): left out by mistake. It is *not* tied to
+  the lr-free step: the paper also runs it with a grid-searched lr ("ScheduleFree 1/L1",
+  Fig. 8). The step size goes as 1/EMA‖g‖₁ (EMA 0.9), to counter gradient-norm drift. That
+  drift shows in our runs: the gradient norm rose from 0.30 to 0.59 late in XS-fd, and from
+  0.63 to 0.80 by epoch 48 of B-fd.
 
 **Checks.**
 - `tests/lisa/test_schedule_free.py`:
