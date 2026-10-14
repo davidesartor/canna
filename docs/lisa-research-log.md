@@ -8,6 +8,10 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-14)
 
+- **Update, 2026-10-14 (F42): B's ~3-bin floor is not the bf16 cast** (float32 at eval
+  changes no width: 1.00×). Relaunched with the fixes, no ablations: XS and B with the fixed
+  recipe, and XS and B with RoPE in frequency (14509892–95).
+
 - **Update, 2026-10-14 (F41): the TREX reads.**
   - **XS:** the average x confirms F40's regression: 682 of 840 found, 1.5–1.6× XS-fd's
     width.
@@ -353,6 +357,59 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 14404725, 14404726 (+ 14404727) | B-fd mid-run: scorecards of x and y (`--n_random 50`, `--output_dir outputs/B-fd-ep45`) and the corner eval of x, on checkpoint 45 hard-linked out of the running link 1 | Submitted 00:52 CEST on 13 Oct. Scorecards completed in 46 min each (trexgpu01): loud f₀ 9.5 bins, 3.3× B1's final, but falling with SNR (F38). Copied to `outputs/lisa-B-fd/ep45/`. |
 
 ## 4. Findings
+
+### F42 (2026-10-14): B's floor is not the bf16 cast; XS and B relaunched with the fixes, with and without RoPE
+
+**The float32 test** (14507218, B-sfplus's x, the 10 eval and 10 random injections, the same
+keys as the bf16 scorecard's first 20; 63 min on an A100 with autotuning off):
+
+| SNR | n | median f₀ width (bins), bf16 / float32 | per source, float32 / bf16 [16–84%] |
+|---|---|---|---|
+| < 15 | 13 | 4.08 / 4.15 | 0.99 [0.90–1.05] |
+| 15–40 | 11 | 3.61 / 3.58 | 0.99 [0.95–1.04] |
+| 40–100 | 22 | 3.10 / 3.19 | 0.99 [0.98–1.03] |
+| ≥ 100 | 34 | 3.36 / 3.37 | **1.00** [0.98–1.04] |
+
+**The cast is not the floor.** F41's worst-case bound matched the floor by coincidence. As in
+F21, a network trained in bf16 could in principle fail to use float32 at eval, but nothing
+moves at all. B's ~3-bin floor lies elsewhere. Candidates:
+- the f₀ PLE bin (12 frequency bins on B);
+- how the sources find their tokens: learned absolute token positions, against a source
+  coordinate in log f;
+- training.
+
+RoPE in frequency (below) addresses the second directly.
+
+**Launched** (from `d041316`, TREX reset onto the squashed history, with the old head on
+`trex-pre-squash-2`). At the collaborator's request there are no ablations, only full runs
+keeping the fixes. Every run uses `slurm/lisa-local.sbatch`, with the in-job eval draws and
+the optimizer state left behind, and keeps:
+- the F39 schedule-free fixes and NorMuon;
+- the 1/L1 weighting off (F40);
+- sources sorted by SNR with the reconstruction loss at 0.1;
+- 16 bins per token.
+
+| job | config | what | kept as |
+|---|---|---|---|
+| 14509892 | XS-fd | the fixed recipe | `lisa-XS-fixed` |
+| 14509893 | B-fd | the fixed recipe | `lisa-B-fixed` |
+| 14509894 | XS-fd-rope | + RoPE in frequency | `lisa-XS-rope` |
+| 14509895 | B-fd-rope | + RoPE in frequency | `lisa-B-rope` |
+
+**RoPE in frequency** (the user's proposal). Each source token is placed at its current f₀
+and each data token at its centre bin, in bins from the window start
+(`WindowGeometry.source_bins`, `token_bins`). q and k are rotated in every attention after the
+qk-norm, with the angles in float32 and 32 periods per head log-spaced from 2 bins to twice
+the window. A source's score on a token then depends on f₀ − f_token, so it can read the
+signal at f₀ ± δ wherever it sits.
+- It is not R1's additive position features: nothing is added to the residual streams, and
+  the sources stay labelled by SNR.
+- Laptop smoke run: trains cleanly, 27 s per 100-step epoch at batch 64.
+- Tests: `tests/lisa/test_rope.py`.
+
+**Readout.** Compare each pair with and without RoPE, and the fixed recipe with XS-sfplus
+(F40) and XS-fd (F33): loud floor, sources found, calibration, and the MCMC windows (XS). For
+B the rule stays < 1 bin.
 
 ### F41 (2026-10-14): the TREX reads — XS's average changes nothing; B matches B1 at a ninth of the cost, against a flat ~3-bin floor
 
