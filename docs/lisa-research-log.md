@@ -6,7 +6,16 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 §9 places the work in the literature (survey of 2026-10-09).
 
-## 1. Summary (2026-10-01, updated 2026-10-14)
+## 1. Summary (2026-10-01, updated 2026-10-15)
+
+- **Update, 2026-10-15 (F44): RoPE breaks B's floor.**
+  - **Found:** B-rope finds 215 of 240 sources (B-fixed 5, B1 1).
+  - **Width:** f₀ is 0.035 bins above SNR 40, 50–80× narrower than B-fixed per source, and
+    calibrated (rank 0.51, in95 1.00).
+  - **Far modes:** nearly gone (2 of 40 eval sources, both at SNR < 8).
+  - **The cause:** B's 3-bin floor was the sources finding their tokens among 256.
+  - **Next limit:** a new floor at ~0.035 bins (12–72× the Fisher width when loud).
+  - **The loss moved 0.3%.**
 
 - **Update, 2026-10-14 afternoon (F43): RoPE works on loud sources; B-fixed is the best B.**
   - **XS-rope:** loud f₀ 0.63× XS-fixed's per source, back to XS-fd's floor (0.0106 bins) and
@@ -368,9 +377,60 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14509892** | XS-fixed: XS-fd with F39's fixes, the 1/L1 weighting off, `lisa-local.sbatch`, `KEEP_AS=lisa-XS-fixed` (F42) | **Completed** 13:48 CEST on 14 Oct (11 h 31 min with scorecards and eval). Held out x 0.7283. Fetched as `15-lisa-XS-fixed`, checkpoint y only (F43). |
 | **14509893** | B-fixed: the same on B | **Completed** 12:50 CEST on 14 Oct (10 h 33 min). Held out x 0.6417. Fetched as `16-lisa-B-fixed`, checkpoint y only (F43). |
 | **14509894** | XS-rope: XS-fixed + RoPE in frequency | **Completed** 13:55 CEST on 14 Oct (11 h 30 min). Held out x 0.7294. Fetched as `17-lisa-XS-rope`, checkpoint y only (F43). |
-| 14509895 | B-rope: B-fixed + RoPE | Waited for a GPU (3 per user), started 12:50 CEST on 14 Oct on trexgpu02, 189 s per epoch, ETA ~00:30 CEST. A watcher step (14509895.2) saves its full final checkpoint to `outputs/lisa-B-rope-x` on TREX scratch. |
+| **14509895** | B-rope: B-fixed + RoPE | Waited for a GPU (3 per user), started 12:50 CEST on 14 Oct on trexgpu02. **Completed** 00:03 CEST on 15 Oct (11 h 12 min with scorecards and eval), 189 s per epoch. Held out x 0.6399. A watcher step (14509895.2) saved the full final checkpoint (with x) before the clean-up. Fetched as `18-lisa-B-rope`: 215 of 240 sources found (F44). |
 
 ## 4. Findings
+
+### F44 (2026-10-15): B-rope — RoPE breaks B's 3-bin floor: 215 of 240 sources found, 70× narrower, calibrated
+
+**Run.** B-rope (14509895, B-fd-rope: B-fixed + RoPE in frequency, F42) completed at 00:03 CEST
+on 15 Oct: 11 h 12 min with the scorecards (`--n_random 50`, the same 240 sources as B1) and
+the eval, 189 s per epoch (B-fixed 178 s), peak 5.5 GiB. The watcher step saved the full final
+checkpoint, with `opt_state` (so x), before the job's clean-up. Its `flow`, histories and key
+are md5-identical to the job's own copy. Local as `outputs/18-lisa-B-rope` (full checkpoint
+200, scorecards, eval draws, corner pages, logs). Tables: `outputs/scorecards/compare_fixed.py`.
+
+**B, the same 240 sources** (median f₀ width in bins of all sources, by SNR band; per source
+against B1):
+
+| model | < 15 | 15–40 | 40–100 | ≥ 100 | found (< 1 bin) | < 2 bins | per source vs B1 | rank / in68 / in95 |
+|---|---|---|---|---|---|---|---|---|
+| B1 (85 h) | 4.97 | 3.80 | 2.93 | 3.17 | 1 | 2 | 1 | 0.44 / 0.88 / 0.99 |
+| B-fixed x | 3.77 | 2.74 | 2.54 | 2.81 | 5 | 43 | 0.69 / 0.67 / 0.77 / 0.90 | 0.53 / 0.93 / 0.99 |
+| **B-rope x** | **0.91** | **0.054** | **0.035** | **0.036** | **215** | **219** | **0.06 / 0.01 / 0.01 / 0.01** | 0.51 / 0.88 / 1.00 |
+| B-rope y | 0.89 | 0.047 | 0.030 | 0.031 | 214 | | | 0.52 / 0.82 / 0.99 |
+
+- **Per source against B-fixed** (x): 0.083 [95% CI 0.040–0.248] below SNR 15, 0.021
+  [0.016–0.026] at 15–40, 0.014 at 40–100, **0.012 [0.011–0.014] at ≥ 100**: 50–80× narrower
+  above SNR 15.
+- **Calibrated:** rank 0.51, in95 1.00, offsets of a few hundredths of a bin with either sign
+  (eval table in the log). Slightly conservative at 68% (0.88).
+- **A new floor, ~0.035 bins, flat from SNR ~40 up** (loud floor 0.036, 95% CI 0.030–0.038).
+  In units of the Fisher width that is 2–6× at SNR 15–100, 12× at 100–300, 32× at 300–1000 and
+  72× above 1000. It is 3.4× XS-rope's loud floor (0.0106) and 5× R1's (0.0067).
+- **The eval draws** (10 injections, 40 sources; nearest slot to each true source):
+  - **Concentrated:** for the median source, 96% of the draws lie within 1 bin of the truth
+    and 92% within 0.2 bins. B-fixed: 26% and 5%.
+  - **Far modes are nearly gone:** 2 of 40 sources keep more than 5% of their draws beyond
+    10 bins (B-fixed 16), both at SNR 7–8.
+  - **F41's bimodal loudest source** (SNR 1668, ~20% of the draws ~160 bins away on
+    B-sfplus) is now clean.
+  - **Misses:** the SNR-44 source of injection 5 sits 1–10 bins off. Two of injection 7's
+    faint sources (SNR 8.0 and 7.7) are wide or off.
+- **The loss barely moves:** held-out x 0.6399 against B-fixed's 0.6417 (0.3%), for a 70×
+  change in f₀ width. F6 again, in its starkest form. RoPE's loss led by 0.024 at epoch 50 and
+  the gap closed, while the widths did not.
+- **Still training:** held-out x fell 0.0026 over the last 25 epochs (0.6425 → 0.6399).
+
+**What B's floor was.** The ~3-bin floor was flat in SNR across every B model (B1, B-sfplus,
+B-fixed), and float32 did not move it (F42). The other two candidates are now ruled out:
+- **Not the f₀ PLE bin, nor the bf16 cast:** both are unchanged in B-rope.
+- **It was the sources finding their tokens:** 256 data tokens with learned absolute positions
+  against a source coordinate in log f. RoPE makes each attention score a function of
+  f₀ − f_token, and the floor drops 70×.
+
+On XS (4 tokens) there was little to find, which is why RoPE gained 0.63× there and not 70×
+(F43).
 
 ### F43 (2026-10-14): the fixed recipe and RoPE — RoPE brings XS's loud f₀ back to XS-fd's level; B-fixed is the best B so far; the 1/L1 weighting was not XS's regression
 
@@ -2441,6 +2501,31 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
 
 ## 6. Roadmap (2026-10-03, updated 2026-10-14)
 
+### Update, 2026-10-15 (after B-rope, F44)
+
+F43's decision rule is met by a wide margin: RoPE becomes the default. Still no ablations, so
+each step is a full run with everything kept.
+1. **Code, no GPU:**
+   - RoPE on in the base configs.
+   - The final checkpoint keeps x: write the averaged weights as `flow` before `opt_state` is
+     dropped, or keep `opt_state` (F43).
+   - The chained `lisa.sbatch` resumes from checkpoints that keep `opt_state`, and its outputs
+     now land on scratch, so the home quota no longer forces `lisa-local.sbatch`.
+2. **B-rope, longer.** The loss was still falling (−0.0026 over the last 25 epochs). B trains
+   200k steps against XS's 1.2M, and its floor is 3.4× XS-rope's. So the first candidate for
+   the new ~0.035-bin floor is training length. Two ways:
+   - 400k steps in one 24 h slot: ~21 h + 1 h of scorecards, tight;
+   - or 600k as a chain of two links (~32 h).
+
+   Read: whether the loud floor falls below ~0.02 bins.
+3. **XS-rope with 4 bins per token** (16 tokens), in parallel, ~6–7 h. B shows RoPE matters
+   most when there are many tokens to choose from. On XS this tests whether more tokens plus
+   RoPE closes the gap below SNR 100 (1.25–1.35× XS-fd) and reaches R1's loud floor.
+4. **B against the MCMC** (CPU): one or two B eval windows with `mcmc_xs.py`'s sampler, now
+   that B localises its sources. Needed for the paper's B claims.
+5. **Paper:** B-rope replaces B1 as the B model. R1 stays the XS model until an XS run beats
+   it.
+
 ### Update, 2026-10-14 afternoon (after F43)
 
 No ablations (the collaborator's request), so every step is a full run that keeps the fixes,
@@ -3098,6 +3183,7 @@ a finished run gets its number when it is archived here.
 | `15-lisa-XS-fixed` | `lisa-XS-fixed` | XS-fixed (14509892, 14 Oct) |
 | `16-lisa-B-fixed` | `lisa-B-fixed` | B-fixed (14509893, 14 Oct) |
 | `17-lisa-XS-rope` | `lisa-XS-rope` | XS-rope (14509894, 14 Oct) |
+| `18-lisa-B-rope` | `lisa-B-rope` (+ `lisa-B-rope-x`) | B-rope (14509895, 14–15 Oct) |
 
 `outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
 (the code finds a run at `<output_dir>/lisa-<config>`).
