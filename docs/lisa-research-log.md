@@ -2978,6 +2978,18 @@ a finished run gets its number when it is archived here.
 `outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
 (the code finds a run at `<output_dir>/lisa-<config>`).
 
+**TREX clean-up, 2026-10-14 (6.94 → 6.03 GB of 9.2).** Backed up and verified file by file,
+then deleted on TREX:
+- B-fd's checkpoint 48, now `11-lisa-B-fd/checkpoints/48` (restores on the laptop);
+- `09-lisa-B-pos`, already local;
+- every slurm log (`outputs/trex-logs/canna/.slurm-logs`, 143 files);
+- the `canna-dev` clone's logs and outputs (`outputs/trex-logs/canna-dev`);
+- the old code bundles and the clone itself.
+
+TREX keeps the small `outputs/lisa-*` folders (scorecards and logs, ~1 MB) and its slurm
+logs. The uv cache (5.7 GB) is hard-linked into the venv and counted once; pruning it freed
+nothing.
+
 Everything below is gitignored, under `outputs/lisa-XS/`.
 
 - **Logs.** `logs/canna-lisa-*.out|err` are the TREX slurm logs, fetched on 2026-10-01 at
