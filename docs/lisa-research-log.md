@@ -8,6 +8,16 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-14)
 
+- **Update, 2026-10-14 afternoon (F43): RoPE works on loud sources; B-fixed is the best B.**
+  - **XS-rope:** loud f₀ 0.63× XS-fixed's per source, back to XS-fd's floor (0.0106 bins) and
+    MCMC ratio (11.4×). Below SNR 100 still 1.25–1.35× XS-fd's; A and sky unchanged.
+  - **XS-fixed = XS-sfplus:** the 1/L1 weighting was not XS's regression. Left: 4 tokens, SNR
+    labels, weight shrinkage (which happens without the weighting too).
+  - **B-fixed:** 0.67–0.90× B1's width per source, calibrated, 43 sources under 2 bins
+    (B-sfplus 25), but the ~2.8-bin floor is still flat in SNR. B-rope reads out tonight.
+  - **The final checkpoints lost x** (the script deletes `opt_state`, which holds it); a
+    watcher saves B-rope's.
+
 - **Update, 2026-10-14 (F42): B's ~3-bin floor is not the bf16 cast** (float32 at eval
   changes no width: 1.00×). Relaunched with the fixes, no ablations: XS and B with the fixed
   recipe, and XS and B with RoPE in frequency (14509892–95).
@@ -355,8 +365,101 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14410743** | XS-fd with schedule-free + the SF-NorMuon/ScheduleFree+ fixes, NorMuon rows, 1/L1 weighting, 16 bins per token, ordered sources, reconstruction head (F39, a4da413); `slurm/lisa-local.sbatch` (trains in the node's /tmp, then scorecards x and y and the eval, then copies `outputs/lisa-XS-fd` home) | **Completed** 14:37 CEST on 13 Oct (11 h 30 min with scorecards and eval). Final: training loss 0.739, held out x 0.727 / y 0.736, weight RMS 0.0070, gradient norm 8.8, z − x 0.013 (F40). On TREX in `outputs/lisa-XS-fd`. Locally as `outputs/lisa-XS-sfplus`: checkpoint `flow` and histories complete; `opt_state` (x, z) truncated by a dropped connection; TREX's scorecards and eval not yet fetched. |
 | **14410744** | B-fd with the same recipe, 200k steps, scorecards with `--n_random 50` | **Completed** 13:34 CEST on 13 Oct (10 h 27 min with scorecards and eval). Final: training loss 0.669, held out x 0.645 / y 0.654, weight RMS 0.0118, gradient norm 8.4, z − x 0.021. On TREX in `outputs/lisa-B-fd` (beside the cancelled B-fd's `checkpoints/48`); not yet fetched. |
 | 14404725, 14404726 (+ 14404727) | B-fd mid-run: scorecards of x and y (`--n_random 50`, `--output_dir outputs/B-fd-ep45`) and the corner eval of x, on checkpoint 45 hard-linked out of the running link 1 | Submitted 00:52 CEST on 13 Oct. Scorecards completed in 46 min each (trexgpu01): loud f₀ 9.5 bins, 3.3× B1's final, but falling with SNR (F38). Copied to `outputs/lisa-B-fd/ep45/`. |
+| **14509892** | XS-fixed: XS-fd with F39's fixes, the 1/L1 weighting off, `lisa-local.sbatch`, `KEEP_AS=lisa-XS-fixed` (F42) | **Completed** 13:48 CEST on 14 Oct (11 h 31 min with scorecards and eval). Held out x 0.7283. Fetched as `15-lisa-XS-fixed`, checkpoint y only (F43). |
+| **14509893** | B-fixed: the same on B | **Completed** 12:50 CEST on 14 Oct (10 h 33 min). Held out x 0.6417. Fetched as `16-lisa-B-fixed`, checkpoint y only (F43). |
+| **14509894** | XS-rope: XS-fixed + RoPE in frequency | **Completed** 13:55 CEST on 14 Oct (11 h 30 min). Held out x 0.7294. Fetched as `17-lisa-XS-rope`, checkpoint y only (F43). |
+| 14509895 | B-rope: B-fixed + RoPE | Waited for a GPU (3 per user), started 12:50 CEST on 14 Oct on trexgpu02, 189 s per epoch, ETA ~00:30 CEST. A watcher step (14509895.2) saves its full final checkpoint to `outputs/lisa-B-rope-x` on TREX scratch. |
 
 ## 4. Findings
+
+### F43 (2026-10-14): the fixed recipe and RoPE — RoPE brings XS's loud f₀ back to XS-fd's level; B-fixed is the best B so far; the 1/L1 weighting was not XS's regression
+
+**Runs** (F42's launches, all `lisa-local.sbatch`, TREX at `d041316`): XS-fixed (14509892),
+B-fixed (14509893), XS-rope (14509894), all completed 12:50–13:55 CEST on 14 Oct with their
+scorecards (x and y) and eval draws. B-rope (14509895) started at 12:50 and runs until ~00:30
+CEST. Fetched as `outputs/15-lisa-XS-fixed`, `16-lisa-B-fixed`, `17-lisa-XS-rope` (176 files,
+md5-identical to TREX), then deleted from TREX. Tables: `outputs/scorecards/compare_fixed.py`
+(sources matched by injection and SNR, since the ordered runs list them loudest first) and
+`lisa_checks/mcmc_table.py` (`outputs/mcmc/compare_{fixed,rope}_x.log`,
+`table_fixed_rope.txt`).
+
+**XS, the same 840 sources** (median f₀ width in bins of the found, by SNR band; per source
+against XS-fd's x, by band):
+
+| model | found | < 15 | 15–40 | 40–100 | ≥ 100 (95% CI) | rank / in95 | per source vs XS-fd |
+|---|---|---|---|---|---|---|---|
+| R1 | 739 | 0.098 | 0.044 | 0.016 | 0.0067 | 0.51 / 0.97 | 1.08 / 1.00 / 0.94 / 0.65 |
+| XS-fd x | 732 | 0.080 | 0.043 | 0.017 | 0.0103 | 0.45 / 0.96 | 1 |
+| XS-sfplus x | 681 | 0.113 | 0.059 | 0.026 | 0.0151 | 0.50 / 0.98 | 1.61 / 1.55 / 1.62 / 1.50 |
+| XS-fixed x | 678 | 0.109 | 0.051 | 0.022 | 0.0149 (0.0141–0.0165) | 0.51 / 0.98 | 1.44 / 1.45 / 1.51 / 1.54 |
+| **XS-rope x** | **687** | 0.102 | 0.059 | 0.022 | **0.0106** (0.0094–0.0121) | 0.51 / 0.97 | 1.25 / 1.35 / 1.29 / **1.08** |
+| XS-fixed y | 664 | | | | 0.0179 | 0.50 / 0.96 | 1.66–1.77 |
+| XS-rope y | 659 | | | | 0.0116 | 0.50 / 0.97 | 1.16–1.43 |
+
+- **The 1/L1 weighting was not the regression.** With it off, XS-fixed lands on XS-sfplus:
+  678 against 681 found, the same floor, 1.4–1.5× XS-fd's widths. Of F40's three suspects, the
+  4 tokens and the SNR-ordered labels remain, and so does the weight shrinkage (below).
+- **RoPE, per source against XS-fixed** (both found): 0.88 [0.85–0.90] at SNR 15–100, 0.72
+  [0.67–0.75] at 100–400, **0.63 [0.60–0.66] at ≥ 400**. The loud floor returns to XS-fd's
+  (0.0106 against 0.0103). Below SNR 100 it is still 1.25–1.35× XS-fd's, and 45 fewer sources
+  are found. Calibration unchanged (rank 0.51).
+- **The loss does not see it** (F6 again): held-out x 0.7294 for RoPE against 0.7283 without.
+- **x beats y** in both runs, as in F40.
+
+**Against the MCMC** (x, four windows, median width ratio to the MCMC):
+
+| | R1 | XS-fd x | XS-sfplus x | XS-fixed x | XS-rope x |
+|---|---|---|---|---|---|
+| loud f₀ (SNR ≥ 500) | 6.3 | 11.4 | 21.7 | 24.1 | **11.4** |
+| loud A, sky, orientation | 5.0 | 6.1 | 7.2 | 7.4 | 7.5 |
+| f₀ at SNR 50–500 | 2.7 | 3.7 | 6.3 | 5.0 | 5.2 |
+| MCMC median inside the 95% | 125/128 | 126/128 | 127/128 | 123/128 | 125/128 |
+| sources missed, of 16 | 6 | 6 | 8 | 8 | **6** |
+
+RoPE recovers window 9's SNR-33 source (f₀ 11× against 170× for XS-fixed; XS-fd 1.7×) and
+halves window 9's loudest pair (28× and 8× against 52× and 31×). A, sky and orientation do not
+move: RoPE places a source in frequency, not on the sky.
+
+**B, the same 240 sources** (median f₀ width in bins of all sources, by SNR band; per source
+against B1 [16–84%]):
+
+| model | < 15 | 15–40 | 40–100 | ≥ 100 | < 2 bins | per source vs B1, by band | rank / in95 |
+|---|---|---|---|---|---|---|---|
+| B1 (85 h) | 4.97 | 3.80 | 2.93 | 3.17 | 2 | 1 | 0.44 / 0.99 |
+| B-sfplus x | 4.39 | 3.38 | 3.01 | 3.24 | 25 | 0.88 / 0.81 / 0.99 / 1.03 | 0.52 / 1.00 |
+| **B-fixed x** | **3.77** | **2.74** | **2.54** | **2.81** | **43** | **0.69 / 0.67 / 0.77 / 0.90** | 0.53 / 0.99 |
+| B-fixed y | 4.18 | 2.66 | 2.24 | 2.38 | | 0.86 / 0.65 / 0.73 / 0.72 | **0.41** / 0.95 |
+
+- **B-fixed is the best B model so far,** 10–33% narrower than B1 per source with honest
+  calibration, and 5 sources found (B1 1).
+- **The floor is still flat in SNR** (slope −0.002) at ~2.8 bins: the rule (< 1 bin) fails.
+- **On B, turning the 1/L1 weighting off helped** (B-fixed against B-sfplus, the only change);
+  on XS it did not. One seed each.
+- **y is now biased the other way** (rank 0.41; B-sfplus's y was 0.62): x stays the model.
+
+**Training** (final epoch): held-out x 0.7283 (XS-fixed), 0.7294 (XS-rope), 0.6417 (B-fixed;
+B-sfplus 0.6451).
+
+**Correction to F40: the weights shrink without the 1/L1 weighting too.** The backbone RMS
+falls from 0.019 to 0.0081 (XS-fixed; XS-sfplus 0.0070) and 0.0110 (B-fixed; B-sfplus
+0.0118). F40's predicted equilibrium near 0.020 was wrong. The decay on z (0.05) does it, and
+the gradient norm grows to 4.6 (XS) and 10.9 (B), so the clip at 1 binds throughout. What the
+weighting added was mostly the gradient growth (8.8 on XS-sfplus).
+
+**The averaged weights x were not kept.** `lisa-local.sbatch` deletes `opt_state` before the
+copy home, and x lives in it (schedule-free stores x in its state). The final checkpoints of
+XS-fixed, XS-rope and B-fixed hold y only. Their x scorecards and eval draws were made in the
+job and are kept, and the mid-run snapshots (below) hold x at epochs 839, 827 and 156. For
+B-rope, a watcher step (`srun --overlap`, log `.slurm-logs/b-rope-keep-x.log` on TREX) copies the
+full final checkpoint to scratch (`outputs/lisa-B-rope-x`) as soon as training prints
+`[done]`, before the cleanup.
+
+**Storage** (2026-10-14):
+- TREX `~/canna/outputs` is now a symlink to `/work/scratch/data/mentasgi/canna-outputs`, off
+  the home quota. A failed copy home would have run the job's EXIT trap and deleted the run.
+- Mid-run snapshots of the three runs' checkpoints, with `opt_state`, were copied off the
+  nodes in the morning and are local in `outputs/trex-snapshots/` (restored on the CPU: all
+  212 arrays finite).
 
 ### F42 (2026-10-14): B's floor is not the bf16 cast; XS and B relaunched with the fixes, with and without RoPE
 
@@ -2338,6 +2441,24 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
 
 ## 6. Roadmap (2026-10-03, updated 2026-10-14)
 
+### Update, 2026-10-14 afternoon (after F43)
+
+No ablations (the collaborator's request), so every step is a full run that keeps the fixes,
+SNR order and the reconstruction loss.
+1. **B-rope's readout (tonight)** is the decision point. Against B-fixed, per source: RoPE
+   becomes the default if it is ≤ 0.85× at SNR ≥ 40, as on XS. The thing to watch is
+   whether the flat ~2.8-bin floor finally bends with SNR.
+2. **Keep x in the final checkpoints** (code, no GPU): write the averaged weights as the
+   checkpoint's `flow` before `opt_state` is dropped, or keep `opt_state`. Needed before any
+   new run.
+3. **XS's remaining gap below SNR 100** (1.25–1.35× XS-fd, 45 fewer found). The most
+   XS-specific suspect is 4 tokens for a 64-bin window. The next XS run would be XS-rope with
+   4 bins per token (16 tokens), a full run with everything else kept, ~6–7 h.
+4. **Not now:** the WDM run (FD + RoPE already matches XS-fd's loud floor), and the weight
+   decay (shrinkage is real, but nothing ties it to a cost yet).
+5. **Unchanged:** R1 stays the paper's XS model (loud f₀ 6.3× the MCMC against XS-rope's
+   11.4×). B-fixed, or B-rope if better, replaces B1 as the paper's B model.
+
 ### Update, 2026-10-14 (after the TREX reads, F41)
 
 F41 refines F40's plan; it does not replace it.
@@ -2974,6 +3095,9 @@ a finished run gets its number when it is archived here.
 | `12-lisa-XS-compare-sf` | `compare` | the schedule-free comparison A–D, stopped at 9k steps (13 Oct) |
 | `13-lisa-XS-sfplus` | `lisa-XS-sfplus` | XS-sfplus (14410743, 13 Oct) |
 | `14-lisa-B-sfplus` | `lisa-B-sfplus` | B-sfplus (14410744, 13 Oct) |
+| `15-lisa-XS-fixed` | `lisa-XS-fixed` | XS-fixed (14509892, 14 Oct) |
+| `16-lisa-B-fixed` | `lisa-B-fixed` | B-fixed (14509893, 14 Oct) |
+| `17-lisa-XS-rope` | `lisa-XS-rope` | XS-rope (14509894, 14 Oct) |
 
 `outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
 (the code finds a run at `<output_dir>/lisa-<config>`).
