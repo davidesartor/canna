@@ -9,6 +9,7 @@ from einops import rearrange
 
 from ..networks import MMDiT, FeedForward, Modulation, PiecewiseLinear, SinusoidalEmbed
 from ..networks.utils import DType
+from .problem import WindowGeometry
 
 # PLE bins. The data are whitened to unit noise per real and imaginary part, and reach
 # ~700 sigma for the loudest sources on XS; their edges are uniform in arcsinh out to
@@ -54,10 +55,14 @@ class LisaFlow(eqx.Module):
 
     dtype: DType = eqx.field(static=True)
     patch: int = eqx.field(static=True)
+    # rotary position embedding in frequency (optional): the window's geometry, to place each
+    # source and each data token in bins, and the rotation periods, in bins
+    window: WindowGeometry | None = eqx.field(static=True)
+    rope_periods: tuple[float, ...] | None = eqx.field(static=True)
     x_embed: PiecewiseLinear
     y_embed: PiecewiseLinear
     y_pos: Float[Array, "N D"]
-    x_slot: Float[Array, "S D"]
+    x_slot: Float[Array, "S D"] | None
     t_embed: SinusoidalEmbed
     t_mlp: FeedForward
     f_embed: PiecewiseLinear
@@ -76,6 +81,10 @@ class LisaFlow(eqx.Module):
         f_range: tuple[float, float],
         patch: int = 2,
         expand: int = 2,
+        slots: bool = True,
+        rope: bool = False,
+        window: WindowGeometry | None = None,
+        rope_min_period: float = 2.0,
         dtype: DType = jnp.float32,
         param_dtype: jnp.dtype = jnp.float32,
         *,
@@ -86,6 +95,20 @@ class LisaFlow(eqx.Module):
         assert x_dim == len(COORD_RANGES), f"expected {len(COORD_RANGES)} flow coordinates"
         assert n_bins % patch == 0, f"window of {n_bins} bins is not divisible by {patch}"
         self.dtype, self.patch = dtype, patch
+        # RoPE: one angle per token and per pair of a head's dimensions, periods log-spaced from
+        # rope_min_period bins to twice the window, so attention resolves f0 - f_token from a
+        # fraction of a bin up to the whole window
+        assert not rope or window is not None, "RoPE needs the window geometry"
+        self.window = window if rope else None
+        pairs = hidden_dim // num_heads // 2
+        self.rope_periods = (
+            tuple(
+                float(rope_min_period * (2.0 * window.window_bins / rope_min_period) ** (k / max(pairs - 1, 1)))
+                for k in range(pairs)
+            )
+            if rope
+            else None
+        )
 
         # eqx.nn's dtype is the parameter dtype; the compute dtype is applied in __call__
         kwargs = dict(kwargs, dtype=param_dtype)
@@ -101,7 +124,12 @@ class LisaFlow(eqx.Module):
         self.y_pos = 0.02 * jr.normal(
             next(keys), (n_bins // patch, hidden_dim), param_dtype
         )
-        self.x_slot = 0.02 * jr.normal(next(keys), (n_sources, hidden_dim), param_dtype)
+        # a learned embedding per source slot, for ordered sources; without it the source
+        # stream is permutation equivariant, as an unordered set needs
+        key_slot = next(keys)
+        self.x_slot = (
+            0.02 * jr.normal(key_slot, (n_sources, hidden_dim), param_dtype) if slots else None
+        )
 
         self.t_embed = SinusoidalEmbed(hidden_dim, key=next(keys), **kwargs)
         self.t_mlp = FeedForward(hidden_dim, hidden_dim, hidden_dim, key=next(keys), **kwargs)
@@ -126,20 +154,32 @@ class LisaFlow(eqx.Module):
         y: Float[Array, "F C"],
         f: Float[Array, ""],
     ) -> tuple[Float[Array, "S X"], Float[Array, "S X"]]:
-        assert x.shape[0] == self.x_slot.shape[0], (
+        assert self.x_slot is None or x.shape[0] == self.x_slot.shape[0], (
             f"built for {self.x_slot.shape[0]} source slots, got {x.shape[0]} sources"
         )
         f32 = jnp.float32
+        x_in = x  # the input precision, for the sources' positions
         c = self.t_mlp(self.t_embed(t.astype(f32)))
         c = c + self.f_mlp(self.f_embed(jnp.log(f.astype(f32))[None]))
-        x = jax.vmap(self.x_embed)(x.astype(f32)) + self.x_slot
+        x = jax.vmap(self.x_embed)(x.astype(f32))
+        if self.x_slot is not None:
+            x = x + self.x_slot
         y = rearrange(y.astype(f32), "(n p) c -> n (p c)", p=self.patch)
         y = jax.vmap(self.y_embed)(y) + self.y_pos
 
         # mixed precision: the stored params keep param_dtype, the backbone runs in dtype
         params, static = eqx.partition(self.backbone, eqx.is_inexact_array)
         backbone = eqx.combine(jax.tree.map(lambda p: p.astype(self.dtype), params), static)
-        x, _ = backbone(x.astype(self.dtype), y.astype(self.dtype), c.astype(self.dtype))
+        rope = None
+        if self.rope_periods is not None:
+            # positions in bins from the window start, computed before any cast: each source at
+            # its current f0, each data token at its centre bin
+            x_bins = self.window.source_bins(x_in[:, 0], f).astype(f32)
+            y_bins = self.window.token_bins(y.shape[0], self.patch)
+            bins = jnp.concat([x_bins, y_bins])
+            angles = 2 * jnp.pi * bins[:, None] / jnp.asarray(self.rope_periods, f32)[None, :]
+            rope = (jnp.cos(angles), jnp.sin(angles))
+        x, _ = backbone(x.astype(self.dtype), y.astype(self.dtype), c.astype(self.dtype), rope)
 
         x, _ = self.x_modulation(x.astype(f32), c)
         dx, x1 = jnp.split(jax.vmap(self.x_unembed)(x), 2, axis=-1)

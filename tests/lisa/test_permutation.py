@@ -83,3 +83,13 @@ def test_loudest_first_is_a_reordering():
     p = problem.sample_physical(jr.key(31), f)
     shuffled = p[jnp.array([2, 0, 1])]
     assert jnp.array_equal(problem.loudest_first(shuffled, f), p)
+
+
+def test_unordered_sources_keep_their_draw_order_and_the_set_coupling():
+    from canna.lisa import geometries
+    problem = LisaGB(n_sources=4, order_sources=False)
+    assert isinstance(problem.geometry, geometries.Set)
+    f = window(problem)
+    p = jax.vmap(problem.sample_physical, in_axes=(0, None))(jr.split(jr.key(32), 64), f)
+    # left in draw order, some window lists a quieter source first
+    assert bool(jnp.any(jnp.diff(problem.source_snrs(p, f), axis=-1) > 0))

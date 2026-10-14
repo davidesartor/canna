@@ -9,6 +9,16 @@ from einops import rearrange
 from .utils import FeedForward, Modulation, apply_stacked, stacked_linear
 
 
+def rotate(z: Float[Array, "T H D"], cos: Float[Array, "T P"], sin: Float[Array, "T P"]):
+    """Rotary position embedding: rotate each (first half, second half) pair of a head's dims
+    by its token's angle, in float32, and cast back. P = D / 2 angles per token, shared by
+    every head, so q . k depends on the difference of the two tokens' positions."""
+    z32 = z.astype(jnp.float32)
+    a, b = jnp.split(z32, 2, axis=-1)
+    cos, sin = cos[:, None, :], sin[:, None, :]
+    return jnp.concat([a * cos - b * sin, a * sin + b * cos], axis=-1).astype(z.dtype)
+
+
 class MultiStreamAttention(eqx.Module):
     num_heads: int = eqx.field(static=True)
     qkv_proj_x: eqx.nn.Linear
@@ -39,8 +49,9 @@ class MultiStreamAttention(eqx.Module):
         self.out_proj_y = eqx.nn.Linear(dim, dim, use_bias, key=next(keys), **kwargs)
 
     def __call__(
-        self, x: Float[Array, "N D"], y: Float[Array, "M D"]
+        self, x: Float[Array, "N D"], y: Float[Array, "M D"], rope=None
     ) -> tuple[Float[Array, "N D"], Float[Array, "M D"]]:
+        """rope: optional (cos, sin), each [N + M, head_dim / 2], for the x then the y tokens."""
         n = x.shape[-2]
         project = lambda linear, z: jax.vmap(partial(apply_stacked, linear), out_axes=1)(z)
         qkv = jnp.concat([project(self.qkv_proj_x, x), project(self.qkv_proj_y, y)], axis=1)
@@ -51,6 +62,8 @@ class MultiStreamAttention(eqx.Module):
             jnp.mean(jnp.square(z), axis=-1, keepdims=True) + 1e-6
         )
         q, k = q * rms(q), k * rms(k)
+        if rope is not None:
+            q, k = rotate(q, *rope), rotate(k, *rope)
 
         # cuDNN flash attention tiles the softmax instead of materialising the N x N
         # logits, and that matrix -- batch * heads * tokens^2, in f32 whatever the
@@ -103,10 +116,11 @@ class MMDiTBlock(eqx.Module):
         x: Float[Array, "N D"],
         y: Float[Array, "M D"],
         c: Float[Array, " D"],
+        rope=None,
     ) -> tuple[Float[Array, "N D"], Float[Array, "M D"]]:
         hx, gate_x = self.mod_x_attn(x, c)
         hy, gate_y = self.mod_y_attn(y, c)
-        hx, hy = self.attention(hx, hy)
+        hx, hy = self.attention(hx, hy, rope)
         x = x + hx * gate_x
         y = y + hy * gate_y
 
@@ -142,6 +156,7 @@ class MMDiT(eqx.Module):
         x: Float[Array, "N D"],
         y: Float[Array, "M D"],
         c: Float[Array, " D"],
+        rope=None,
     ) -> tuple[Float[Array, "N D"], Float[Array, "M D"]]:
         # one compiled block body, scanned over the stacked block params
         params, static = eqx.partition(self.blocks, eqx.is_array)
@@ -152,7 +167,7 @@ class MMDiT(eqx.Module):
             block: MMDiTBlock,
         ) -> tuple[tuple[Float[Array, "N D"], Float[Array, "M D"]], None]:
             x, y = carry
-            return eqx.combine(block, static)(x, y, c), None
+            return eqx.combine(block, static)(x, y, c, rope), None
 
         (x, y), _ = jax.lax.scan(scan_blocks, (x, y), params)
         return x, y

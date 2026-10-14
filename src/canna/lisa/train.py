@@ -317,8 +317,11 @@ class TrainState(NamedTuple):
 
         # the network is shaped by one sample of the problem
         sample = train_sample(problem, key_sample)
+        network = dict(args.network)
+        if network.get("rope"):
+            network["window"] = problem.window_geometry
         flow = LisaFlow(
-            **args.network,
+            **network,
             x_shape=sample.xt.shape,
             y_shape=sample.y.shape,
             f_range=problem.f0_range,

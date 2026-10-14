@@ -6,7 +6,11 @@
 # repo root:
 #     sbatch slurm/lisa-local.sbatch XS-fd
 #     sbatch slurm/lisa-local.sbatch B-fd --n_random 50     # flags go to the scorecards
-# No resume: a job that dies loses its run.
+# No resume: a job that dies loses its run. The posterior draws of the ten eval injections
+# (eval_draws.npz for x, eval_draws_training.npz for y) are written for the MCMC comparison,
+# and the optimizer state is left behind (KEEP_OPT_STATE=1 keeps it): the copy home then holds
+# the training weights, the histories, the scorecards, the corner pages and the draws. KEEP_AS=<name> stores the run as outputs/<name>
+# instead of outputs/lisa-<config>, so a rerun of a config does not merge into an older run.
 
 #SBATCH --job-name=canna-lisa-local
 #SBATCH --output=.slurm-logs/%x-%j.out
@@ -40,6 +44,12 @@ srun $RUN.train --config "$CONFIG" --output_dir "$SCRATCH"
 srun $RUN.scorecard --config "$CONFIG" --output_dir "$SCRATCH" "$@" || true
 srun $RUN.scorecard --config "$CONFIG" --output_dir "$SCRATCH" --weights training "$@" || true
 srun $RUN.eval --config "$CONFIG" --output_dir "$SCRATCH" || true
+PY="uv run --extra cuda --frozen python"
+srun $PY lisa_checks/eval_draws.py "$CONFIG" "$SCRATCH" "$SCRATCH/lisa-$CONFIG/eval_draws.npz" || true
+srun $PY lisa_checks/eval_draws.py "$CONFIG" "$SCRATCH" "$SCRATCH/lisa-$CONFIG/eval_draws_training.npz" --weights training || true
+if [[ "${KEEP_OPT_STATE:-0}" != "1" ]]; then rm -rf "$SCRATCH/lisa-$CONFIG"/checkpoints/*/opt_state; fi
+DEST="outputs/${KEEP_AS:-lisa-$CONFIG}"
 mkdir -p outputs
-cp -r "$SCRATCH/lisa-$CONFIG" outputs/
-echo "[kept] outputs/lisa-$CONFIG: $(ls outputs/lisa-$CONFIG | tr '\n' ' ')"
+if [[ -e "$DEST" ]]; then DEST="$DEST-$SLURM_JOB_ID"; fi
+cp -r "$SCRATCH/lisa-$CONFIG" "$DEST"
+echo "[kept] $DEST: $(ls "$DEST" | tr '\n' ' ')"

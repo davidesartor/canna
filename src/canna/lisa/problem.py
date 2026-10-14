@@ -1,4 +1,5 @@
 from typing import Optional
+import dataclasses
 import math
 import warnings
 
@@ -79,6 +80,46 @@ def max_f0(response_points: int, chirp_mass: float, t_obs: float) -> float:
     return f0
 
 
+@dataclasses.dataclass(frozen=True)
+class WindowGeometry:
+    """Where things sit inside a window, in rfft bins from its first bin.
+
+    The network's RoPE (LisaFlow, `rope`) gives the sources and the data tokens positions in
+    this one frame, so attention between them depends on f0 - f_token. It mirrors
+    LisaGB.window_start, f0_window and the f0 leg of flow_to_physical; a test holds the two
+    to each other. Everything is relative to the window start, because absolute bin numbers
+    reach ~1e6 on B, where a float32 ulp is a sizeable fraction of a bin.
+    """
+
+    t_obs: float
+    window_bins: int
+    wdm_times: int
+    guard: int
+    f0_range: tuple[float, float]
+
+    def start(self, f: Float[Array, ""]) -> Float[Array, ""]:
+        index = jnp.round((f * self.t_obs - self.window_bins / 2) / self.wdm_times)
+        return index * self.wdm_times
+
+    def source_bins(self, x_f: Float[Array, "..."], f: Float[Array, ""]) -> Float[Array, "..."]:
+        """The bin of f0 for the flow coordinate x_f, which is log f0 mapped onto [-1, 1]."""
+        start = self.start(f)
+        low = jnp.maximum(self.guard, self.f0_range[0] * self.t_obs - start)
+        high = jnp.minimum(
+            self.window_bins - self.guard, self.f0_range[1] * self.t_obs - start
+        )
+        # f0 = c exp(x_f h), with c the window's geometric centre and h half its log span;
+        # c - start, written so that start cancels exactly
+        half_log_span = 0.5 * jnp.log1p((high - low) / (start + low))
+        centre = jnp.sqrt((start + low) * (start + high))
+        centre_offset = (start * (low + high) + low * high) / (centre + start)
+        return centre_offset + centre * jnp.expm1(x_f * half_log_span)
+
+    def token_bins(self, n_tokens: int, patch: int) -> Float[Array, " N"]:
+        """The centre bin of each data token, `patch` rfft bins wide."""
+        return patch * jnp.arange(n_tokens, dtype=jnp.float32) + (patch - 1) / 2
+
+
 class LisaGB(eqx.Module):
     """Galactic binaries seen by LISA in one sliding frequency window, as an unordered set."""
 
@@ -104,6 +145,10 @@ class LisaGB(eqx.Module):
     # undetectable sources at one end of the band and skip the loud ones at the other. This is
     # how Strub et al. 2022 (arXiv:2204.04467) set their amplitude search box too.
     snr_range: tuple[float, float] = eqx.field(static=True, default=(7.0, 1000.0))
+    # list each window's sources loudest first (slot 0 the loudest), so the flow learns an
+    # ordered set; False leaves them interchangeable, paired by the nearest permutation (the
+    # Set coupling of every run up to XS-fd)
+    order_sources: bool = eqx.field(static=True, default=True)
 
     # built once here: its whitening quadrature must not be re-run under every trace
     chirp_mass_prior: ChirpMass = eqx.field(init=False)
@@ -111,7 +156,7 @@ class LisaGB(eqx.Module):
     # angle pairs are spheres, the initial phase a circle. One source's geometry, applied
     # to every source slot independently: the slots are ordered (loudest first, see
     # sample_physical), so no slot is ever matched to another
-    geometry: geometries.Product = eqx.field(init=False)
+    geometry: geometries.Product | geometries.Set = eqx.field(init=False)
     # static too: JaxGB is a plain object, not a pytree, so it cannot be traced
     response: jaxgb.JaxGB = eqx.field(init=False, static=True)
 
@@ -119,7 +164,7 @@ class LisaGB(eqx.Module):
         self.chirp_mass_prior = ChirpMass(
             m_min=self.mass_range[0], m_max=self.mass_range[1]
         )
-        self.geometry = geometries.Product(
+        source = geometries.Product(
             geometries.Bounded(1),
             geometries.Euclidean(1),
             geometries.Bounded(1),
@@ -127,6 +172,7 @@ class LisaGB(eqx.Module):
             geometries.Spherical(3),
             geometries.Spherical(2),
         )
+        self.geometry = source if self.order_sources else geometries.Set(source)
 
         # the window and the band it can hold determine each other, and which way round
         # depends on which one is actually free. Left to itself the window follows the
@@ -268,6 +314,16 @@ class LisaGB(eqx.Module):
         )
         return low / self.t_obs, high / self.t_obs
 
+    @property
+    def window_geometry(self) -> WindowGeometry:
+        return WindowGeometry(
+            t_obs=self.t_obs,
+            window_bins=self.window_bins,
+            wdm_times=self.wdm_times,
+            guard=self.response_points // 2,
+            f0_range=tuple(self.f0_range),
+        )
+
     def window_freqs(self, f: Float[Array, ""]) -> Float[Array, " F"]:
         return (self.window_start(f) + jnp.arange(self.window_bins)) / self.t_obs
 
@@ -356,7 +412,7 @@ class LisaGB(eqx.Module):
         iota = jnp.arcsin(jr.uniform(keys[6], shape, minval=-1.0, maxval=1.0))
         phi0 = jr.uniform(keys[7], shape, maxval=2 * jnp.pi)
         p = jnp.concat([f0, mc, amp, sky_lon, sky_lat, psi, iota, phi0], axis=-1)
-        return self.loudest_first(p, f)
+        return self.loudest_first(p, f) if self.order_sources else p
 
     def source_snrs(
         self, p: Float[Array, "... S 8"], f: Float[Array, ""]

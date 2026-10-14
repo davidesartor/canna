@@ -184,3 +184,13 @@ def test_data_edges_are_symmetric_and_fine_near_the_noise():
     close(edges, -edges[::-1], atol=1e-9)
     assert np.isclose(edges[-1], 1000.0)
     assert np.diff(edges).min() < 0.25 and np.diff(edges).max() < 250
+
+
+def test_without_slots_the_network_is_permutation_equivariant_over_sources():
+    net = perturbed(
+        LisaFlow((S, X), (BINS, C), HIDDEN, HEADS, 2, F_RANGE, 2, slots=False, key=jax.random.key(0))
+    )
+    x, t, y, f = inputs()
+    perm = jnp.asarray([3, 1, 0, 2])
+    close(net(x[perm], t, y, f)[0], net(x, t, y, f)[0][perm])
+    assert net.x_slot is None

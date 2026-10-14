@@ -32,7 +32,7 @@ sf_beta: 0.9
 sf_beta_end: 0.965
 sf_r: 1.0
 # ScheduleFree+'s 1 / EMA |g|_1 step weighting, and NorMuon's row normalisation (SF-NorMuon)
-sf_l1_weighting: true
+sf_l1_weighting: false # off: coupled to the decay it shrank the weights 3.6x (F40)
 normuon: true
 # the parameter-reconstruction loss, at a constant weight beside the flow loss
 aux_weight: 0.1
