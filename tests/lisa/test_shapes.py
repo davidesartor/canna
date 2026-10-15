@@ -194,7 +194,11 @@ def test_the_warped_clock_places_xt_at_s_and_targets_the_path_velocity():
     problem = LisaGB(n_sources=2)
     key = jr.key(53)
     plain = train_sample(problem, key)
-    assert all(jnp.array_equal(a, b) for a, b in zip(plain, train_sample(problem, key, 1.0)))
+    assert all(
+        jnp.array_equal(a, b)
+        for a, b in zip(plain, train_sample(problem, key, 1.0))
+        if a is not None  # the loss metric, absent without fisher_cap
+    )
 
     warped = train_sample(problem, key, 3.0)
     assert jnp.array_equal(warped.t, plain.t)  # the network still sees the uniform clock

@@ -44,13 +44,16 @@ def bench(config: str, steps: int, patch: int | None, parts: bool) -> None:
         args.network = dict(args.network, patch=patch)
     state = T.TrainState.from_config(args)
     problem, batch_size, tp = state.problem, args.batch_size, args.time_power
-    make_batch = jax.vmap(partial(T.train_sample, problem, time_power=tp))
+    make_batch = jax.vmap(partial(
+        T.train_sample, problem, time_power=tp, templates=state.flow.templates,
+        fisher_cap=args.fisher_cap,
+    ))
     tokens = problem.window_bins // args.network["patch"]
     label = f"{config} patch {args.network['patch']} ({tokens} tokens)"
 
     @eqx.filter_jit
     def epoch(state):
-        return state.train_epoch(batch_size, steps, tp)
+        return state.train_epoch(batch_size, steps, tp, args.aux_weight, args.fisher_cap)
 
     full = timed(epoch, state) / steps
     print(f"{label}: full step {1e3 * full:7.1f} ms", flush=True)

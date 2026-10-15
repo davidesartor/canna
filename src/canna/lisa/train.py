@@ -24,9 +24,58 @@ class TrainSample(NamedTuple):
     xt: Float[Array, "S 11"]
     dx: Float[Array, "S 11"]
     t: Float[Array, ""]
-    y: Float[Array, "F 6"]
+    y: Float[Array, "F C"]  # C = 6, or 12 with the template residual (`with_residual`)
     x_target: Float[Array, "S 11"]
     f: Float[Array, ""]
+    # the loss metric at xt (`fisher_metric`); None is the plain Euclidean loss
+    metric: Float[Array, "S 11 11"] | None = None
+
+
+def with_residual(
+    problem: LisaGB, x: Float[Array, "S 11"], y: Float[Array, "F 6"], f: Float[Array, ""]
+) -> Float[Array, "F 12"]:
+    """The whitened data and, beside it, the data minus the sources' signals at x.
+
+    The flow's current point x gives a template for every source; near the end of the path,
+    where the fine structure is resolved, x is close to the answer and the residual is noise
+    plus the signal of the remaining error: an error in phase shows up as a phase rotation
+    between data and template, an error in sky position as a mismatched pattern of the annual
+    Doppler and antenna-pattern sidebands (2004.08464's fast/slow decomposition). Those are
+    O(1) sigma in the residual, against differences of ~1/SNR between large numbers in the
+    data alone. x is an input, so the posterior the flow learns is unchanged.
+    """
+    x = jax.lax.stop_gradient(x)
+    h = problem.preprocess(problem.clean_signal(problem.flow_to_physical(x, f), f), f)
+    return jnp.concat([y, y - h.astype(y.dtype)], axis=-1)
+
+
+def fisher_metric(
+    problem: LisaGB, x: Float[Array, "S 11"], s: Float[Array, ""], f: Float[Array, ""], cap: float
+) -> Float[Array, "S 11 11"]:
+    """Each source's loss metric at x: W = (s^2 + (1 - s)^2) I + clip((1 - s)^2 G, cap).
+
+    G is the source's Fisher information in the flow coordinates at x, from its own response
+    band (whitened, so G = J^T J). W is the inverse variance of the target velocity
+    u = (x1 - x_s) / (1 - s) under a Gaussian posterior of precision G + I along a straight
+    path: measuring the velocity error in its own units makes a well-measured direction count
+    as much as a loose one, which the plain loss does not (F6). Its eigenvalues span ~10
+    decades, so the Fisher part is clipped at `cap`. W depends on x and s, never on the target,
+    so the minimiser is still the conditional mean velocity: the posterior is not biased.
+    """
+    x = jax.lax.stop_gradient(x)
+    power = problem.noise_psd(problem.window_freqs(f)) * problem.t_obs / 2.0
+
+    def band(x_k):  # one source's whitened band, real and imaginary parts
+        idx, seg = problem.source_segments(problem.flow_to_physical(x_k[None], f), f)
+        w = seg[0] * jax.lax.rsqrt(power[jnp.clip(idx[0], 0, problem.window_bins - 1)] / 2.0)
+        return jnp.concat([w.real.ravel(), w.imag.ravel()])
+
+    jac = jax.vmap(jax.jacfwd(band))(x)  # (S, 2 N 3, 11)
+    g = jnp.einsum("sni,snj->sij", jac, jac)
+    lam, v = jnp.linalg.eigh((g + jnp.swapaxes(g, -1, -2)) / 2)
+    lam = jnp.minimum((1 - s) ** 2 * jnp.maximum(lam, 0.0), cap)
+    eye = jnp.eye(x.shape[-1], dtype=x.dtype)
+    return (s**2 + (1 - s) ** 2) * eye + jnp.einsum("sik,sk,sjk->sij", v, lam, v)
 
 
 def geodesic(
@@ -58,9 +107,17 @@ def path_speed(t: Float[Array, ""], time_power: float) -> Float[Array, ""]:
 
 
 def train_sample(
-    problem: LisaGB, key: Key[Array, ""], time_power: float = 1.0
+    problem: LisaGB,
+    key: Key[Array, ""],
+    time_power: float = 1.0,
+    templates: bool = False,
+    fisher_cap: float | None = None,
 ) -> TrainSample:
-    """Draw one training example: conditioning, a point on the geodesic, its velocity."""
+    """Draw one training example: conditioning, a point on the geodesic, its velocity.
+
+    `templates` adds the residual at the point to the conditioning (`with_residual`), and
+    `fisher_cap` the Fisher loss metric there (`fisher_metric`).
+    """
     key_c, key_p, key_o, key_x0, key_t = jr.split(key, 5)
     f = problem.sample_f(key_c)
     p = problem.sample_physical(key_p, f)
@@ -77,7 +134,10 @@ def train_sample(
     path = partial(geodesic, problem)
     xt = path(s, x0, x1)
     dx = jax.jacobian(path)(s, x0, x1)
-    return TrainSample(xt=xt, dx=dx, t=t, y=y, x_target=x1, f=f)
+    if templates:
+        y = with_residual(problem, xt, y, f)
+    metric = None if fisher_cap is None else fisher_metric(problem, xt, s, f, fisher_cap)
+    return TrainSample(xt=xt, dx=dx, t=t, y=y, x_target=x1, f=f, metric=metric)
 
 
 # Muon takes the matrices of these fields, AdamW everything else: the encodings (the PLE
@@ -287,13 +347,23 @@ def eval_flow(flow: LisaFlow, opt_state: optax.OptState) -> LisaFlow:
 def losses(flow: LisaFlow, batch: TrainSample) -> Float[Array, "2"]:
     """The flow-matching loss and the parameter-reconstruction loss.
 
+    With a metric in the batch (`fisher_metric`) the flow loss is the Mahalanobis one.
+
     The sources are ordered (loudest first), so slot k is compared with source k: no
     matching. The reconstruction is scored in the flow coordinates' ambient space -- the
     chord, not the arc, on the spheres -- which needs no log map of an off-manifold
     prediction (the source of F2's NaN).
     """
     du_pred, x_pred = jax.vmap(flow)(batch.xt, batch.t, batch.y, batch.f)
-    flow_loss = jnp.mean(jnp.square(du_pred - batch.dx))
+    d = du_pred - batch.dx
+    if batch.metric is None:
+        flow_loss = jnp.mean(jnp.square(d))
+    else:
+        # the Mahalanobis loss d^T W d, normalised by the batch's mean weight so its scale
+        # stays the Euclidean one's beside the reconstruction loss
+        w = batch.metric.astype(d.dtype)
+        scale = jax.lax.stop_gradient(jnp.mean(jnp.trace(w, axis1=-2, axis2=-1)))
+        flow_loss = jnp.mean(jnp.einsum("bsi,bsij,bsj->bs", d, w, d)) / scale
     x_loss = jnp.mean(jnp.square(x_pred - batch.x_target))
     return jnp.stack([flow_loss, x_loss])
 
@@ -316,8 +386,8 @@ class TrainState(NamedTuple):
         problem = LisaGB(**args.problem)
 
         # the network is shaped by one sample of the problem
-        sample = train_sample(problem, key_sample)
         network = dict(args.network)
+        sample = train_sample(problem, key_sample, templates=bool(network.get("templates")))
         if network.get("rope"):
             network["window"] = problem.window_geometry
         flow = LisaFlow(
@@ -381,7 +451,12 @@ class TrainState(NamedTuple):
 
     @eqx.filter_jit
     def train_epoch(
-        self, batch_size: int, n_steps: int, time_power: float = 1.0, aux_weight: float = 0.0
+        self,
+        batch_size: int,
+        n_steps: int,
+        time_power: float = 1.0,
+        aux_weight: float = 0.0,
+        fisher_cap: float | None = None,
     ) -> tuple[Self, Float[Array, "S 3"]]:
         """Fuse n_steps (gen + train_step) pairs into one XLA dispatch via lax.scan."""
         dynamic, static = eqx.partition(self, eqx.is_array)
@@ -389,9 +464,11 @@ class TrainState(NamedTuple):
         def scan_step(dynamic: Self, _) -> tuple[Self, Float[Array, "3"]]:
             state = eqx.combine(dynamic, static)
             key, key_batch = jr.split(state.key)
-            batch = jax.vmap(partial(train_sample, state.problem, time_power=time_power))(
-                jr.split(key_batch, batch_size)
+            sample = partial(
+                train_sample, state.problem, time_power=time_power,
+                templates=state.flow.templates, fisher_cap=fisher_cap,
             )
+            batch = jax.vmap(sample)(jr.split(key_batch, batch_size))
             state, parts = state._replace(key=key).train_step(batch, aux_weight)
             return eqx.filter(state, eqx.is_array), parts
 
@@ -415,9 +492,11 @@ class TrainState(NamedTuple):
 
         The same key every epoch scores the same batch, so the curves are free of batch noise.
         """
-        batch = jax.vmap(partial(train_sample, self.problem, time_power=time_power))(
-            jr.split(key, batch_size)
+        # the Euclidean loss even for a Fisher run, so the curves compare across runs
+        sample = partial(
+            train_sample, self.problem, time_power=time_power, templates=self.flow.templates
         )
+        batch = jax.vmap(sample)(jr.split(key, batch_size))
         x = eval_flow(self.flow, self.opt_state)
         rms = lambda tree: jnp.sqrt(
             sum(jnp.sum(jnp.square(a.astype(jnp.float32))) for a in jax.tree.leaves(tree))
@@ -642,6 +721,13 @@ def parse_args() -> argparse.Namespace:
         choices=("bfloat16", "float32"),
         help="dtype Muon orthogonalises its momentum in",
     )
+    parser.add_argument(
+        "--fisher_cap",
+        type=float,
+        default=None,
+        help="Mahalanobis flow loss with the Fisher metric clipped at this (train.fisher_metric);"
+        " None is the Euclidean loss",
+    )
     parser.add_argument("--total_steps", type=int, default=500_000)
     parser.add_argument("--log_interval", type=int, default=1000)
     parser.add_argument(
@@ -728,7 +814,7 @@ if __name__ == "__main__":
         # one fused XLA dispatch for the whole epoch, instead of log_interval separate ones
         started = time.perf_counter()
         state, epoch_losses = state.train_epoch(
-            args.batch_size, args.log_interval, args.time_power, args.aux_weight
+            args.batch_size, args.log_interval, args.time_power, args.aux_weight, args.fisher_cap
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
         heldout_history[epoch] = jax.device_get(

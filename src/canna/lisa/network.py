@@ -37,7 +37,8 @@ class LisaFlow(eqx.Module):
     """Velocity field over a set of binaries, conditioned on a whitened frequency-domain window.
 
     The data are the window's rfft bins, whitened, with the real and imaginary parts of A, E
-    and T stacked as six channels. `patch` neighbouring bins make one token. Every scalar
+    and T stacked as six channels (twelve with `templates`: the residual of the data against
+    the sources at the flow's current point, train.with_residual). `patch` neighbouring bins make one token. Every scalar
     the network takes in -- each data value, each source coordinate, the window frequency --
     goes through a piecewise linear encoding (`PiecewiseLinear`) and one linear map.
 
@@ -59,6 +60,10 @@ class LisaFlow(eqx.Module):
     # source and each data token in bins, and the rotation periods, in bins
     window: WindowGeometry | None = eqx.field(static=True)
     rope_periods: tuple[float, ...] | None = eqx.field(static=True)
+    # the conditioning carries the template residual at the flow's current point beside the
+    # data (train.with_residual): 12 channels instead of 6. The network takes whatever y it is
+    # given; this flag tells the sampler to build the same conditioning at every step
+    templates: bool = eqx.field(static=True)
     x_embed: PiecewiseLinear
     y_embed: PiecewiseLinear
     y_pos: Float[Array, "N D"]
@@ -85,6 +90,7 @@ class LisaFlow(eqx.Module):
         rope: bool = False,
         window: WindowGeometry | None = None,
         rope_min_period: float = 2.0,
+        templates: bool = False,
         dtype: DType = jnp.float32,
         param_dtype: jnp.dtype = jnp.float32,
         *,
@@ -94,7 +100,7 @@ class LisaFlow(eqx.Module):
         (n_sources, x_dim), (*_, n_bins, y_dim) = x_shape, y_shape
         assert x_dim == len(COORD_RANGES), f"expected {len(COORD_RANGES)} flow coordinates"
         assert n_bins % patch == 0, f"window of {n_bins} bins is not divisible by {patch}"
-        self.dtype, self.patch = dtype, patch
+        self.dtype, self.patch, self.templates = dtype, patch, templates
         # RoPE: one angle per token and per pair of a head's dimensions, periods log-spaced from
         # rope_min_period bins to twice the window, so attention resolves f0 - f_token from a
         # fraction of a bin up to the whole window

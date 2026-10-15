@@ -85,7 +85,8 @@ def build(package: str, path: Path):
         return problem, flow, sample
 
     state = train.TrainState.from_config(config)
-    return state.problem, state.flow, train.train_sample(state.problem, state.key)
+    sample = train.train_sample(state.problem, state.key, templates=state.flow.templates)
+    return state.problem, state.flow, sample
 
 
 @pytest.mark.parametrize("package,path", CONFIGS, ids=IDS)

@@ -6,7 +6,15 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 §9 places the work in the literature (survey of 2026-10-09).
 
-## 1. Summary (2026-10-01, updated 2026-10-15)
+## 1. Summary (2026-10-01, updated 2026-10-16)
+
+- **Update, 2026-10-16 (F46): three B runs launched on B-rope.**
+  - **B-template:** the data minus the template at the flow's current point as 6 more input
+    channels (the collaborator's orbital-modulation point, done in the frequency domain).
+  - **B-fisher:** the Mahalanobis loss with the Fisher metric.
+  - **B-long:** B-rope at 600k steps, the baseline.
+  - **The question they answer:** whether φ₀ and the loud sky are a weighting problem or an
+    extraction problem.
 
 - **Update, 2026-10-15 afternoon (F45): every run now has an MCMC reference.**
   - **Method:** a narrowband MCMC of the corner pages' sources, each source alone on its own
@@ -388,6 +396,53 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14509895** | B-rope: B-fixed + RoPE | Waited for a GPU (3 per user), started 12:50 CEST on 14 Oct on trexgpu02. **Completed** 00:03 CEST on 15 Oct (11 h 12 min with scorecards and eval), 189 s per epoch. Held out x 0.6399. A watcher step (14509895.2) saved the full final checkpoint (with x) before the clean-up. Fetched as `18-lisa-B-rope`: 215 of 240 sources found (F44). |
 
 ## 4. Findings
+
+### F46 (2026-10-16): three B runs on B-rope — template residual, Fisher loss, 3× longer
+
+**Why.** F45 left two gaps against the MCMC: φ₀ is never learned, and loud sources' sky, A
+and f₀ are 16–106× too wide. Two readings make different predictions:
+- **Weighting:** the loss does not see precision (F6). The Mahalanobis loss proposed by the
+  user and the collaborator should then close the loud gap.
+- **Extraction:** the angles live in the annual Doppler and antenna-pattern sidebands, 2 bins
+  apart on our 2-year grid (2004.08464's fast/slow decomposition, a collaborator's point). For
+  the worst sources (f₀ ≈ 0.1–0.2 mHz, modulation index 0.3–0.5 rad) they are differences of
+  ~1/SNR between a few large adjacent bins inside one token.
+  - Time-frequency tokens cannot resolve the Doppler track there: with N time slices the
+    frequency resolution is ~N/2 bins.
+  - So the network gets the template residual instead: the data minus the sources' signals at
+    its current point. That turns the remaining error into an O(1) signal (φ₀ as a phase
+    rotation, the sky as a sideband mismatch).
+
+The three runs answer which reading holds, with no extra diagnostic run. All three keep
+everything in B-rope (the F39 fixes, NorMuon, SNR order, the reconstruction loss, RoPE, 16-bin
+tokens), as the collaborator asked: no ablations.
+
+| config | what is added to B-rope | steps |
+|---|---|---|
+| `B-fd-template` | the residual y − h(x_t) as 6 more data channels, in training and at every sampling step (`train.with_residual`, `LisaFlow.templates`) | 200k |
+| `B-fd-fisher` | the flow loss dᵀWd with W = (s² + (1−s)²) I + clip((1−s)² G, 100), G each source's Fisher information in flow coordinates at x_t, from its own band (`train.fisher_metric`). It is normalised by the batch's mean trace, and the held-out curves stay Euclidean | 200k |
+| `B-fd-rope-long` | nothing: B-rope trained 3× longer (warmup 12k). The baseline for the two above, and the test of training length | 600k |
+
+**Details:**
+- **The residual is an input.** x_t is part of the conditioning and the gradient stops there,
+  so the learned posterior is still the true one. At early t the template is junk, and the
+  network, conditioned on t, can learn to ignore it.
+- **The weight is unbiased.** W is the inverse variance of the target velocity under a
+  Gaussian posterior of precision G + I along a straight path. It depends on (x_t, s) only,
+  never on the target, so the minimiser is still the conditional mean.
+- **The Fisher block is checked against the likelihood Hessian** in `tests/lisa/test_templates_fisher.py`.
+- **How they run:**
+  - `slurm/lisa-chain.sh <config> <links> --n_random 50` queues lisa.sbatch links, chained
+    with afterany and resuming from the checkpoint, then `slurm/lisa-post.sbatch` with
+    afterok.
+  - The post job runs the scorecards of x and y on the 240 B sources, the eval with the MCMC
+    on the corner pages, the eval draws and the MCMC tables.
+  - The B MCMC is cached on TREX (`eval-27e6d96219`), so no new chains are needed.
+- **Readout against B-rope (18) and each other:** the MCMC tables (φ₀; loud sky, A, f₀),
+  the scorecards and the loss.
+  - If the template run closes φ₀ and the Fisher run does not, the problem is extraction.
+  - If the Fisher run closes the loud gap and B-long does not, it is weighting, not
+    training length.
 
 ### F45 (2026-10-15): the narrowband MCMC of every run — B-rope is within 1–2× of the MCMC at mid SNR; the flow never learns φ₀, and loud sources' sky stays 16–106× wide
 
@@ -2587,6 +2642,13 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
 
 ## 6. Roadmap (2026-10-03, updated 2026-10-14)
 
+### Update, 2026-10-16 (F46 launched)
+
+Items 1–3 of the plan below are now three runs: B-template (extraction), B-fisher
+(weighting) and B-long (training length). Running the three answers item 1's question, so
+the separate φ₀ diagnostic is dropped. Item 4 (likelihood refinement) needs no GPU and stays
+open. Item 5 waits.
+
 ### Update, 2026-10-15 afternoon (after the MCMC, F45)
 
 The MCMC moves the target. At mid SNR B-rope is already close to the true posterior. What is
@@ -3200,6 +3262,13 @@ EOF
 
 Code reaches TREX as a bundle: `git bundle create X.bundle <trex-head>..fml`, `put` it over
 sftp, then `git pull --ff-only ~/X.bundle fml` in `~/canna` through the same shell.
+
+**Chained runs (since 2026-10-16, F46).** For runs that may exceed one 24 h slot,
+`slurm/lisa-chain.sh <config> <links> [scorecard flags]` queues `lisa.sbatch` links that
+resume from the checkpoint in `outputs/lisa-<config>` (on scratch, so the quota does not
+apply and `opt_state`, hence x, is always kept). After them it queues `slurm/lisa-post.sbatch`:
+scorecards, eval, eval draws and MCMC tables. `lisa-local.sbatch` stays for runs that fit
+one slot.
 
 **The reference MCMC (since 2026-10-15, F45).** Every run is compared with a narrowband MCMC of
 the corner pages' sources: gb-loudest, gb-median, gb-faintest and the four of q0.10

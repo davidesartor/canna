@@ -10,7 +10,7 @@ import equinox as eqx
 
 from .problem import LisaGB
 from .network import LisaFlow
-from .train import load_trained, parse_args, path_speed, peak_memory_report
+from .train import load_trained, parse_args, path_speed, peak_memory_report, with_residual
 
 # the velocity field is stiff near t=1, and too few steps smear the posterior out: on
 # the trained XS model the loudest source's f0 width is 0.76/0.42/0.27/0.22/0.21 bins
@@ -66,7 +66,9 @@ def sample_posterior(
         dt = jnp.asarray(1.0 / ode_steps, u.dtype)
 
         def velocity(u: Array, t: Array) -> Array:
-            v = flow(u, t, y, f)[0]
+            # a template network conditions on the residual at its current point
+            templates = getattr(flow, "templates", False)  # stand-in flows in the tests have none
+            v = flow(u, t, with_residual(problem, u, y, f) if templates else y, f)[0]
             return v if time_power == 1 else path_speed(t, time_power) * v
 
         def step(i: Array, u: Array) -> Array:
