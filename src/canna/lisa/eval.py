@@ -148,15 +148,18 @@ def match_sources(problem: LisaGB, draws: np.ndarray, truth: np.ndarray, f) -> n
     return np.take_along_axis(draws, best[:, :, None], axis=1)
 
 
-def axis_ranges(flow: np.ndarray, fisher: np.ndarray, scale: list[str]) -> list[tuple]:
-    """Each axis' plot range: the span of both sample sets, padded by 5% in its own scale."""
+def axis_ranges(
+    flow: np.ndarray, fisher: np.ndarray, scale: list[str], mcmc: np.ndarray | None = None
+) -> list[tuple]:
+    """Each axis' plot range: the span of all sample sets, padded by 5% in its own scale."""
     ranges = []
     for c in range(flow.shape[1]):
         # a linear-space Fisher can spill below zero on a log axis -- ignore those
         fisher_c = fisher[:, c]
         fisher_c = fisher_c[fisher_c > 0] if scale[c] == "log" else fisher_c
-        lo = min([flow[:, c].min()] + ([fisher_c.min()] if fisher_c.size else []))
-        hi = max([flow[:, c].max()] + ([fisher_c.max()] if fisher_c.size else []))
+        others = [fisher_c] + ([mcmc[:, c]] if mcmc is not None else [])
+        lo = min([flow[:, c].min()] + [o.min() for o in others if o.size])
+        hi = max([flow[:, c].max()] + [o.max() for o in others if o.size])
         if scale[c] == "log":
             ll, hh = np.log10(lo), np.log10(hi)
             m = 0.05 * (hh - ll) or 0.1
@@ -177,8 +180,10 @@ def corner_page(
     truths: np.ndarray,
     pooled: bool = False,
     bins: int = 20,
+    mcmc: np.ndarray | None = None,
 ) -> None:
-    """One corner page: flow draws (orange) over Fisher draws (blue, dashed), truths in black.
+    """One corner page: flow draws (orange) over Fisher draws (blue, dashed), truths in black,
+    and the MCMC (green) when given (canna.lisa.mcmc's narrowband chains).
 
     flow and fisher are [n, ndim]; truths is [k, ndim]. Each truth row draws lines across
     the page; that is what marks a full page, whose rows are the label permutations of the
@@ -189,7 +194,7 @@ def corner_page(
     import corner
     import matplotlib.pyplot as plt
 
-    ranges = axis_ranges(flow, fisher, scale)
+    ranges = axis_ranges(flow, fisher, scale, mcmc)
     # a log axis over less than a factor of 2 (f0 inside one window, ~1%) only crowds its
     # tick labels together; draw it linear. Amplitudes span decades and stay log
     scale = ["linear" if sc == "log" and hi < 2 * lo else sc for sc, (lo, hi) in zip(scale, ranges)]
@@ -205,6 +210,8 @@ def corner_page(
         contour_kwargs={"linestyles": "dashed"},
         **style,
     )
+    if mcmc is not None:
+        corner.corner(mcmc, fig=fig, color="C2", plot_datapoints=False, **style)
     if pooled:
         ndim = flow.shape[1]
         axes = np.array(fig.axes).reshape(ndim, ndim)
@@ -222,6 +229,139 @@ def corner_page(
     plt.close(fig)
 
 
+def eval_injections(problem: LisaGB, seed: int):
+    """The ten eval injections, spread over the SNR distribution of N_CANDIDATES prior draws.
+
+    Returns (latents [10, S, 8], windows, window SNRs, quantiles, noise keys, prior precision).
+    Every script that compares against the eval (eval_draws.py, canna.lisa.mcmc, the
+    scorecard's eval rows) draws them here, so the data are the same noise realisations.
+    """
+    key_pick, key_window, key_noise = jr.split(jr.key(seed), 3)
+    # each injection gets its own measurement setup, and keeps it all the way through
+    windows = jax.vmap(problem.sample_f)(jr.split(key_window, N_CANDIDATES))
+    latents = jax.vmap(problem.sample_physical)(jr.split(key_pick, N_CANDIDATES), windows)
+    # Gaussian-approx prior precision, in physical units
+    prior_prec_p = scaled_inverse(jnp.cov(latents.reshape(N_CANDIDATES, -1).T))
+    snrs = np.asarray(jax.lax.map(lambda pc: problem.snr(*pc), (latents, windows)))
+    quantiles = np.linspace(1.0 / N_QUANTILES, 1.0, N_QUANTILES)
+    chosen = np.argsort(snrs)[np.round(quantiles * (N_CANDIDATES - 1)).astype(int)]
+    # keep the latents on device: clean_signal writes the chirp in with .at[].set(),
+    # which a numpy array does not have. jax indexes fine with numpy integer arrays
+    return (
+        latents[chosen], windows[chosen], snrs[chosen], quantiles,
+        jr.split(key_noise, N_QUANTILES), prior_prec_p,
+    )
+
+
+def fisher_samples(
+    problem: LisaGB, latent: Array, f: Array, key_n: Array, prior_prec_p: Array
+) -> np.ndarray:
+    """Fisher forecast draws at an injection [N_POSTERIOR, S, 8], in physical parameters.
+
+    The nll Hessian averaged over noise realizations (the data-dependent part cancels, the
+    Hessian at a single draw is indefinite), plus the prior precision.
+    """
+    p0 = latent.reshape(-1)
+    nll = lambda p, o: -problem.log_likelihood(p.reshape(latent.shape), o, f)
+    replicas = jax.vmap(problem.sample_observation, in_axes=(0, None, None))(
+        jr.split(jr.fold_in(key_n, 2), N_FISHER_DRAWS), latent, f
+    )
+    prec_p = jax.lax.map(lambda o: jax.hessian(nll)(p0, o), replicas).mean(0) + prior_prec_p
+    draws = fisher_draws(jr.fold_in(key_n, 1), p0, prec_p, prior_prec_p, N_POSTERIOR)
+    return np.asarray(draws).reshape(N_POSTERIOR, *latent.shape)
+
+
+def gb_picks(source_snr: np.ndarray) -> dict[str, tuple[int, int]]:
+    """The per-GB pages' sources: the loudest, median and faintest of all the eval sources,
+    as (injection, source) from their SNRs [injection, source]."""
+    order = sorted(np.ndindex(source_snr.shape), key=lambda js: source_snr[js])
+    return {"loudest": order[-1], "median": order[len(order) // 2], "faintest": order[0]}
+
+
+def labels_and_scales(n_sources: int) -> tuple[list[str], list[str]]:
+    """Axis labels and scales of a full page: every source's parameters side by side."""
+    labels = [
+        f"${label}$" + (f" (s{s})" if n_sources > 1 else "")
+        for s in range(n_sources)
+        for label in PARAM_LABELS
+    ]
+    scale = ["log" if is_log else "linear" for _ in range(n_sources) for is_log in PARAM_IS_LOG]
+    return labels, scale
+
+
+def injection_pages(
+    corner_dir: Path,
+    tag: str,
+    quantile: float,
+    snr: float,
+    draws: np.ndarray,
+    fisher: np.ndarray,
+    truth: np.ndarray,
+    mcmc: np.ndarray | None = None,
+) -> None:
+    """The full and pooled pages of one injection. draws and fisher are [N, S, 8], mcmc
+    [M, S, 8] (each source's own chains side by side) or None."""
+    n_sources, n_params = truth.shape
+    labels, scale = labels_and_scales(n_sources)
+    with_mcmc = ", MCMC (green)" if mcmc is not None else ""
+    # full page: every parameter of every source. The Fisher is centred on one labelling
+    # and the posterior on all of them, so the Fisher draws and the truth lines come in
+    # every permutation. The MCMC follows the true labels, as the Fisher does
+    perms = list(itertools.permutations(range(n_sources)))
+    corner_page(
+        corner_dir / f"{tag}.pdf",
+        draws.reshape(len(draws), -1),
+        np.concatenate([fisher[:, list(p)] for p in perms]).reshape(-1, len(labels)),
+        labels,
+        scale,
+        f"flow (orange) vs Fisher (blue){with_mcmc}, SNR quantile {quantile:.1f}, SNR={snr:.1f}",
+        np.stack([truth[list(p)].reshape(-1) for p in perms]),
+        mcmc=None if mcmc is None else mcmc.reshape(len(mcmc), -1),
+    )
+    # pooled page: [draw, source, param] -> [draw * source, param], so each marginal
+    # holds every source at once (f0 shows one spike per GB) and labels drop out
+    corner_page(
+        corner_dir / f"{tag}-pooled.pdf",
+        draws.reshape(-1, n_params),
+        fisher.reshape(-1, n_params),
+        [f"${label}$" for label in PARAM_LABELS],
+        scale[:n_params],
+        f"all {n_sources} sources pooled, flow (orange) vs Fisher (blue){with_mcmc},"
+        f" SNR quantile {quantile:.1f}, SNR={snr:.1f}",
+        truth,
+        pooled=True,
+        bins=50,
+        mcmc=None if mcmc is None else mcmc.reshape(-1, n_params),
+    )
+
+
+def gb_page(
+    corner_dir: Path,
+    name: str,
+    n_eval_sources: int,
+    snr: float,
+    tag: str,
+    s: int,
+    flow_s: np.ndarray,
+    fisher_s: np.ndarray,
+    truth_s: np.ndarray,
+    mcmc_s: np.ndarray | None = None,
+) -> None:
+    """One per-GB page: a single source's draws, relabelled onto it, against its Fisher."""
+    with_mcmc = ", MCMC (green)" if mcmc_s is not None else ""
+    corner_page(
+        corner_dir / f"gb-{name}.pdf",
+        flow_s,
+        fisher_s,
+        [f"${label}$" for label in PARAM_LABELS],
+        ["log" if is_log else "linear" for is_log in PARAM_IS_LOG],
+        f"{name} of the {n_eval_sources} eval sources: SNR {snr:.1f}"
+        f" (injection {tag}, source {s}), flow (orange) vs Fisher (blue){with_mcmc}",
+        truth_s[None],
+        mcmc=mcmc_s,
+    )
+
+
 if __name__ == "__main__":
     # headless, and only here: scorecard imports sample_posterior from this module, and
     # selecting the backend at import would switch any notebook that does the same to Agg
@@ -229,6 +369,7 @@ if __name__ == "__main__":
     import matplotlib
 
     matplotlib.use("Agg")
+    from .mcmc import load_chains
 
     args = parse_args()
 
@@ -238,135 +379,46 @@ if __name__ == "__main__":
     corner_dir = out_dir / "corner"
     corner_dir.mkdir(parents=True, exist_ok=True)
 
-    n_sources, n_params = problem.n_sources, len(PARAM_LABELS)
-    # a full page has every source's parameters side by side; a pooled or per-source page
-    # has the n_params parameters once
-    labels = [
-        f"${label}$" + (f" (s{s})" if n_sources > 1 else "")
-        for s in range(n_sources)
-        for label in PARAM_LABELS
-    ]
-    scale = [
-        "log" if is_log else "linear"
-        for _ in range(n_sources)
-        for is_log in PARAM_IS_LOG
-    ]
-    source_labels = [f"${label}$" for label in PARAM_LABELS]
-    source_scale = scale[:n_params]
-
-    key_pick, key_window, key_noise = jr.split(jr.key(args.seed), 3)
-
-    # each injection gets its own measurement setup, and keeps it all the way through
-    windows = jax.vmap(problem.sample_f)(jr.split(key_window, N_CANDIDATES))
-    latents = jax.vmap(problem.sample_physical)(
-        jr.split(key_pick, N_CANDIDATES), windows
+    latents, windows, snrs, quantiles, noise_keys, prior_prec_p = eval_injections(
+        problem, args.seed
     )
-
-    # Gaussian-approx prior precision, in physical units
-    prior_prec_p = scaled_inverse(jnp.cov(latents.reshape(N_CANDIDATES, -1).T))
-
-    # spread the injections over the SNR distribution
-    snrs = np.asarray(jax.lax.map(lambda pc: problem.snr(*pc), (latents, windows)))
-    quantiles = np.linspace(1.0 / N_QUANTILES, 1.0, N_QUANTILES)
-    chosen = np.argsort(snrs)[np.round(quantiles * (N_CANDIDATES - 1)).astype(int)]
-    # keep the latents on device: clean_signal writes the chirp in with .at[].set(),
-    # which a numpy array does not have, and both the injection and the Fisher
-    # replicas below go through it. jax indexes fine with numpy integer arrays
-    latents, snrs, windows = (
-        latents[chosen],
-        snrs[chosen],
-        windows[chosen],
-    )
+    # the narrowband MCMC of the eval's sources, where it has been run (canna.lisa.mcmc)
+    chains = load_chains(problem, args.seed)
+    if chains:
+        print(f"MCMC overlay: {len(chains)} sources ({sorted(chains)})", flush=True)
 
     # every eval source, for the per-GB pages once all injections are done
-    sources = []
-
-    for j, key_n in enumerate(jr.split(key_noise, N_QUANTILES)):
+    sources = {}
+    for j, key_n in enumerate(noise_keys):
         latent, f = latents[j], windows[j]
-        truth = np.asarray(latent).reshape(n_sources, n_params)
+        truth = np.asarray(latent)
         tag = f"q{quantiles[j]:.2f}"
 
         # inject, sample the flow, and map back to physical units: [draw, source, param]
         o = problem.sample_observation(key_n, latent, f)
         y = problem.preprocess(o, f)
-        u0 = jax.vmap(problem.sample_flow, in_axes=(0, None))(
-            jr.split(key_n, N_POSTERIOR), f
-        )
-        post = sample_posterior(
-            problem, flow, u0, y, f, args.ode_steps or ODE_STEPS, args.time_power
-        )
-        draws = np.asarray(
-            jax.vmap(problem.flow_to_physical, in_axes=(0, None))(post, f)
-        )
+        u0 = jax.vmap(problem.sample_flow, in_axes=(0, None))(jr.split(key_n, N_POSTERIOR), f)
+        post = sample_posterior(problem, flow, u0, y, f, args.ode_steps or ODE_STEPS, args.time_power)
+        draws = np.asarray(jax.vmap(problem.flow_to_physical, in_axes=(0, None))(post, f))
+        fisher = fisher_samples(problem, latent, f, key_n, prior_prec_p)
 
-        # Fisher forecast at the injection, straight in physical parameters: the nll
-        # Hessian averaged over noise realizations (the data-dependent part cancels, the
-        # Hessian at a single draw is indefinite), plus the prior precision
-        p0 = latent.reshape(-1)
-        nll = lambda p, o: -problem.log_likelihood(p.reshape(latent.shape), o, f)
-        replicas = jax.vmap(problem.sample_observation, in_axes=(0, None, None))(
-            jr.split(jr.fold_in(key_n, 2), N_FISHER_DRAWS), latent, f
-        )
-        prec_p = (
-            jax.lax.map(lambda o: jax.hessian(nll)(p0, o), replicas).mean(0)
-            + prior_prec_p
-        )
-        fisher = np.asarray(
-            fisher_draws(jr.fold_in(key_n, 1), p0, prec_p, prior_prec_p, N_POSTERIOR)
-        ).reshape(N_POSTERIOR, n_sources, n_params)
-
-        # full page, one per injection, named by its SNR quantile: every parameter of
-        # every source. The Fisher is centred on one labelling and the posterior on all
-        # of them, so the Fisher draws and the truth lines come in every permutation
-        perms = list(itertools.permutations(range(n_sources)))
-        corner_page(
-            corner_dir / f"{tag}.pdf",
-            draws.reshape(N_POSTERIOR, -1),
-            np.concatenate([fisher[:, list(p)] for p in perms]).reshape(-1, len(labels)),
-            labels,
-            scale,
-            f"flow (orange) vs Fisher (blue), SNR quantile {quantiles[j]:.1f},"
-            f" SNR={snrs[j]:.1f}",
-            np.stack([truth[list(p)].reshape(-1) for p in perms]),
-        )
-
-        # pooled page: [draw, source, param] -> [draw * source, param], so each marginal
-        # holds every source at once (f0 shows one spike per GB) and labels drop out
-        corner_page(
-            corner_dir / f"{tag}-pooled.pdf",
-            draws.reshape(-1, n_params),
-            fisher.reshape(-1, n_params),
-            source_labels,
-            source_scale,
-            f"all {n_sources} sources pooled, flow (orange) vs Fisher (blue),"
-            f" SNR quantile {quantiles[j]:.1f}, SNR={snrs[j]:.1f}",
-            truth,
-            pooled=True,
-            bins=50,
-        )
+        complete = all((j, s) in chains for s in range(problem.n_sources))
+        mcmc = np.stack([chains[j, s] for s in range(problem.n_sources)], axis=1) if complete else None
+        injection_pages(corner_dir, tag, quantiles[j], snrs[j], draws, fisher, truth, mcmc)
         print(f"[{j + 1}/{N_QUANTILES}] {tag} -> {corner_dir / tag}(-pooled).pdf", flush=True)
 
         # keep each source, its draws relabelled onto it, for the per-GB pages
         matched = match_sources(problem, draws, truth, f)
         source_snr = np.asarray(problem.snr(jnp.asarray(truth)[:, None, :], f))
-        for s in range(n_sources):
-            sources.append((source_snr[s], tag, s, matched[:, s], fisher[:, s], truth[s]))
+        for s in range(problem.n_sources):
+            sources[j, s] = (source_snr[s], tag, matched[:, s], fisher[:, s], truth[s])
 
     # per-GB pages: the loudest, the median and the faintest single source over all the
     # eval injections, each against its own Fisher forecast
-    sources.sort(key=lambda rec: rec[0])
-    picks = {"loudest": sources[-1], "median": sources[len(sources) // 2], "faintest": sources[0]}
-    for name, (snr, tag, s, flow_s, fisher_s, truth_s) in picks.items():
-        corner_page(
-            corner_dir / f"gb-{name}.pdf",
-            flow_s,
-            fisher_s,
-            source_labels,
-            source_scale,
-            f"{name} of the {len(sources)} eval sources: SNR {snr:.1f}"
-            f" (injection {tag}, source {s}), flow (orange) vs Fisher (blue)",
-            truth_s[None],
-        )
+    source_snr = np.array([[sources[j, s][0] for s in range(problem.n_sources)] for j in range(N_QUANTILES)])
+    for name, (j, s) in gb_picks(source_snr).items():
+        snr, tag, flow_s, fisher_s, truth_s = sources[j, s]
+        gb_page(corner_dir, name, len(sources), snr, tag, s, flow_s, fisher_s, truth_s, chains.get((j, s)))
 
     print(
         f"saved {N_QUANTILES} full and {N_QUANTILES} pooled pages and the"

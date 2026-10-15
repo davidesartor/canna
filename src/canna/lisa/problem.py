@@ -437,28 +437,30 @@ class LisaGB(eqx.Module):
     ) -> Float[Array, "S 11"]:
         return self.physical_to_flow(self.sample_physical(key, f), f)
 
-    def clean_signal(
-        self, p: Float[Array, "... S 8"], f: Float[Array, ""]
-    ) -> Complex[Array, "... F 3"]:
+    def source_segments(
+        self, p: Float[Array, "S 8"], f: Float[Array, ""]
+    ) -> tuple[Int[Array, "S N"], Complex[Array, "S N 3"]]:
+        """Each source's response alone: its `response_points` A, E, T bins and their
+        indices on the window's one-sided grid. A source is zero everywhere else, which is
+        what lets a single-source likelihood read only its own band (canna.lisa.mcmc)."""
         # column 1 carries the chirp mass; jaxgb wants the chirp it drives
         p = p.at[..., 1].set(fdot_from_chirp_mass(p[..., 1], p[..., 0]))
-
         # flip iota from latitude [-pi/2, pi/2] to colatitude [0, pi] for jaxgb
         p = p.at[..., 6].set(jnp.pi / 2 - p[..., 6])
 
-        def combine(sources: Float[Array, "S 8"]) -> Complex[Array, "F 3"]:
-            # get the local freq response for each source
-            segments = self.response.get_tdi(
-                sources, tdi_generation=1.5, tdi_combination="AET"
-            )
-            segments = jnp.stack(segments, axis=-1)
+        segments = self.response.get_tdi(p, tdi_generation=1.5, tdi_combination="AET")
+        segments = jnp.stack(segments, axis=-1)
+        # each segment's positive band on the window's grid
+        start = self.response.get_kmin(p[:, 0]) - self.window_start(f)
+        return start[:, None] + jnp.arange(self.response_points), segments
 
-            # place each segment in its positive band on the window's one-sided grid
-            start = self.response.get_kmin(sources[:, 0]) - self.window_start(f)
-            idxs = start[:, None] + jnp.arange(self.response_points)
+    def clean_signal(
+        self, p: Float[Array, "... S 8"], f: Float[Array, ""]
+    ) -> Complex[Array, "... F 3"]:
+        def combine(sources: Float[Array, "S 8"]) -> Complex[Array, "F 3"]:
+            idxs, segments = self.source_segments(sources, f)
             full = jnp.zeros((self.window_bins, 3), dtype=segments.dtype)
-            full = full.at[idxs].add(segments)
-            return full
+            return full.at[idxs].add(segments)
 
         return jnp.vectorize(combine, signature="(s,d)->(f,c)")(p)
 

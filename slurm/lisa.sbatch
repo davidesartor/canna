@@ -55,6 +55,9 @@ nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader ||
 # node first, so the venv is already built when the job starts.
 # PYTHON runs another clone's interpreter on this checkout's src, so a scratch checkout
 # (e.g. ~/canna-dev) needs no venv of its own and leaves the venv's editable install alone
+# the reference MCMC of the eval sources, on CPU nodes, if this problem has none yet
+slurm/mcmc-ensure.sh "$CONFIG" || true
+
 if [[ -n "${PYTHON:-}" ]]; then
     export PYTHONPATH="$PWD/src"
     srun "$PYTHON" -m canna.lisa.train --config "${CONFIG}" "${@:2}"
