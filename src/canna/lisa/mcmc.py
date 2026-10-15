@@ -107,7 +107,12 @@ def load_chains(
     out = {}
     for path in sorted(directory.glob("inj*_src*_seed*.npz")):
         j, s = (int(v) for v in path.stem.replace("inj", "").replace("src", "").split("_")[:2])
-        out.setdefault((j, s), []).append(np.load(path)["physical"])
+        try:
+            physical = np.load(path)["physical"]
+        except (OSError, ValueError, KeyError) as error:  # a damaged file: skip it, loudly
+            print(f"[mcmc] skipping {path}: {error}", file=sys.stderr)
+            continue
+        out.setdefault((j, s), []).append(physical)
     rng = np.random.default_rng(0)
     for js, parts in out.items():
         pooled = np.concatenate(parts)
@@ -356,12 +361,16 @@ def run(args) -> None:
             continue
         src = Source(problem, injections, j, s)
         out = sample(src, args, k)
+        # written under a hidden name and renamed when complete, so a killed job or a cut
+        # transfer never leaves a truncated chain that `status` would count as cached
+        partial = path.with_name(f".partial-{path.name}")
         np.savez(
-            path, **out, truth=src.truth, snr=src.snr, window_snr=src.window_snr,
+            partial, **out, truth=src.truth, snr=src.snr, window_snr=src.window_snr,
             injection=j, source=s, pages=np.array(pages), f=float(src.f), centres=src.centres,
             temps=np.asarray(args.temps), nwalker=args.nwalker, burn=args.burn,
             keep=args.keep, thin=args.thin, chain_seed=k, config=args.config,
         )
+        partial.replace(path)
         print(f"  {path.name} ({', '.join(pages)}, SNR {src.snr:.1f}): {out['seconds'] / 60:.1f} min,"
               f" R-hat max {out['rhat'].max():.4f}, ESS min {out['ess'].min():.0f},"
               f" acceptance {np.round(out['acceptance'].mean(0), 2)}", flush=True)
