@@ -111,6 +111,8 @@ def load_chains(
     rng = np.random.default_rng(0)
     for js, parts in out.items():
         pooled = np.concatenate(parts)
+        # the chains' angle boxes are centred on the truth; the flow's angles live in [0, 2 pi)
+        pooled[:, ANGLES] = np.mod(pooled[:, ANGLES], 2 * np.pi)
         out[js] = pooled[rng.choice(len(pooled), min(n, len(pooled)), replace=False)]
     return out
 

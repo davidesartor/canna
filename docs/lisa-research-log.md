@@ -8,6 +8,14 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-15)
 
+- **Update, 2026-10-15 afternoon (F45): every run now has an MCMC reference.**
+  - **Method:** a narrowband MCMC of the corner pages' sources, each source alone on its own
+    band, validated against F27's joint MCMC within 1–4%. Cached per problem, drawn on the
+    corner pages, and run on TREX CPUs automatically from now on.
+  - **B-rope at SNR 17–78:** within 1–2× of the MCMC in A, sky, ψ and ι, and 2–4× in f₀.
+  - **The flow never learns φ₀:** it is flat wherever the MCMC pins it, 30–61× too wide.
+  - **Loud sources' sky** stays 16× (XS) and 66–106× (B) too wide.
+
 - **Update, 2026-10-15 (F44): RoPE breaks B's floor.**
   - **Found:** B-rope finds 215 of 240 sources (B-fixed 5, B1 1).
   - **Width:** f₀ is 0.035 bins above SNR 40, 50–80× narrower than B-fixed per source, and
@@ -380,6 +388,84 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14509895** | B-rope: B-fixed + RoPE | Waited for a GPU (3 per user), started 12:50 CEST on 14 Oct on trexgpu02. **Completed** 00:03 CEST on 15 Oct (11 h 12 min with scorecards and eval), 189 s per epoch. Held out x 0.6399. A watcher step (14509895.2) saved the full final checkpoint (with x) before the clean-up. Fetched as `18-lisa-B-rope`: 215 of 240 sources found (F44). |
 
 ## 4. Findings
+
+### F45 (2026-10-15): the narrowband MCMC of every run — B-rope is within 1–2× of the MCMC at mid SNR; the flow never learns φ₀, and loud sources' sky stays 16–106× wide
+
+**The user's request.** Benchmark every run against an MCMC of the corner pages' sources,
+each source alone ("assuming independence") on its piece of the frequency stream, on the
+laptop for runs 15–18 and on the cluster from now on, with the MCMC drawn on the corner
+pages.
+
+**Method** (`canna.lisa.mcmc`, 6ad125a; how to run it in §7):
+- **Sources:** gb-loudest, gb-median, gb-faintest and q0.10's four, picked exactly as eval.py
+  picks them, on the eval's own noise realisation.
+- **Likelihood:** the other three sources are subtracted at their true values, which is the
+  independence assumption. The likelihood reads only the source's own `response_points`
+  band, which moves with θ: 16 bins on XS, 1024 on B. It is exact for the whole window
+  (`tests/lisa/test_mcmc.py`).
+- **Sampler:** jexplore with 32 walkers × 6 temperatures, the training prior, angles on 2π
+  boxes centred on the truth, walkers started on the Fisher ellipse. Burn-in 10k, 30k kept,
+  thinned by 10, two seeds.
+- **Validation:** on XS's loudest source (window 9, SNR 1366) the narrowband chain matches
+  F27's joint 32-parameter MCMC within 1–4% in every width (f₀ 0.000441 against 0.000444
+  bins).
+- **Convergence:** R-hat ≤ 1.0001 and ESS ≥ 28k everywhere. The seeds agree within 0.3–2%,
+  except the faintest source of each problem (SNR 5.3 and 7.3): its f₀ posterior is broad
+  and non-Gaussian, and the seeds' robust widths differ by 20–27%.
+- **Cost:**
+  - Laptop GPU: XS 2.0–3.1 min per chain (14 chains, 50 min); B 5.3–7.6 min (12 chains,
+    80 min).
+  - TREX CPU (8 cores, measured): ~5 ms per iteration on XS, ~50 ms on B. One array task per
+    chain: ~5 min of wall time for XS, ~35 min for B.
+
+**XS** (flow / MCMC robust width, x; XS-fixed / XS-rope):
+
+| source | SNR | f₀ | A | sky (lon, sin lat) | ψ | sin ι | φ₀ |
+|---|---|---|---|---|---|---|---|
+| gb-loudest | 1366 | 52 / 28 | 4.7 / 4.7 | 16, 17 / 16, 17 | 10 / 10 | 5.0 / 4.7 | 20 / 20 |
+| q0.10 s0 | 98 | 5.6 / 4.8 | 5.9 / 9.2 | 2.9, 2.3 / 3.1, 2.4 | 4.9 / 7.8 | 6.3 / 11 | **60 / 61** |
+| gb-median | 62 | 6.4 / 7.6 | 2.3 / 3.1 | 9.7, 5.9 / 12, 6.0 | 1.1 / 0.8 | 2.5 / 2.8 | 2.2 / 2.1 |
+| q0.10 s1 | 59 | 3.0 / 2.8 | 1.8 / 1.9 | 1.9, 2.1 / 2.0, 1.9 | 1.2 / 1.5 | 1.6 / 1.6 | **46 / 47** |
+| q0.10 s2 | 34 | 4.4 / 3.3 | 2.0 / 2.3 | 1.6, 1.4 / 2.2, 1.6 | 1.7 / 1.9 | 1.7 / 2.1 | **30 / 31** |
+| q0.10 s3 | 17.5 | 415 / 134 | 1.2 / 2.1 | 24, 24 / 24, 24 | 0.7 / 0.7 | 1.9 / 2.3 | 1.5 / 1.5 |
+| gb-faintest | 5.3 | 3.6 / 4.6 | 8.1 / 6.1 | 1.7, 1.0 / 2.8, 1.4 | 1.4 / 1.3 | 1.5 / 1.4 | 1.8 / 1.9 |
+
+The MCMC median lies outside the flow's 95% interval for 2 of 56 pairs in each run (q0.10 s0's
+A and sin ι). q0.10 s3 is the flow's slot confusion with its louder neighbours (24× in sky,
+134–415× in f₀).
+
+**B** (B-fixed / B-rope):
+
+| source | SNR | f₀ | A | sky (lon, sin lat) | ψ | sin ι | φ₀ |
+|---|---|---|---|---|---|---|---|
+| gb-loudest | 1668 | 71177 / **56** | 2.6 / 2.8 | 49, 77 / **66, 106** | 1.9 / 2.3 | 2.3 / 2.6 | 4.3 / 4.2 |
+| q0.10 s0 | 78 | 146 / **3.5** | 1.6 / 1.6 | 2.0, 1.7 / 2.1, 1.6 | 1.3 / 1.4 | 1.6 / 1.5 | **48 / 47** |
+| q0.10 s1 | 68 | 304 / **4.1** | 1.0 / 1.0 | 2.1, 1.7 / 1.9, 1.7 | 1.7 / 1.6 | 1.0 / 1.0 | 4.7 / 4.7 |
+| gb-median = q0.10 s2 | 61 | 289 / **3.6** | 1.1 / 1.1 | 1.5, 1.5 / 1.4, 1.5 | 1.1 / 1.2 | 1.1 / 1.1 | 1.8 / 1.8 |
+| q0.10 s3 | 16.7 | 73 / **1.9** | 1.0 / 1.0 | 1.4, 1.4 / 1.3, 1.2 | 1.0 / 1.0 | 1.0 / 1.0 | 2.4 / 2.4 |
+| gb-faintest | 7.3 | 4925 / 433 | 1.8 / 1.6 | 16, 4.8 / 5.4, 2.5 | 1.5 / 1.1 | 1.3 / 1.4 | 2.1 / 2.1 |
+
+- **B-rope at SNR 17–78 is close to the MCMC:**
+  - f₀ 1.9–4.1×, A 1.0–1.6×, sky 1.2–2.1×, ψ 1.0–1.6×, ι 1.0–1.5×;
+  - the MCMC median inside the flow's 95% for 48 of 48 pairs (B-fixed 47);
+  - flow draws more than 1 bin off in f₀: 1–5% (B-fixed 40–75%).
+
+  This is F44's 70× measured against the true posterior. B-fixed was 73–304× in f₀ at these
+  SNRs.
+- **The loudest source is where B-rope falls short:** f₀ 56×, sky 66–106×. RoPE fixed where
+  the source is in frequency, not its sky position at SNR 1668. On XS the same comparison gives
+  16–17×.
+
+**The angles (the user's and the collaborator's point).** Measured against the MCMC, the
+weakness is specific:
+1. **φ₀ is not learned at all.** Wherever the MCMC pins φ₀ (±0.04–0.07 rad for XS q0.10 s0–s2
+   and B q0.10 s0, inclinations 16–27° from edge-on), the flow's φ₀ is flat over [−π, π]: 30–61×
+   the MCMC width. That holds even when the flow gets ψ right (XS q0.10 s1: ψ to ±0.03 rad, the
+   MCMC's width). Where the true φ₀ posterior is broad (near face-on), the flow matches it
+   (1.5–4.7×).
+2. **Sky, A and ι at loud SNR:** 5–17× on XS, 3–106× on B, and worst on B's loudest source.
+   At SNR ≤ 100 they are within ~2× on B.
+3. **ψ** is within 1–2× except for the loudest sources (2.3–10×).
 
 ### F44 (2026-10-15): B-rope — RoPE breaks B's 3-bin floor: 215 of 240 sources found, 70× narrower, calibrated
 
@@ -2501,6 +2587,26 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
 
 ## 6. Roadmap (2026-10-03, updated 2026-10-14)
 
+### Update, 2026-10-15 afternoon (after the MCMC, F45)
+
+The MCMC moves the target. At mid SNR B-rope is already close to the true posterior. What is
+left: φ₀ (never learned), and loud sources' sky, A and f₀ (16–106×).
+1. **Diagnose φ₀ first** (laptop, no GPU run): the per-coordinate held-out flow loss and the
+   reconstruction head's φ₀ error, against what a prior-only φ₀ would give. If φ₀ sits at its
+   prior level, the network never extracts it, and a loss reweighting alone will not fix it.
+2. **The Fisher (Mahalanobis) loss** the user and the collaborator propose:
+   ‖v − u‖²_G with G the Fisher metric. It leaves the optimum unbiased only if G depends on
+   what the network sees: G at x_t, or at its own reconstruction x̂₁ (stop-gradient), not at
+   the true x₁. Its eigenvalues span ~10 decades, so it needs a time-dependent
+   normalisation, G_t = (σ_t² I + G⁻¹)⁻¹ or similar. It targets the loss's blindness to
+   precision (F6), so it should help the loud sky/A/f₀ gap. One run on B-rope.
+3. **B-rope, longer** (as in the morning's plan), in parallel with 2, as its baseline.
+4. **Likelihood refinement of the flow's draws** (no training): importance resampling or a
+   short MCMC from the flow draws, with the narrowband likelihood. It would give MCMC-quality
+   posteriors in seconds per source, φ₀ included, and is a natural second stage for the paper.
+5. **XS-rope at 4 bins per token** drops in priority. B-rope, with many tokens, already beats
+   XS-rope against the MCMC at mid SNR, which supports the token count as XS's limit.
+
 ### Update, 2026-10-15 (after B-rope, F44)
 
 F43's decision rule is met by a wide margin: RoPE becomes the default. Still no ablations, so
@@ -3094,6 +3200,31 @@ EOF
 
 Code reaches TREX as a bundle: `git bundle create X.bundle <trex-head>..fml`, `put` it over
 sftp, then `git pull --ff-only ~/X.bundle fml` in `~/canna` through the same shell.
+
+**The reference MCMC (since 2026-10-15, F45).** Every run is compared with a narrowband MCMC of
+the corner pages' sources: gb-loudest, gb-median, gb-faintest and the four of q0.10
+(`canna.lisa.mcmc`).
+- **Cached per problem.** The chains depend only on the problem and the eval seed, so they
+  live under `outputs/mcmc/eval-<problem id>/`, and every config with the same problem reuses
+  them: XS-fd and XS-fd-rope share `eval-546d6b908d`; B-fd and B-fd-rope share
+  `eval-27e6d96219`.
+- **Submitted by the training jobs.** `lisa.sbatch` and `lisa-local.sbatch` call
+  `slurm/mcmc-ensure.sh <config>` at their start. It submits `slurm/lisa-mcmc.sbatch` (a CPU
+  array on cpu2022, one task per chain) only when the chains are missing.
+- **Cost on TREX:** ~5 minutes of wall time for XS and ~35 minutes for B, far less than
+  training. It needs `.venv313` (Python 3.13, CPU jax, jexplore at 9bcd41e), built on TREX on
+  15 Oct.
+- **eval.py draws the chains on the corner pages** (green).
+- **The table.** `lisa-local.sbatch` writes `mcmc_compare.txt` (x) and
+  `mcmc_compare_training.txt` (y) into the run folder.
+- **For a run evaluated before its chains existed:**
+
+```bash
+.venv313/bin/python -m canna.lisa.mcmc run --config XS-fd          # laptop, ~1 h XS, ~1.5 h B
+.venv/bin/python -m canna.lisa.mcmc status --config XS-fd           # cached?
+JAX_PLATFORMS=cpu .venv/bin/python -m canna.lisa.mcmc report --config XS-fd --run outputs/15-lisa-XS-fixed
+#   -> mcmc_compare.txt/.npz, and corner/gb-*.pdf, q0.10*.pdf remade from eval_draws.npz with the MCMC
+```
 
 ```bash
 # 2026-10-12: XS-fd and B-fd (F32), after `git fetch` of the bundle + `git reset --hard`
