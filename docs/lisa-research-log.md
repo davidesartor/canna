@@ -8,6 +8,17 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-16)
 
+- **Update, 2026-10-16 evening (F47): neither B-template nor B-fisher learns φ₀; the cause is
+  the shared path schedule.**
+  - **B-fisher** equals B-rope.
+  - **B-template** regresses f₀ to a 0.33-bin floor.
+  - **φ₀:** in all three runs the network predicts no φ₀ velocity, so φ₀ stays at its prior
+    draw.
+  - **Why:** along the shared geodesic schedule, f₀ is sub-bin (which reading the phase
+    needs) only once φ₀ has already converged.
+  - **Next:** per-coordinate schedules (frequency and sky first), and analytic resampling of
+    the extrinsics from the F-statistic.
+
 - **Update, 2026-10-16 (F46): three B runs launched on B-rope.**
   - **B-template:** the data minus the template at the flow's current point as 6 more input
     channels (the collaborator's orbital-modulation point, done in the frequency domain).
@@ -395,11 +406,84 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14509894** | XS-rope: XS-fixed + RoPE in frequency | **Completed** 13:55 CEST on 14 Oct (11 h 30 min). Held out x 0.7294. Fetched as `17-lisa-XS-rope`, checkpoint y only (F43). |
 | **14509895** | B-rope: B-fixed + RoPE | Waited for a GPU (3 per user), started 12:50 CEST on 14 Oct on trexgpu02. **Completed** 00:03 CEST on 15 Oct (11 h 12 min with scorecards and eval), 189 s per epoch. Held out x 0.6399. A watcher step (14509895.2) saved the full final checkpoint (with x) before the clean-up. Fetched as `18-lisa-B-rope`: 215 of 240 sources found (F44). |
 | 14706443–45 | F46 step benchmarks on an A100 (`lisa-bench.sbatch`, 20 steps), cancelled after the full-step line | B-fd-rope 183.9 ms, B-fd-template 200.9 ms (+9%), B-fd-fisher 200.8 ms (+9%) per step. Logs in `outputs/trex-logs/bench-f46`. |
-| **14706575** (+ post 14706576) | B-fd-template (F46): B-rope + the template residual, 200k steps, `slurm/lisa-chain.sh B-fd-template 1 --n_random 50` | Started 01:50 CEST on 16 Oct, trexgpu01, 203 s per epoch (~11.3 h). The cached B MCMC was found. Muon 91% (the 12-channel encoding adds 3.2M to AdamW). |
-| **14706577** (+ post 14706578) | B-fd-fisher (F46): B-rope + the Mahalanobis loss, fisher_cap 100, 200k steps | Started 01:50 CEST on 16 Oct, trexgpu04, 209 s per epoch (~11.6 h). |
+| **14706575** (+ post 14706576) | B-fd-template (F46): B-rope + the template residual, 200k steps, `slurm/lisa-chain.sh B-fd-template 1 --n_random 50` | **Completed** 13:12 CEST on 16 Oct (11 h 23 min), trexgpu01, 203 s per epoch; post 49 min. The cached B MCMC was found. Muon 91% (the 12-channel encoding adds 3.2M to AdamW). Held out x 0.6416. f₀ floor 0.33 bins, 7–8× B-rope (F47). Fetched as `19-lisa-B-template`. |
+| **14706577** (+ post 14706578) | B-fd-fisher (F46): B-rope + the Mahalanobis loss, fisher_cap 100, 200k steps | **Completed** 13:33 CEST on 16 Oct (11 h 43 min), trexgpu04, 209 s per epoch; post 39 min. Held out x 0.6568 (Euclidean). Equals B-rope (F47). Fetched as `20-lisa-B-fisher`. |
 | **14706580 → 14706581** (+ post 14706582) | B-fd-rope-long (F46): B-rope at 600k steps, two links (afterany), then the post job | Started 01:50 CEST on 16 Oct, trexgpu03, 187 s per epoch (~31 h): link 1 to ~epoch 460, link 2 the rest. |
 
 ## 4. Findings
+
+### F47 (2026-10-16): B-template and B-fisher — neither learns φ₀, because along our path f₀ resolves too late for the phase to be readable
+
+**Runs.** B-template (14706575 + post 14706576) and B-fisher (14706577 + post 14706578)
+completed on 16 Oct: 11 h 23 min and 11 h 43 min of training, with post jobs of 49 and 39 min.
+- Fetched as `outputs/19-lisa-B-template` and `20-lisa-B-fisher`: 147 files, md5-identical
+  to TREX, then deleted there. The SSH session dropped once mid-transfer and resumed.
+- B-long (14706580) is at epoch 299 of 600. Its held-out loss is 0.6283, already below
+  B-rope's final 0.6399.
+- Figures in `outputs/plots/` (`f46_plots.py`): f₀ width against SNR, the MCMC ratios, the
+  phase probe and the held-out losses.
+
+**Scorecards (the 240 B sources, x; median f₀ width in bins; per source against B-rope):**
+
+| model | found | 7–15 | 15–40 | 40–100 | 100–300 | ≥ 300 | rank / in95 | per source vs B-rope |
+|---|---|---|---|---|---|---|---|---|
+| B-rope | 215 | 0.91 | 0.055 | 0.037 | 0.037 | 0.036 | 0.51 / 1.00 | 1 |
+| B-fisher | 216 | 0.93 | 0.054 | 0.036 | 0.036 | 0.036 | 0.50 / 0.99 | 1.00–1.08 |
+| B-template | 209 | 1.37 | 0.42 | 0.33 | 0.32 | 0.33 | 0.47 / 1.00 | **6.8–8.3** |
+
+- **B-fisher** changes nothing measurable: f₀, calibration and found count all match B-rope.
+  Its y is 0.79–0.91× B-rope at SNR ≥ 40, but y has been the less reliable of the two
+  before (F43). Its held-out (Euclidean) loss is 0.6568, worse than B-rope's.
+- **B-template** is a regression: a new f₀ floor at ~0.33 bins, flat in SNR, still
+  calibrated.
+
+**Against the MCMC (B-rope / B-template / B-fisher):**
+- **φ₀ is identical in all three,** to the first decimal: 47.3 / 47.5 / 47.2 (q0.10 s0),
+  4.7 / 4.7 / 4.7, 1.8 / 1.8 / 1.8, …, and 4.2 / 4.3 / 4.3 on the loudest source.
+- **The loudest source's sky:** 66–106 / 57–95 / 54–79×. B-fisher is slightly narrower, but
+  that is one source.
+- **Everything else is within noise of B-rope,** except B-template's f₀ (13–460×).
+
+**The φ₀ diagnosis** (`lisa_checks/velocity_probe.py`, x of each run, 1024 training samples):
+1. **The network never moves φ₀.** Its predicted velocity has 0.5–1.3% of the target's spread
+   for cos φ₀ and sin φ₀, against 47–98% for every other coordinate, chirp mass included.
+   R² is 0.000 at every s. The reconstruction head copies x_t's phase: its error equals
+   x_t's at each s. The flow's φ₀ draws are their prior draws: different networks give the
+   same φ₀ per draw to a median 0.003–0.008 rad. This holds for all three runs.
+2. **It is not missing from the data:** a 0.3 rad φ₀ shift changes a SNR-900 source's
+   whitened signal by 270σ, and jaxgb's columns match ours (φ₀ enters as e^(−iφ₀)). It is
+   not a lack of incentive either: φ₀ is ~30% of the flow-loss variance.
+3. **Why:** the data's phase is only meaningful relative to a reference that turns by π per
+   bin of f₀ offset (and with the Doppler phase of the sky). All coordinates share one s
+   along the geodesic, so f₀ resolves on the same schedule as φ₀, and much later relative to
+   what the phase needs:
+
+   | 1 − s | B: f₀ of x_s off by | φ₀ of x_s off by | XS: f₀ off by |
+   |---|---|---|---|
+   | 10⁻² | 8.5 bins | 0.016 rad | 0.13 bins |
+   | 10⁻³ | 0.85 bins | 0.0016 rad | 0.013 bins |
+   | 10⁻⁴ | 0.085 bins | 0.0002 rad | 0.001 bins |
+
+   By the time x_t's f₀ is sub-bin, x_t's φ₀ is already at the truth: there is nothing left
+   for the velocity to do. Before that, the network would have to infer the sub-bin f₀ from
+   the data and demodulate the phase internally, which it never learns.
+   - **That is also why B-template failed:** the residual is computed at an x_t whose f₀ is
+     still bins off through most of the path, so for φ₀ it is junk, and it hurt f₀.
+   - **B-fisher** weights a velocity the network cannot predict.
+4. **The same mechanism plausibly limits loud sources' sky** (16–106×): the sky enters
+   through the Doppler phase too, and the sky velocity's R² drops to 0.09–0.13 at
+   1 − s < 0.01. A, ψ and ι, which also enter through amplitudes, are learned.
+
+**What this changes.** The fix is not more weight on φ₀ or more input. Either the phase must
+be resolved after the frequency, or it must be done by the likelihood:
+- **Per-coordinate schedules.** f₀ (and the sky) converge earlier along the path than A, ψ,
+  ι, φ₀. For example, s_f = 1 − (1 − t)⁶ against s_e = 1 − (1 − t)³: when 1 − s_e = 10⁻², f₀ is
+  already at 1 − s_f = 10⁻⁴ (0.08 bins on B). Then a template at x_t, or F-statistic
+  features, carries the phase exactly when it is being resolved. This is still flow matching:
+  each coordinate's velocity is d/ds_k, and the sampler multiplies it by its own ds_k/dt.
+- **Analytic extrinsics.** Given (f₀, ḟ, sky), A, ψ, ι and φ₀ enter linearly through four
+  F-statistic amplitudes (2004.08464). Each flow draw's extrinsics can be resampled from their
+  exact conditional likelihood, with no training.
 
 ### F46 (2026-10-16): three B runs on B-rope — template residual, Fisher loss, 3× longer
 
@@ -2646,6 +2730,22 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
 
 ## 6. Roadmap (2026-10-03, updated 2026-10-14)
 
+### Update, 2026-10-16 evening (after F47)
+
+F47 rules out weighting and the x_t residual for φ₀: the problem is the path's shared
+schedule. In order, still with no ablations (each a full run on B-rope with everything
+kept):
+1. **Analytic extrinsics** (no GPU, laptop): resample each flow draw's (A, ψ, ι, φ₀) from the
+   exact F-statistic conditional given its (f₀, ḟ, sky), and score against the MCMC tables of
+   runs 18–20. This should close φ₀, ψ and ι immediately. It is also a second stage for the
+   paper.
+2. **One B run with per-coordinate schedules:** f₀ and sky at time power 6, the rest at 3,
+   with the template residual on. The residual is then informative while A, ψ, ι and φ₀ are
+   resolved. ~11.5 h. Read the velocity probe first (φ₀ spread > 0?), then the MCMC tables.
+3. **B-long's readout (~17 Oct morning)** decides whether training length shrinks the loud f₀
+   and sky floor.
+4. **B-fisher is dropped as a direction,** and B-template in its x_t form.
+
 ### Update, 2026-10-16 (F46 launched)
 
 Items 1–3 of the plan below are now three runs: B-template (extraction), B-fisher
@@ -3388,7 +3488,9 @@ a finished run gets its number when it is archived here.
 | `16-lisa-B-fixed` | `lisa-B-fixed` | B-fixed (14509893, 14 Oct) |
 | `17-lisa-XS-rope` | `lisa-XS-rope` | XS-rope (14509894, 14 Oct) |
 | `18-lisa-B-rope` | `lisa-B-rope` (+ `lisa-B-rope-x`) | B-rope (14509895, 14–15 Oct) |
-| (19–21, to come) | `lisa-B-fd-template`, `lisa-B-fd-fisher`, `lisa-B-fd-rope-long` | F46, launched 16 Oct |
+| `19-lisa-B-template` | `lisa-B-fd-template` | B-template (14706575, 16 Oct) |
+| `20-lisa-B-fisher` | `lisa-B-fd-fisher` | B-fisher (14706577, 16 Oct) |
+| (21, to come) | `lisa-B-fd-rope-long` | B-long (14706580 → 81, ~17 Oct) |
 
 `outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
 (the code finds a run at `<output_dir>/lisa-<config>`).

@@ -62,32 +62,47 @@ run, what it found, and the decision rules written before its result.
 **Sizes.** The configs come in rungs that differ only in how much of the band a
 window covers, and so in how many conditioning tokens the network sees:
 
-| rung | window | f₀ reach | tokens (2 bins each) |
+| rung | window | f₀ reach | tokens (16 bins each) |
 |---|---|---|---|
-| `XS` | 64 bins | ≤ 1.3 mHz | 32 |
-| `S` | 256 bins | ≤ 4.2 mHz | 128 |
-| `B` | 4096 bins | the whole 0.1–12 mHz | 2048 |
+| `XS` | 64 bins | ≤ 1.3 mHz | 4 |
+| `B` | 4096 bins | the whole 0.1–12 mHz | 256 |
 
-**Training recipe** (since 2026-10-12, research log F32). The network sees the whitened
-rfft window, the real and imaginary parts of A, E and T as six channels.
+**Training recipe** (research log F32, F39–F44). The network sees the whitened
+rfft window, the real and imaginary parts of A, E and T as six channels, 16 bins per token.
 
 - **Embeddings.** Every input scalar (each data value, each source coordinate, the window
   frequency) goes through a piecewise linear encoding and one linear map, in float32. Only
   the MMDiT backbone runs in bf16.
-- **Optimiser.** Schedule-free Muon. Muon (lr 1e-3, RMS-matched) takes every matrix of the
-  backbone; q, k, v, SwiGLU's value and gate, and adaLN's shift, scale and gate are separate
-  matrices. AdamW (lr 3e-4, b2 0.95) takes the encodings, the token positions, the last head
-  layer and anything 1-D. There is a linear warmup, then a constant lr, and no cooldown.
+- **Sources.** Sorted loudest first by SNR, so each slot is a fixed label (no permutation
+  matching), with a learned slot embedding. A reconstruction head predicts each slot's
+  parameters (weight 0.1 beside the flow loss).
+- **RoPE in frequency** (`rope: true`). Every attention rotates q and k by the position in
+  bins: each source at its current f₀, each data token at its centre. The score of a source
+  on a token then depends on f₀ − f_token. On B this took f₀ from a flat ~3-bin floor to
+  0.035 bins (F44).
+- **Optimiser.**
+  - Muon (lr 1e-3, NorMuon rows, momentum 0.8) takes every matrix of the backbone.
+  - AdamW (lr 3e-4, b2 0.95) takes the encodings, the token positions, the last head layer
+    and anything 1-D.
+  - Both run inside our own schedule-free wrapper: decay 0.05 on z, averaging weights t·lr²,
+    averaging after twice the warmup, β 0.9 → 0.965.
 - **Checkpoints and eval.** Checkpoints keep the optimiser state, because the evaluated
-  weights are schedule-free's average, rebuilt from it. Eval and the scorecard load that
-  average.
+  weights x are schedule-free's average, which lives in it. Eval and the scorecard load x
+  (`--weights training` for y).
 - **Clock.** `time_power: 3`: a warped flow clock, `s = 1 − (1 − t)³`, that spends more of
   the training near the end of the path, where a loud source's posterior is resolved.
 
 | config | what it is |
 |---|---|
-| `XS-fd` | XS with the recipe, 512 × 8, 1.2M steps: R1's problem, seed and length |
-| `B-fd` | B with the recipe, 200k steps in 24 h links that resume from the checkpoint |
+| `XS-fd`, `XS-fd-rope` | XS, 512 × 8, 1.2M steps, without and with RoPE |
+| `B-fd`, `B-fd-rope` | B, 200k steps, without and with RoPE. **`B-fd-rope` is the current B model** |
+| `B-fd-rope-long` | B-rope at 600k steps |
+| `B-fd-template` | B-rope conditioned also on the data minus the sources at the flow's current point (F46; worse, F47) |
+| `B-fd-fisher` | B-rope with the Fisher-weighted (Mahalanobis) flow loss (F46; no change, F47) |
+
+**Known limit (F45, F47).** The flow never learns the initial phase φ₀: it predicts no φ₀
+velocity at all, so φ₀ keeps its prior draw. Loud sources' sky positions are 16–106× wider
+than the MCMC's. Mid-SNR sources on B are within 1–2× of the MCMC in every other parameter.
 
 The WDM-input code and configs of the earlier runs (`XS-late*`, `XS-pos`, `B-late`,
 `B-pos`, …) live at the tag `wdm-r1`. To rescore one of those checkpoints, check that tag out
@@ -103,6 +118,15 @@ uv run python -m canna.lisa.eval      --config <name>   # outputs/lisa-<name>/co
 A finished run is archived locally as `outputs/NN-lisa-<name>`, numbered in the order the runs
 were made (research log §8 maps the numbers to runs). To re-evaluate one, point
 `--output_dir` at a folder holding a `lisa-<name>` symlink to it.
+
+**The reference MCMC.** `canna.lisa.mcmc` samples the corner pages' sources (gb-loudest,
+gb-median, gb-faintest and the four of q0.10) one at a time, with the other sources held at
+their true values, reading only each source's own band of the data. The chains depend only
+on the problem, so they are cached per problem in `outputs/mcmc/eval-<id>/` and reused by
+every run. The eval draws them on its corner pages in green, and
+`python -m canna.lisa.mcmc report --config <name> --run <folder>` writes `mcmc_compare.txt`,
+the flow's width over the MCMC's per source and parameter. They need jexplore, in a
+Python 3.13 venv (`.venv313`; research log §7).
 
 The scorecard scores every source of 210 injections: its frequency width
 against the ideal one, whether it was found, the offset from the truth, and
@@ -131,13 +155,14 @@ unaffected. The slurm scripts handle this; by hand, run fp32 on a GPU with
 the Python module:
 
 ```bash
-sbatch slurm/lisa.sbatch <config>                 # train
-sbatch slurm/lisa-scorecard.sbatch <config>       # scorecard
-sbatch slurm/lisa-eval.sbatch <config>            # corner plots
+slurm/lisa-chain.sh <config> <links> --n_random 50   # train in resuming 24 h links, then everything after
+sbatch slurm/lisa-local.sbatch <config>              # a run that fits one slot, trained in the node's /tmp
+sbatch slurm/lisa-post.sbatch <config>               # scorecards x and y, eval, eval draws, MCMC tables
 sbatch slurm/lisa-scorecard-cpu.sbatch <config> --dtype float32 --n_random 40   # CPU cross-check
 ```
 
-A run resumes from its latest checkpoint, so a training job longer than the
-partition's time limit is a chain of submissions:
-`sbatch --dependency=afterany:<jobid> slurm/lisa.sbatch <config>`. The scripts
-carry TREX's partition and account names; adjust them for another cluster.
+Both training scripts first call `slurm/mcmc-ensure.sh`, which submits the problem's
+reference MCMC to CPU nodes (`slurm/lisa-mcmc.sbatch`) if it is not cached yet. A run
+resumes from its latest checkpoint, so `lisa-chain.sh` links training jobs with
+`afterany` and starts the post job with `afterok` on the last link. The scripts carry
+TREX's partition and account names; adjust them for another cluster.
