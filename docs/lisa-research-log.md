@@ -394,6 +394,10 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14509893** | B-fixed: the same on B | **Completed** 12:50 CEST on 14 Oct (10 h 33 min). Held out x 0.6417. Fetched as `16-lisa-B-fixed`, checkpoint y only (F43). |
 | **14509894** | XS-rope: XS-fixed + RoPE in frequency | **Completed** 13:55 CEST on 14 Oct (11 h 30 min). Held out x 0.7294. Fetched as `17-lisa-XS-rope`, checkpoint y only (F43). |
 | **14509895** | B-rope: B-fixed + RoPE | Waited for a GPU (3 per user), started 12:50 CEST on 14 Oct on trexgpu02. **Completed** 00:03 CEST on 15 Oct (11 h 12 min with scorecards and eval), 189 s per epoch. Held out x 0.6399. A watcher step (14509895.2) saved the full final checkpoint (with x) before the clean-up. Fetched as `18-lisa-B-rope`: 215 of 240 sources found (F44). |
+| 14706443–45 | F46 step benchmarks on an A100 (`lisa-bench.sbatch`, 20 steps), cancelled after the full-step line | B-fd-rope 183.9 ms, B-fd-template 200.9 ms (+9%), B-fd-fisher 200.8 ms (+9%) per step. Logs in `outputs/trex-logs/bench-f46`. |
+| **14706575** (+ post 14706576) | B-fd-template (F46): B-rope + the template residual, 200k steps, `slurm/lisa-chain.sh B-fd-template 1 --n_random 50` | Started 01:50 CEST on 16 Oct, trexgpu01, 203 s per epoch (~11.3 h). The cached B MCMC was found. Muon 91% (the 12-channel encoding adds 3.2M to AdamW). |
+| **14706577** (+ post 14706578) | B-fd-fisher (F46): B-rope + the Mahalanobis loss, fisher_cap 100, 200k steps | Started 01:50 CEST on 16 Oct, trexgpu04, 209 s per epoch (~11.6 h). |
+| **14706580 → 14706581** (+ post 14706582) | B-fd-rope-long (F46): B-rope at 600k steps, two links (afterany), then the post job | Started 01:50 CEST on 16 Oct, trexgpu03, 187 s per epoch (~31 h): link 1 to ~epoch 460, link 2 the rest. |
 
 ## 4. Findings
 
@@ -3384,6 +3388,7 @@ a finished run gets its number when it is archived here.
 | `16-lisa-B-fixed` | `lisa-B-fixed` | B-fixed (14509893, 14 Oct) |
 | `17-lisa-XS-rope` | `lisa-XS-rope` | XS-rope (14509894, 14 Oct) |
 | `18-lisa-B-rope` | `lisa-B-rope` (+ `lisa-B-rope-x`) | B-rope (14509895, 14–15 Oct) |
+| (19–21, to come) | `lisa-B-fd-template`, `lisa-B-fd-fisher`, `lisa-B-fd-rope-long` | F46, launched 16 Oct |
 
 `outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
 (the code finds a run at `<output_dir>/lisa-<config>`).
