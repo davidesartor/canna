@@ -95,14 +95,16 @@ rfft window, the real and imaginary parts of A, E and T as six channels, 16 bins
 | config | what it is |
 |---|---|
 | `XS-fd`, `XS-fd-rope` | XS, 512 × 8, 1.2M steps, without and with RoPE |
-| `B-fd`, `B-fd-rope` | B, 200k steps, without and with RoPE. **`B-fd-rope` is the current B model** |
-| `B-fd-rope-long` | B-rope at 600k steps |
+| `B-fd`, `B-fd-rope` | B, 200k steps, without and with RoPE |
+| `B-fd-rope-long` | B-rope at 600k steps. **The current B model** (F48) |
 | `B-fd-template` | B-rope conditioned also on the data minus the sources at the flow's current point (F46; worse, F47) |
 | `B-fd-fisher` | B-rope with the Fisher-weighted (Mahalanobis) flow loss (F46; no change, F47) |
 
-**Known limit (F45, F47).** The flow never learns the initial phase φ₀: it predicts no φ₀
-velocity at all, so φ₀ keeps its prior draw. Loud sources' sky positions are 16–106× wider
-than the MCMC's. Mid-SNR sources on B are within 1–2× of the MCMC in every other parameter.
+**Known limit (F45, F48).** Since the F39 recipe the flow does not learn the initial phase
+φ₀: it predicts no φ₀ velocity, so φ₀ keeps its prior draw. XS-fd (F32) did learn it. The φ₀
+output weights have decayed away under the weight decay F39 introduced (0.05 on z, applied to
+every matrix). B-long's loudest sources are 30–50× wider than the MCMC in sky position. At
+mid SNR it is within 1–2× of the MCMC in every other parameter.
 
 The WDM-input code and configs of the earlier runs (`XS-late*`, `XS-pos`, `B-late`,
 `B-pos`, …) live at the tag `wdm-r1`. To rescore one of those checkpoints, check that tag out

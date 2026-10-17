@@ -6,7 +6,19 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 §9 places the work in the literature (survey of 2026-10-09).
 
-## 1. Summary (2026-10-01, updated 2026-10-16)
+## 1. Summary (2026-10-01, updated 2026-10-17)
+
+- **Update, 2026-10-17 (F48): B-long is the B model; φ₀ broke with F39's weight decay.**
+  - **B-long (600k steps):**
+    - 221 of 240 sources found;
+    - widths 0.75–0.88× B-rope's per source;
+    - the loudest source's sky halved against the MCMC;
+    - held-out 0.6202.
+  - **φ₀ was learned up to XS-fd:** its network moves φ₀ (39% of the target spread; 0.3–0.5%
+    since).
+  - **The φ₀ output weights decayed away** since the decay of 0.05 arrived in F39.
+  - **Correction:** F47's path-schedule explanation was wrong for the plain networks.
+  - **Next:** B-long's recipe with no decay on the AdamW parameters.
 
 - **Update, 2026-10-16 evening (F47): neither B-template nor B-fisher learns φ₀; the cause is
   the shared path schedule.**
@@ -408,11 +420,83 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | 14706443–45 | F46 step benchmarks on an A100 (`lisa-bench.sbatch`, 20 steps), cancelled after the full-step line | B-fd-rope 183.9 ms, B-fd-template 200.9 ms (+9%), B-fd-fisher 200.8 ms (+9%) per step. Logs in `outputs/trex-logs/bench-f46`. |
 | **14706575** (+ post 14706576) | B-fd-template (F46): B-rope + the template residual, 200k steps, `slurm/lisa-chain.sh B-fd-template 1 --n_random 50` | **Completed** 13:12 CEST on 16 Oct (11 h 23 min), trexgpu01, 203 s per epoch; post 49 min. The cached B MCMC was found. Muon 91% (the 12-channel encoding adds 3.2M to AdamW). Held out x 0.6416. f₀ floor 0.33 bins, 7–8× B-rope (F47). Fetched as `19-lisa-B-template`. |
 | **14706577** (+ post 14706578) | B-fd-fisher (F46): B-rope + the Mahalanobis loss, fisher_cap 100, 200k steps | **Completed** 13:33 CEST on 16 Oct (11 h 43 min), trexgpu04, 209 s per epoch; post 39 min. Held out x 0.6568 (Euclidean). Equals B-rope (F47). Fetched as `20-lisa-B-fisher`. |
-| **14706580 → 14706581** (+ post 14706582) | B-fd-rope-long (F46): B-rope at 600k steps, two links (afterany), then the post job | Started 01:50 CEST on 16 Oct, trexgpu03, 187 s per epoch (~31 h): link 1 to ~epoch 460, link 2 the rest. |
+| **14706580 → 14706581** (+ post 14706582) | B-fd-rope-long (F46): B-rope at 600k steps, two links (afterany), then the post job | Started 01:50 CEST on 16 Oct, 187 s per epoch. Link 1 TIMEOUT at 24 h (~epoch 462, as planned), link 2 **completed** 09:13 CEST on 17 Oct (7 h 23 min), post 38 min. Held out x 0.6202. The best B model (F48). Fetched as `21-lisa-B-long`. |
 
 ## 4. Findings
 
+### F48 (2026-10-17): B-long is the best B model; φ₀ broke with the F39 recipe, most likely through the weight decay, not because of the path
+
+**B-long** (14706580 → 14706581 + post 14706582, 600k steps):
+- Link 1 hit the 24 h limit at ~epoch 462 and link 2 finished it (7 h 23 min). The post job
+  took 38 min.
+- Fetched as `outputs/21-lisa-B-long`: 78 files, md5-identical, then deleted on TREX.
+- Held-out x 0.6202, against B-rope's 0.6399, and still falling (0.6231 at epoch 500).
+- Figures: `outputs/plots/f48_long_and_phi0.pdf`.
+
+| 240 B sources (x) | found | 7–15 | 15–40 | 40–100 | 100–300 | ≥ 300 | rank / in95 |
+|---|---|---|---|---|---|---|---|
+| B-rope | 215 | 0.91 | 0.055 | 0.037 | 0.037 | 0.036 | 0.51 / 1.00 |
+| **B-long** | **221** | **0.20** | **0.047** | **0.031** | **0.031** | **0.031** | 0.50 / 1.00 |
+
+- **Per source:** 0.75–0.88× B-rope's width in every band. Calibration is unchanged.
+- **Against the MCMC:** the loudest source's sky halves (λ 66 → 30×, sin β 106 → 44×), ψ
+  2.3 → 1.7×. The mid-SNR sources are within 1.0–1.6× of the MCMC in A, sky, ψ and ι, and
+  1.6–3.6× in f₀. φ₀ is unchanged.
+- **Verdict:** training length is part of the loud floor, and B-long replaces B-rope as the
+  B model.
+
+**φ₀: a correction to F47.** The user's objection is right:
+- The network is conditioned on the data at every s, so it can infer f₀ (and φ₀) from y at
+  any point of the path. x_t's own precision does not matter to it.
+- F47's "shared schedule" argument holds only for B-template, whose residual is computed at
+  x_t.
+- For the plain networks, the evidence points elsewhere:
+1. **φ₀ was learned before F39.**
+   - Against the joint MCMC, R1, XS-late-768-cool and XS-fd gave φ₀ widths close to their ψ
+     widths. For example R1's loudest source is φ₀ 6.6× against ψ 6.5×, and XS-fd's is 9.1×
+     against 8.1×.
+   - From XS-sfplus (F39) on, every run gives the same φ₀ numbers to two decimals (20.0,
+     517, 25.1 on XS; 47.3, 4.7, 1.8 on B): the prior draws.
+2. **XS-fd's network moves φ₀.** It is checked out at 6a0661c, the code it ran. Its predicted
+   φ₀ velocity has 39% of the target's spread, with R² of 0.15 at s < 0.5, 0.38 at
+   0.5–0.9 and 0.12–0.16 at 0.9–0.99. Since F39 every run is at 0.3–0.5%.
+3. **The information reaches the backbone in both.**
+   - A 0.03 rad rotation of the loudest source's phase moves the most affected data token by
+     6.5–8.7 bf16 ulps in B-rope (16-bin tokens), against 7.6–12 in XS-fd (2-bin tokens).
+   - So neither the token size nor the bf16 cast hides φ₀.
+4. **The φ₀ output weights have decayed away.**
+   - The velocity head's last layer (AdamW) has row norms for cos φ₀ and sin φ₀ of 0.88× the
+     other coordinates' in XS-fd. In B-rope they are 0.14×, and in B-long, after 3× the
+     training, 0.08×.
+   - All rows are ~4× smaller than XS-fd's, which is the decay's global shrinkage (F43). The φ₀
+     rows are a further 6–10× below that.
+5. **The mechanism, most likely:**
+   - **The decay changed with F39.** F39 put a weight decay of 0.05 (per unit lr) on z, on
+     every matrix, the AdamW-trained head included. XS-fd ran with 1e-6, effectively none
+     (F34).
+   - **φ₀ is the slowest feature to learn.** It needs a demodulation against a reference
+     phase that depends on the sub-bin f₀, the sky and the polarisation, so its gradient
+     starts near zero.
+   - **The decay closes a loop.** It pulls the undefended φ₀ output rows to zero. With those
+     rows near zero, the backbone gets no gradient to build φ₀ features, so nothing pushes
+     the rows back.
+   - **Other suspects remain.** F39 also changed the token size, the SNR order, the
+     reconstruction head and NorMuon. They are not excluded, but none gives an obvious
+     mechanism, and the row norms single out the decay.
+
+**What follows.** The decay is there to bound z under Muon's fixed-size steps (F36, SF-NorMuon).
+That argument covers the Muon matrices, not the AdamW parameters, whose steps are
+scale-adaptive.
+- **The proposed run:** B-long's recipe with the decay on the Muon matrices only, and none on
+  the AdamW parameters (head, encodings, positions).
+- **Its readout:** the velocity probe on its checkpoints. The φ₀ rows and the φ₀ velocity
+  spread should grow from the first epochs if this is the cause.
+
 ### F47 (2026-10-16): B-template and B-fisher — neither learns φ₀, because along our path f₀ resolves too late for the phase to be readable
+
+*Corrected by F48:* the schedule argument holds for B-template's x_t residual only. The plain
+networks see the data at every s, and φ₀ was learned before F39. The likely cause is the weight
+decay.
 
 **Runs.** B-template (14706575 + post 14706576) and B-fisher (14706577 + post 14706578)
 completed on 16 Oct: 11 h 23 min and 11 h 43 min of training, with post jobs of 49 and 39 min.
@@ -2730,6 +2814,18 @@ the MAD of f₀ in bins of 1/T_obs; the full table is in
 
 ## 6. Roadmap (2026-10-03, updated 2026-10-14)
 
+### Update, 2026-10-17 (after F48)
+
+The φ₀ plan of F47 is replaced: the schedule was not the cause for the plain networks.
+1. **B-nodecay-adam:** B-long's recipe (600k steps, ~32 h), with the weight decay restricted
+   to the Muon matrices. One change. A probe of its checkpoint at ~epoch 50 tells within a
+   few hours whether the φ₀ rows grow.
+2. **Analytic extrinsics** (laptop, no GPU): still worth doing as a second stage, whatever 1
+   gives.
+3. **Per-coordinate schedules** wait for 1. They were motivated by the wrong argument, except
+   for a template residual.
+4. **B-long** is the B model for the paper.
+
 ### Update, 2026-10-16 evening (after F47)
 
 F47 rules out weighting and the x_t residual for φ₀: the problem is the path's shared
@@ -3490,7 +3586,7 @@ a finished run gets its number when it is archived here.
 | `18-lisa-B-rope` | `lisa-B-rope` (+ `lisa-B-rope-x`) | B-rope (14509895, 14–15 Oct) |
 | `19-lisa-B-template` | `lisa-B-fd-template` | B-template (14706575, 16 Oct) |
 | `20-lisa-B-fisher` | `lisa-B-fd-fisher` | B-fisher (14706577, 16 Oct) |
-| (21, to come) | `lisa-B-fd-rope-long` | B-long (14706580 → 81, ~17 Oct) |
+| `21-lisa-B-long` | `lisa-B-fd-rope-long` | B-long (14706580 → 81, 16–17 Oct) |
 
 `outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
 (the code finds a run at `<output_dir>/lisa-<config>`).
