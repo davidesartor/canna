@@ -8,6 +8,7 @@ On fresh training samples, for the run's averaged weights x (or y with --weights
   or copies it.
 
     .venv/bin/python lisa_checks/velocity_probe.py B-fd-rope outputs/18-lisa-B-rope-parent [flags]
+It also prints the velocity head's last-layer row norms (F48).
 The second argument is an --output_dir holding lisa-<config> (a symlink to the run folder will do).
 """
 
@@ -53,3 +54,7 @@ for lo, hi in [(0, 0.5), (0.5, 0.9), (0.9, 0.99), (0.99, 1.0)]:
     head, xt = np.median(np.abs(wrap(ang(X[m]) - ang(TG[m])))), np.median(np.abs(wrap(ang(XT[m]) - ang(TG[m]))))
     print(f"R^2, s {lo:.2f}-{hi:.2f}     " + " ".join(f"{v:8.3f}" for v in r2)
           + f"   | phase error: head {head:.3f}, x_t {xt:.3f} rad")
+# the velocity head's last-layer rows (AdamW), each over the median of the 11: F48 found the phi0
+# rows at 0.88 in XS-fd and 0.08-0.14 once the decay reached them
+rows = np.linalg.norm(np.asarray(flow.x_unembed.linear2.weight)[:11], axis=-1)
+print("head row / median   " + " ".join(f"{v:8.3f}" for v in rows / np.median(rows)))
