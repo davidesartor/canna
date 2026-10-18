@@ -8,6 +8,16 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-18)
 
+- **Update, 2026-10-18 night (F52): φ₀ is data-independent in every run since F39.**
+  - **What the flow does:** it is uniform in φ₀ ± 2ψ even where the MCMC pins one of them to
+    0.001–0.13 rad (29–2248×). Its φ₀ marginal looks close only because the MCMC's is broad
+    through ψ.
+  - **The probe:** the φ₀ velocity changes by 0.001 under a global phase rotation of the data
+    and by 0.01 when the data are replaced. The rest of the network is 85–95% phase-invariant.
+  - **The cause:** φ₀ needs a coherent phase reference that gradient descent gets no partial
+    credit for.
+  - **Next:** analytic F-statistic extrinsics, or the reference as an input.
+
 - **Update, 2026-10-18 evening (F51): the STFT tokens help loud sources, and φ₀ is still not
   learned.**
   - **B-stft:**
@@ -464,6 +474,69 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | (not submitted) | B-fd-helicity (F49): B-long's recipe + the Fisher loss + no AdamW decay + the helicity phases, 600k steps, `slurm/lisa-chain.sh B-fd-helicity 2 --n_random 50` | Prepared 18 Oct, set aside the same day for F50's STFT runs. |
 
 ## 4. Findings
+
+### F52 (2026-10-18): the φ₀ velocity does not depend on the data at all; the φ₀ marginals look close only because the MCMC's are broad by projection
+
+**The user's observation.** On the corner pages (e.g. `q0.10-pooled`) φ₀ "gets close" to the
+MCMC but is wider, and the ψ–φ₀ correlation is absent.
+
+**1. In the combinations the data measure** (`lisa_checks/phase_combinations.py`; circular
+widths, flow / MCMC):
+- The data measure φ₋ = φ₀ − 2ψ (weight (1 + sin ι)²) and φ₊ = φ₀ + 2ψ (weight
+  (1 − sin ι)²), F49.
+- **The MCMC pins one of them** for every source above SNR ~17: 0.001 rad on B's loudest,
+  0.03–0.13 rad elsewhere.
+- **The flow is uniform in both,** in every run (circular widths 2.4–3.7 rad): 29–2248× on B,
+  15–1469× on XS.
+- **Why the φ₀ marginal still looks close:**
+  - φ₀ = φ∓ ± 2ψ inherits ψ's spread, so the MCMC's own φ₀ marginal is broad (0.6–1.0 rad)
+    wherever ψ is.
+  - The flow's uniform φ₀ then lands within 1.4–2.6× of it.
+  - Where the MCMC's ψ is narrow (B q0.10 s0, XS q0.10 s0–s2), the gap shows: 19–41×.
+- **ψ's marginal (mod π/2) is learned:** 0.9–2.0× the MCMC on B.
+- **So the pages show:** a correct ψ, an independent uniform φ₀, and therefore no ridge.
+
+| B-stft | SNR | sin ι | φ₀ | ψ | φ₊ | φ₋ |
+|---|---|---|---|---|---|---|
+| loudest | 1668 | 0.96 | 2.6 | 1.8 | 2.1 | **2248** |
+| q0.10 s0 | 78 | −0.40 | 32 | 1.7 | **101** | 29 |
+| q0.10 s1 | 68 | 0.70 | 2.1 | 1.1 | 2.1 | **67** |
+| q0.10 s2 | 61 | −0.89 | 1.4 | 1.1 | **65** | 1.6 |
+| q0.10 s3 | 17 | −0.83 | 1.4 | 1.3 | **29** | 1.4 |
+
+B-rope gives the same numbers to within 10%.
+
+**2. The φ₀ velocity ignores the data** (`lisa_checks/phase_rotation.py`, B-stft and B-rope;
+rms change of the predicted velocity over the target's rms, 512 training samples).
+- **Rotating the whole window by e^{iα}** shifts every φ₀ and nothing else in the true
+  posterior. It changes the φ₀ velocity by 0.001 and the other coordinates by 0.02–0.13.
+- **Replacing the data by another sample's** changes the φ₀ velocity by 0.01, against 0.6–1.25
+  for the others.
+- So the φ₀ output is a function of x_t and t alone. The rest of the network is 85–95%
+  invariant to the data's global phase, i.e. it reads amplitude-like features, which is
+  enough for f₀, A, sky, ψ (through the antenna-pattern amplitudes) and ι.
+
+**Why, most likely.** φ₀ is the one parameter that only the coherent phase holds:
+- Each bin's phase is φ₀ plus contributions from the sub-bin f₀, the chirp, the Doppler (sky)
+  and the polarisation, which over the prior are each broad.
+- So no single data feature correlates with φ₀. Correlation appears only once the network
+  multiplies the data's phasor by an accurate reference built from all the others, accurate
+  to a fraction of a radian over two years.
+- Gradient descent gets no partial credit on the way: the same plateau as a parity
+  function.
+- Every other parameter has amplitude-level partial credit, and is learned. F51's
+  representation change and F48's head decay do not touch this.
+- XS-fd got off the plateau once (F48). Which of its differences did it (2-bin tokens, the Set
+  coupling, no decay) is still open, and no run since has.
+
+**What follows.** Give the phase reference instead of asking the network to discover it:
+1. **Analytic extrinsics (training-free).** For each flow draw of (f₀, ḟ, sky), the four
+   F-statistic basis templates make the likelihood Gaussian in four amplitudes. Sampling them,
+   with the prior on (A, ι, ψ, φ₀) as importance weights, gives φ±, the ψ–φ₀ ridge and the
+   amplitude posteriors exactly.
+2. **The same projections as network inputs:** the matched-filter phasors ⟨y, h_k(x_t)⟩ at x_t's
+   intrinsics, in float32, eight numbers per source, with the helicity coordinates (F49).
+   φ∓ is then a linear read-out of their phase as soon as x_t's f₀ is within a bin.
 
 ### F51 (2026-10-18): XS-stft and B-stft — the STFT tokens narrow loud sources' angles and amplitude by 0.6–0.85×; φ₀ is still not learned, and not because of the AdamW decay
 
