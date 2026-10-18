@@ -70,6 +70,12 @@ window covers, and so in how many conditioning tokens the network sees:
 **Training recipe** (research log F32, F39–F44). The network sees the whitened
 rfft window, the real and imaginary parts of A, E and T as six channels, 16 bins per token.
 
+- **Data tokens.** Either the 16 rfft bins as they are (re/im of A, E, T), or, with
+  `stft: true`, the band's 16 time samples, 45.7 days apart (an orthonormal inverse DFT per
+  token: a critically sampled STFT, same bands, same positions). Each sample is then fed as
+  asinh|z| and the gated phase z / √(1 + |z|²). On B this narrows loud sources' sky, A and ι
+  to 0.6–0.75× per source at no cost below SNR 100. On XS it costs ~20% in f₀ at mid SNR
+  (F51).
 - **Embeddings.** Every input scalar (each data value, each source coordinate, the window
   frequency) goes through a piecewise linear encoding and one linear map, in float32. Only
   the MMDiT backbone runs in bf16.
@@ -86,6 +92,7 @@ rfft window, the real and imaginary parts of A, E and T as six channels, 16 bins
     and anything 1-D.
   - Both run inside our own schedule-free wrapper: decay 0.05 on z, averaging weights t·lr²,
     averaging after twice the warmup, β 0.9 → 0.965.
+  - `decay_adamw: false` keeps the decay off the AdamW parameters (the STFT runs).
 - **Checkpoints and eval.** Checkpoints keep the optimiser state, because the evaluated
   weights x are schedule-free's average, which lives in it. Eval and the scorecard load x
   (`--weights training` for y).
@@ -99,12 +106,19 @@ rfft window, the real and imaginary parts of A, E and T as six channels, 16 bins
 | `B-fd-rope-long` | B-rope at 600k steps. **The current B model** (F48) |
 | `B-fd-template` | B-rope conditioned also on the data minus the sources at the flow's current point (F46; worse, F47) |
 | `B-fd-fisher` | B-rope with the Fisher-weighted (Mahalanobis) flow loss (F46; no change, F47) |
+| `XS-stft`, `B-stft` | XS-rope and B-rope with STFT data tokens and no AdamW decay (F50). **B-stft** equals B-long on loud sources at 200k steps (F51) |
+| `B-fd-helicity` | B-long + Fisher loss + no AdamW decay + the orientation as sin ι and the circular-mode phases φ₀ ± 2ψ (`polarisation: helicity`; F49, not run) |
 
-**Known limit (F45, F48).** Since the F39 recipe the flow does not learn the initial phase
-φ₀: it predicts no φ₀ velocity, so φ₀ keeps its prior draw. XS-fd (F32) did learn it. The φ₀
-output weights have decayed away under the weight decay F39 introduced (0.05 on z, applied to
-every matrix). B-long's loudest sources are 30–50× wider than the MCMC in sky position. At
-mid SNR it is within 1–2× of the MCMC in every other parameter.
+**Known limits (F45, F48, F51).**
+- **φ₀ is not learned.** Since the F39 recipe the flow predicts no φ₀ velocity, so φ₀ keeps
+  its prior draw. XS-fd (F32) did learn it.
+  - It is not the weight decay on the output layer: with that decay off (the STFT runs),
+    the φ₀ rows still shrink to ~0.1× the others.
+  - Nor is it the input representation.
+  - Still open: the decay on the backbone, 16-bin tokens, ordered slots, the reconstruction
+    head and NorMuon.
+- **The loudest sources' sky** is 18–21× wider than the MCMC on B-stft (30–44× on B-long).
+- **At mid SNR** the B models are within 1–2× of the MCMC in every parameter but φ₀.
 
 The WDM-input code and configs of the earlier runs (`XS-late*`, `XS-pos`, `B-late`,
 `B-pos`, …) live at the tag `wdm-r1`. To rescore one of those checkpoints, check that tag out

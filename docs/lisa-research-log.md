@@ -8,6 +8,18 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-18)
 
+- **Update, 2026-10-18 evening (F51): the STFT tokens help loud sources, and φ₀ is still not
+  learned.**
+  - **B-stft:**
+    - Loud sources' sky is 0.58–0.62× B-rope's per source above SNR 300, A 0.69× and ι 0.74×.
+    - The loudest source's sky goes from 66–106× to 18–21× the MCMC.
+    - That matches B-long, at a third of the training.
+    - Mid and faint sources and f₀ are unchanged; held-out loss 0.6334 against 0.6399.
+  - **XS-stft:** loud sky 0.67–0.73×, but mid-SNR f₀ 1.22–1.38× and 30 fewer sources found.
+  - **φ₀:** identical to every run since F39 (velocity 0.3–0.5% of the target's). Its head
+    rows shrank to 0.06–0.13× with no decay on them, so F48's AdamW-decay mechanism is ruled
+    out.
+
 - **Update, 2026-10-18 (F50): XS-stft and B-stft launched; B-helicity (F49) is not.**
   - **The user's diagnosis:** the problem is the data representation.
     - re/im over five decades is a poor encoding;
@@ -447,9 +459,115 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14706575** (+ post 14706576) | B-fd-template (F46): B-rope + the template residual, 200k steps, `slurm/lisa-chain.sh B-fd-template 1 --n_random 50` | **Completed** 13:12 CEST on 16 Oct (11 h 23 min), trexgpu01, 203 s per epoch; post 49 min. The cached B MCMC was found. Muon 91% (the 12-channel encoding adds 3.2M to AdamW). Held out x 0.6416. f₀ floor 0.33 bins, 7–8× B-rope (F47). Fetched as `19-lisa-B-template`. |
 | **14706577** (+ post 14706578) | B-fd-fisher (F46): B-rope + the Mahalanobis loss, fisher_cap 100, 200k steps | **Completed** 13:33 CEST on 16 Oct (11 h 43 min), trexgpu04, 209 s per epoch; post 39 min. Held out x 0.6568 (Euclidean). Equals B-rope (F47). Fetched as `20-lisa-B-fisher`. |
 | **14706580 → 14706581** (+ post 14706582) | B-fd-rope-long (F46): B-rope at 600k steps, two links (afterany), then the post job | Started 01:50 CEST on 16 Oct, 187 s per epoch. Link 1 TIMEOUT at 24 h (~epoch 462, as planned), link 2 **completed** 09:13 CEST on 17 Oct (7 h 23 min), post 38 min. Held out x 0.6202. The best B model (F48). Fetched as `21-lisa-B-long`. |
+| **14891481** (+ 14891482, post 14891483) | XS-stft (F50): XS-rope + STFT tokens + no AdamW decay, 1.2M steps, `slurm/lisa-chain.sh XS-stft 2` | **Completed** 15:19 CEST on 18 Oct (11 h 28 min, trexgpu02, 33 s per epoch); post 25 min. Held out x 0.7361. Fetched as `23-lisa-XS-stft` (F51). |
+| **14891484** (+ 14891485, post 14891486) | B-stft (F50): B-rope + STFT tokens + no AdamW decay, 200k steps, `slurm/lisa-chain.sh B-stft 2 --n_random 50` | **Completed** 15:15 CEST on 18 Oct (11 h 25 min, trexgpu01, 203 s per epoch); post 38 min. Held out x 0.6334. Fetched as `22-lisa-B-stft` (F51). |
 | (not submitted) | B-fd-helicity (F49): B-long's recipe + the Fisher loss + no AdamW decay + the helicity phases, 600k steps, `slurm/lisa-chain.sh B-fd-helicity 2 --n_random 50` | Prepared 18 Oct, set aside the same day for F50's STFT runs. |
 
 ## 4. Findings
+
+### F51 (2026-10-18): XS-stft and B-stft — the STFT tokens narrow loud sources' angles and amplitude by 0.6–0.85×; φ₀ is still not learned, and not because of the AdamW decay
+
+**Runs.**
+- **XS-stft:** 14891481, 11 h 28 min, 33 s per epoch, peak 2.0 GiB; post 14891483, 25 min.
+- **B-stft:** 14891484, 11 h 25 min, 203 s per epoch (B-rope 189), peak 7.4 GiB; post
+  14891486, 38 min.
+- The spare links exited at once. TREX was at 6a69283 for training and 24e791b for the post
+  jobs, so the pages save their samples and fold ψ/φ₀.
+- Fetched as `22-lisa-B-stft` and `23-lisa-XS-stft` (B finished first): 199 files,
+  md5-identical. Then deleted on TREX with the probe snapshot and the logs.
+- **Held-out loss of x:**
+  - B-stft 0.6334 against B-rope's 0.6399 (−1.0%);
+  - XS-stft 0.7361 against XS-rope's 0.7294 (+0.9%).
+- **Analysis:**
+  - `outputs/scorecards/compare_stft.py` (f₀ scorecards);
+  - `lisa_checks/width_ratios.py` (per-source widths of every parameter, the 40 eval
+    sources);
+  - the MCMC tables;
+  - `lisa_checks/velocity_probe.py` on both final checkpoints (`probe-final.txt`).
+
+**f₀ (scorecards; per source against the rope run, median [95% CI]).**
+
+| run | found | 0–15 | 15–40 | 40–100 | 100–300 | ≥ 300 | in68 / in95 |
+|---|---|---|---|---|---|---|---|
+| B-rope | 215 / 240 | 1 | 1 | 1 | 1 | 1 | 0.88 / 1.00 |
+| B-long (600k) | 221 | 0.75 | 0.88 | 0.80 | 0.85 | 0.79 | 0.86 / 1.00 |
+| **B-stft** | **217** | 0.92 [0.68–1.19] | 1.03 [0.80–1.16] | 0.87 [0.79–1.01] | 1.00 [0.84–1.13] | 0.87 [0.75–0.99] | 0.85 / 0.99 |
+| XS-rope | 688 / 840 | 1 | 1 | 1 | 1 | 1 | 0.75 / 0.97 |
+| **XS-stft** | **658** | 1.19 [1.14–1.32] | 1.22 [1.15–1.30] | 1.13 [1.08–1.20] | 1.23 [1.11–1.31] | 1.05 [1.01–1.11] | 0.73 / 0.97 |
+
+- On B, f₀ is unchanged, against prediction 4's "at least B-rope's": met.
+- On XS it regressed by 13–23% below SNR 300, and 41 sources lost against 11 gained:
+  prediction 4 fails on XS.
+
+**Every parameter, per source (40 eval sources; width over the rope run's, median [16–84%];
+sky in ecliptic).**
+
+| | SNR | n | f₀ | A | λ | sin β | ψ | sin ι | φ₀ |
+|---|---|---|---|---|---|---|---|---|---|
+| B-stft / B-rope | < 15 | 6 | 0.97 | 0.93 | 1.14 | 1.05 | 1.17 | 0.93 | 0.99 |
+| | 15–100 | 20 | 0.88 | 0.94 | 1.01 | 0.97 | 0.97 | 0.95 | 1.00 |
+| | 100–300 | 4 | 1.29 | **0.77** | **0.75** | 0.85 | 0.95 | 0.85 | 1.00 |
+| | ≥ 300 | 10 | 1.04 | **0.69** [0.55–0.88] | **0.62** [0.36–0.89] | **0.58** [0.29–0.90] | 0.83 | **0.74** | 1.00 |
+| B-stft / B-long | 15–100 | 20 | 0.96 | 1.02 | 1.21 | 1.17 | 1.15 | 1.12 | 1.00 |
+| | ≥ 300 | 10 | 1.21 | 1.01 | 0.97 | 0.93 | 0.94 | 1.11 | 1.00 |
+| XS-stft / XS-rope | 15–100 | 19 | 1.22 | 1.14 | 1.10 | 1.13 | 1.03 | 1.02 | 1.00 |
+| | 100–300 | 5 | 1.38 | 0.87 | 1.17 | 1.08 | 0.86 | 0.90 | 1.00 |
+| | ≥ 300 | 10 | 0.99 | **0.80** | **0.73** | **0.67** | 0.90 | 0.87 | 1.01 |
+
+**Against the MCMC (flow / MCMC width):**
+- **The loudest source:**
+  - B (SNR 1668): sky 66, 106 (B-rope) → 30, 44 (B-long) → **18, 21** (B-stft), with W1
+    58, 124 → 20, 23. f₀'s width is 210× against 56×, but its W1 is 2066 against 11532
+    (fewer strays).
+  - XS (SNR 1366): sky 15.6, 16.5 → **7.4, 7.3**, f₀ 28 → 14.
+- **Mid SNR (B, 17–78):** within the rope run's noise in every parameter; A, ψ and ι within
+  0.9–1.6× of the MCMC.
+- **XS's gb-median (SNR 62):** worse, sky 11.5, 6.0 → 24.8, 14.9 and f₀ 7.6 → 24.
+- **B's faintest (SNR 7.3):** sky λ 5.4 → 13×.
+- **φ₀:** XS 61, 46, 30× and B 47× where the MCMC pins it, the same numbers as every run
+  since F39.
+
+**φ₀ (velocity probe, final checkpoints).**
+- The velocity spread is 0.3% (XS) and 0.5% (B) of the target's, with R² 0.00 at every s.
+- The phase head's error equals x_t's, and the head rows are 0.06× (XS) and 0.13× (B) the
+  median row.
+- At epoch 77 XS-stft's rows were already 0.19×.
+- These rows had no decay (`decay_adamw: false`), so they shrank because the network never
+  predicts φ₀. That is what an output does when its target is unpredictable from its
+  input. The small rows are the symptom, not the cause.
+- **F48's mechanism (decay on the head) is ruled out.**
+- **What still separates XS-fd (which learned φ₀) from every run since F39:**
+  - the 0.05 decay on z for the Muon matrices (XS-fd: 1e-6);
+  - 16-bin tokens (XS-fd: 2);
+  - SNR-ordered slots;
+  - the reconstruction head;
+  - NorMuon.
+- **Not the representation:** STFT tokens, which give φ₀ as a phase intercept, change
+  nothing.
+
+**Against F50's predictions:**
+1. φ₀ moved by epoch ~50: **no** (0.6% at epoch 77, 0.3% at the end).
+2. ψ within 1–2× of the MCMC on loud sources: B's loudest 2.45× (B-rope 2.32), XS's 10×
+   (10.4): **no**.
+3. The loud sky narrows: **yes on both**, 2–5× against the MCMC on the loudest source and
+   0.6–0.7× per source above SNR 300. That rules against F49's pure bf16-cast floor: the
+   finer encoding of the input (asinh amplitude bins 4× finer, the phase 7× finer at
+   |z| ~ 300) moved it.
+4. f₀ and found count at least the rope runs': **B yes, XS no.**
+
+**Reading.**
+- **The STFT input is a real gain for loud sources on B.** A, sky, ι and ψ are 0.6–0.85× per
+  source, at no cost below SNR 100 and with the same f₀. It equals B-long's loud-source
+  result at a third of the steps.
+- **XS (4 tokens) loses at mid SNR.** A plausible cause: per-sample |z| there is ~1–5. The
+  gated phase is then mostly noise, and the log-polar features are no longer a linear
+  function of the Gaussian noise. With 4 tokens the network has less context to average it
+  out.
+- **φ₀ needs a different fix.** Two options:
+  - **The training-free one:** resample each draw's (A, ι, ψ, φ₀) from their exact
+    likelihood given (f₀, ḟ, sky), via the four F-statistic amplitudes.
+  - **One XS run with no decay on z at all,** to test the last optimiser difference from
+    XS-fd. F36 needs care there, since z ran away without decay.
 
 ### F50 (2026-10-18): STFT tokens — XS-stft and B-stft, on XS-rope and B-rope
 
@@ -3830,6 +3948,8 @@ a finished run gets its number when it is archived here.
 | `19-lisa-B-template` | `lisa-B-fd-template` | B-template (14706575, 16 Oct) |
 | `20-lisa-B-fisher` | `lisa-B-fd-fisher` | B-fisher (14706577, 16 Oct) |
 | `21-lisa-B-long` | `lisa-B-fd-rope-long` | B-long (14706580 → 81, 16–17 Oct) |
+| `22-lisa-B-stft` | `lisa-B-stft` | B-stft (14891484, 18 Oct) |
+| `23-lisa-XS-stft` | `lisa-XS-stft` | XS-stft (14891481, 18 Oct) |
 
 `outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
 (the code finds a run at `<output_dir>/lisa-<config>`).
