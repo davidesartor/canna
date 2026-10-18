@@ -8,6 +8,15 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-18)
 
+- **Update, 2026-10-18 (F50): XS-stft and B-stft launched; B-helicity (F49) is not.**
+  - **The user's diagnosis:** the problem is the data representation.
+    - re/im over five decades is a poor encoding;
+    - φ₀ and ψ read better from short-time spectra.
+  - **The change:** the same tokens and bands as XS-rope and B-rope, each token's 16 bins
+    turned into the band's 16 time samples, 45.7 days apart.
+  - **The features:** per sample asinh|z| and z/√(1 + |z|²).
+  - **Also:** no decay on the AdamW parameters (F48). Nothing else from F46–F49.
+
 - **Update, 2026-10-18 (F49): B-helicity prepared. The sky's "bias" is an information floor,
   not a bias.**
   - **The run:** B-long's recipe plus three changes:
@@ -438,9 +447,65 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14706575** (+ post 14706576) | B-fd-template (F46): B-rope + the template residual, 200k steps, `slurm/lisa-chain.sh B-fd-template 1 --n_random 50` | **Completed** 13:12 CEST on 16 Oct (11 h 23 min), trexgpu01, 203 s per epoch; post 49 min. The cached B MCMC was found. Muon 91% (the 12-channel encoding adds 3.2M to AdamW). Held out x 0.6416. f₀ floor 0.33 bins, 7–8× B-rope (F47). Fetched as `19-lisa-B-template`. |
 | **14706577** (+ post 14706578) | B-fd-fisher (F46): B-rope + the Mahalanobis loss, fisher_cap 100, 200k steps | **Completed** 13:33 CEST on 16 Oct (11 h 43 min), trexgpu04, 209 s per epoch; post 39 min. Held out x 0.6568 (Euclidean). Equals B-rope (F47). Fetched as `20-lisa-B-fisher`. |
 | **14706580 → 14706581** (+ post 14706582) | B-fd-rope-long (F46): B-rope at 600k steps, two links (afterany), then the post job | Started 01:50 CEST on 16 Oct, 187 s per epoch. Link 1 TIMEOUT at 24 h (~epoch 462, as planned), link 2 **completed** 09:13 CEST on 17 Oct (7 h 23 min), post 38 min. Held out x 0.6202. The best B model (F48). Fetched as `21-lisa-B-long`. |
-| (to submit) | B-fd-helicity (F49): B-long's recipe + the Fisher loss + no AdamW decay + the helicity phases, 600k steps, `slurm/lisa-chain.sh B-fd-helicity 2 --n_random 50` | Prepared 18 Oct; ~35 h. Probe a snapshot at epoch ~50 (F49's rule 1). Fetch as `22-lisa-B-helicity`. |
+| (not submitted) | B-fd-helicity (F49): B-long's recipe + the Fisher loss + no AdamW decay + the helicity phases, 600k steps, `slurm/lisa-chain.sh B-fd-helicity 2 --n_random 50` | Prepared 18 Oct, set aside the same day for F50's STFT runs. |
 
 ## 4. Findings
+
+### F50 (2026-10-18): STFT tokens — XS-stft and B-stft, on XS-rope and B-rope
+
+**The user's proposal** (after F49, setting F46–F49 aside):
+1. The whitened data span ~3 decades where the signal is (noise ~1 per bin, the loudest bins
+   125–630 on B), and re/im through an arcsinh encoding is a poor representation of that.
+2. φ₀, and with it ψ, is better represented in a short-time Fourier transform.
+
+**The design** (`network.stft_tokens`, `LisaFlow(stft=True)`):
+- **The same tokens as before:** 4 on XS, 256 on B, each 16 rfft bins wide, the same bands and
+  the same RoPE positions.
+- **Each token becomes the band's 16 time samples, T_obs/16 = 45.7 days apart,** by an
+  orthonormal inverse DFT of its own bins.
+  - This is a critically sampled STFT: invertible, no leakage between tokens, and the
+    whitened noise stays white.
+  - A tapered, overlapping STFT would leak and duplicate information, so it was not used.
+- **Per complex sample of A, E and T:**
+  - **asinh|z|:** log-like for loud samples and linear near zero, with the noise as its
+    only scale. The user's first idea, a fixed floor on |A| in raw TDI units, would sit at
+    a different depth below the noise in every window.
+  - **The gated phase z / √(1 + |z|²):** the unit phasor for loud samples, fading to 0
+    where the phase is noise.
+  - Both are smooth at z = 0, and together they give back z.
+- **The encoding:** 144 scalars per token (96 before).
+  - The amplitude has 128 bins uniform in asinh on [0, asinh 1000], 0.06 wide: 4× finer
+    than the re/im bins.
+  - The phase components have 64 bins on [−1, 1].
+  - At |z| = 300, one noise σ is a tenth of a phase bin and 5% of an amplitude bin, against
+    1.4% of an re/im bin before. The encoding resolves noise-sized changes 4–7× more finely.
+- **What it should change, in this basis:**
+  - A source's sub-bin f₀ is the phase slope across a token's samples.
+  - φ₀ (with ψ's polarisation phase) is its intercept.
+  - The sky is the annual Doppler and antenna-pattern modulation along the samples, 8
+    samples per year.
+  - φ₀ is not new information: it rotates every complex coefficient in any linear basis.
+    What the STFT separates is the intercept from the slope and the modulation.
+- **Also `decay_adamw: false`:** without it a dead φ₀ could again be F48's decay.
+  - The two changes cannot be told apart if φ₀ comes back.
+  - If φ₀ stays dead with both, both are ruled out.
+- **Not included:** the template, the Fisher loss, and F49's helicity coordinates.
+  B-fd-helicity is not launched.
+
+**Configs:** `XS-stft` (1.2M steps, ~12 h) and `B-stft` (200k, ~11 h), against
+`17-lisa-XS-rope` and `18-lisa-B-rope`. Tests in `tests/lisa/test_stft_tokens.py`.
+
+**Predictions, written before the result:**
+1. **φ₀ at epoch ~50** (velocity probe): cos φ₀ and sin φ₀ velocity spread ≥ 20% of the
+   target's (0.3–0.5% since F39). φ₀ within 3× of the MCMC wherever the MCMC pins it
+   (XS q0.10 s0–s2 at 30–61× now; B q0.10 s0 at 47×).
+2. **ψ** within 1–2× of the MCMC on the loud sources too (now 2.3–10×).
+3. **Sky:** the loudest sources (XS 16–17×, B 66–106× for B-rope) should narrow if the
+   modulation reading helps. A loud floor that stays where it was points back at the bf16
+   cast (F49).
+4. **f₀ and found count:** at least B-rope's (215 of 240 found, 0.035 bins loud) and
+   XS-rope's (loud 0.0106 bins). A regression here would mean the slope is harder to read
+   than the bins' leakage pattern.
 
 ### F49 (2026-10-18): B-helicity — the Fisher loss, no AdamW decay and the circular-mode phases in one run; the sky is calibrated, and the loud sky is a bf16 precision floor
 

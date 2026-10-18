@@ -18,6 +18,10 @@ from .problem import WindowGeometry
 # the bins of the other coordinates: it is the one the posterior resolves most finely
 # against its prior range (F26).
 DATA_BINS, DATA_REACH = 64, 1000.0
+# with `stft`, each sample is fed as asinh|z| and the gated phase z / sqrt(1 + |z|^2). The
+# amplitude's bins are uniform in asinh from 0 to asinh(DATA_REACH), 0.06 wide (4x finer than
+# the re/im bins above); the phase's are uniform on [-1, 1]
+STFT_AMPLITUDE_BINS, STFT_PHASE_BINS = 128, 64
 COORD_BINS, F0_BINS, WINDOW_BINS = 64, 256, 64
 # the flow coordinates' ranges: log f0 and log A are mapped onto [-1, 1], log Mc is
 # standardised, and the sky, orientation and phase are unit vectors
@@ -33,12 +37,40 @@ def arcsinh_edges(reach: float, bins: int) -> tuple[float, ...]:
     return tuple(math.sinh(u) for u in uniform_edges(-math.asinh(reach), math.asinh(reach), bins))
 
 
+def stft_tokens(y: Float[Array, "F C"], patch: int) -> Float[Array, "N P"]:
+    """The whitened window as STFT tokens: each token's `patch` rfft bins (its band, as before)
+    turned into the band's `patch` time samples by an orthonormal inverse DFT, T_obs / patch
+    apart (45.7 days for 16 bins over 2 years).
+
+    This is a critically sampled STFT: invertible, each token keeps exactly its band, and the
+    whitened noise stays white with unit variance per part. Within a token, a source's f0
+    offset is the slope of the phase across the samples, its initial phase the intercept,
+    and the sky the annual Doppler and antenna-pattern modulation along them.
+
+    Each complex sample z of A, E and T is fed as asinh|z|, log-like for loud samples and
+    linear near zero, and the gated phase z / sqrt(1 + |z|^2): the unit phasor for loud
+    samples, fading to 0 where the phase is noise. Both are smooth at z = 0, and together they
+    determine z. Features are ordered [amplitudes, real parts, imaginary parts], each over
+    (sample, channel).
+    """
+    channels = y.shape[-1] // 2
+    z = y[:, :channels] + 1j * y[:, channels:]
+    z = rearrange(z, "(n p) c -> n p c", p=patch)
+    z = jnp.fft.ifft(z, axis=1, norm="ortho")
+    phase = z * jax.lax.rsqrt(1.0 + jnp.square(jnp.abs(z)))
+    flat = lambda a: rearrange(a, "n p c -> n (p c)")
+    return jnp.concat(
+        [flat(jnp.arcsinh(jnp.abs(z))), flat(phase.real), flat(phase.imag)], axis=-1
+    ).astype(y.dtype)
+
+
 class LisaFlow(eqx.Module):
     """Velocity field over a set of binaries, conditioned on a whitened frequency-domain window.
 
     The data are the window's rfft bins, whitened, with the real and imaginary parts of A, E
     and T stacked as six channels (twelve with `templates`: the residual of the data against
-    the sources at the flow's current point, train.with_residual). `patch` neighbouring bins make one token. Every scalar
+    the sources at the flow's current point, train.with_residual). `patch` neighbouring bins make one token,
+    either as they are or, with `stft`, as the band's time samples (`stft_tokens`). Every scalar
     the network takes in -- each data value, each source coordinate, the window frequency --
     goes through a piecewise linear encoding (`PiecewiseLinear`) and one linear map.
 
@@ -64,6 +96,8 @@ class LisaFlow(eqx.Module):
     # data (train.with_residual): 12 channels instead of 6. The network takes whatever y it is
     # given; this flag tells the sampler to build the same conditioning at every step
     templates: bool = eqx.field(static=True)
+    # the data tokens as short-time Fourier transforms (`stft_tokens`) instead of rfft bins
+    stft: bool = eqx.field(static=True)
     x_embed: PiecewiseLinear
     y_embed: PiecewiseLinear
     y_pos: Float[Array, "N D"]
@@ -91,6 +125,7 @@ class LisaFlow(eqx.Module):
         window: WindowGeometry | None = None,
         rope_min_period: float = 2.0,
         templates: bool = False,
+        stft: bool = False,
         dtype: DType = jnp.float32,
         param_dtype: jnp.dtype = jnp.float32,
         *,
@@ -100,7 +135,8 @@ class LisaFlow(eqx.Module):
         (n_sources, x_dim), (*_, n_bins, y_dim) = x_shape, y_shape
         assert x_dim == len(COORD_RANGES), f"expected {len(COORD_RANGES)} flow coordinates"
         assert n_bins % patch == 0, f"window of {n_bins} bins is not divisible by {patch}"
-        self.dtype, self.patch, self.templates = dtype, patch, templates
+        self.dtype, self.patch, self.templates, self.stft = dtype, patch, templates, stft
+        assert not (stft and templates), "the STFT tokens take the data alone"
         # RoPE: one angle per token and per pair of a head's dimensions, periods log-spaced from
         # rope_min_period bins to twice the window, so attention resolves f0 - f_token from a
         # fraction of a bin up to the whole window
@@ -125,7 +161,15 @@ class LisaFlow(eqx.Module):
             for i, (lo, hi) in enumerate(COORD_RANGES)
         )
         self.x_embed = PiecewiseLinear(coord_edges, hidden_dim, key=next(keys), **kwargs)
-        data_edges = (arcsinh_edges(DATA_REACH, DATA_BINS),) * (patch * y_dim)
+        if stft:
+            # per token: patch time samples x y_dim / 2 complex channels x (amplitude, 2 phase)
+            n = patch * (y_dim // 2)
+            data_edges = (
+                (uniform_edges(0.0, math.asinh(DATA_REACH), STFT_AMPLITUDE_BINS),) * n
+                + (uniform_edges(-1.0, 1.0, STFT_PHASE_BINS),) * (2 * n)
+            )
+        else:
+            data_edges = (arcsinh_edges(DATA_REACH, DATA_BINS),) * (patch * y_dim)
         self.y_embed = PiecewiseLinear(data_edges, hidden_dim, key=next(keys), **kwargs)
         self.y_pos = 0.02 * jr.normal(
             next(keys), (n_bins // patch, hidden_dim), param_dtype
@@ -170,7 +214,10 @@ class LisaFlow(eqx.Module):
         x = jax.vmap(self.x_embed)(x.astype(f32))
         if self.x_slot is not None:
             x = x + self.x_slot
-        y = rearrange(y.astype(f32), "(n p) c -> n (p c)", p=self.patch)
+        if self.stft:
+            y = stft_tokens(y.astype(f32), self.patch)
+        else:
+            y = rearrange(y.astype(f32), "(n p) c -> n (p c)", p=self.patch)
         y = jax.vmap(self.y_embed)(y) + self.y_pos
 
         # mixed precision: the stored params keep param_dtype, the backbone runs in dtype
