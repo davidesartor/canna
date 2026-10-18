@@ -153,22 +153,27 @@ def match_sources(problem: LisaGB, draws: np.ndarray, truth: np.ndarray, f) -> n
 def axis_ranges(
     flow: np.ndarray, fisher: np.ndarray, scale: list[str], mcmc: np.ndarray | None = None
 ) -> list[tuple]:
-    """Each axis' plot range: the span of all sample sets, padded by 5% in its own scale."""
+    """Each axis' plot range: the union of the central 99% (0.5-99.5%) of the flow's and the
+    MCMC's draws, or of the flow's and the Fisher's where there is no MCMC, padded by 5% in
+    its own scale. Draws outside are left off the page, so a few strays (one draw latched
+    onto another source) do not shrink the posterior to a single bin."""
     ranges = []
     for c in range(flow.shape[1]):
-        # a linear-space Fisher can spill below zero on a log axis -- ignore those
-        fisher_c = fisher[:, c]
-        fisher_c = fisher_c[fisher_c > 0] if scale[c] == "log" else fisher_c
-        others = [fisher_c] + ([mcmc[:, c]] if mcmc is not None else [])
-        lo = min([flow[:, c].min()] + [o.min() for o in others if o.size])
-        hi = max([flow[:, c].max()] + [o.max() for o in others if o.size])
+        sets = [flow[:, c], mcmc[:, c] if mcmc is not None else fisher[:, c]]
         if scale[c] == "log":
-            ll, hh = np.log10(lo), np.log10(hi)
-            m = 0.05 * (hh - ll) or 0.1
-            ranges.append((10 ** (ll - m), 10 ** (hh + m)))
-        else:
-            m = 0.05 * (hi - lo) or 0.1
-            ranges.append((lo - m, hi + m))
+            # a linear-space Fisher can spill below zero on a log axis -- ignore those
+            sets = [np.log10(x[x > 0]) for x in sets]
+        bounds = [np.quantile(x, [0.005, 0.995]) for x in sets if x.size]
+        lo, hi = min(b[0] for b in bounds), max(b[1] for b in bounds)
+        f = fisher[:, c]
+        f = np.log10(f[f > 0]) if scale[c] == "log" else f
+        if f.size and not np.any((f >= lo) & (f <= hi)):
+            # a Fisher wholly off the page would make its density histogram 0/0: take it in
+            fb = np.quantile(f, [0.005, 0.995])
+            lo, hi = min(lo, fb[0]), max(hi, fb[1])
+        m = 0.05 * (hi - lo) or 0.1
+        lo, hi = lo - m, hi + m
+        ranges.append((10**lo, 10**hi) if scale[c] == "log" else (lo, hi))
     return ranges
 
 
@@ -183,6 +188,7 @@ def corner_page(
     pooled: bool = False,
     bins: int = 20,
     mcmc: np.ndarray | None = None,
+    save_samples: bool = True,
 ) -> None:
     """One corner page: flow draws (orange) over Fisher draws (blue, dashed), truths in black,
     and the MCMC (green) when given (canna.lisa.mcmc's narrowband chains).
@@ -192,17 +198,30 @@ def corner_page(
     truth. A pooled page stacks every source into the same ndim parameters, so a row is one
     source: it gets a line on the diagonal and a point in the 2D panels, since lines there
     would cross at k^2 places of which only k are real.
+
+    Everything the page plots is saved beside it (path with .npz), so `replot_page` can
+    restyle it later with no network, Fisher or MCMC run.
     """
     import corner
     import matplotlib.pyplot as plt
 
+    if save_samples:
+        extra = {} if mcmc is None else {"mcmc": mcmc}
+        np.savez_compressed(
+            path.with_suffix(".npz"), flow=flow, fisher=fisher, truths=truths,
+            labels=np.array(labels), scale=np.array(scale), title=np.array(title),
+            pooled=pooled, bins=bins, **extra,
+        )
     ranges = axis_ranges(flow, fisher, scale, mcmc)
     # a log axis over less than a factor of 2 (f0 inside one window, ~1%) only crowds its
     # tick labels together; draw it linear. Amplitudes span decades and stay log
     scale = ["linear" if sc == "log" and hi < 2 * lo else sc for sc, (lo, hi) in zip(scale, ranges)]
-    style = dict(range=ranges, axes_scale=scale, bins=bins, hist_kwargs={"density": True})
+    style = dict(range=ranges, axes_scale=scale, bins=bins)
+    # corner writes its color into hist_kwargs, so a dict shared by the calls left every
+    # marginal in the flow's orange: each call gets its own
     fig = corner.corner(
-        flow, labels=labels, color="C1", show_titles=not pooled, title_fmt=".2g", **style
+        flow, labels=labels, color="C1", show_titles=not pooled, title_fmt=".2g",
+        hist_kwargs={"density": True}, **style,
     )
     corner.corner(
         fisher,
@@ -210,10 +229,13 @@ def corner_page(
         color="C0",
         plot_datapoints=False,
         contour_kwargs={"linestyles": "dashed"},
+        hist_kwargs={"density": True},
         **style,
     )
     if mcmc is not None:
-        corner.corner(mcmc, fig=fig, color="C2", plot_datapoints=False, **style)
+        corner.corner(
+            mcmc, fig=fig, color="C2", plot_datapoints=False, hist_kwargs={"density": True}, **style
+        )
     if pooled:
         ndim = flow.shape[1]
         axes = np.array(fig.axes).reshape(ndim, ndim)
@@ -229,6 +251,19 @@ def corner_page(
         ax.set_rasterized(True)
     fig.savefig(path, bbox_inches="tight", dpi=150)
     plt.close(fig)
+
+
+def replot_page(samples: Path, path: Path | None = None) -> Path:
+    """Redraw a corner page from the samples corner_page saved beside it (default: the .pdf
+    next to the .npz), with the current styling."""
+    d = np.load(samples)
+    path = samples.with_suffix(".pdf") if path is None else path
+    corner_page(
+        path, d["flow"], d["fisher"], list(d["labels"]), list(d["scale"]), str(d["title"]),
+        d["truths"], pooled=bool(d["pooled"]), bins=int(d["bins"]),
+        mcmc=d["mcmc"] if "mcmc" in d else None, save_samples=False,
+    )
+    return path
 
 
 def eval_injections(problem: LisaGB, seed: int):

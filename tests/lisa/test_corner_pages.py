@@ -4,7 +4,7 @@ import matplotlib
 import numpy as np
 import pytest
 
-from canna.lisa.eval import PARAM_IS_LOG, PARAM_LABELS, axis_ranges, corner_page
+from canna.lisa.eval import PARAM_IS_LOG, PARAM_LABELS, axis_ranges, corner_page, replot_page
 
 LABELS = [f"${label}$" for label in PARAM_LABELS]
 SCALE = ["log" if is_log else "linear" for is_log in PARAM_IS_LOG]
@@ -46,3 +46,15 @@ def test_every_kind_of_page_renders(draws, tmp_path, kind):
     path = tmp_path / f"{kind}.pdf"
     corner_page(path, *args[:4], kind, args[4], **kwargs)
     assert path.stat().st_size > 10_000
+
+
+def test_pages_save_their_samples_and_replot_from_them(draws, tmp_path):
+    d, truth = draws
+    mcmc = d[:, 0] * (1 + 1e-5)
+    path = tmp_path / "source.pdf"
+    corner_page(path, d[:, 0], d[:, 1], LABELS, SCALE, "a title", truth[:1], mcmc=mcmc)
+    saved = np.load(path.with_suffix(".npz"))
+    assert np.array_equal(saved["flow"], d[:, 0]) and np.array_equal(saved["mcmc"], mcmc)
+    assert list(saved["labels"]) == LABELS and str(saved["title"]) == "a title"
+    again = replot_page(path.with_suffix(".npz"), tmp_path / "again.pdf")
+    assert again.stat().st_size > 10_000

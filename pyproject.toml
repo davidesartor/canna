@@ -26,6 +26,7 @@ cuda = ["jax[cuda]>=0.10.1"]
 
 [dependency-groups]
 dev = [
+    "plotly>=7.1.0",
     "pytest>=9.1.1",
     "pytest-xdist>=3.8.0",
 ]
