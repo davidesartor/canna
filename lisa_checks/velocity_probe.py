@@ -28,7 +28,7 @@ sys.argv = ["velocity_probe", "--config", config, "--output_dir", out, *sys.argv
 args = T.parse_args()
 state, epoch, _ = T.load_trained(args)
 problem, flow = state.problem, state.flow
-names = ["f", "Mc", "A", "sky x", "sky y", "sky z", "or x", "or y", "or z", "cos phi0", "sin phi0"]
+names = problem.flow_names  # the last two are phi0, or phi- with polarisation: helicity
 sample = jax.jit(jax.vmap(partial(T.train_sample, problem, time_power=args.time_power,
                                   templates=flow.templates)))
 both = eqx.filter_jit(lambda f, b: jax.vmap(f)(b.xt, b.t, b.y, b.f))

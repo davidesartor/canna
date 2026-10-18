@@ -6,7 +6,24 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 §9 places the work in the literature (survey of 2026-10-09).
 
-## 1. Summary (2026-10-01, updated 2026-10-17)
+## 1. Summary (2026-10-01, updated 2026-10-18)
+
+- **Update, 2026-10-18 (F49): B-helicity prepared. The sky's "bias" is an information floor,
+  not a bias.**
+  - **The run:** B-long's recipe plus three changes:
+    - the Fisher loss;
+    - no decay on the AdamW parameters;
+    - the orientation as sin ι and the two circular-mode phases φ₀ ± 2ψ, in which the ψ/φ₀
+      symmetries are quotiented out exactly.
+  - **The sky on the 34 eval sources above SNR 15 is calibrated:** the mean signed offset is
+    within ±0.34 flow widths, against a standard error of ~0.2.
+  - **The loudest source's sky is wide, and so off-centre by its own width:** 30–44× the
+    MCMC.
+    - A 1σ sky shift moves its data tokens by 0.03–0.05 bf16 ulps rms, against 0.25–0.6 at
+      SNR 17–78.
+    - The data hold the angles as 1/SNR relative changes, and bf16 keeps 2⁻⁸.
+  - **The template's measured gain is small** (loud sky 0.85–0.90× in width, as the Fisher
+    loss gives). The argument for it is this precision floor, which a residual removes.
 
 - **Update, 2026-10-17 (F48): B-long is the B model; φ₀ broke with F39's weight decay.**
   - **B-long (600k steps):**
@@ -421,8 +438,169 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14706575** (+ post 14706576) | B-fd-template (F46): B-rope + the template residual, 200k steps, `slurm/lisa-chain.sh B-fd-template 1 --n_random 50` | **Completed** 13:12 CEST on 16 Oct (11 h 23 min), trexgpu01, 203 s per epoch; post 49 min. The cached B MCMC was found. Muon 91% (the 12-channel encoding adds 3.2M to AdamW). Held out x 0.6416. f₀ floor 0.33 bins, 7–8× B-rope (F47). Fetched as `19-lisa-B-template`. |
 | **14706577** (+ post 14706578) | B-fd-fisher (F46): B-rope + the Mahalanobis loss, fisher_cap 100, 200k steps | **Completed** 13:33 CEST on 16 Oct (11 h 43 min), trexgpu04, 209 s per epoch; post 39 min. Held out x 0.6568 (Euclidean). Equals B-rope (F47). Fetched as `20-lisa-B-fisher`. |
 | **14706580 → 14706581** (+ post 14706582) | B-fd-rope-long (F46): B-rope at 600k steps, two links (afterany), then the post job | Started 01:50 CEST on 16 Oct, 187 s per epoch. Link 1 TIMEOUT at 24 h (~epoch 462, as planned), link 2 **completed** 09:13 CEST on 17 Oct (7 h 23 min), post 38 min. Held out x 0.6202. The best B model (F48). Fetched as `21-lisa-B-long`. |
+| (to submit) | B-fd-helicity (F49): B-long's recipe + the Fisher loss + no AdamW decay + the helicity phases, 600k steps, `slurm/lisa-chain.sh B-fd-helicity 2 --n_random 50` | Prepared 18 Oct; ~35 h. Probe a snapshot at epoch ~50 (F49's rule 1). Fetch as `22-lisa-B-helicity`. |
 
 ## 4. Findings
+
+### F49 (2026-10-18): B-helicity — the Fisher loss, no AdamW decay and the circular-mode phases in one run; the sky is calibrated, and the loud sky is a bf16 precision floor
+
+**The user's three points.**
+- Keep the Fisher reweighting (B-fisher, F46).
+- Argue for or against the template (B-template): it costs pipeline complexity.
+- Two questions about the angles:
+  - ψ and φ₀ have a physical quasi-degeneracy, set by the binary's inclination. Earlier runs
+    reproduced it; the recent ones do not. How can the network be helped to capture it?
+  - Why do λ and β look slightly off?
+
+**1. ψ and φ₀: the physics, and a parametrisation that follows it.**
+- **The data are linear in two complex mode amplitudes.** With c = sin ι in our latitude
+  convention (c = 1 face-on):
+  - a₋ ∝ A (1 + c)² e^{−i(φ₀ − 2ψ)}, a₊ ∝ A (1 − c)² e^{−i(φ₀ + 2ψ)};
+  - these are the F-statistic amplitudes in the helicity basis.
+  - Checked in jaxgb to 1e-15: at c = +1 the signal depends on φ₀ − 2ψ only, at c = −1 on
+    φ₀ + 2ψ only.
+- **What the posterior looks like:**
+  - Face-on, φ₋ = φ₀ − 2ψ is measured and φ₊ = φ₀ + 2ψ is flat.
+  - Face-off, the other way round.
+  - Edge-on, both are measured, so ψ and φ₀ are measured separately.
+  - The physical degeneracy is a ridge along φ₀ ± 2ψ = const, whose width varies with ι.
+- **What the old coordinates make of it.** (ψ, ι) sit on a sphere and φ₀ on its own circle.
+  - **A helix near face-on.** There ψ is the azimuth around the sphere's pole, and φ₀ =
+    φ₋ + 2ψ winds twice around φ₀'s circle as ψ goes round once.
+  - **Four exact copies.** The likelihood is invariant under ψ → ψ + π and (ψ, φ₀) →
+    (ψ + π/2, φ₀ + π), so the target holds four copies of that helix.
+  - **The reconstruction head's target is uninformative.** Over the four copies, the mean of
+    (cos φ₀, sin φ₀) and of cos ι (cos ψ, sin ψ) is exactly 0.
+  - **The velocity is uninformative until x_t has picked a copy.** Until then the four
+    copies pull in nearly opposite directions.
+  - Of all the coordinates, φ₀'s gradient is the last to appear. That is the coordinate
+    F48's weight decay erased.
+- **The new coordinates** (`LisaGB.polarisation: helicity`):
+  - c on [−1, 1], φ₊ on one circle, φ₋ on another; still 11 flow coordinates.
+  - The map (ψ, φ₀) → (φ₊, φ₋) on the torus is 4 to 1, with exactly the four symmetries as
+    its kernel. The target becomes a single copy, and the degeneracy is axis-aligned: near
+    face-on one circle is flat.
+  - The prior stays uniform (c, φ₊ and φ₋ are independent and uniform). The physical columns
+    stay (ψ, ι, φ₀), so the MCMC, scorecards and tables are unchanged.
+  - `flow_to_physical` returns one representative, ψ = (φ₊ − φ₋)/4 and φ₀ = (φ₊ + φ₋)/2. The
+    corner pages now fold every sample set onto the truth's copy (`eval.fold_orientation`).
+    Before, the MCMC covered 2–3 copies and B-long's flow all four, evenly.
+  - `tests/lisa/test_helicity.py`.
+
+**2. λ and β: calibrated, and off only where they are too wide.**
+`flow − MCMC` medians are in MCMC widths; z = (flow median − truth) / flow width.
+
+- **Population (40 eval sources, ecliptic):**
+  - Above SNR 15 (34 sources), the mean z is −0.34 to +0.19 per coordinate and band, and the
+    rms z 0.65–0.9, for B-rope, B-template, B-fisher and B-long alike.
+  - The standard error of such a mean is ~0.2, so there is no systematic bias.
+  - Below 15, λ's mean z is −0.55 to −0.87, but on only 6 sources: one noise draw per
+    injection, shared by all four runs.
+- **Mid SNR (17–78, B-long):**
+  - The flow's medians are 0.1–1.1 MCMC widths from the MCMC's.
+  - The MCMC's own median is 0.3–1.4 widths from the truth, which is the noise realisation.
+  - With the flow 1.1–1.6× wider, the truth line on a page sits ~1 flow width off. That is
+    what "looks biased", and it is expected.
+- **The loudest source (SNR 1668, 0.163 mHz):**
+  - The sky is 30–44× the MCMC's width, and its centre is 1.3–1.7 of its own widths away,
+    i.e. 37–72 MCMC widths (B-rope: 93–96). The MCMC median is outside the flow's 68% in
+    sin β.
+  - **Not the f₀ correlation:** the MCMC's regression of the sky on f₀, applied to the flow's
+    f₀ offset, predicts 3–5 MCMC widths (`lisa_checks/sky_offsets.py`).
+  - **What it is:** a flow conditioned on a coarser summary of the data is calibrated but
+    wider, and centred on E[θ | summary], which sits about one of its own widths from the
+    full posterior's centre.
+- **Why the summary is coarse there: the bf16 data tokens.** The token embedding is float32,
+  cast to bf16 for the backbone. With B-long's network on the eval's noise realisation, a 1σ
+  (MCMC) shift moves the most affected token by (max / rms over its 512 components, in bf16
+  ulps; `lisa_checks/token_ulps.py`):
+
+  | source | SNR | f₀ | A | λ | sin β | ι |
+  |---|---|---|---|---|---|---|
+  | loudest | 1668 | 10.9 / 0.50 | 133 / 6.0 | **0.41 / 0.05** | **0.22 / 0.03** | 128 / 5.8 |
+  | q0.10 s0 | 78 | 1.6 / 0.48 | 2.1 / 0.39 | 1.1 / 0.28 | 1.0 / 0.27 | 1.7 / 0.42 |
+  | q0.10 s1 | 68 | 1.6 / 0.50 | 8.2 / 1.4 | 2.3 / 0.58 | 0.92 / 0.26 | 13 / 2.3 |
+  | q0.10 s2 | 61 | 4.6 / 0.66 | 7.3 / 1.3 | 1.1 / 0.27 | 2.1 / 0.25 | 8.6 / 1.4 |
+  | q0.10 s3 | 17 | 3.5 / 0.76 | 5.0 / 1.1 | 2.4 / 0.46 | 1.5 / 0.43 | 5.0 / 1.0 |
+
+  - **φ₀ is not under the floor.** On q0.10 s0, where the MCMC pins φ₀ to 0.05 rad and the
+    flow is 47× wide, a 1σ φ₀ shift moves the token by 2.7 / 0.77 ulps, as much as f₀ does.
+    That leaves F48's decay as the explanation for φ₀.
+  - **The loudest source is 5–10× below everything else in the sky,** and only in the sky.
+    A and ι scale the whole pattern (133 ulps); the sky changes the Doppler and
+    antenna-pattern sidebands by ~1/SNR relative.
+  - **The crossover:** bf16 resolves 2⁻⁸ ≈ 0.4% relative, so sources above SNR ~250 lose the
+    sky in the cast.
+  - **It matches F45:** the sky is within 1–2× of the MCMC at mid SNR, and 16–106× wide only
+    for the loudest.
+  - **One rms ulp takes 20–30σ** on the loudest source. B-long's 30–44× sits right there.
+  - **Not tested yet:** F42's float32 eval moved nothing for f₀, but it has not been run on
+    the sky. A network trained in bf16 would not have learned to read sub-ulp features
+    anyway.
+  - **The faintest source (SNR 7.3):** 25–59% of the flow's draws lie on the antipodal side.
+    The MCMC is limited to its box there.
+
+**3. The template: what the runs show, and the argument.**
+
+| loudest source (SNR 1668), flow / MCMC | λ width | sin β width | λ W1 | sin β W1 | f₀ width |
+|---|---|---|---|---|---|
+| B-rope (200k) | 66 | 106 | 58 | 124 | 56 |
+| B-template (200k) | 57 | 95 | 45 | 84 | 460 |
+| B-fisher (200k) | 54 | 79 | 45 | 108 | 69 |
+| B-long (600k) | 30 | 44 | 27 | 75 | 52 |
+
+- **The measured case is weak.**
+  - On the loudest source, B-template's sky gain over B-rope (0.85–0.90× in width, 0.7–0.8×
+    in W1) is what B-fisher gets without it, and B-long's 3× training does more.
+  - At mid SNR there is no consistent gain, and f₀ regressed 7–13×.
+- **The argument for it is the table above.**
+  - In y the sky is a 1/SNR relative change on large values, below the bf16 cast for loud
+    sources.
+  - In y − h(x_t) the carrier is gone. Near the truth, the residual's projection on ∂h/∂θ
+    is the score Jᵀ(y − h), so the sky and φ₀ errors become O(1) in its own scale, at
+    any precision.
+- **Why B-template could not show it:**
+  - The residual is formed at x_t, whose f₀ is bins off for most of the path (F47's table),
+    so the template is junk until 1 − s ≲ 10⁻³.
+  - Its six extra raw channels reach the same bf16 tokens as y.
+- **A form that is cheaper and less invasive.** B-fisher already computes J, each source's
+  band Jacobian at x_t, in float32 (`train.fisher_metric`). From it come the score and the
+  Gauss–Newton step δ = (G + I)⁻¹ Jᵀ(y − h(x_t)) in flow coordinates.
+  - That is 11 numbers per source, fed to the source token beside x_t.
+  - There are no new data channels, and the step is in float32.
+  - Its cost in training is that of B-fisher's metric (+9% per step). Sampling needs J at
+    every ODE step.
+  - This is still not in this run, and is the user's call.
+- **A precision test with no template:** re-run the loudest source's eval in float32, as F42
+  did for f₀. It is cheap, but a bf16-trained network may not use the extra bits, so only a
+  positive result is informative.
+
+**4. The run: `B-fd-helicity`.**
+- **The recipe:** B-fd-rope-long (600k steps, warmup 12k), plus:
+  - `fisher_cap: 100`;
+  - `decay_adamw: false` (the decay of 0.05 on z stays on Muon's matrices);
+  - `problem.polarisation: helicity`.
+- **Cost:** ~35 h (209 s per epoch for B-fisher), two chained links and the post job:
+  `slurm/lisa-chain.sh B-fd-helicity 2 --n_random 50`.
+- **The MCMC:** its cache id excludes the parametrisation, so the B MCMC (`eval-27e6d96219`)
+  is reused.
+- **What can't be told apart:** whether φ₀ comes back through the decay or through the
+  coordinates. The velocity probe's row norms will say which way it went (F48).
+- **Not comparable:** the held-out loss, which uses other coordinates and the Fisher weight.
+  Compare scorecards and MCMC tables only.
+
+**Predictions, written before the result:**
+1. **φ at epoch ~50** (a snapshot via `srun --overlap`, `lisa_checks/velocity_probe.py`):
+   - φ₋ and φ₊ velocity spread ≥ 20% of the target's (0.3–0.5% since F39);
+   - phase head rows ≥ 0.5× the other coordinates'.
+   - **Below 5%: cancel the run** (it saves ~30 h). The decay and the coordinates are then
+     both ruled out, and the next step is the analytic F-statistic extrinsics.
+2. **Final, against the MCMC:** φ₀ ≤ 3× the MCMC width where the MCMC pins it (q0.10 s0, 47×
+   now). ψ within 1–2×.
+3. **The loudest source's sky stays ≥ 20×** (the bf16 floor), at most the Fisher's ~0.8×
+   gain over B-long. If it drops below 10×, §2's precision explanation is wrong.
+4. **f₀ and found:** within 10% of B-long (221 of 240 found, 0.031 bins loud), and
+   calibration unchanged.
 
 ### F48 (2026-10-17): B-long is the best B model; φ₀ broke with the F39 recipe, most likely through the weight decay, not because of the path
 

@@ -292,9 +292,15 @@ def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
         base = optax.chain(cast_muon_gradients(jnp.dtype(ns_dtype)), base)
 
     def decay_lr(step, params):
-        """Each parameter's decay goes at its own group's lr, Muon's or AdamW's."""
+        """Each parameter's decay goes at its own group's lr, Muon's or AdamW's.
+
+        With --no-decay_adamw the AdamW group is not decayed at all (F49): the decay bounds z
+        under Muon's fixed-size steps, which AdamW's scale-adaptive ones do not need, and on
+        the velocity head it pulled the weakly learned phi0 rows to zero (F48)."""
         is_dims = lambda d: d is None or isinstance(d, optax.contrib.MuonDimensionNumbers)
         lr_m, lr_a = muon_lr(step), adam_lr(step)
+        if not get("decay_adamw", True):
+            lr_a = jnp.zeros_like(lr_a)
         return jax.tree.map(
             lambda d, p: jax.tree.map(lambda _: lr_a if d is None else lr_m, p),
             muon_dimensions(params),
@@ -648,6 +654,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.05,
         help="decay per unit lr; with schedule-free it acts on z (SF-NorMuon), else on the weights",
+    )
+    parser.add_argument(
+        "--decay_adamw",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="decay the AdamW parameters too (head, encodings, positions); off decays Muon's only",
     )
     parser.add_argument(
         "--warmup_steps",

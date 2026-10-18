@@ -149,6 +149,16 @@ class LisaGB(eqx.Module):
     # ordered set; False leaves them interchangeable, paired by the nearest permutation (the
     # Set coupling of every run up to XS-fd)
     order_sources: bool = eqx.field(static=True, default=True)
+    # how the flow sees inclination, polarisation and phase (the physical columns stay
+    # psi, iota, phi0 either way). "psi_phi0": (psi, iota) on a sphere and phi0 on a circle,
+    # every run up to F48. "helicity": sin iota on [-1, 1] and the phases of the two circular
+    # modes, phi0 + 2 psi and phi0 - 2 psi, each on its own circle (research log F49). The
+    # data are linear in A (1 -+ sin iota)^2 e^{-i (phi0 +- 2 psi)}: a face-on source
+    # (sin iota = 1) measures phi0 - 2 psi alone, a face-off one phi0 + 2 psi alone, and an
+    # edge-on one both. The map (psi, phi0) -> (phi0 + 2 psi, phi0 - 2 psi) on the torus is
+    # 4 to 1 with exactly the likelihood's symmetries {psi + pi, (psi + pi/2, phi0 + pi)} as
+    # its kernel, so this posterior is unimodal where the other one has four copies
+    polarisation: str = eqx.field(static=True, default="psi_phi0")
 
     # built once here: its whitening quadrature must not be re-run under every trace
     chirp_mass_prior: ChirpMass = eqx.field(init=False)
@@ -164,13 +174,18 @@ class LisaGB(eqx.Module):
         self.chirp_mass_prior = ChirpMass(
             m_min=self.mass_range[0], m_max=self.mass_range[1]
         )
+        assert self.polarisation in ("psi_phi0", "helicity"), self.polarisation
+        orientation = (
+            (geometries.Spherical(3), geometries.Spherical(2))
+            if self.polarisation == "psi_phi0"
+            else (geometries.Bounded(1), geometries.Spherical(2), geometries.Spherical(2))
+        )
         source = geometries.Product(
             geometries.Bounded(1),
             geometries.Euclidean(1),
             geometries.Bounded(1),
             geometries.Spherical(3),
-            geometries.Spherical(3),
-            geometries.Spherical(2),
+            *orientation,
         )
         self.geometry = source if self.order_sources else geometries.Set(source)
 
@@ -341,6 +356,23 @@ class LisaGB(eqx.Module):
             jnp.log(mc) - self.chirp_mass_prior.log_mean
         ) / self.chirp_mass_prior.log_std
         a = (2 * jnp.log(amp) - log_a.sum()) / (log_a[1] - log_a[0])
+        if self.polarisation == "psi_phi0":
+            orientation = [
+                jnp.cos(iota) * jnp.cos(psi),
+                jnp.cos(iota) * jnp.sin(psi),
+                jnp.sin(iota),
+                jnp.cos(phi0),
+                jnp.sin(phi0),
+            ]
+        else:
+            phase_p, phase_m = phi0 + 2 * psi, phi0 - 2 * psi
+            orientation = [
+                jnp.sin(iota),
+                jnp.cos(phase_p),
+                jnp.sin(phase_p),
+                jnp.cos(phase_m),
+                jnp.sin(phase_m),
+            ]
         return jnp.concat(
             [
                 f,
@@ -349,11 +381,7 @@ class LisaGB(eqx.Module):
                 jnp.cos(sky_lat) * jnp.cos(sky_lon),
                 jnp.cos(sky_lat) * jnp.sin(sky_lon),
                 jnp.sin(sky_lat),
-                jnp.cos(iota) * jnp.cos(psi),
-                jnp.cos(iota) * jnp.sin(psi),
-                jnp.sin(iota),
-                jnp.cos(phi0),
-                jnp.sin(phi0),
+                *orientation,
             ],
             axis=-1,
         )
@@ -363,11 +391,24 @@ class LisaGB(eqx.Module):
     ) -> Float[Array, "... S 8"]:
         log_f = jnp.log(jnp.stack(self.f0_window(f)))
         log_a = jnp.log(jnp.stack(self.a_window(f)))
-        f, m, a, sx, sy, sz, ox, oy, oz, cos, sin = jnp.split(x, 11, axis=-1)
+        f, m, a, sx, sy, sz, *orientation = jnp.split(x, 11, axis=-1)
 
         f0 = jnp.exp((f * (log_f[1] - log_f[0]) + log_f.sum()) / 2)
         mc = jnp.exp(m * self.chirp_mass_prior.log_std + self.chirp_mass_prior.log_mean)
         amp = jnp.exp((a * (log_a[1] - log_a[0]) + log_a.sum()) / 2)
+        if self.polarisation == "psi_phi0":
+            ox, oy, oz, cos, sin = orientation
+            psi = jnp.arctan2(oy, ox)
+            iota = jnp.arctan2(oz, jnp.hypot(ox, oy))
+            phi0 = jnp.arctan2(sin, cos)
+        else:
+            c, cos_p, sin_p, cos_m, sin_m = orientation
+            # off the poles by a hair: arcsin's slope is infinite there, and the Fisher metric
+            # differentiates through this (the signal itself is smooth in sin iota)
+            iota = jnp.arcsin(jnp.clip(c, -1 + 1e-6, 1 - 1e-6))
+            phase_p, phase_m = jnp.arctan2(sin_p, cos_p), jnp.arctan2(sin_m, cos_m)
+            # one of the four (psi, phi0) the two phases stand for, all the same signal
+            psi, phi0 = (phase_p - phase_m) / 4, (phase_p + phase_m) / 2
         return jnp.concat(
             [
                 f0,
@@ -375,12 +416,22 @@ class LisaGB(eqx.Module):
                 amp,
                 jnp.mod(jnp.arctan2(sy, sx), 2 * jnp.pi),
                 jnp.arctan2(sz, jnp.hypot(sx, sy)),
-                jnp.mod(jnp.arctan2(oy, ox), 2 * jnp.pi),
-                jnp.arctan2(oz, jnp.hypot(ox, oy)),
-                jnp.mod(jnp.arctan2(sin, cos), 2 * jnp.pi),
+                jnp.mod(psi, 2 * jnp.pi),
+                iota,
+                jnp.mod(phi0, 2 * jnp.pi),
             ],
             axis=-1,
         )
+
+    @property
+    def flow_names(self) -> list[str]:
+        """The 11 flow coordinates of a source, in order."""
+        orientation = (
+            ["or x", "or y", "or z", "cos phi0", "sin phi0"]
+            if self.polarisation == "psi_phi0"
+            else ["sin iota", "cos phi+", "sin phi+", "cos phi-", "sin phi-"]
+        )
+        return ["f", "Mc", "A", "sky x", "sky y", "sky z", *orientation]
 
     # sliding the window moves the whitening, not the manifold
     def exp_map(

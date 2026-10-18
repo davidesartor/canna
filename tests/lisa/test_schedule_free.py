@@ -135,3 +135,34 @@ def test_the_optimizer_builds_and_steps_with_and_without_schedule_free():
         state = TrainState.from_config(args)
         state, losses = state.train_epoch(4, 3, 3.0, 0.1)
         assert np.all(np.isfinite(np.asarray(losses)))
+
+
+def test_decay_adamw_off_decays_the_muon_matrices_only():
+    import argparse
+    from pathlib import Path
+    import yaml
+    import equinox as eqx
+    import canna.lisa as lisa
+    from canna.lisa.train import TrainState, optimizer, schedule_free_state
+
+    with open(Path(lisa.__file__).parent / "configs" / "XS-fd.yaml") as f:
+        config = yaml.safe_load(f)
+    config["network"] = dict(hidden_dim=32, num_blocks=1, num_heads=2, patch=16)
+    config.update(warmup_steps=1, weight_decay=50.0)  # a few steps must show it
+    flow = TrainState.from_config(argparse.Namespace(**config, dtype="float32")).flow
+    params = eqx.filter(flow, eqx.is_inexact_array)
+    zeros = jax.tree.map(jnp.zeros_like, params)
+    head = lambda p: p.x_unembed.linear2.weight  # AdamW
+    block = lambda p: p.backbone.blocks.mlp_y.linear2.weight  # Muon
+    for use_sf in (True, False):
+        for decay_adamw in (True, False):
+            args = argparse.Namespace(**config, schedule_free=use_sf, decay_adamw=decay_adamw)
+            tx = optimizer(args)
+            p, state = params, tx.init(params)
+            for _ in range(3):
+                u, state = tx.update(zeros, state, p)
+                p = optax.apply_updates(p, u)
+            z = schedule_free_state(state).z if use_sf else p
+            assert float(jnp.linalg.norm(block(z))) < 0.99 * float(jnp.linalg.norm(block(params)))
+            shrunk = float(jnp.linalg.norm(head(z))) < 0.99 * float(jnp.linalg.norm(head(params)))
+            assert shrunk == decay_adamw

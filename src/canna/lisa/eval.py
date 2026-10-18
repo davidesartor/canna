@@ -291,6 +291,22 @@ def labels_and_scales(n_sources: int) -> tuple[list[str], list[str]]:
     return labels, scale
 
 
+def fold_orientation(p: np.ndarray, truth: np.ndarray) -> np.ndarray:
+    """Draws [..., 8] moved by the likelihood's exact symmetries psi -> psi + pi and
+    (psi, phi0) -> (psi + pi/2, phi0 + pi) onto the copy nearest the truth [8] (or [S, 8]
+    against draws [..., S, 8]): psi within pi/4 of it, phi0 within pi.
+
+    A pair (psi, phi0) is only defined up to these, and the sample sets cover different
+    copies: the MCMC the two or three its boxes reach, a psi_phi0 flow all four, a helicity
+    flow a fixed one (LisaGB.polarisation). Folded, the pages compare like with like, as
+    canna.lisa.mcmc.fold does for the tables."""
+    p = np.array(p, np.float64)
+    k = np.round((p[..., 5] - truth[..., 5]) / (np.pi / 2))
+    p[..., 5] -= k * np.pi / 2
+    p[..., 7] = truth[..., 7] + (p[..., 7] - k * np.pi - truth[..., 7] + np.pi) % (2 * np.pi) - np.pi
+    return p
+
+
 def injection_pages(
     corner_dir: Path,
     tag: str,
@@ -304,6 +320,8 @@ def injection_pages(
     """The full and pooled pages of one injection. draws and fisher are [N, S, 8], mcmc
     [M, S, 8] (each source's own chains side by side) or None."""
     n_sources, n_params = truth.shape
+    draws, fisher = fold_orientation(draws, truth), fold_orientation(fisher, truth)
+    mcmc = None if mcmc is None else fold_orientation(mcmc, truth)
     labels, scale = labels_and_scales(n_sources)
     with_mcmc = ", MCMC (green)" if mcmc is not None else ""
     # full page: every parameter of every source. The Fisher is centred on one labelling
@@ -351,6 +369,8 @@ def gb_page(
 ) -> None:
     """One per-GB page: a single source's draws, relabelled onto it, against its Fisher."""
     with_mcmc = ", MCMC (green)" if mcmc_s is not None else ""
+    flow_s, fisher_s = fold_orientation(flow_s, truth_s), fold_orientation(fisher_s, truth_s)
+    mcmc_s = None if mcmc_s is None else fold_orientation(mcmc_s, truth_s)
     corner_page(
         corner_dir / f"gb-{name}.pdf",
         flow_s,
