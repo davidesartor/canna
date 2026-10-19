@@ -6,7 +6,22 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 §9 places the work in the literature (survey of 2026-10-09).
 
-## 1. Summary (2026-10-01, updated 2026-10-18)
+## 1. Summary (2026-10-01, updated 2026-10-19)
+
+- **Update, 2026-10-19 (F54): φ₀ and the ψ–φ₀ correlation are learned.**
+  - **The change:** the STFT runs with the helicity phases (φ₀ ± 2ψ) and the template
+    residual.
+  - **B-stft-ht against the MCMC at SNR 17–78:**
+    - the measured φ₀ ± 2ψ is within 2.1–3.4× (B-stft: 29–101×);
+    - φ₀ within 0.9–2.7× (B-stft up to 47×);
+    - ψ within 0.9–2.4×.
+  - **XS:** the measured φ₀ ± 2ψ is 4–22× the MCMC, against 15–1469× in XS-stft.
+  - **The cost is f₀:**
+    - B: 1.27–1.45× B-stft's width per source, 213 sources found against 217;
+    - XS: 1.2× at mid SNR, 27 fewer found;
+    - B's A, sky and ι: 1.05–1.2× wider.
+  - **What did it:** neither the template alone (B-template, F47) nor the STFT alone (F51)
+    learned φ₀. This run cannot tell whether the helicity coordinates alone would have.
 
 - **Update, 2026-10-18 night (F52): φ₀ is data-independent in every run since F39.**
   - **What the flow does:** it is uniform in φ₀ ± 2ψ even where the MCMC pins one of them to
@@ -471,9 +486,85 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14706580 → 14706581** (+ post 14706582) | B-fd-rope-long (F46): B-rope at 600k steps, two links (afterany), then the post job | Started 01:50 CEST on 16 Oct, 187 s per epoch. Link 1 TIMEOUT at 24 h (~epoch 462, as planned), link 2 **completed** 09:13 CEST on 17 Oct (7 h 23 min), post 38 min. Held out x 0.6202. The best B model (F48). Fetched as `21-lisa-B-long`. |
 | **14891481** (+ 14891482, post 14891483) | XS-stft (F50): XS-rope + STFT tokens + no AdamW decay, 1.2M steps, `slurm/lisa-chain.sh XS-stft 2` | **Completed** 15:19 CEST on 18 Oct (11 h 28 min, trexgpu02, 33 s per epoch); post 25 min. Held out x 0.7361. Fetched as `23-lisa-XS-stft` (F51). |
 | **14891484** (+ 14891485, post 14891486) | B-stft (F50): B-rope + STFT tokens + no AdamW decay, 200k steps, `slurm/lisa-chain.sh B-stft 2 --n_random 50` | **Completed** 15:15 CEST on 18 Oct (11 h 25 min, trexgpu01, 203 s per epoch); post 38 min. Held out x 0.6334. Fetched as `22-lisa-B-stft` (F51). |
+| **14951673** (+ 14951674, post 14951675) | XS-stft-ht (F53): XS-stft + helicity phases + template residual, 1.2M steps | **Completed** 15:01 CEST on 19 Oct (11 h 51 min, trexgpu03, 35 s per epoch); post 31 min. Fetched as `24-lisa-XS-stft-ht` (F54). |
+| **14951676** (+ 14951677, post 14951678) | B-stft-ht (F53): B-stft + helicity phases + template residual, 200k steps | **Completed** 16:36 CEST on 19 Oct (13 h 26 min, trexgpu04, 240 s per epoch); post 1 h 02 min. Fetched as `25-lisa-B-stft-ht` (F54). |
 | (not submitted) | B-fd-helicity (F49): B-long's recipe + the Fisher loss + no AdamW decay + the helicity phases, 600k steps, `slurm/lisa-chain.sh B-fd-helicity 2 --n_random 50` | Prepared 18 Oct, set aside the same day for F50's STFT runs. |
 
 ## 4. Findings
+
+### F54 (2026-10-19): XS-stft-ht and B-stft-ht — the phases are learned: B's φ₀ ± 2ψ within 2–3× of the MCMC at mid SNR; f₀ pays 1.3–1.45×
+
+**Runs** (F53).
+- **XS-stft-ht:** 14951673, 11 h 51 min, 35 s per epoch, peak 2.3 GiB; post 31 min.
+- **B-stft-ht:** 14951676, 13 h 26 min, 240 s per epoch, peak 13.2 GiB (27 of 80 GB on the
+  card); post 1 h 02 min.
+- Fetched as `24-lisa-XS-stft-ht` (finished first) and `25-lisa-B-stft-ht`: 192 files,
+  md5-identical. Then deleted on TREX, with the probe snapshots, `~/canna-probe2.sh` and the
+  logs.
+- The held-out losses (XS 0.6230, B 0.5064) are not comparable with earlier runs: different
+  coordinates.
+- **Analysis:**
+  - `lisa_checks/phase_combinations.py` and the MCMC tables;
+  - `outputs/scorecards/compare_ht.py` (f₀);
+  - `lisa_checks/width_ratios.py`;
+  - `velocity_probe.py` and `phase_rotation.py` on the final checkpoints (`probe-*-final.txt`;
+    the mid-run reads are kept beside them).
+
+**1. The phases are read from the data.**
+
+| | phase velocity / target | R², s < 0.5 | head rows / median | rotate data 0.3 rad → φ± velocity changes |
+|---|---|---|---|---|
+| every run F39–F51 | 0.003–0.005 | 0.000 | 0.06–0.14 | 0.001 |
+| XS-stft-ht | 0.58–0.61 | 0.42–0.59 | 0.48–0.57 | 0.61–0.64 |
+| B-stft-ht | 0.64–0.65 | 0.66–0.74 | 0.95–1.00 | 0.53–0.58 |
+
+**2. Against the MCMC (flow width / MCMC width).** First B-stft, then B-stft-ht; for each
+source the combination its inclination pins is in bold.
+
+| B | SNR | sin ι | φ₀ | ψ | φ₊ | φ₋ |
+|---|---|---|---|---|---|---|
+| loudest | 1668 | 0.96 | 2.6 → 1.8 | 1.8 → 1.8 | 2.1 → 1.8 | **2248 → 72** |
+| q0.10 s0 | 78 | −0.40 | 32 → **2.7** | 1.7 → 2.4 | **101 → 3.4** | 29 → 2.6 |
+| q0.10 s1 | 68 | 0.70 | 2.1 → 0.9 | 1.1 → 0.9 | 2.1 → 0.9 | **67 → 2.3** |
+| q0.10 s2 | 61 | −0.89 | 1.4 → 0.9 | 1.1 → 0.9 | **65 → 2.2** | 1.6 → 0.9 |
+| q0.10 s3 | 17 | −0.83 | 1.4 → 1.1 | 1.3 → 1.1 | **29 → 2.1** | 1.4 → 1.1 |
+| faintest | 7.3 | −0.39 | 1.7 → 1.7 | 1.5 → 1.8 | 2.6 → 2.5 | 1.5 → 1.5 |
+
+- **The ψ–φ₀ ridge is now reproduced at mid SNR,** at 2–3.4× the MCMC's width.
+- **The MCMC tables (folded robust widths):** φ₀ and ψ at 0.7–2.1× for every B source; the loudest
+  source's φ₀ is 2.1× (B-stft 4.3×).
+- **XS:** the pinned combination is 7.6–22× (XS-stft 15–1469×), and φ₀ 2.3–12× where the
+  MCMC pins it (was 30–61×).
+- **Per source (40 eval sources), φ₀'s width against B-stft:** 0.09 at SNR 15–100,
+  0.11–0.18 above. On XS: 0.56 at mid SNR, 0.03–0.06 above SNR 100.
+- **The loudest source keeps a gap:** φ₋ 72× on B, 22× on XS, the same loud-source floor as
+  its sky.
+
+**3. The cost.**
+
+| f₀, per source against B-stft | 0–15 | 15–40 | 40–100 | 100–300 | ≥ 300 | found |
+|---|---|---|---|---|---|---|
+| B-stft-ht | 1.30 [0.99–1.56] | 1.42 [1.16–1.61] | 1.27 [1.11–1.46] | 1.33 [1.14–1.54] | 1.45 [1.19–1.54] | 213 (217) |
+| B-template (F47, against B-stft) | 4.6 | 7.3 | 9.2 | 8.0 | 9.7 | 209 |
+
+- **B:**
+  - A, λ, sin β and ι are 1.05–1.20× B-stft's per source; ψ is unchanged.
+  - The loudest source's sky against the MCMC is unchanged (20, 22 against 18, 21).
+  - Calibration holds (in68 0.84, in95 0.99, rank 0.50).
+- **XS:**
+  - f₀ 1.17–1.20× XS-stft's below SNR 100, but 0.73× above SNR 300; 631 sources found
+    against 658.
+  - The loudest source's f₀ 14 → 2.7× the MCMC, its sky 7.4 → 3.2–3.5×.
+  - One source regressed badly: q0.10 s2 (SNR 34), f₀ 4 → 51×, sky 2 → 24–48×.
+- **The template's f₀ cost is far milder here than in B-template** (1.3–1.45× against 7–9×).
+
+**What made the difference.**
+- B-template had the template residual but the old coordinates and frequency-domain tokens.
+  Its φ₀ was never moved (F47).
+- B-stft had STFT tokens but neither of the other two (F51/F52).
+- This run had all three. Either the helicity coordinates are what the template needed (a
+  single target instead of four copies, F49), or the STFT is; one run cannot say which.
+- The f₀ cost is most likely the template's, as in F47.
 
 ### F53 (2026-10-19): XS-stft-ht and B-stft-ht — the STFT runs with the helicity phases and the template residual
 
@@ -4073,6 +4164,8 @@ a finished run gets its number when it is archived here.
 | `21-lisa-B-long` | `lisa-B-fd-rope-long` | B-long (14706580 → 81, 16–17 Oct) |
 | `22-lisa-B-stft` | `lisa-B-stft` | B-stft (14891484, 18 Oct) |
 | `23-lisa-XS-stft` | `lisa-XS-stft` | XS-stft (14891481, 18 Oct) |
+| `24-lisa-XS-stft-ht` | `lisa-XS-stft-ht` | XS-stft-ht (14951673, 19 Oct) |
+| `25-lisa-B-stft-ht` | `lisa-B-stft-ht` | B-stft-ht (14951676, 19 Oct) |
 
 `outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
 (the code finds a run at `<output_dir>/lisa-<config>`).
