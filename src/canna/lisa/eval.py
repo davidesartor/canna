@@ -150,13 +150,23 @@ def match_sources(problem: LisaGB, draws: np.ndarray, truth: np.ndarray, f) -> n
     return np.take_along_axis(draws, best[:, :, None], axis=1)
 
 
+ROBUST_WIDTHS = 8  # how far the flow's axis reaches past its median, in robust widths
+
+
 def axis_ranges(
-    flow: np.ndarray, fisher: np.ndarray, scale: list[str], mcmc: np.ndarray | None = None
+    flow: np.ndarray,
+    fisher: np.ndarray,
+    scale: list[str],
+    mcmc: np.ndarray | None = None,
+    robust: bool = True,
 ) -> list[tuple]:
-    """Each axis' plot range: the union of the central 99% (0.5-99.5%) of the flow's and the
-    MCMC's draws, or of the flow's and the Fisher's where there is no MCMC, padded by 5% in
-    its own scale. Draws outside are left off the page, so a few strays (one draw latched
-    onto another source) do not shrink the posterior to a single bin."""
+    """Each axis' plot range: the union of the central 99% (0.5-99.5%) of the reference draws
+    (the MCMC's, or the Fisher's where there is no MCMC) and of the flow's, padded by 5% in its
+    own scale. With `robust`, the flow's part is further held to its median +- ROBUST_WIDTHS
+    robust widths (1.4826 MAD): a percent of strays (draws latched onto another source, a bin
+    or more away) would otherwise set the axis and squash a 0.04-bin posterior into one
+    histogram bin. Pooled pages, multimodal by construction, pass robust=False. Draws outside
+    are left off the page; corner_page says how many."""
     ranges = []
     for c in range(flow.shape[1]):
         sets = [flow[:, c], mcmc[:, c] if mcmc is not None else fisher[:, c]]
@@ -164,6 +174,12 @@ def axis_ranges(
             # a linear-space Fisher can spill below zero on a log axis -- ignore those
             sets = [np.log10(x[x > 0]) for x in sets]
         bounds = [np.quantile(x, [0.005, 0.995]) for x in sets if x.size]
+        if robust and sets[0].size:
+            med = np.median(sets[0])
+            width = 1.4826 * np.median(np.abs(sets[0] - med))
+            if width > 0:
+                b = bounds[0]
+                bounds[0] = np.array([max(b[0], med - ROBUST_WIDTHS * width), min(b[1], med + ROBUST_WIDTHS * width)])
         lo, hi = min(b[0] for b in bounds), max(b[1] for b in bounds)
         f = fisher[:, c]
         f = np.log10(f[f > 0]) if scale[c] == "log" else f
@@ -212,7 +228,12 @@ def corner_page(
             labels=np.array(labels), scale=np.array(scale), title=np.array(title),
             pooled=pooled, bins=bins, **extra,
         )
-    ranges = axis_ranges(flow, fisher, scale, mcmc)
+    ranges = axis_ranges(flow, fisher, scale, mcmc, robust=not pooled)
+    # draws with any coordinate off the page, so the cut is never silent
+    lo_hi = np.array(ranges)
+    off = np.mean(np.any((flow < lo_hi[:, 0]) | (flow > lo_hi[:, 1]), axis=1))
+    if off > 0:
+        title = f"{title}\n{100 * off:.1f}% of the flow draws lie outside the plotted ranges"
     # a log axis over less than a factor of 2 (f0 inside one window, ~1%) only crowds its
     # tick labels together; draw it linear. Amplitudes span decades and stay log
     scale = ["linear" if sc == "log" and hi < 2 * lo else sc for sc, (lo, hi) in zip(scale, ranges)]

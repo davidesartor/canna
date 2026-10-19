@@ -58,3 +58,14 @@ def test_pages_save_their_samples_and_replot_from_them(draws, tmp_path):
     assert list(saved["labels"]) == LABELS and str(saved["title"]) == "a title"
     again = replot_page(path.with_suffix(".npz"), tmp_path / "again.pdf")
     assert again.stat().st_size > 10_000
+
+
+def test_a_few_strays_do_not_set_the_flow_axis():
+    rng = np.random.default_rng(1)
+    flow = rng.normal(0.0, 0.04, (1024, 8))
+    flow[:12, 0] += 1.5  # 1.2% of the draws latched a bin and a half away
+    mcmc = rng.normal(0.0, 0.01, (20000, 8))
+    lo, hi = axis_ranges(flow, mcmc, ["linear"] * 8, mcmc)[0]
+    assert hi < 0.5 and lo > -0.5  # the core, not the strays
+    lo, hi = axis_ranges(flow, mcmc, ["linear"] * 8, mcmc, robust=False)[0]
+    assert hi > 1.0  # the old rule, kept for pooled pages
