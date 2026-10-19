@@ -506,6 +506,25 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
   depend on the data?
 - **f₀ against 22 / 23.** B-template's 0.33-bin f₀ floor (F47) is the risk to watch.
 
+**Mid-run read** (19 Oct, ~09:00 CEST; snapshots of XS-stft-ht at epoch 544 of 1200 and
+B-stft-ht at epoch 79 of 200; probes run on the jobs' own GPUs):
+- **Resources:** B uses 27 of 80 GB of GPU memory at 97% utilisation, and 2.1 GB of host
+  memory against the 56 GB allocated. XS uses 1.0 GB of host memory. Both are well inside
+  their allocations.
+- **The phases are learned, for the first time since F39:**
+
+  | | φ velocity spread / target | R², s < 0.5 | head rows / median | phase error, head vs x_t (s < 0.5) |
+  |---|---|---|---|---|
+  | every run since F39 (final) | 0.003–0.005 | 0.000 | 0.06–0.14 | equal (1.1 rad) |
+  | XS-stft-ht, epoch 544 | 0.57–0.60 | 0.37–0.48 | 0.43–0.52 | 0.26 vs 1.11 rad |
+  | B-stft-ht, epoch 79 | 0.60–0.61 | 0.64–0.72 | 1.27–1.35 | 0.19 vs 1.12 rad |
+
+- **They read the data's phase.** Rotating the data by 0.3 rad moves the φ± velocities by
+  0.53–0.62 of their scale, and by π/2 by 1.0–1.4 (every run before: 0.001).
+  - With the template, the rotation also leaves a phase mismatch in the residual, which moves
+    the other coordinates too: by 0.05–0.45 at 0.3 rad on XS's sky and f₀.
+- **Next:** the final runs' φ₀ ± 2ψ widths against the MCMC.
+
 ### F52 (2026-10-18): the φ₀ velocity does not depend on the data at all; the φ₀ marginals look close only because the MCMC's are broad by projection
 
 **The user's observation.** On the corner pages (e.g. `q0.10-pooled`) φ₀ "gets close" to the
