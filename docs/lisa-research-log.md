@@ -475,6 +475,37 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 4. Findings
 
+### F53 (2026-10-19): XS-stft-ht and B-stft-ht — the STFT runs with the helicity phases and the template residual
+
+**The user's request.** Start from 22 (B-stft; XS-stft for XS) and change two things:
+1. Infer (φ₀ + 2ψ, φ₀ − 2ψ) instead of (φ₀, ψ).
+2. Give the template, as in B-template.
+
+**The changes:**
+- **`polarisation: helicity`** (F49). The orientation is sin ι on [−1, 1], with φ₊ and φ₋ each
+  on a circle. The geometry, checked:
+  - The map (ψ, φ₀) → (φ₊, φ₋) is 4 to 1, and the points that land together are exactly the
+    likelihood's symmetric copies.
+  - Face-on measures φ₋ only, face-off φ₊ only (jaxgb).
+  - The prior, and so the base draws, is uniform on the product, with the two phases
+    independent.
+  - Geodesics stay on the manifold, and exp_map(log_map) returns the target
+    (`tests/lisa/test_helicity.py`).
+  - At face-on, φ₊ has no physical meaning and the flow keeps it at its prior, with no
+    singularity in the chart. The old chart had φ₀ winding twice around ψ's pole there.
+- **`templates: true`** (F46). The data minus the sources at x_t enter as a second group of STFT
+  features beside the data's own (`network.stft_tokens`, one group per 6 channels). The sampler
+  rebuilds them at every step. That is 24,576 input features per token on B (12,288 in B-stft).
+- **Everything else is 22 / 23:** STFT tokens, RoPE, `decay_adamw: false`, 200k (B) and 1.2M
+  (XS) steps.
+
+**What to read.**
+- **The φ₀ ± 2ψ widths against the MCMC** (`lisa_checks/phase_combinations.py`): uniform in
+  every run so far, 29–2248× the MCMC.
+- **The phase-rotation probe** (`lisa_checks/phase_rotation.py`): does the phase velocity now
+  depend on the data?
+- **f₀ against 22 / 23.** B-template's 0.33-bin f₀ floor (F47) is the risk to watch.
+
 ### F52 (2026-10-18): the φ₀ velocity does not depend on the data at all; the φ₀ marginals look close only because the MCMC's are broad by projection
 
 **The user's observation.** On the corner pages (e.g. `q0.10-pooled`) φ₀ "gets close" to the

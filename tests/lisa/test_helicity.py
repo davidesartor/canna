@@ -88,3 +88,21 @@ def test_pages_fold_every_copy_onto_the_truths():
     p[:, :, 5] += np.array([0.0, np.pi, np.pi / 2, 3 * np.pi / 2])[:, None]
     p[:, :, 7] += np.array([0.0, 0.0, np.pi, np.pi])[:, None]
     np.testing.assert_allclose(fold_orientation(p, truth), np.repeat(truth[None], 4, axis=0), atol=1e-12)
+
+
+def test_geodesics_stay_on_the_helicity_manifold():
+    problem = LisaGB(**XS, polarisation="helicity")
+    f = problem.sample_f(jr.key(13))
+    x0 = problem.sample_flow(jr.key(14), f)
+    x1 = problem.sample_flow(jr.key(15), f)
+    v = problem.log_map(x0, x1)
+    assert jnp.allclose(problem.exp_map(x0, v), x1, atol=1e-5)
+    for s in (0.25, 0.5, 0.75):
+        xs = problem.exp_map(x0, s * v)
+        assert bool(jnp.all(jnp.abs(xs[:, 6]) <= 1.0))
+        assert jnp.allclose(jnp.hypot(xs[:, 7], xs[:, 8]), 1.0, atol=1e-6)
+        assert jnp.allclose(jnp.hypot(xs[:, 9], xs[:, 10]), 1.0, atol=1e-6)
+    # the two phases are independent and uniform under the prior: no correlation between them
+    x = jnp.concatenate([problem.sample_flow(k, f) for k in jr.split(jr.key(16), 1000)])
+    pp, pm = jnp.arctan2(x[:, 8], x[:, 7]), jnp.arctan2(x[:, 10], x[:, 9])
+    assert abs(complex(jnp.mean(jnp.exp(1j * (pp - pm))))) < 0.06

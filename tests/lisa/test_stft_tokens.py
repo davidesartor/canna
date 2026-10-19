@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
@@ -66,3 +67,36 @@ def test_stft_network_trains_a_step():
     assert state.flow.stft
     state, losses = state.train_epoch(4, 2, 3.0, 0.1)
     assert np.all(np.isfinite(np.asarray(losses)))
+
+
+def test_template_residual_gets_its_own_group_of_features():
+    y = 50.0 * white(jr.key(3))
+    r = 30.0 * white(jr.key(4))
+    both = stft_tokens(jnp.concat([y, r], axis=-1), PATCH)
+    n = PATCH * 9
+    assert both.shape == (64 // PATCH, 2 * n)
+    np.testing.assert_allclose(both[:, :n], stft_tokens(y, PATCH), rtol=1e-6)
+    np.testing.assert_allclose(both[:, n:], stft_tokens(r, PATCH), rtol=1e-6)
+    np.testing.assert_allclose(invert(both[:, n:]), r, rtol=1e-4, atol=1e-3)
+
+
+def test_stft_helicity_template_network_trains_and_samples():
+    from canna.lisa.eval import sample_posterior
+
+    with open(Path(lisa.__file__).parent / "configs" / "XS-stft-ht.yaml") as f:
+        config = yaml.safe_load(f)
+    assert config["problem"]["polarisation"] == "helicity" and config["network"]["templates"]
+    config["network"] = dict(config["network"], hidden_dim=32, num_blocks=1, num_heads=2)
+    state = TrainState.from_config(argparse.Namespace(**config, dtype="float32"))
+    assert state.flow.templates and state.flow.stft
+    # two groups (data, residual), each: amplitude 128 bins + 2 phase parts 64 bins, per sample and channel
+    assert state.flow.y_embed.linear.in_features == 2 * (PATCH * 3 * 128 + 2 * PATCH * 3 * 64)
+    state, losses = state.train_epoch(4, 2, 3.0, 0.1)
+    assert np.all(np.isfinite(np.asarray(losses)))
+    problem = state.problem
+    f = problem.sample_f(jr.key(5))
+    p = problem.sample_physical(jr.key(6), f)
+    y = problem.preprocess(problem.sample_observation(jr.key(7), p, f), f)
+    u = jax.vmap(problem.sample_flow, in_axes=(0, None))(jr.split(jr.key(8), 8), f)
+    post = sample_posterior(problem, state.flow, u, y, f, ode_steps=4, time_power=3.0)
+    assert post.shape == (8, 4, 11) and bool(jnp.all(jnp.isfinite(post)))

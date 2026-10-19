@@ -22,6 +22,7 @@ DATA_BINS, DATA_REACH = 64, 1000.0
 # amplitude's bins are uniform in asinh from 0 to asinh(DATA_REACH), 0.06 wide (4x finer than
 # the re/im bins above); the phase's are uniform on [-1, 1]
 STFT_AMPLITUDE_BINS, STFT_PHASE_BINS = 128, 64
+STFT_GROUP = 6  # channels per window: re A, E, T, im A, E, T
 COORD_BINS, F0_BINS, WINDOW_BINS = 64, 256, 64
 # the flow coordinates' ranges: log f0 and log A are mapped onto [-1, 1], log Mc is
 # standardised, and the sky, orientation and phase are unit vectors
@@ -52,16 +53,20 @@ def stft_tokens(y: Float[Array, "F C"], patch: int) -> Float[Array, "N P"]:
     samples, fading to 0 where the phase is noise. Both are smooth at z = 0, and together they
     determine z. Features are ordered [amplitudes, real parts, imaginary parts], each over
     (sample, channel).
+
+    y may stack several such windows as groups of 6 channels (re A, E, T, im A, E, T), as the
+    template residual does (train.with_residual: the data, then the data minus the sources at
+    the flow's current point); each group gets its own features, one group after the other.
     """
-    channels = y.shape[-1] // 2
-    z = y[:, :channels] + 1j * y[:, channels:]
-    z = rearrange(z, "(n p) c -> n p c", p=patch)
-    z = jnp.fft.ifft(z, axis=1, norm="ortho")
-    phase = z * jax.lax.rsqrt(1.0 + jnp.square(jnp.abs(z)))
-    flat = lambda a: rearrange(a, "n p c -> n (p c)")
-    return jnp.concat(
-        [flat(jnp.arcsinh(jnp.abs(z))), flat(phase.real), flat(phase.imag)], axis=-1
-    ).astype(y.dtype)
+    groups = []
+    for g in jnp.split(y, y.shape[-1] // STFT_GROUP, axis=-1):
+        z = g[:, :3] + 1j * g[:, 3:]
+        z = rearrange(z, "(n p) c -> n p c", p=patch)
+        z = jnp.fft.ifft(z, axis=1, norm="ortho")
+        phase = z * jax.lax.rsqrt(1.0 + jnp.square(jnp.abs(z)))
+        flat = lambda a: rearrange(a, "n p c -> n (p c)")
+        groups += [flat(jnp.arcsinh(jnp.abs(z))), flat(phase.real), flat(phase.imag)]
+    return jnp.concat(groups, axis=-1).astype(y.dtype)
 
 
 class LisaFlow(eqx.Module):
@@ -136,7 +141,7 @@ class LisaFlow(eqx.Module):
         assert x_dim == len(COORD_RANGES), f"expected {len(COORD_RANGES)} flow coordinates"
         assert n_bins % patch == 0, f"window of {n_bins} bins is not divisible by {patch}"
         self.dtype, self.patch, self.templates, self.stft = dtype, patch, templates, stft
-        assert not (stft and templates), "the STFT tokens take the data alone"
+        assert not stft or y_dim % STFT_GROUP == 0, f"STFT tokens take groups of {STFT_GROUP} channels"
         # RoPE: one angle per token and per pair of a head's dimensions, periods log-spaced from
         # rope_min_period bins to twice the window, so attention resolves f0 - f_token from a
         # fraction of a bin up to the whole window
@@ -162,12 +167,13 @@ class LisaFlow(eqx.Module):
         )
         self.x_embed = PiecewiseLinear(coord_edges, hidden_dim, key=next(keys), **kwargs)
         if stft:
-            # per token: patch time samples x y_dim / 2 complex channels x (amplitude, 2 phase)
-            n = patch * (y_dim // 2)
+            # per token and group (the data, and the template residual with `templates`): patch
+            # time samples x 3 complex channels x (amplitude, then the 2 phase parts)
+            n = patch * (STFT_GROUP // 2)
             data_edges = (
                 (uniform_edges(0.0, math.asinh(DATA_REACH), STFT_AMPLITUDE_BINS),) * n
                 + (uniform_edges(-1.0, 1.0, STFT_PHASE_BINS),) * (2 * n)
-            )
+            ) * (y_dim // STFT_GROUP)
         else:
             data_edges = (arcsinh_edges(DATA_REACH, DATA_BINS),) * (patch * y_dim)
         self.y_embed = PiecewiseLinear(data_edges, hidden_dim, key=next(keys), **kwargs)
