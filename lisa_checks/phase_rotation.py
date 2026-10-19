@@ -31,6 +31,10 @@ state, epoch, _ = T.load_trained(args)
 problem, flow = state.problem, state.flow
 names = problem.flow_names if hasattr(problem, "flow_names") else [str(i) for i in range(11)]
 sample = jax.jit(jax.vmap(partial(T.train_sample, problem, time_power=args.time_power)))
+# with the template residual (flow.templates) the conditioning is [data, data - h(x_t)]: rotate the
+# data, then rebuild the residual from the rotated data
+condition = jax.jit(jax.vmap(
+    lambda xt, y, f: T.with_residual(problem, xt, y, f) if flow.templates else y))
 velocity = eqx.filter_jit(lambda f, xt, t, y, w: jax.vmap(f)(xt, t, y, w)[0])
 
 
@@ -43,12 +47,13 @@ def rotate(y, alpha):
 rows = {}
 for k in range(8):
     b = sample(jr.split(jr.key(300 + k), 64))
-    v0 = velocity(flow, b.xt, b.t, b.y, b.f)
+    data = b.y
+    v0 = velocity(flow, b.xt, b.t, condition(b.xt, data, b.f), b.f)
     out_rows = {"target": b.dx}
     for alpha in (0.3, np.pi / 2, np.pi):
-        out_rows[f"rotate {alpha:.2f}"] = velocity(flow, b.xt, b.t, rotate(b.y, alpha), b.f) - v0
+        out_rows[f"rotate {alpha:.2f}"] = velocity(flow, b.xt, b.t, condition(b.xt, rotate(data, alpha), b.f), b.f) - v0
     # same x_t, t, f, other data: how much the output depends on the data at all
-    out_rows["other data"] = velocity(flow, b.xt, b.t, jnp.roll(b.y, 1, axis=0), b.f) - v0
+    out_rows["other data"] = velocity(flow, b.xt, b.t, condition(b.xt, jnp.roll(data, 1, axis=0), b.f), b.f) - v0
     for name, v in out_rows.items():
         rows.setdefault(name, []).append(np.asarray(v).reshape(-1, 11))
 target_rms = np.concatenate(rows.pop("target")).std(0)
