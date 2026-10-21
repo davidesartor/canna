@@ -6,7 +6,13 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 (gitignored). §8 lists the scripts that produced them. Newest entries go at the top of §4.
 §9 places the work in the literature (survey of 2026-10-09).
 
-## 1. Summary (2026-10-01, updated 2026-10-21)
+## 1. Summary (2026-10-01, updated 2026-10-22)
+
+- **Update, 2026-10-22 (F57): B-stft-hd launched.**
+  - **The change:** B-stft-h, with each source also seeing its band of the data
+    Doppler-demodulated at its current sky (Cornish & Larson 2002).
+  - **The target:** the individually biased sky posteriors. On B, 6 of the 7 strongly offset
+    skies have a Doppler modulation index ≥ 1 rad.
 
 - **Update, 2026-10-21 evening (F56): the template is not needed; the coordinates were the
   fix.**
@@ -516,6 +522,65 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | (not submitted) | B-fd-helicity (F49): B-long's recipe + the Fisher loss + no AdamW decay + the helicity phases, 600k steps, `slurm/lisa-chain.sh B-fd-helicity 2 --n_random 50` | Prepared 18 Oct, set aside the same day for F50's STFT runs. |
 
 ## 4. Findings
+
+### F57 (2026-10-22): B-stft-hd — each source reads its band of the data Doppler-demodulated at its current sky
+
+**Why.** Individually, the sky posteriors of the current recipe are biased (the user, from the
+corner pages):
+- **B-stft-h's sources against the MCMC:** offsets of up to 3 MCMC widths at mid SNR (q0.10 s2:
+  λ at −1.9 of the flow's own width), and 11–12 on the loudest source.
+- **XS-stft-h:** up to 18–28 MCMC widths (q0.10 s2 and s3).
+
+Where the offsets sit, among B-stft-h's sources above SNR 15:
+- With a Doppler modulation index 2πf₀(1 AU/c)cos β ≥ 1 rad: 6 of 17 have λ or β more than 1.5
+  flow widths off.
+- Below 1 rad: 1 of 17.
+
+The sky information above ~0.5 mHz is mostly in the Doppler phase, and the network has to
+discover a reference to read it. The template gave one (XS-stft-ht's loudest sky was 3× narrower
+than XS-stft-h's) but cost f₀, because it needs f₀ within a bin (F54, F56).
+
+**The physics** (Cutler 1998, gr-qc/9703068; Cornish & Rubbo 2003, gr-qc/0209011; Cornish &
+Larson 2002, "LISA data analysis I: Doppler demodulation", gr-qc/0206017).
+- **The phase:** Ψ(t) = 2πf t + φ₀ + φ_D(t) + φ_P(t). The Doppler term is
+  φ_D(t) = 2πf n·r(t)/c, with r(t) LISA's barycentre; in ecliptic angles,
+  2πf (R/c) sin θ cos(2π f_m t − φ).
+- **Demodulation:** re-timing the data to the Sun's frame for one sky collapses a source's power
+  from its Doppler sidebands into a spike. The sharpest spike over the sky locates the source.
+- **Its limits** (per the paper): Doppler alone cannot tell north from south of the ecliptic, and
+  it ignores the antenna-pattern modulation.
+
+**The change** (`network.doppler: true`, config `B-stft-hd`; everything else is B-stft-h):
+- **The orbit:** `problem.DopplerGeometry` fits LISA's barycentre, as jaxgb samples it, with
+  centre + a cos(ωt) + b sin(ωt). The best period is 365.26 d, at most 7×10⁶ m from the orbit
+  file: a phase error ≤ 2×10⁻³ rad at 12 mHz.
+- **The demodulated band** (`network.doppler_bands`), for each source:
+  - the whitened A, E, T window goes to time (inverse FFT);
+  - it is multiplied by e^{−iφ_D(t)} at the source's current direction and f₀ (x_t), and FFT'd
+    back;
+  - the 16 bins around the source's f₀ are encoded like the STFT tokens (asinh|z|, gated
+    phase) through their own piecewise-linear embedding, and added to the source's token.
+- **Checked before launch:**
+  - The sign and frame on jaxgb signals: at the true sky a 3–8 mHz source goes from 7–20% to
+    63–79% of its power in 5 bins; at the mirrored sky it stays at 8–11%.
+  - φ_D depends on f₀ only as a factor (relative error ~10⁻⁴ for a bin), so unlike the template
+    the band is right as soon as the sky is.
+  - The option leaves every other parameter's initialisation unchanged.
+  - `tests/lisa/test_doppler.py`.
+- **Cost:** three FFTs of 4096 points per source per network call, against the transformer.
+
+**Predictions, written before the result** (against 26-lisa-B-stft-h):
+1. **Sky offsets shrink where the Doppler dominates:**
+   - among the sources with modulation index ≥ 1 rad and SNR ≥ 15, at most 2 of 17 with λ or β
+     more than 1.5 flow widths off (now 6);
+   - their sky width against the MCMC (q0.10 s0–s2, index ≥ 1.4) 1.2× or less (now 1.4–2.2×).
+2. **Little change where it doesn't:** below index 1 rad, including the loudest source (0.16 mHz,
+   index 0.5), within 10% of B-stft-h.
+3. **f₀ and the phases unchanged:** per source within 10% of B-stft-h, 215 ± 3 found, and the
+   pinned φ± still within 1.8–2.3× of the MCMC at mid SNR.
+4. **If the offsets do not move,** the Doppler reference is not what the network lacks. The next
+   suspect is the antenna-pattern part (amplitude and polarisation modulation), which needs ψ and
+   ι.
 
 ### F56 (2026-10-21): XS-stft-h and B-stft-h — φ₀ is learned without the template; the helicity coordinates were the fix, not a phase reference
 

@@ -394,8 +394,9 @@ class TrainState(NamedTuple):
         # the network is shaped by one sample of the problem
         network = dict(args.network)
         sample = train_sample(problem, key_sample, templates=bool(network.get("templates")))
-        if network.get("rope"):
+        if network.get("rope") or network.get("doppler"):
             network["window"] = problem.window_geometry
+        network["doppler"] = problem.doppler_geometry if network.get("doppler") else None
         flow = LisaFlow(
             **network,
             x_shape=sample.xt.shape,

@@ -81,6 +81,59 @@ def max_f0(response_points: int, chirp_mass: float, t_obs: float) -> float:
 
 
 @dataclasses.dataclass(frozen=True)
+class DopplerGeometry:
+    """LISA's barycentre over the observation, for the annual Doppler phase of a source (F57).
+
+    A monochromatic source at frequency f in direction n (unit vector, jaxgb's equatorial frame)
+    reaches LISA with the phase 2 pi f t + phi_D(t), phi_D(t) = 2 pi f n.r(t) / c, r(t) the
+    constellation's barycentre (Cutler 1998, gr-qc/9703068; Cornish & Larson 2002, "Doppler
+    demodulation", gr-qc/0206017: phi_D = 2 pi f (R/c) sin(theta) cos(2 pi f_m t - phi) in
+    ecliptic angles). r(t) is fitted to the orbit jaxgb uses (simulation epoch t0 = 0) as
+    centre + a cos(omega t) + b sin(omega t): 7e6 m at most from the orbit file, a phase error of
+    2e-3 rad at 12 mHz. Plain floats, so it can sit in a network's static fields.
+    """
+
+    t_obs: float
+    omega: float
+    centre: tuple[float, float, float]
+    cos_axis: tuple[float, float, float]
+    sin_axis: tuple[float, float, float]
+
+    def phase(self, f0: Float[Array, "..."], n: Float[Array, "... 3"], times: Float[Array, " K"]) -> Float[Array, "... K"]:
+        """phi_D at the given times (s from the observation start), for sources at f0 (Hz)
+        in directions n."""
+        arg = self.omega * times
+        r = (
+            jnp.asarray(self.centre)[None]
+            + jnp.cos(arg)[:, None] * jnp.asarray(self.cos_axis)[None]
+            + jnp.sin(arg)[:, None] * jnp.asarray(self.sin_axis)[None]
+        )
+        return 2 * jnp.pi * f0[..., None] * jnp.einsum("...i,ki->...k", n, r) / SPEED_OF_LIGHT
+
+    @staticmethod
+    def fit(orbit, t_obs: float) -> "DopplerGeometry":
+        """Least-squares fit of the barycentre of `orbit` over [0, t_obs], the period scanned."""
+        import numpy as np
+
+        t = np.linspace(0.0, t_obs, 4000)
+        r = np.asarray(orbit.compute_position(t, [1, 2, 3])).mean(axis=1)
+        best = None
+        for days in np.linspace(365.0, 365.5, 51):
+            omega = 2 * np.pi / (days * 86400.0)
+            design = np.stack([np.ones_like(t), np.cos(omega * t), np.sin(omega * t)], 1)
+            coef = np.linalg.lstsq(design, r, rcond=None)[0]
+            err = np.abs(design @ coef - r).max()
+            if best is None or err < best[0]:
+                best = (err, omega, coef)
+        _, omega, coef = best
+        as_tuple = lambda v: tuple(float(x) for x in v)
+        return DopplerGeometry(
+            t_obs=float(t_obs), omega=float(omega), centre=as_tuple(coef[0]),
+            cos_axis=as_tuple(coef[1]), sin_axis=as_tuple(coef[2]),
+        )
+
+
+@dataclasses.dataclass(frozen=True)
 class WindowGeometry:
     """Where things sit inside a window, in rfft bins from its first bin.
 
@@ -338,6 +391,10 @@ class LisaGB(eqx.Module):
             guard=self.response_points // 2,
             f0_range=tuple(self.f0_range),
         )
+
+    @property
+    def doppler_geometry(self) -> DopplerGeometry:
+        return DopplerGeometry.fit(self.orbit, self.t_obs)
 
     def window_freqs(self, f: Float[Array, ""]) -> Float[Array, " F"]:
         return (self.window_start(f) + jnp.arange(self.window_bins)) / self.t_obs

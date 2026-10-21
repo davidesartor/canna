@@ -9,7 +9,7 @@ from einops import rearrange
 
 from ..networks import MMDiT, FeedForward, Modulation, PiecewiseLinear, SinusoidalEmbed
 from ..networks.utils import DType
-from .problem import WindowGeometry
+from .problem import DopplerGeometry, WindowGeometry
 
 # PLE bins. The data are whitened to unit noise per real and imaginary part, and reach
 # ~700 sigma for the loudest sources on XS; their edges are uniform in arcsinh out to
@@ -69,6 +69,46 @@ def stft_tokens(y: Float[Array, "F C"], patch: int) -> Float[Array, "N P"]:
     return jnp.concat(groups, axis=-1).astype(y.dtype)
 
 
+def doppler_bands(
+    y: Float[Array, "F C"],
+    x: Float[Array, "S X"],
+    f: Float[Array, ""],
+    window: WindowGeometry,
+    doppler: DopplerGeometry,
+    band: int,
+) -> Float[Array, "S B"]:
+    """Each source's band of the data, Doppler-demodulated at its current sky and f0 (F57).
+
+    Cornish & Larson's demodulation (gr-qc/0206017): the whitened window (its first 6 channels,
+    re and im of A, E, T) goes to time, is multiplied by exp(-i phi_D(t)) for the source's
+    direction and frequency (DopplerGeometry), and comes back to frequency. At the right sky the
+    source's power, spread by the annual Doppler sidebands, collapses into a few bins; away from
+    it, the leftover spread and phase wobble measure the sky error. phi_D depends on f0 only as a
+    factor, so a frequency off by bins still demodulates correctly. The `band` bins around each
+    source's f0 are returned with the STFT tokens' features (asinh|z|, then the gated phase), so
+    [amplitudes, real parts, imaginary parts], each over (bin, channel).
+    """
+    f32 = jnp.float32
+    z = (y[:, :3] + 1j * y[:, 3:6]).astype(jnp.complex64)
+    n_bins = z.shape[0]
+    times = jnp.arange(n_bins, dtype=f32) * (doppler.t_obs / n_bins)
+    series = jnp.fft.ifft(z, axis=0)
+    start = window.start(f)
+    bins = window.source_bins(x[:, 0].astype(f32), f).astype(f32)
+    f0 = (start + bins) / window.t_obs
+    direction = x[:, 3:6].astype(f32)
+    direction = direction / jnp.linalg.norm(direction, axis=-1, keepdims=True)
+    phase = doppler.phase(f0.astype(f32), direction, times)
+    demodulated = jnp.fft.fft(series[None] * jnp.exp(-1j * phase)[..., None], axis=1)
+    low = jnp.clip(jnp.round(bins).astype(jnp.int32) - band // 2, 0, n_bins - band)
+    cut = jax.vmap(lambda d, lo: jax.lax.dynamic_slice(d, (lo, jnp.zeros_like(lo)), (band, 3)))(demodulated, low)
+    gated = cut * jax.lax.rsqrt(1.0 + jnp.square(jnp.abs(cut)))
+    flat = lambda a: a.reshape(a.shape[0], -1)
+    return jnp.concat(
+        [flat(jnp.arcsinh(jnp.abs(cut))), flat(gated.real), flat(gated.imag)], axis=-1
+    ).astype(f32)
+
+
 class LisaFlow(eqx.Module):
     """Velocity field over a set of binaries, conditioned on a whitened frequency-domain window.
 
@@ -103,6 +143,11 @@ class LisaFlow(eqx.Module):
     templates: bool = eqx.field(static=True)
     # the data tokens as short-time Fourier transforms (`stft_tokens`) instead of rfft bins
     stft: bool = eqx.field(static=True)
+    # each source also sees its band of the data Doppler-demodulated at its current sky
+    # (`doppler_bands`), embedded and added to its token; None leaves it out
+    doppler: DopplerGeometry | None = eqx.field(static=True)
+    doppler_band: int = eqx.field(static=True)
+    d_embed: PiecewiseLinear | None
     x_embed: PiecewiseLinear
     y_embed: PiecewiseLinear
     y_pos: Float[Array, "N D"]
@@ -131,6 +176,8 @@ class LisaFlow(eqx.Module):
         rope_min_period: float = 2.0,
         templates: bool = False,
         stft: bool = False,
+        doppler: DopplerGeometry | None = None,
+        doppler_band: int = 16,
         dtype: DType = jnp.float32,
         param_dtype: jnp.dtype = jnp.float32,
         *,
@@ -146,7 +193,9 @@ class LisaFlow(eqx.Module):
         # rope_min_period bins to twice the window, so attention resolves f0 - f_token from a
         # fraction of a bin up to the whole window
         assert not rope or window is not None, "RoPE needs the window geometry"
-        self.window = window if rope else None
+        assert doppler is None or window is not None, "the Doppler bands need the window geometry"
+        self.window = window if (rope or doppler is not None) else None
+        self.doppler, self.doppler_band = doppler, doppler_band
         pairs = hidden_dim // num_heads // 2
         self.rope_periods = (
             tuple(
@@ -177,6 +226,18 @@ class LisaFlow(eqx.Module):
         else:
             data_edges = (arcsinh_edges(DATA_REACH, DATA_BINS),) * (patch * y_dim)
         self.y_embed = PiecewiseLinear(data_edges, hidden_dim, key=next(keys), **kwargs)
+        # per source: doppler_band bins x 3 channels x (amplitude, 2 phase parts)
+        key_doppler = jr.fold_in(key, 11)  # its own key: the split above keeps every other init as before
+        n = doppler_band * 3
+        self.d_embed = (
+            PiecewiseLinear(
+                (uniform_edges(0.0, math.asinh(DATA_REACH), STFT_AMPLITUDE_BINS),) * n
+                + (uniform_edges(-1.0, 1.0, STFT_PHASE_BINS),) * (2 * n),
+                hidden_dim, key=key_doppler, **kwargs,
+            )
+            if doppler is not None
+            else None
+        )
         self.y_pos = 0.02 * jr.normal(
             next(keys), (n_bins // patch, hidden_dim), param_dtype
         )
@@ -218,6 +279,9 @@ class LisaFlow(eqx.Module):
         c = self.t_mlp(self.t_embed(t.astype(f32)))
         c = c + self.f_mlp(self.f_embed(jnp.log(f.astype(f32))[None]))
         x = jax.vmap(self.x_embed)(x.astype(f32))
+        if self.doppler is not None:
+            bands = doppler_bands(y.astype(f32), x_in, f, self.window, self.doppler, self.doppler_band)
+            x = x + jax.vmap(self.d_embed)(bands)
         if self.x_slot is not None:
             x = x + self.x_slot
         if self.stft:
