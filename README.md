@@ -107,16 +107,20 @@ rfft window, the real and imaginary parts of A, E and T as six channels, 16 bins
 | `B-fd-template` | B-rope conditioned also on the data minus the sources at the flow's current point (F46; worse, F47) |
 | `B-fd-fisher` | B-rope with the Fisher-weighted (Mahalanobis) flow loss (F46; no change, F47) |
 | `XS-stft`, `B-stft` | XS-rope and B-rope with STFT data tokens and no AdamW decay (F50). **B-stft** equals B-long on loud sources at 200k steps (F51) |
-| `XS-stft-ht`, `B-stft-ht` | the STFT runs inferring φ₀ ± 2ψ (`polarisation: helicity`) and given the template residual (`templates: true`, a second group of STFT features). **The first models that learn φ₀ and the ψ–φ₀ correlation** (B: 2–3.4× the MCMC at mid SNR), at 1.3–1.45× B-stft's f₀ width (F54) |
+| `XS-stft-ht`, `B-stft-ht` | the STFT runs inferring φ₀ ± 2ψ (`polarisation: helicity`) and given the template residual (`templates: true`, a second group of STFT features). The first models that learn φ₀ and the ψ–φ₀ correlation, at 1.3–1.45× B-stft's f₀ width (F54) |
+| `XS-stft-h`, `B-stft-h` | the same without the template. **The current recipe:** φ₀ ± 2ψ within 1.8–2.3× of the MCMC on B at SNR 17–78, f₀ 1.03–1.25× B-stft's (F56) |
 | `B-fd-helicity` | B-long + Fisher loss + no AdamW decay + the orientation as sin ι and the circular-mode phases φ₀ ± 2ψ (`polarisation: helicity`; F49, not run) |
 
 **Known limits (F45, F48, F51).**
-- **φ₀ needs the -ht configs.** Without them (every run from F39 to F51) the flow's φ₀ ignores
-  the data and keeps its prior draw (F52). With the helicity coordinates and the template
-  residual (`XS-stft-ht`, `B-stft-ht`), φ₀ ± 2ψ is read from the data: within 2–3.4× of the
-  MCMC on B at SNR 17–78, but still 72× on B's loudest source. f₀ is 1.3–1.45× wider than
-  B-stft's (F54).
-- **The loudest sources' sky** is 18–22× wider than the MCMC on B-stft and B-stft-ht (30–44× on B-long).
+- **φ₀ needs the helicity coordinates** (`polarisation: helicity`, flow coordinates φ₀ ± 2ψ).
+  - **In the (ψ, φ₀) chart** (every run from F39 to F51) the flow's φ₀ ignores the data and
+    keeps its prior draw (F52). The likelihood's symmetries make four copies of every
+    posterior there, and the network's targets average to zero over them.
+  - **With the helicity coordinates** φ₀ ± 2ψ is read from the data, with or without the
+    template: within 1.8–2.3× of the MCMC on B at SNR 17–78 (F56).
+  - **The loudest sources' phases stay wide:** 101× on B, 51× on XS.
+  - **Loud sources' A, ι and sky are 1.2× wider** than without the new coordinates.
+- **The loudest sources' sky** is ~20× wider than the MCMC on the B-stft runs (30–44× on B-long), and ~10× on XS-stft-h.
 - **At mid SNR** the B models are within 1–2× of the MCMC in every parameter but φ₀.
 
 The WDM-input code and configs of the earlier runs (`XS-late*`, `XS-pos`, `B-late`,

@@ -8,6 +8,21 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-21)
 
+- **Update, 2026-10-21 evening (F56): the template is not needed; the coordinates were the
+  fix.**
+  - **B-stft-h** (STFT tokens and the φ₀ ± 2ψ coordinates, no template) learns the phases as
+    well as B-stft-ht:
+    - the pinned φ₀ ± 2ψ within 1.8–2.3× of the MCMC at SNR 17–78 (with the template:
+      2.1–3.4×);
+    - φ₀ and ψ within 0.9–1.8×.
+  - **f₀ without the template:** 0.64–0.89× B-stft-ht's per source, 1.03–1.25× B-stft's.
+  - **The cost that remains comes with the coordinates:** loud sources' A, sky and ι are
+    1.17–1.23× B-stft's.
+  - **XS:** the phases are learned too (pinned φ± 4–18×). The template had helped XS's loudest
+    source (f₀ 2.7× against 13×, sky 3.3× against 9.5× the MCMC).
+  - **B-stft and B-stft-h differ only in the orientation coordinates,** so those are what made
+    φ₀ learnable. F52's "no reference, no partial credit" was not the cause (corrected in F56).
+
 - **Update, 2026-10-21 (F55): XS-stft-h and B-stft-h launched.**
   - **The question:** is the template needed for φ₀? These are F54's -ht runs without the
     template residual.
@@ -496,9 +511,97 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14891484** (+ 14891485, post 14891486) | B-stft (F50): B-rope + STFT tokens + no AdamW decay, 200k steps, `slurm/lisa-chain.sh B-stft 2 --n_random 50` | **Completed** 15:15 CEST on 18 Oct (11 h 25 min, trexgpu01, 203 s per epoch); post 38 min. Held out x 0.6334. Fetched as `22-lisa-B-stft` (F51). |
 | **14951673** (+ 14951674, post 14951675) | XS-stft-ht (F53): XS-stft + helicity phases + template residual, 1.2M steps | **Completed** 15:01 CEST on 19 Oct (11 h 51 min, trexgpu03, 35 s per epoch); post 31 min. Fetched as `24-lisa-XS-stft-ht` (F54). |
 | **14951676** (+ 14951677, post 14951678) | B-stft-ht (F53): B-stft + helicity phases + template residual, 200k steps | **Completed** 16:36 CEST on 19 Oct (13 h 26 min, trexgpu04, 240 s per epoch); post 1 h 02 min. Fetched as `25-lisa-B-stft-ht` (F54). |
+| **15212052** (+ 15212053, post 15212054) | XS-stft-h (F55): XS-stft-ht without the template, 1.2M steps | **Completed** 13:06 CEST on 21 Oct (11 h 28 min, 34 s per epoch); post 25 min. Fetched as `27-lisa-XS-stft-h` (F56). |
+| **15212055** (+ 15212056, post 15212057) | B-stft-h (F55): B-stft-ht without the template, 200k steps | **Completed** 13:04 CEST on 21 Oct (11 h 26 min, 203 s per epoch); post 39 min. Fetched as `26-lisa-B-stft-h` (F56). |
 | (not submitted) | B-fd-helicity (F49): B-long's recipe + the Fisher loss + no AdamW decay + the helicity phases, 600k steps, `slurm/lisa-chain.sh B-fd-helicity 2 --n_random 50` | Prepared 18 Oct, set aside the same day for F50's STFT runs. |
 
 ## 4. Findings
+
+### F56 (2026-10-21): XS-stft-h and B-stft-h — φ₀ is learned without the template; the helicity coordinates were the fix, not a phase reference
+
+**Runs** (F55, commit 3d87b22).
+- **B-stft-h:** 15212055, 11 h 26 min, 203 s per epoch, peak 7.4 GiB; post 39 min.
+- **XS-stft-h:** 15212052, 11 h 28 min, 34 s per epoch, peak 2.1 GiB; post 25 min.
+- Fetched as `26-lisa-B-stft-h` (finished first) and `27-lisa-XS-stft-h`: 198 files,
+  md5-identical. Then deleted on TREX with their logs.
+- Held-out x: B 0.5011 and XS 0.6191 (24/25: 0.5064, 0.6230; same coordinates, so comparable).
+- Analysis: the same scripts as F54, plus `velocity_probe.py` and `phase_rotation.py` on the
+  final checkpoints (`probe-*-final.txt`).
+
+**1. The phases are learned without the template.**
+
+| B, flow / MCMC | SNR | sin ι | pinned φ±: B-stft (22) | B-stft-ht (25) | **B-stft-h (26)** |
+|---|---|---|---|---|---|
+| loudest | 1668 | 0.96 | 2248 | 72 | 101 |
+| q0.10 s0 | 78 | −0.40 | 101 | 3.4 | **2.0** |
+| q0.10 s1 | 68 | 0.70 | 67 | 2.3 | **2.3** |
+| q0.10 s2 | 61 | −0.89 | 65 | 2.2 | **1.9** |
+| q0.10 s3 | 17 | −0.83 | 29 | 2.1 | **1.8** |
+
+- **B:**
+  - φ₀ and ψ are within 0.9–1.8× of the MCMC on every source (MCMC tables: 0.7–2.0×).
+  - Phase velocity is 0.64–0.65 of the target's spread, R² 0.69–0.75 at s < 0.5, head rows
+    0.98–1.01.
+  - Rotating the data by 0.3 rad moves the φ± velocities by 0.53–0.57: the same as B-stft-ht.
+- **XS:**
+  - The pinned φ± is 4.1–17.8× (XS-stft-ht 4.3–22×, XS-stft 15–1469×).
+  - φ₀ against the MCMC is 2.0–7.7× where pinned (XS-stft 30–61×).
+  - Rotation response 0.57–0.62.
+
+**2. What the template did.** Per source, B-stft-h over B-stft-ht:
+- **f₀ improves without it:** 0.64–0.89×.
+- **Everything else is unchanged:** A, sky, ψ, ι and φ₀ at 0.86–1.02×.
+
+| f₀ per source / B-stft | 0–15 | 15–40 | 40–100 | 100–300 | ≥ 300 | found |
+|---|---|---|---|---|---|---|
+| B-stft-ht | 1.30 | 1.42 | 1.27 | 1.33 | 1.45 | 213 |
+| **B-stft-h** | 1.03 [0.87–1.22] | 1.10 [0.84–1.25] | 1.15 [1.03–1.29] | 1.25 [1.08–1.37] | 1.03 [0.97–1.19] | 215 (217) |
+
+- **On B, the template's only effect was the f₀ cost.**
+- **On XS it also helped the loudest sources.** The loudest's f₀ goes 2.7 → 13× the MCMC and
+  its sky 3.2–3.5 → 9.3–9.9× (XS-stft: 14×, 7.3×). Per source above SNR 300, λ is 1.47×
+  XS-stft-ht's.
+- **XS f₀ against XS-stft:** 1.02–1.11×, 646 found (XS-stft 658, XS-stft-ht 631).
+- **q0.10 s2 (SNR 34) regresses in both helicity XS runs** (sky 16–48×, against 1.8–2.1× in
+  XS-stft), so that is not the template.
+
+**3. The cost of the coordinates.** Per source, B-stft-h over B-stft (22):
+- Loud sources (SNR ≥ 100): A 1.21–1.22×, λ and sin β 1.03–1.18×, sin ι 1.16–1.23×.
+- Below SNR 100: within 1.08×.
+- B-stft-ht shows the same 1.05–1.2×, so it comes with learning the phases (capacity, or the
+  new chart), not with the template.
+- On XS above SNR 300: sky 1.22–1.25× XS-stft's.
+
+**Against F55's predictions.**
+1. **The phases back to the prior: wrong.** They are learned as well as with the template.
+2. **Template not needed: right.** The pinned φ± is ≤ 6× the MCMC on B and the rotation
+   response ≥ 0.3. f₀ is 1.03–1.25× B-stft's (the prediction said ≤ 1.1×; it is within that at
+   SNR < 40 and ≥ 300 only), with 215 found against the predicted ≥ 216.
+3. **f₀, A, sky and ι within 10% of B-stft: missed for loud sources** (A, ι 1.2×).
+
+**Correcting F52 and F55.**
+- B-stft (22) and B-stft-h (26) differ only in `polarisation`. So the helicity coordinates are
+  what made φ₀ learnable.
+- F52's explanation was that no single data feature correlates with φ₀ without a coherent
+  phase reference, so gradient descent gets no partial credit. It cannot be the cause:
+  B-stft-h has no reference input and learns.
+- F49's argument fits instead. In the (ψ, φ₀) chart the likelihood's symmetries make four
+  copies of every posterior, and the reconstruction head's (and early velocity's) target
+  averages to exactly zero over them. The network gets no signal to start from, whatever its
+  input. In (φ₊, φ₋) there is one copy, the conditional mean is not zero, and the phase is
+  learned from the data alone.
+- F52's measurements stand: the earlier networks' φ₀ velocity ignored the data, and a single
+  bin's phase does not correlate with φ±. Only the mechanism was wrong.
+
+**What follows.**
+- **The recipe is the -h configs:** STFT tokens, helicity coordinates, no AdamW decay, no
+  template.
+- **What is left:**
+  - the loudest sources' phases (B 101×, XS 51×) and sky (B ~20×, XS ~10×);
+  - the 1.2× loud-source cost in A, ι and sky;
+  - XS's mid-SNR f₀ and q0.10 s2.
+- For XS's loudest sources, a phase reference does help. The cheap form, the matched-filter
+  phasors at the network's own x̂₁, remains an option there.
 
 ### F55 (2026-10-21): XS-stft-h and B-stft-h — the -ht runs without the template: is the phase reference needed?
 
@@ -4224,6 +4327,8 @@ a finished run gets its number when it is archived here.
 | `23-lisa-XS-stft` | `lisa-XS-stft` | XS-stft (14891481, 18 Oct) |
 | `24-lisa-XS-stft-ht` | `lisa-XS-stft-ht` | XS-stft-ht (14951673, 19 Oct) |
 | `25-lisa-B-stft-ht` | `lisa-B-stft-ht` | B-stft-ht (14951676, 19 Oct) |
+| `26-lisa-B-stft-h` | `lisa-B-stft-h` | B-stft-h (15212055, 21 Oct) |
+| `27-lisa-XS-stft-h` | `lisa-XS-stft-h` | XS-stft-h (15212052, 21 Oct) |
 
 `outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
 (the code finds a run at `<output_dir>/lisa-<config>`).
