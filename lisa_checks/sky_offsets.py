@@ -9,8 +9,8 @@
 2. Over all 40 eval sources: the truth's rank in the flow's ecliptic marginals and the signed
    z = (flow median - truth) / flow width, by SNR band. A calibrated flow has mean z ~ 0.
 
-    .venv/bin/python lisa_checks/sky_offsets.py 21-lisa-B-long 18-lisa-B-rope ...
-(run folders under outputs/, all of the B problem)
+    .venv/bin/python lisa_checks/sky_offsets.py [XS-fd-rope] 21-lisa-B-long 18-lisa-B-rope ...
+(run folders under outputs/, all of one problem; B unless a config is given first)
 """
 import sys
 import warnings
@@ -51,7 +51,9 @@ def angle(a, b):
     return np.arccos(np.clip(a @ b / np.linalg.norm(a) / np.linalg.norm(b), -1, 1))
 
 
-problem, seed = M.load_problem("B-fd-rope-long")
+# an optional problem config first (default: B), then the run folders
+config = sys.argv.pop(1) if not sys.argv[1][:1].isdigit() else "B-fd-rope-long"
+problem, seed = M.load_problem(config)
 _, windows, *_ = eval_injections(problem, seed)
 truth0 = np.load(f"outputs/{sys.argv[1]}/eval_draws.npz")["truth"]
 snr = np.asarray(jax.vmap(problem.source_snrs)(truth0, windows))
