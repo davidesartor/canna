@@ -1,701 +1,198 @@
-from typing import Optional
-import dataclasses
+"""The LisaGB problem configuration, its sliding frequency window and the TDI noise."""
+
 import math
 import warnings
 
-from jaxtyping import Array, Complex, Float, Int, Key
-import jax
+import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
-import equinox as eqx
-
 import lisaorbits
 from jaxgb import jaxgb
-from .priors import ChirpMass, fdot_from_chirp_mass
-from . import geometries
-from .constants import EARTH_ORBIT_SPEED, SPEED_OF_LIGHT
+from jaxtyping import Array, Float, Int, Key
 
-MIN_RESPONSE_POINTS = 256  # enough time samples to resolve the orbital modulation
+from .physics import (
+    SPEED_OF_LIGHT,
+    chirp_mass_moments,
+    chirp_mass_support,
+    response_span,
+)
 
-# rho^2 = SKY_AVERAGED_SNR_SQUARED * amplitude^2 * t_obs / sky_averaged_sensitivity(f) for a
-# monochromatic source averaged over sky, polarisation, inclination and initial phase. The
-# frequency dependence is carried by the sensitivity; this constant is the leftover O(1) that
-# depends on how the response and the sensitivity are each normalised, so it is measured against
-# our own `snr` rather than taken from a paper -- see tests/lisa/test_amplitude_prior.py, which
-# re-derives it by Monte Carlo. It is flat to 0.1% below ~1.5 mHz and drifts ~7% by 12 mHz, which
-# is the Robson-Cornish-Liu (1 + 0.6 x^2) approximation running out, not the response.
-SKY_AVERAGED_SNR_SQUARED = 3.225
-
-
-def response_span(f0: float, chirp_mass: float, t_obs: float) -> int:
-    """Bins the response of a source at f0 covers.
-
-    The window is centred on f0, so half of it has to hold the annual doppler sideband
-    plus the whole (upward) chirp drift, and the span is twice that.
-    """
-    drift = float(fdot_from_chirp_mass(chirp_mass, f0)) * t_obs
-    doppler = f0 * EARTH_ORBIT_SPEED / SPEED_OF_LIGHT
-    return 2 * math.ceil((doppler + drift) * t_obs)
-
-
-def max_f0(response_points: int, chirp_mass: float, t_obs: float) -> float:
-    """Highest f0 whose `response_span` still fits in a `response_points` window.
-
-    The inverse of `response_span` at fixed chirp mass. Writing the chirp as
-    fdot = K Mc^(5/3) f0^(11/3) and the doppler as beta f0, a budget of N bins asks for
-    the root of
-
-        beta f0 + K Mc^(5/3) t_obs f0^(11/3) = N / (2 t_obs)
-
-    which in u = f0^(1/3) is a degree-11 trinomial, so it has no solution in radicals and
-    is taken numerically here. Each term alone does invert, giving the doppler-only root
-    N c / (2 t_obs v) and the chirp-only root (N / 2 K Mc^(5/3) t_obs^2)^(3/11). The true
-    root sits below both, and the left side is convex and increasing, so Newton started at
-    the smaller of the two descends monotonically onto it.
-
-    Note how differently the two scale: the doppler root is linear in N, the chirp one goes
-    as N^(3/11), so once the chirp dominates -- which it does across most of the LISA band --
-    quadrupling the window buys only 45% more bandwidth.
-    """
-    # `needed` rounds the span up to a power of two, so a budget that is not one buys
-    # nothing above the power of two below it
-    budget = 1 << (response_points.bit_length() - 1)
-    beta = EARTH_ORBIT_SPEED / SPEED_OF_LIGHT
-    a = float(fdot_from_chirp_mass(chirp_mass, 1.0)) * t_obs
-    b = (budget // 2) / t_obs
-
-    f0 = min(b / beta, (b / a) ** (3 / 11))
-    for _ in range(64):
-        step = (beta * f0 + a * f0 ** (11 / 3) - b) / (
-            beta + (11 / 3) * a * f0 ** (8 / 3)
-        )
-        f0 -= step
-        if abs(step) <= 1e-14 * f0:
-            break
-
-    # the span lands exactly on the budget at the root, so the last ulp of the solve is
-    # what decides which side of the ceil() it falls on. Walk down until it agrees.
-    while response_span(f0, chirp_mass, t_obs) > budget:
-        f0 = math.nextafter(f0, 0.0)
-    return f0
-
-
-@dataclasses.dataclass(frozen=True)
-class DopplerGeometry:
-    """LISA's barycentre over the observation, for the annual Doppler phase of a source (F57).
-
-    A monochromatic source at frequency f in direction n (unit vector, jaxgb's equatorial frame)
-    reaches LISA with the phase 2 pi f t + phi_D(t), phi_D(t) = 2 pi f n.r(t) / c, r(t) the
-    constellation's barycentre (Cutler 1998, gr-qc/9703068; Cornish & Larson 2002, "Doppler
-    demodulation", gr-qc/0206017: phi_D = 2 pi f (R/c) sin(theta) cos(2 pi f_m t - phi) in
-    ecliptic angles). r(t) is fitted to the orbit jaxgb uses (simulation epoch t0 = 0) as
-    centre + a cos(omega t) + b sin(omega t): 7e6 m at most from the orbit file, a phase error of
-    2e-3 rad at 12 mHz. Plain floats, so it can sit in a network's static fields.
-    """
-
-    t_obs: float
-    omega: float
-    centre: tuple[float, float, float]
-    cos_axis: tuple[float, float, float]
-    sin_axis: tuple[float, float, float]
-
-    def phase(self, f0: Float[Array, "..."], n: Float[Array, "... 3"], times: Float[Array, " K"]) -> Float[Array, "... K"]:
-        """phi_D at the given times (s from the observation start), for sources at f0 (Hz)
-        in directions n."""
-        arg = self.omega * times
-        r = (
-            jnp.asarray(self.centre)[None]
-            + jnp.cos(arg)[:, None] * jnp.asarray(self.cos_axis)[None]
-            + jnp.sin(arg)[:, None] * jnp.asarray(self.sin_axis)[None]
-        )
-        return 2 * jnp.pi * f0[..., None] * jnp.einsum("...i,ki->...k", n, r) / SPEED_OF_LIGHT
-
-    @staticmethod
-    def fit(orbit, t_obs: float) -> "DopplerGeometry":
-        """Least-squares fit of the barycentre of `orbit` over [0, t_obs], the period scanned."""
-        import numpy as np
-
-        t = np.linspace(0.0, t_obs, 4000)
-        r = np.asarray(orbit.compute_position(t, [1, 2, 3])).mean(axis=1)
-        best = None
-        for days in np.linspace(365.0, 365.5, 51):
-            omega = 2 * np.pi / (days * 86400.0)
-            design = np.stack([np.ones_like(t), np.cos(omega * t), np.sin(omega * t)], 1)
-            coef = np.linalg.lstsq(design, r, rcond=None)[0]
-            err = np.abs(design @ coef - r).max()
-            if best is None or err < best[0]:
-                best = (err, omega, coef)
-        _, omega, coef = best
-        as_tuple = lambda v: tuple(float(x) for x in v)
-        return DopplerGeometry(
-            t_obs=float(t_obs), omega=float(omega), centre=as_tuple(coef[0]),
-            cos_axis=as_tuple(coef[1]), sin_axis=as_tuple(coef[2]),
-        )
-
-
-@dataclasses.dataclass(frozen=True)
-class WindowGeometry:
-    """Where things sit inside a window, in rfft bins from its first bin.
-
-    The network's RoPE (LisaFlow, `rope`) gives the sources and the data tokens positions in
-    this one frame, so attention between them depends on f0 - f_token. It mirrors
-    LisaGB.window_start, f0_window and the f0 leg of flow_to_physical; a test holds the two
-    to each other. Everything is relative to the window start, because absolute bin numbers
-    reach ~1e6 on B, where a float32 ulp is a sizeable fraction of a bin.
-    """
-
-    t_obs: float
-    window_bins: int
-    wdm_times: int
-    guard: int
-    f0_range: tuple[float, float]
-
-    def start(self, f: Float[Array, ""]) -> Float[Array, ""]:
-        index = jnp.round((f * self.t_obs - self.window_bins / 2) / self.wdm_times)
-        return index * self.wdm_times
-
-    def source_bins(self, x_f: Float[Array, "..."], f: Float[Array, ""]) -> Float[Array, "..."]:
-        """The bin of f0 for the flow coordinate x_f, which is log f0 mapped onto [-1, 1]."""
-        start = self.start(f)
-        low = jnp.maximum(self.guard, self.f0_range[0] * self.t_obs - start)
-        high = jnp.minimum(
-            self.window_bins - self.guard, self.f0_range[1] * self.t_obs - start
-        )
-        # f0 = c exp(x_f h), with c the window's geometric centre and h half its log span;
-        # c - start, written so that start cancels exactly
-        half_log_span = 0.5 * jnp.log1p((high - low) / (start + low))
-        centre = jnp.sqrt((start + low) * (start + high))
-        centre_offset = (start * (low + high) + low * high) / (centre + start)
-        return centre_offset + centre * jnp.expm1(x_f * half_log_span)
-
-    def token_bins(self, n_tokens: int, patch: int) -> Float[Array, " N"]:
-        """The centre bin of each data token, `patch` rfft bins wide."""
-        return patch * jnp.arange(n_tokens, dtype=jnp.float32) + (patch - 1) / 2
+WINDOW_STRIDE = 2  # window starts snap to even bins
+# the window spans 4 response bands; f0 keeps half a band clear of each edge, so 3 are drawable
+WINDOW_RESPONSES = 4
 
 
 class LisaGB(eqx.Module):
-    """Galactic binaries seen by LISA in one sliding frequency window, as an unordered set."""
+    """Galactic binaries seen by LISA in one sliding frequency window, listed loudest first."""
 
     n_sources: int = eqx.field(static=True, default=4)
     t_obs: float = eqx.field(static=True, default=2 * 365.25 * 24 * 60 * 60)  # 2yr [s]
-    sampling_step: float = eqx.field(static=True, default=0.25)  # [s]
-    orbit: lisaorbits.Orbits = eqx.field(
-        static=True, default=lisaorbits.EqualArmlengthOrbits()
-    )
-    # None sizes the response window from t_obs and the priors; giving it instead makes
-    # the window the budget and caps f0_range[1] at the band it can hold
-    response_points: Optional[int] = eqx.field(static=True, default=None)
+    # None sizes the window from the priors; a given one caps f0_range[1] at what it can hold
+    response_points: int | None = eqx.field(static=True, default=None)
     oms_noise: float = eqx.field(static=True, default=15.0)
     acceleration_noise: float = eqx.field(static=True, default=3.0)
-
-    # white dwarf component masses, from which the chirp mass prior is built
     mass_range: tuple[float, float] = eqx.field(static=True, default=(0.15, 1.4))
-    # the upper end is a request, not a promise: a given response_points lowers it to
-    # whatever the doppler sideband and the chirp drift leave room for
     f0_range: tuple[float, float] = eqx.field(static=True, default=(1e-4, 12.0e-3))
-    # the amplitude prior is a matched-filter snr range, not a fixed amplitude box: the same
-    # amplitude is a very different source at 0.1 and at 10 mHz, so a fixed box would train on
-    # undetectable sources at one end of the band and skip the loud ones at the other. This is
-    # how Strub et al. 2022 (arXiv:2204.04467) set their amplitude search box too.
+    # amplitudes are drawn as a matched-filter snr range, as Strub et al. 2022 (arXiv:2204.04467)
     snr_range: tuple[float, float] = eqx.field(static=True, default=(7.0, 1000.0))
-    # list each window's sources loudest first (slot 0 the loudest), so the flow learns an
-    # ordered set; False leaves them interchangeable, paired by the nearest permutation (the
-    # Set coupling of every run up to XS-fd)
-    order_sources: bool = eqx.field(static=True, default=True)
-    # how the flow sees inclination, polarisation and phase (the physical columns stay
-    # psi, iota, phi0 either way). "psi_phi0": (psi, iota) on a sphere and phi0 on a circle,
-    # every run up to F48. "helicity": sin iota on [-1, 1] and the phases of the two circular
-    # modes, phi0 + 2 psi and phi0 - 2 psi, each on its own circle (research log F49). The
-    # data are linear in A (1 -+ sin iota)^2 e^{-i (phi0 +- 2 psi)}: a face-on source
-    # (sin iota = 1) measures phi0 - 2 psi alone, a face-off one phi0 + 2 psi alone, and an
-    # edge-on one both. The map (psi, phi0) -> (phi0 + 2 psi, phi0 - 2 psi) on the torus is
-    # 4 to 1 with exactly the likelihood's symmetries {psi + pi, (psi + pi/2, phi0 + pi)} as
-    # its kernel, so this posterior is unimodal where the other one has four copies
-    polarisation: str = eqx.field(static=True, default="psi_phi0")
-
-    # built once here: its whitening quadrature must not be re-run under every trace
-    chirp_mass_prior: ChirpMass = eqx.field(init=False)
-    # f0 and amplitude are log-uniform boxes, the chirp mass is log-normal-ish, the two
-    # angle pairs are spheres, the initial phase a circle. One source's geometry, applied
-    # to every source slot independently: the slots are ordered (loudest first, see
-    # sample_physical), so no slot is ever matched to another
-    geometry: geometries.Product | geometries.Set = eqx.field(init=False)
-    # static too: JaxGB is a plain object, not a pytree, so it cannot be traced
+    # "middle" charts phi0 at mid-observation, phi0 - pi f0 T - pi fdot T^2 / 4: the data phase at f0's bin
+    phase_reference: str = eqx.field(static=True, default="middle")
+    log_mc_mean: Float[Array, "1"] = eqx.field(init=False)
+    log_mc_std: Float[Array, "1"] = eqx.field(init=False)
     response: jaxgb.JaxGB = eqx.field(init=False, static=True)
 
     def __post_init__(self):
-        self.chirp_mass_prior = ChirpMass(
-            m_min=self.mass_range[0], m_max=self.mass_range[1]
-        )
-        assert self.polarisation in ("psi_phi0", "helicity"), self.polarisation
-        orientation = (
-            (geometries.Spherical(3), geometries.Spherical(2))
-            if self.polarisation == "psi_phi0"
-            else (geometries.Bounded(1), geometries.Spherical(2), geometries.Spherical(2))
-        )
-        source = geometries.Product(
-            geometries.Bounded(1),
-            geometries.Euclidean(1),
-            geometries.Bounded(1),
-            geometries.Spherical(3),
-            *orientation,
-        )
-        self.geometry = source if self.order_sources else geometries.Set(source)
+        self.mass_range = tuple(self.mass_range)
+        self.f0_range = tuple(self.f0_range)
+        self.snr_range = tuple(self.snr_range)
+        assert self.phase_reference in ("start", "middle"), self.phase_reference
+        self.log_mc_mean, self.log_mc_std = chirp_mass_moments(self.mass_range)
+        mc_hi = chirp_mass_support(self.mass_range)[1]
 
-        # the window and the band it can hold determine each other, and which way round
-        # depends on which one is actually free. Left to itself the window follows the
-        # priors; pinned to what a GPU can afford, the priors follow the window instead
+        # the window follows the priors, or, when response_points is given, the priors the window
         if self.response_points is None:
-            span = response_span(
-                self.f0_range[1], self.chirp_mass_range[1], self.t_obs
-            )
-            self.response_points = 1 << (
-                max(span, MIN_RESPONSE_POINTS) - 1
-            ).bit_length()
+            span = response_span(self.f0_range[1], mc_hi, self.t_obs)
+            self.response_points = 1 << (span - 1).bit_length()
         else:
-            if self.response_points < MIN_RESPONSE_POINTS:
-                # the floor is what the auto-sizing picks, not a hard bound: a window
-                # this narrow still carries the right total power, but it samples the
-                # response's own modulation FFT critically rather than generously, so
-                # per-bin amplitudes pick up aliasing -- ~10-25% at the top of the band
-                # a 16-bin window can hold, against a 1024-bin reference
+            assert (
+                self.response_points & (self.response_points - 1) == 0
+            ), f"response_points={self.response_points} is not a power of two"
+            # the highest f0 whose span fits, to the last ulp
+            lo, hi = 0.0, 1.0
+            while math.nextafter(lo, hi) < hi:
+                mid = (lo + hi) / 2
+                fits = response_span(mid, mc_hi, self.t_obs) <= self.response_points
+                lo, hi = (mid, hi) if fits else (lo, mid)
+            if lo < self.f0_range[1]:
                 warnings.warn(
-                    f"response_points={self.response_points} is below the "
-                    f"{MIN_RESPONSE_POINTS}-bin floor the auto-sizing would pick, so "
-                    f"the orbital modulation is critically sampled and per-bin "
-                    f"amplitudes are only approximate. Total power is unaffected.",
+                    f"response_points={self.response_points} holds a Mc={mc_hi:.2f}Msun"
+                    f" source only up to {lo:.4e}Hz: f0_range stops there",
                     stacklevel=2,
                 )
-            ceiling = max_f0(self.response_points, self.chirp_mass_range[1], self.t_obs)
-            if ceiling < self.f0_range[1]:
-                warnings.warn(
-                    f"response_points={self.response_points} holds a "
-                    f"Mc={self.chirp_mass_range[1]:.2f}Msun source only up to "
-                    f"{ceiling:.4e}Hz over t_obs={self.t_obs:.3e}s, so the f0 prior "
-                    f"stops there rather than at {self.f0_range[1]:.4e}Hz. "
-                    f"Raise response_points to train on the whole band.",
-                    stacklevel=2,
-                )
-                self.f0_range = (self.f0_range[0], ceiling)
-            assert self.f0_range[0] < self.f0_range[1], (
-                f"response_points={self.response_points} leaves no band at all: it "
-                f"holds a Mc={self.chirp_mass_range[1]:.2f}Msun source only up to "
-                f"{ceiling:.4e}Hz over t_obs={self.t_obs:.3e}s, at or below "
-                f"f0_range[0]={self.f0_range[0]:.4e}Hz."
-            )
+                self.f0_range = (self.f0_range[0], lo)
+            assert (
+                self.f0_range[0] < self.f0_range[1]
+            ), f"response_points={self.response_points} leaves no band at all"
+        needed = response_span(self.f0_range[1], mc_hi, self.t_obs)
+        assert (
+            needed <= self.response_points
+        ), f"response_points={self.response_points} is too narrow for f0_max: it needs {needed} bins"
 
-        # whichever way round it went, the window has to hold the band it ended up with.
-        # the floor is deliberately not applied here: it picks a default, and an
-        # explicit budget below it is the caller's call, warned about above
-        span = response_span(self.f0_range[1], self.chirp_mass_range[1], self.t_obs)
-        needed = 1 << (max(span, 1) - 1).bit_length()
-        assert needed <= self.response_points, (
-            f"response_points={self.response_points} too narrow for a "
-            f"Mc={self.chirp_mass_range[1]:.2f}Msun source at "
-            f"f0_max={self.f0_range[1]:.1e}Hz over t_obs={self.t_obs:.3e}s: "
-            f"it needs {needed} bins."
-        )
         self.response = jaxgb.JaxGB(
-            self.orbit,
-            t_obs=self.t_obs,
-            n=self.response_points,
+            lisaorbits.EqualArmlengthOrbits(), t_obs=self.t_obs, n=self.response_points
         )
-        # jaxgb gives the raw +f0 lobe; if its band straddles DC (kmin < 0) the
-        # sub-DC bins are the -f0 lobe's tail jaxgb does not fold in, so forbid it
+        # jaxgb does not fold the -f0 lobe in, so the band must not straddle DC
         kmin = int(self.response.get_kmin(jnp.array([self.f0_range[0]]))[0])
-        assert kmin >= 0, (
-            f"t_obs={self.t_obs:.3e}s too short for f0_min={self.f0_range[0]:.1e}Hz: "
-            f"band straddles DC (kmin={kmin}). "
-            f"Need t_obs >= {self.response_points / 2 / self.f0_range[0]:.3e}s."
-        )
-
+        assert kmin >= 0, f"f0_min={self.f0_range[0]:.1e}Hz straddles DC (kmin={kmin})"
         lo, hi = self.window_index_range
-        assert lo <= hi, (
-            f"no valid window position: index range is [{lo}, {hi}]. "
-            f"The {self.window_bins}-bin window overruns the "
-            f"f0_range={self.f0_range} band at t_obs={self.t_obs:.3e}s."
-        )
-
-    @property
-    def chirp_mass_range(self) -> tuple[float, float]:
-        return self.chirp_mass_prior.support
-
-    @property
-    def fdot_range(self) -> tuple[float, float]:
-        # fdot is not sampled: it is what the chirp mass and f0 priors imply
-        low = fdot_from_chirp_mass(self.chirp_mass_range[0], self.f0_range[0])
-        high = fdot_from_chirp_mass(self.chirp_mass_range[1], self.f0_range[1])
-        return float(low), float(high)
-
-    # the window keeps the geometry it had as a WDM band of two time rows (window_bins =
-    # 4 response_points bins, its start snapped to an even bin), so the windows, priors and
-    # scorecards of the frequency-domain networks compare one to one with the WDM ones
-    @property
-    def wdm_times(self) -> int:
-        return 2
-
-    @property
-    def wdm_freq_bands(self) -> int:
-        return 4 * self.response_points
+        assert lo <= hi, f"the {self.window_bins}-bin window overruns f0_range"
 
     @property
     def window_bins(self) -> int:
-        return self.wdm_freq_bands * (self.wdm_times // 2)
+        return WINDOW_RESPONSES * self.response_points
 
     @property
     def window_index_range(self) -> tuple[int, int]:
-        # window_start is index * wdm_times, so its wdm channel offset stays even
-        # and positive; the two ends are where the usable interior just covers f0_range
+        # window_start = index * WINDOW_STRIDE; the ends are where the interior just covers f0_range
         guard = self.response_points // 2
-        lo = math.floor((self.f0_range[0] * self.t_obs - guard) / self.wdm_times)
+        lo = math.floor((self.f0_range[0] * self.t_obs - guard) / WINDOW_STRIDE)
         hi = math.ceil(
-            (self.f0_range[1] * self.t_obs + guard - self.window_bins) / self.wdm_times
+            (self.f0_range[1] * self.t_obs + guard - self.window_bins) / WINDOW_STRIDE
         )
         return max(lo, 1), max(hi, max(lo, 1))
 
-    def sample_f(self, key: Key[Array, ""]) -> Float[Array, ""]:
-        """Centre frequency of a log-uniformly slid window, so it tracks the f0 prior."""
-        u = jr.uniform(key)
-        f_centre = self.f0_range[0] * (self.f0_range[1] / self.f0_range[0]) ** u
-        lo, hi = self.window_index_range
-        index = jnp.clip(
-            jnp.round(f_centre * self.t_obs / self.wdm_times - self.wdm_freq_bands / 4),
-            lo,
-            hi,
-        )
-        return (index * self.wdm_times + self.window_bins / 2) / self.t_obs
 
-    def window_start(self, f: Float[Array, ""]) -> Int[Array, ""]:
-        """First rfft bin of the window centred at f."""
-        index = jnp.round((f * self.t_obs - self.window_bins / 2) / self.wdm_times)
-        return index.astype(int) * self.wdm_times
+def sample_f(problem: LisaGB, key: Key[Array, ""]) -> Float[Array, ""]:
+    """Centre frequency of a log-uniformly slid window, so it tracks the f0 prior."""
+    f_lo, f_hi = problem.f0_range
+    f_centre = f_lo * (f_hi / f_lo) ** jr.uniform(key)
+    lo, hi = problem.window_index_range
+    index = jnp.clip(
+        jnp.round((f_centre * problem.t_obs - problem.window_bins / 2) / WINDOW_STRIDE),
+        lo,
+        hi,
+    )
+    return (index * WINDOW_STRIDE + problem.window_bins / 2) / problem.t_obs
 
-    def f0_window(
-        self, f: Float[Array, ""]
-    ) -> tuple[Float[Array, ""], Float[Array, ""]]:
-        # a source is only drawn where its whole response fits inside the window
-        guard = self.response_points // 2
-        start = self.window_start(f)
-        low = jnp.maximum(start + guard, self.f0_range[0] * self.t_obs)
-        high = jnp.minimum(
-            start + self.window_bins - guard, self.f0_range[1] * self.t_obs
-        )
-        return low / self.t_obs, high / self.t_obs
 
-    @property
-    def window_geometry(self) -> WindowGeometry:
-        return WindowGeometry(
-            t_obs=self.t_obs,
-            window_bins=self.window_bins,
-            wdm_times=self.wdm_times,
-            guard=self.response_points // 2,
-            f0_range=tuple(self.f0_range),
-        )
+def window_start(problem: LisaGB, f: Float[Array, ""]) -> Int[Array, ""]:
+    """First rfft bin of the window centred at f."""
+    index = jnp.round((f * problem.t_obs - problem.window_bins / 2) / WINDOW_STRIDE)
+    return (index * WINDOW_STRIDE).astype(int)
 
-    @property
-    def doppler_geometry(self) -> DopplerGeometry:
-        return DopplerGeometry.fit(self.orbit, self.t_obs)
 
-    def window_freqs(self, f: Float[Array, ""]) -> Float[Array, " F"]:
-        return (self.window_start(f) + jnp.arange(self.window_bins)) / self.t_obs
+def f0_window(
+    problem: LisaGB, f: Float[Array, ""]
+) -> tuple[Float[Array, ""], Float[Array, ""]]:
+    """The f0 range the window at f draws from: where a source's whole response fits inside it."""
+    guard = problem.response_points // 2
+    start = window_start(problem, f)
+    low = jnp.maximum(start + guard, problem.f0_range[0] * problem.t_obs)
+    high = jnp.minimum(
+        start + problem.window_bins - guard, problem.f0_range[1] * problem.t_obs
+    )
+    return low / problem.t_obs, high / problem.t_obs
 
-    def physical_to_flow(
-        self, p: Float[Array, "... S 8"], f: Float[Array, ""]
-    ) -> Float[Array, "... S 11"]:
-        f0, mc, amp, sky_lon, sky_lat, psi, iota, phi0 = jnp.split(p, 8, axis=-1)
-        log_f = jnp.log(jnp.stack(self.f0_window(f)))
-        log_a = jnp.log(jnp.stack(self.a_window(f)))
 
-        # whiten each log block, lift the two angle pairs onto their spheres and
-        # the initial phase onto its circle
-        f = (2 * jnp.log(f0) - log_f.sum()) / (log_f[1] - log_f[0])
-        m = (
-            jnp.log(mc) - self.chirp_mass_prior.log_mean
-        ) / self.chirp_mass_prior.log_std
-        a = (2 * jnp.log(amp) - log_a.sum()) / (log_a[1] - log_a[0])
-        if self.polarisation == "psi_phi0":
-            orientation = [
-                jnp.cos(iota) * jnp.cos(psi),
-                jnp.cos(iota) * jnp.sin(psi),
-                jnp.sin(iota),
-                jnp.cos(phi0),
-                jnp.sin(phi0),
-            ]
-        else:
-            phase_p, phase_m = phi0 + 2 * psi, phi0 - 2 * psi
-            orientation = [
-                jnp.sin(iota),
-                jnp.cos(phase_p),
-                jnp.sin(phase_p),
-                jnp.cos(phase_m),
-                jnp.sin(phase_m),
-            ]
-        return jnp.concat(
-            [
-                f,
-                m,
-                a,
-                jnp.cos(sky_lat) * jnp.cos(sky_lon),
-                jnp.cos(sky_lat) * jnp.sin(sky_lon),
-                jnp.sin(sky_lat),
-                *orientation,
-            ],
-            axis=-1,
-        )
+def window_freqs(problem: LisaGB, f: Float[Array, ""]) -> Float[Array, " F"]:
+    return (window_start(problem, f) + jnp.arange(problem.window_bins)) / problem.t_obs
 
-    def flow_to_physical(
-        self, x: Float[Array, "... S 11"], f: Float[Array, ""]
-    ) -> Float[Array, "... S 8"]:
-        log_f = jnp.log(jnp.stack(self.f0_window(f)))
-        log_a = jnp.log(jnp.stack(self.a_window(f)))
-        f, m, a, sx, sy, sz, *orientation = jnp.split(x, 11, axis=-1)
 
-        f0 = jnp.exp((f * (log_f[1] - log_f[0]) + log_f.sum()) / 2)
-        mc = jnp.exp(m * self.chirp_mass_prior.log_std + self.chirp_mass_prior.log_mean)
-        amp = jnp.exp((a * (log_a[1] - log_a[0]) + log_a.sum()) / 2)
-        if self.polarisation == "psi_phi0":
-            ox, oy, oz, cos, sin = orientation
-            psi = jnp.arctan2(oy, ox)
-            iota = jnp.arctan2(oz, jnp.hypot(ox, oy))
-            phi0 = jnp.arctan2(sin, cos)
-        else:
-            c, cos_p, sin_p, cos_m, sin_m = orientation
-            # off the poles by a hair: arcsin's slope is infinite there, and the Fisher metric
-            # differentiates through this (the signal itself is smooth in sin iota)
-            iota = jnp.arcsin(jnp.clip(c, -1 + 1e-6, 1 - 1e-6))
-            phase_p, phase_m = jnp.arctan2(sin_p, cos_p), jnp.arctan2(sin_m, cos_m)
-            # one of the four (psi, phi0) the two phases stand for, all the same signal
-            psi, phi0 = (phase_p - phase_m) / 4, (phase_p + phase_m) / 2
-        return jnp.concat(
-            [
-                f0,
-                mc,
-                amp,
-                jnp.mod(jnp.arctan2(sy, sx), 2 * jnp.pi),
-                jnp.arctan2(sz, jnp.hypot(sx, sy)),
-                jnp.mod(psi, 2 * jnp.pi),
-                iota,
-                jnp.mod(phi0, 2 * jnp.pi),
-            ],
-            axis=-1,
-        )
+def single_link_noise(
+    problem: LisaGB, f: Float[Array, "..."]
+) -> tuple[Float[Array, "..."], Float[Array, "..."]]:
+    """One link's optical-metrology [m^2/Hz] and test-mass-acceleration [m^2 s^-4/Hz] noise."""
+    f = jnp.abs(f)
+    optical_metrology = problem.oms_noise**2 * 1e-24 * (1.0 + (0.002 / f) ** 4)
+    test_mass_acceleration = (
+        problem.acceleration_noise**2
+        * 1e-30
+        * (1.0 + (0.0004 / f) ** 2)
+        * (1.0 + (f / 0.008) ** 4)
+    )
+    return optical_metrology, test_mass_acceleration
 
-    @property
-    def flow_names(self) -> list[str]:
-        """The 11 flow coordinates of a source, in order."""
-        orientation = (
-            ["or x", "or y", "or z", "cos phi0", "sin phi0"]
-            if self.polarisation == "psi_phi0"
-            else ["sin iota", "cos phi+", "sin phi+", "cos phi-", "sin phi-"]
-        )
-        return ["f", "Mc", "A", "sky x", "sky y", "sky z", *orientation]
 
-    # sliding the window moves the whitening, not the manifold
-    def exp_map(
-        self, x: Float[Array, "S 11"], v: Float[Array, "S 11"]
-    ) -> Float[Array, "S 11"]:
-        return self.geometry.exp_map(x, v)
+def sky_averaged_sensitivity(
+    problem: LisaGB, f: Float[Array, "..."]
+) -> Float[Array, "..."]:
+    """Sky-averaged strain sensitivity (arXiv:1803.01944 eq. 13), for the chart's amplitude unit only."""
+    arm_length = problem.response.arm_length
+    f = jnp.abs(f)
+    f_star = SPEED_OF_LIGHT / (2.0 * jnp.pi * arm_length)
+    p_oms, p_acc = single_link_noise(problem, f)
+    return (
+        (10.0 / (3.0 * arm_length**2))
+        * (p_oms + 4.0 * p_acc / (2.0 * jnp.pi * f) ** 4)
+        * (1.0 + 0.6 * (f / f_star) ** 2)
+    )
 
-    def log_map(
-        self, x0: Float[Array, "S 11"], x1: Float[Array, "S 11"]
-    ) -> Float[Array, "S 11"]:
-        return self.geometry.log_map(x0, x1)
 
-    def sample_physical(
-        self, key: Key[Array, ""], f: Float[Array, ""]
-    ) -> Float[Array, "S 8"]:
-        keys = jr.split(key, 8)
-        shape = (self.n_sources, 1)
-        log_f = jnp.log(jnp.stack(self.f0_window(f)))
-        log_a = jnp.log(jnp.stack(self.a_window(f)))
+def amplitude_unit(problem: LisaGB, f: Float[Array, ""]) -> Float[Array, ""]:
+    """The helicity chart's amplitude unit at f, sqrt(sky-averaged sensitivity / t_obs): about snr 1."""
+    return jnp.sqrt(sky_averaged_sensitivity(problem, f) / problem.t_obs)
 
-        f0 = jnp.exp(jr.uniform(keys[0], shape, minval=log_f[0], maxval=log_f[1]))
-        mc = eqx.filter_vmap(self.chirp_mass_prior)(jr.split(keys[1], self.n_sources))
-        amp = jnp.exp(jr.uniform(keys[2], shape, minval=log_a[0], maxval=log_a[1]))
 
-        # isotropic on the sphere: longitude uniform, sine of latitude uniform
-        sky_lon = jr.uniform(keys[3], shape, maxval=2 * jnp.pi)
-        sky_lat = jnp.arcsin(jr.uniform(keys[4], shape, minval=-1.0, maxval=1.0))
-        psi = jr.uniform(keys[5], shape, maxval=2 * jnp.pi)
-        iota = jnp.arcsin(jr.uniform(keys[6], shape, minval=-1.0, maxval=1.0))
-        phi0 = jr.uniform(keys[7], shape, maxval=2 * jnp.pi)
-        p = jnp.concat([f0, mc, amp, sky_lon, sky_lat, psi, iota, phi0], axis=-1)
-        return self.loudest_first(p, f) if self.order_sources else p
+def noise_psd(problem: LisaGB, f: Float[Array, "..."]) -> Float[Array, "... 3"]:
+    """TDI 1.5 A/E/T noise PSD (arXiv:2108.01167), in fractional frequency like jaxgb's get_tdi."""
+    arm_length = problem.response.arm_length
+    f = jnp.abs(f)
+    arm_phase = 2.0 * jnp.pi * arm_length / SPEED_OF_LIGHT * f
+    transfer = jnp.cos(arm_phase)
+    doppler = (2.0 * jnp.pi * f / SPEED_OF_LIGHT) ** 2
+    p_oms, p_acc = single_link_noise(problem, f)
+    optical_metrology = p_oms * doppler
+    test_mass_acceleration = p_acc * doppler / (2.0 * jnp.pi * f) ** 4
+    n_ae = 2.0 * test_mass_acceleration * (
+        1.0 + transfer + transfer**2
+    ) + 0.5 * optical_metrology * (2.0 + transfer)
+    n_t = 2.0 * test_mass_acceleration * (1.0 - transfer) ** 2 + optical_metrology * (
+        1.0 - transfer
+    )
+    n = jnp.stack([n_ae, n_ae, n_t], axis=-1)
+    return n * (16.0 * jnp.sin(arm_phase) ** 2)[..., None]
 
-    def source_snrs(
-        self, p: Float[Array, "... S 8"], f: Float[Array, ""]
-    ) -> Float[Array, "... S"]:
-        """Each source's own matched-filter snr, as if it were alone in the window."""
-        return self.snr(p[..., :, None, :], f)
 
-    def loudest_first(
-        self, p: Float[Array, "... S 8"], f: Float[Array, ""]
-    ) -> Float[Array, "... S 8"]:
-        """The sources reordered by decreasing snr.
-
-        This labels the sources, so the flow learns an ordered set rather than an
-        interchangeable one: slot 0 is always the loudest source of the window. Every draw
-        of the prior goes through it, the training targets and the injections alike.
-        """
-        order = jnp.argsort(-self.source_snrs(p, f), axis=-1)
-        return jnp.take_along_axis(p, order[..., None], axis=-2)
-
-    def sample_flow(
-        self, key: Key[Array, ""], f: Float[Array, ""]
-    ) -> Float[Array, "S 11"]:
-        return self.physical_to_flow(self.sample_physical(key, f), f)
-
-    def source_segments(
-        self, p: Float[Array, "S 8"], f: Float[Array, ""]
-    ) -> tuple[Int[Array, "S N"], Complex[Array, "S N 3"]]:
-        """Each source's response alone: its `response_points` A, E, T bins and their
-        indices on the window's one-sided grid. A source is zero everywhere else, which is
-        what lets a single-source likelihood read only its own band (canna.lisa.mcmc)."""
-        # column 1 carries the chirp mass; jaxgb wants the chirp it drives
-        p = p.at[..., 1].set(fdot_from_chirp_mass(p[..., 1], p[..., 0]))
-        # flip iota from latitude [-pi/2, pi/2] to colatitude [0, pi] for jaxgb
-        p = p.at[..., 6].set(jnp.pi / 2 - p[..., 6])
-
-        segments = self.response.get_tdi(p, tdi_generation=1.5, tdi_combination="AET")
-        segments = jnp.stack(segments, axis=-1)
-        # each segment's positive band on the window's grid
-        start = self.response.get_kmin(p[:, 0]) - self.window_start(f)
-        return start[:, None] + jnp.arange(self.response_points), segments
-
-    def clean_signal(
-        self, p: Float[Array, "... S 8"], f: Float[Array, ""]
-    ) -> Complex[Array, "... F 3"]:
-        def combine(sources: Float[Array, "S 8"]) -> Complex[Array, "F 3"]:
-            idxs, segments = self.source_segments(sources, f)
-            full = jnp.zeros((self.window_bins, 3), dtype=segments.dtype)
-            return full.at[idxs].add(segments)
-
-        return jnp.vectorize(combine, signature="(s,d)->(f,c)")(p)
-
-    def single_link_noise(
-        self, f: Float[Array, "..."]
-    ) -> tuple[Float[Array, "..."], Float[Array, "..."]]:
-        """Displacement noises of one link: optical metrology and test-mass acceleration.
-
-        In m^2/Hz and m^2 s^-4/Hz respectively, before any interferometric response. Both
-        `noise_psd` and `sky_averaged_sensitivity` are built from these, so the two cannot
-        drift apart when `oms_noise` or `acceleration_noise` change.
-        """
-        f = jnp.abs(f)
-        optical_metrology = self.oms_noise**2 * 1e-24 * (1.0 + (0.002 / f) ** 4)
-        test_mass_acceleration = (
-            self.acceleration_noise**2
-            * 1e-30
-            * (1.0 + (0.0004 / f) ** 2)
-            * (1.0 + (f / 0.008) ** 4)
-        )
-        return optical_metrology, test_mass_acceleration
-
-    def sky_averaged_sensitivity(self, f: Float[Array, "..."]) -> Float[Array, "..."]:
-        """One-sided sky-averaged strain sensitivity, Robson, Cornish & Liu 2019 eq. 13.
-
-        arXiv:1803.01944. This is the response-divided-out companion to `noise_psd`: the
-        latter whitens the data, this one says how loud a source of a given amplitude is,
-        and it is only ever used to set the amplitude prior. Its `1 + 0.6 (f/f_*)^2`
-        approximation is what makes `SKY_AVERAGED_SNR_SQUARED` drift above ~5 mHz.
-        """
-        arm_length = self.response.arm_length
-        f = jnp.abs(f)
-        f_star = SPEED_OF_LIGHT / (2.0 * jnp.pi * arm_length)
-        p_oms, p_acc = self.single_link_noise(f)
-        return (
-            (10.0 / (3.0 * arm_length**2))
-            * (p_oms + 4.0 * p_acc / (2.0 * jnp.pi * f) ** 4)
-            * (1.0 + 0.6 * (f / f_star) ** 2)
-        )
-
-    def a_window(
-        self, f: Float[Array, ""]
-    ) -> tuple[Float[Array, ""], Float[Array, ""]]:
-        """Amplitude bounds that `snr_range` implies at the window's centre frequency.
-
-        The window is narrow enough that the sensitivity is flat across it, so the bound is
-        taken at the centre rather than at each source's own f0 -- which also keeps the flow
-        whitening a function of the conditioning window alone.
-        """
-        scale = jnp.sqrt(
-            self.sky_averaged_sensitivity(f)
-            / (SKY_AVERAGED_SNR_SQUARED * self.t_obs)
-        )
-        return self.snr_range[0] * scale, self.snr_range[1] * scale
-
-    def noise_psd(self, f: Float[Array, "..."]) -> Float[Array, "... 3"]:
-        # first-generation TDI (1.5) noise PSD, stacked A/E/T on the last axis
-        # Babak, Hewitson & Petiteau 2021, arXiv:2108.01167
-        #
-        # Fractional frequency, which is what jaxgb's get_tdi returns: a link
-        # measures a doppler shift, so a displacement noise enters it as
-        # (2 pi f / c)^2 in power and an acceleration noise picks up a further
-        # 1/(2 pi f)^4. Writing these as fractional lengths instead (dividing by
-        # the arm rather than by c/2 pi f) leaves the whitening out by
-        # (2 pi f L / c)^2 -- an f^2 tilt across the band, not a constant, so it
-        # would silently re-weight low-frequency sources against high-frequency ones.
-        arm_length = self.response.arm_length
-        f = jnp.abs(f)
-        arm_phase = 2.0 * jnp.pi * arm_length / SPEED_OF_LIGHT * f
-        transfer = jnp.cos(arm_phase)
-        doppler = (2.0 * jnp.pi * f / SPEED_OF_LIGHT) ** 2
-        p_oms, p_acc = self.single_link_noise(f)
-        optical_metrology = p_oms * doppler
-        test_mass_acceleration = p_acc * doppler / (2.0 * jnp.pi * f) ** 4
-        n_ae = 2.0 * test_mass_acceleration * (
-            1.0 + transfer + transfer**2
-        ) + 0.5 * optical_metrology * (2.0 + transfer)
-        n_t = 2.0 * test_mass_acceleration * (
-            1.0 - transfer
-        ) ** 2 + optical_metrology * (1.0 - transfer)
-
-        n = jnp.stack([n_ae, n_ae, n_t], axis=-1)
-        tdi15_factor = 16.0 * jnp.sin(arm_phase) ** 2
-        return n * tdi15_factor[..., None]
-
-    def sample_observation(
-        self,
-        key: Key[Array, ""],
-        p: Float[Array, "... S 8"],
-        f: Float[Array, ""],
-    ) -> Complex[Array, "... F 3"]:
-        spectra = self.clean_signal(p, f)
-        power = self.noise_psd(self.window_freqs(f)) * self.t_obs / 2.0
-        real, imag = jr.normal(key, (2, *spectra.shape)) * jax.lax.rsqrt(2.0)
-        return spectra + jnp.sqrt(power) * (real + 1j * imag)
-
-    def snr(
-        self, p: Float[Array, "... S 8"], f: Float[Array, ""]
-    ) -> Float[Array, "..."]:
-        """Matched-filter snr, rho = sqrt(<h|h>)."""
-        # the noise inner product is <x|y> = 4 Re sum_k x_k y_k^* / (S_k t_obs), so with
-        # power = S_k t_obs / 2 the sum below is <h|h>/2 and needs the factor 2 back.
-        # equivalently rho^2 = 2 [log_likelihood(h) - log_likelihood(0)]
-        spectra = self.clean_signal(p, f)
-        power = self.noise_psd(self.window_freqs(f)) * self.t_obs / 2.0
-        integrand = 2.0 * jnp.abs(spectra) ** 2 / power
-        return jnp.sqrt(jnp.sum(integrand, axis=(-2, -1)))
-
-    def log_likelihood(
-        self,
-        p: Float[Array, "... S 8"],
-        o: Complex[Array, "... F 3"],
-        f: Float[Array, ""],
-    ) -> Float[Array, "..."]:
-        power = self.noise_psd(self.window_freqs(f)) * self.t_obs / 2.0
-        residual = o - self.clean_signal(p, f)
-        return -jnp.sum(jnp.abs(residual) ** 2 / power, axis=(-2, -1))
-
-    def preprocess(
-        self, o: Complex[Array, "... F 3"], f: Float[Array, ""]
-    ) -> Float[Array, "... F 6"]:
-        """The whitened window: real and imaginary parts of A, E and T as six channels.
-
-        Scaled to unit noise variance in each part (the noise is complex with variance
-        `power`, split equally between the two), and otherwise left as it is: the network's
-        piecewise linear encoding takes the dynamic range, with no compression here.
-        """
-        power = self.noise_psd(self.window_freqs(f)) * self.t_obs / 2.0
-        o = o * jax.lax.rsqrt(power / 2.0)
-        return jnp.concat([o.real, o.imag], axis=-1)
+def window_power(problem: LisaGB, f: Float[Array, ""]) -> Float[Array, "F 3"]:
+    """Variance of each complex noise bin in the window, noise_psd * t_obs / 2."""
+    return noise_psd(problem, window_freqs(problem, f)) * problem.t_obs / 2.0
