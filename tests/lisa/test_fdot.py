@@ -1,23 +1,21 @@
 """fdot is not sampled: it is the radiation reaction the chirp mass and f0 imply."""
 
+from functools import partial
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from canna.lisa import LisaGB
-from canna.lisa.priors import chirp_mass_from_fdot, fdot_from_chirp_mass
+from canna.lisa.physics import chirp_mass_support, fdot_from_chirp_mass
+from canna.lisa.problem import LisaGB, f0_window
+from canna.lisa.simulator import clean_signal, sample_physical
 from ._helpers import window
 
 
 jax.config.update("jax_enable_x64", True)
 
 TWO_YEARS = 2 * 365.25 * 24 * 60 * 60
-
-
-def test_fdot_and_chirp_mass_round_trip():
-    mc = jnp.array([0.15, 0.25, 0.5, 1.2])
-    f0 = jnp.array([1e-4, 1e-3, 3e-3, 1e-2])
-    assert jnp.allclose(chirp_mass_from_fdot(fdot_from_chirp_mass(mc, f0), f0), mc)
 
 
 def test_fdot_follows_the_known_powers_of_chirp_mass_and_frequency():
@@ -36,13 +34,12 @@ def test_the_chirp_mass_column_drifts_the_waveform_by_the_predicted_amount():
     # the band's power-weighted centre sits at f0 + fdot * t_obs / 2, so the shift
     # between two chirp masses pins down the fdot clean_signal actually used
     problem = LisaGB(n_sources=1, t_obs=TWO_YEARS, f0_range=(9.5e-3, 1.0e-2))
-    low, high = problem.f0_window(window(problem))
+    low, high = f0_window(problem, window(problem))
     p = jnp.array([[float(jnp.sqrt(low * high)), 0.2, 1e-22, 1.0, 0.3, 2.0, 0.5, 0.0]])
 
     def centre(chirp_mass: float) -> float:
-        power = (
-            jnp.abs(problem.clean_signal(p.at[0, 1].set(chirp_mass), window(problem))[:, 0]) ** 2
-        )
+        signal = clean_signal(problem, p.at[0, 1].set(chirp_mass), window(problem))
+        power = jnp.abs(signal[:, 0]) ** 2
         return float(jnp.sum(power * jnp.arange(power.size)) / jnp.sum(power))
 
     light, heavy = 0.2, 1.2
@@ -54,16 +51,14 @@ def test_the_chirp_mass_column_drifts_the_waveform_by_the_predicted_amount():
 
 def test_the_fdot_range_the_prior_implies_spans_the_whole_band():
     problem = LisaGB(n_sources=1)
-    low, high = problem.fdot_range
-    mc_lo, mc_hi = problem.chirp_mass_range
-    assert low == fdot_from_chirp_mass(mc_lo, problem.f0_range[0])
-    assert high == fdot_from_chirp_mass(mc_hi, problem.f0_range[1])
+    mc_lo, mc_hi = chirp_mass_support(problem.mass_range)
+    low = fdot_from_chirp_mass(mc_lo, problem.f0_range[0])
+    high = fdot_from_chirp_mass(mc_hi, problem.f0_range[1])
 
     # every draw sits inside it, unlike under the old fixed [1e-18, 1e-15] box: at the
     # bottom of the band radiation reaction is many orders of magnitude weaker
-    p = jax.vmap(problem.sample_physical, in_axes=(0, None))(
-        jr.split(jr.key(1), 256), window(problem)
-    ).reshape(-1, 8)
+    draw = eqx.filter_jit(jax.vmap(partial(sample_physical, problem), in_axes=(0, None)))
+    p = draw(jr.split(jr.key(1), 256), window(problem)).reshape(-1, 8)
     fdot = fdot_from_chirp_mass(p[:, 1], p[:, 0])
     assert jnp.all((fdot >= low) & (fdot <= high))
     assert low < 1e-22
