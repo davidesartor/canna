@@ -1,30 +1,33 @@
 """Fixtures shared by the lisa tests."""
 
-from pathlib import Path
+from functools import partial
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import pytest
-import yaml
 
-import canna.lisa as lisa
-from canna.lisa import LisaFlow, LisaGB, train_sample
+from canna.lisa import config
+from canna.lisa.chart import sample_flow
+from canna.lisa.network import LisaFlow
+from canna.lisa.problem import LisaGB
+from canna.lisa.train import train_sample
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def small_flow():
-    """The XS problem with a deliberately tiny network: the integrator is under test."""
-    with open(Path(lisa.__file__).parent / "configs" / "XS-fd.yaml") as f:
-        problem = LisaGB(**yaml.safe_load(f)["problem"])
-    sample = train_sample(problem, jr.key(0))
+    """The narrow-band problem with a deliberately tiny velocity network: the RK4 integrator is under test."""
+    problem = LisaGB(**config.load("narrow-B").problem)
+    sample = eqx.filter_jit(partial(train_sample, problem))(jr.key(0))
     flow = LisaFlow(
-        x_shape=sample.xt.shape,
-        y_shape=sample.y.shape,
+        problem,
         hidden_dim=32,
         num_heads=2,
         num_blocks=1,
-        f_range=problem.f0_range,
+        patch=16,
+        prediction="velocity",
+        self_condition=False,
         dtype=jnp.float32,
         param_dtype=jnp.float32,
         key=jr.key(1),
@@ -40,7 +43,6 @@ def small_flow():
         for p, k in zip(params, keys)
     ]
     flow = jax.tree_util.tree_unflatten(static, params)
-    u0 = jax.vmap(problem.sample_flow, in_axes=(0, None))(jr.split(jr.key(3), 8), sample.f)
+    draw = eqx.filter_jit(jax.vmap(partial(sample_flow, problem), in_axes=(0, None)))
+    u0 = draw(jr.split(jr.key(3), 8), sample.f)
     return problem, flow, u0, sample.y, sample.f
-
-
