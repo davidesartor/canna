@@ -1,23 +1,21 @@
-"""scorecard.py's bookkeeping: source matching, widths in bins, and calibration flags."""
-
-from pathlib import Path
+"""The scorecard bookkeeping: source matching, widths in bins, and calibration flags."""
 
 import jax.random as jr
 import numpy as np
 import pytest
-import yaml
 
-import canna.lisa as lisa
-from canna.lisa import LisaGB
-from canna.lisa.scorecard import match_sources, score
+from canna.lisa import config
+from canna.lisa.injections import match_sources
+from canna.lisa.problem import LisaGB, sample_f
+from canna.lisa.scorecard import score
+from canna.lisa.simulator import sample_physical
 
 
 @pytest.fixture(scope="module")
 def setup():
-    with open(Path(lisa.__file__).parent / "configs" / "XS-fd.yaml") as f:
-        problem = LisaGB(**yaml.safe_load(f)["problem"])
-    f = problem.sample_f(jr.key(0))
-    truth = np.asarray(problem.sample_physical(jr.key(1), f))
+    problem = LisaGB(**config.load("narrow-B").problem)
+    f = sample_f(problem, jr.key(0))
+    truth = np.asarray(sample_physical(problem, jr.key(1), f))
     return problem, f, truth
 
 
@@ -62,7 +60,7 @@ def test_a_whole_injection_scores_end_to_end(small_flow, time_power, capsys):
     from canna.lisa.scorecard import score_injection, summary
 
     problem, flow, _, _, f = small_flow
-    latent = problem.sample_physical(jr.key(5), f)
+    latent = sample_physical(problem, jr.key(5), f)
     rows = score_injection(problem, flow, latent, f, jr.key(6), time_power, n_draws=8, ode_steps=2)
     assert all(len(v) == problem.n_sources for v in rows.values())
     assert all(np.all(np.isfinite(rows[k])) for k in ("snr", "width", "ideal", "offset", "rank"))

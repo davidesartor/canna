@@ -1,10 +1,10 @@
-"""eval.py's corner pages: full, pooled over sources, and one source, on synthetic draws."""
+"""the corner pages: full, pooled over sources, and one source, on synthetic draws."""
 
 import matplotlib
 import numpy as np
 import pytest
 
-from canna.lisa.eval import PARAM_IS_LOG, PARAM_LABELS, axis_ranges, corner_page, replot_page
+from canna.lisa.plots import PARAM_IS_LOG, PARAM_LABELS, axis_ranges, corner_page, replot_page
 
 LABELS = [f"${label}$" for label in PARAM_LABELS]
 SCALE = ["log" if is_log else "linear" for is_log in PARAM_IS_LOG]

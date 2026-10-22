@@ -1,42 +1,28 @@
 #!/bin/bash
-# Everything after training, for a run trained in place by lisa.sbatch links (outputs/lisa-<config>,
-# on scratch): the scorecards of x and y, the eval's corner pages (with the reference MCMC drawn
-# on them), the eval draws of x and y, and the flow-against-MCMC tables. The same steps
-# lisa-local.sbatch runs after its training. slurm/lisa-chain.sh queues it after the last link;
-# by hand, from the repo root:
-#     sbatch slurm/lisa-post.sbatch B-fd-rope-long --n_random 50   # flags go to the scorecards
+# Run one post-training module of canna.lisa (scorecard, eval, mcmc report) on a run, on the commit it trained at.
+# Words after the run go to `python -m canna.lisa.<...>`; LISA_<FIELD>=value pairs are exported (eval fields only):
+#     sbatch $CANNA_SBATCH_GPU slurm/lisa-post.sbatch <run> scorecard
+#     sbatch $CANNA_SBATCH_GPU --time=02:00:00 slurm/lisa-post.sbatch <run> eval LISA_WEIGHTS=training
+#     sbatch $CANNA_SBATCH_GPU --time=01:00:00 slurm/lisa-post.sbatch <run> mcmc report
+# It reads the latest checkpoint, which a live training job can replace mid-read: if the restore fails, resubmit.
 
 #SBATCH --job-name=canna-lisa-post
 #SBATCH --output=.slurm-logs/%x-%j.out
 #SBATCH --error=.slurm-logs/%x-%j.err
-#SBATCH --time=12:00:00
+#SBATCH --time=08:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=16G
 #SBATCH --gres=gpu:1
-#SBATCH --partition=gpu_a100
-#SBATCH --account=lisa
-#SBATCH --qos=gpu_all
 
 set -euo pipefail
-mkdir -p .slurm-logs
-CONFIG="$1"; shift
-export XLA_PYTHON_CLIENT_PREALLOCATE=false
-export XLA_FLAGS="--xla_gpu_enable_command_buffer="
-export UV_SYSTEM_CERTS=1
-echo "host      : $(hostname)"
-echo "job       : ${SLURM_JOB_ID:-none}"
-echo "config    : ${CONFIG} $*"
-RUN="uv run --extra cuda --frozen python -m canna.lisa"
-PY="uv run --extra cuda --frozen python"
-DIR="outputs/lisa-$CONFIG"
-
-srun $RUN.scorecard --config "$CONFIG" "$@" || true
-srun $RUN.scorecard --config "$CONFIG" --weights training "$@" || true
-srun $RUN.eval --config "$CONFIG" || true
-srun $PY lisa_checks/eval_draws.py "$CONFIG" outputs "$DIR/eval_draws.npz" || true
-srun $PY lisa_checks/eval_draws.py "$CONFIG" outputs "$DIR/eval_draws_training.npz" --weights training || true
-for DRAWS in eval_draws.npz eval_draws_training.npz; do
-    srun $RUN.mcmc report --config "$CONFIG" --run "$DIR" --draws "$DRAWS" --no_pages || true
+export LISA_RUN="$1"
+shift
+ARGS=()
+for ARG in "$@"; do
+    if [[ "$ARG" == LISA_*=* ]]; then export "$ARG"; else ARGS+=("$ARG"); fi
 done
-echo "[post] $DIR: $(ls "$DIR" | tr '\n' ' ')"
+source slurm/run-src.sh
+source slurm/gpu.sh
+srun uv run --extra cuda --frozen python -m "canna.lisa.${ARGS[0]}" "${ARGS[@]:1}"
