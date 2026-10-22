@@ -4,7 +4,8 @@ import jax.numpy as jnp
 import jax.random as jr
 from einops import rearrange
 
-from canna.lisa import LisaGB
+from canna.lisa.problem import LisaGB
+from canna.lisa.simulator import sample_observation
 from ._helpers import window
 
 
@@ -17,7 +18,7 @@ def noise_series(problem, key):
     # band-limit to FMAX so baselines with different nyquist are compared like for like,
     # and scale the ifft by n / t_obs so the series is a strain amplitude, not a
     # convention-dependent per-sample average
-    spectrum = problem.sample_observation(key, FAINT, window(problem))
+    spectrum = sample_observation(problem, key, FAINT, window(problem))
     n = spectrum.shape[-2]
     freqs = jnp.fft.fftfreq(n, problem.t_obs / n)
     kept = jnp.where((jnp.abs(freqs) <= FMAX)[:, None], spectrum, 0.0)
