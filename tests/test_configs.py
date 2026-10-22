@@ -5,6 +5,7 @@ import importlib
 from pathlib import Path
 from typing import NamedTuple
 
+import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
 import pytest
@@ -22,8 +23,16 @@ class PointSample(NamedTuple):
 
 def configs():
     for package in PACKAGES:
-        root = Path(importlib.import_module(f"canna.{package}").__file__).parent
-        for path in sorted((root / "configs").glob("*.yaml")):
+        # lisa is a namespace package whose configs are a band and a size, composed at load
+        if package == "lisa":
+            config_dir = importlib.import_module("canna.lisa.config").CONFIG_ROOT
+            paths = sorted(config_dir.glob("band/*.yaml")) + sorted(
+                config_dir.glob("size/*.yaml")
+            )
+        else:
+            module = importlib.import_module(f"canna.{package}")
+            paths = sorted((Path(module.__file__).parent / "configs").glob("*.yaml"))
+        for path in paths:
             yield package, path
 
 
@@ -31,7 +40,12 @@ CONFIGS = list(configs())
 IDS = [f"{package}-{path.stem}" for package, path in CONFIGS]
 
 
-def args(path: Path) -> argparse.Namespace:
+def args(package: str, path: Path):
+    # lisa's run configs only set what differs from its Config defaults: each band at B, each size on narrow
+    if package == "lisa":
+        lisa_config = importlib.import_module("canna.lisa.config")
+        name = f"{path.stem}-B" if path.parent.name == "band" else f"narrow-{path.stem}"
+        return lisa_config.load(name, root=path.parent.parent, bf16="none")
     with open(path) as f:
         config = yaml.safe_load(f)
     # dtype and muon are argparse-only defaults, never set by a run config
@@ -48,8 +62,14 @@ def test_every_package_ships_at_least_one_config():
 def test_config_holds_only_a_problem_and_a_network_dict_plus_scalars(package, path):
     with open(path) as f:
         config = yaml.safe_load(f)
-    assert isinstance(config["problem"], dict)
-    assert isinstance(config["network"], dict)
+    # a lisa band holds the problem (and maybe network flags), a lisa size only the network
+    required, allowed = {
+        "band": (("problem",), ("problem", "network")),
+        "size": (("network",), ("network",)),
+    }.get(path.parent.name, (("problem", "network"),) * 2)
+    assert all(isinstance(config[key], dict) for key in required)
+    assert all(isinstance(config[key], dict) for key in allowed if key in config)
+    assert not ({"problem", "network"} - set(allowed)) & set(config)
     # flat schema: no class: key, no init_args: nesting, no cross-package composition
     assert not any(key in config for key in ("class", "init_args"))
     scalars = {k: v for k, v in config.items() if k not in ("problem", "network")}
@@ -58,7 +78,7 @@ def test_config_holds_only_a_problem_and_a_network_dict_plus_scalars(package, pa
 
 def build(package: str, path: Path):
     """(problem, flow, sample), the way that package's train.py builds them."""
-    config = args(path)
+    config = args(package, path)
     train = importlib.import_module(f"canna.{package}.train")
 
     # point inlined its trainer into __main__, so neither TrainState nor train_sample
@@ -84,8 +104,23 @@ def build(package: str, path: Path):
         )
         return problem, flow, sample
 
+    # lisa's flow and sample stay abstract (XL's flow alone takes GBs); its problem needs concrete values to build
+    if package == "lisa":
+        problem = train.LisaGB(**config.problem)
+        flow = eqx.filter_eval_shape(
+            lambda: train.LisaFlow(
+                problem,
+                **config.network,
+                dtype=jnp.float32,
+                param_dtype=jnp.float32,
+                key=jr.key(config.seed),
+            )
+        )
+        sample = eqx.filter_eval_shape(train.train_sample, problem, jr.key(config.seed))
+        return problem, flow, sample
+
     state = train.TrainState.from_config(config)
-    sample = train.train_sample(state.problem, state.key, templates=state.flow.templates)
+    sample = train.train_sample(state.problem, state.key)
     return state.problem, state.flow, sample
 
 
@@ -101,12 +136,14 @@ def test_config_problem_and_network_agree_on_the_conditioning_shape(package, pat
     # shape error the first time the flow is actually called
     _, flow, sample = build(package, path)
 
-    # point has no reconstruction head: its flow returns the velocity alone
+    # point has no reconstruction head and lisa's one output is its x1: both return one array
     if package == "point":
         assert flow(sample.xt, sample.t, sample.y).shape == sample.dx.shape
     elif package == "lisa":
-        dx, x_target = flow(sample.xt, sample.t, sample.y, sample.f)
-        assert dx.shape == sample.dx.shape and x_target.shape == sample.x_target.shape
+        out = eqx.filter_eval_shape(
+            lambda net, s: net(s.xt[0], s.t[0], s.y, s.f), flow, sample
+        )
+        assert out.shape == sample.x_target.shape == sample.dx.shape[1:]
     else:
         outs = flow(*(sample.xt, sample.t, sample.y, *sample[6:]))
         dx, x_target, y_target = outs

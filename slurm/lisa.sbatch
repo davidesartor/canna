@@ -1,66 +1,41 @@
 #!/bin/bash
-# Train the LISA galactic-binary flow. Submit from the repo root:
-#     sbatch slurm/lisa.sbatch            # config B-fd
-#     sbatch slurm/lisa.sbatch XS-fd      # some other config
-#     sbatch slurm/lisa.sbatch XS-fd --total_steps 1000000   # flags after it go to train
-# Resuming is automatic: the run picks up from the latest checkpoint in
-# outputs/lisa-<config>/checkpoints, so re-submitting after a time limit
-# continues rather than restarting.
+# Train a LISA run; five minutes before the time limit it requeues itself, so one submission trains to the end.
+#     sbatch $CANNA_SBATCH_GPU slurm/lisa.sbatch [<config>] [LISA_<FIELD>=value ...]   # a new run (default full-B)
+#     sbatch $CANNA_SBATCH_GPU slurm/lisa.sbatch <config> LISA_RUN=<run>              # resume it, on its commit
+# L and XL hold 6 and 14 GiB checkpoints: pass --mem=64G.
 
 #SBATCH --job-name=canna-lisa
 #SBATCH --output=.slurm-logs/%x-%j.out
 #SBATCH --error=.slurm-logs/%x-%j.err
+#SBATCH --open-mode=append
+#SBATCH --signal=B:USR1@300
+#SBATCH --requeue
 #SBATCH --time=24:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=16G
 #SBATCH --gres=gpu:1
-#SBATCH --partition=gpu_a100
-#SBATCH --account=lisa
-# the default QOS (cpu_2022_1280) is rejected by the GPU partitions, which take
-# only normal or gpu_all; check `sacctmgr show assoc user=$USER format=qos` if
-# gpu_all is refused too
-#SBATCH --qos=gpu_all
-# gpu_a100 / gpu_h100 cap at 1 day; gpu_std at 3; gpu_aivip_max at 10 on the same
-# A100 nodes. Resuming works, so a 1-day chunk plus re-submission is equivalent to a
-# long allocation -- switch to gpu_aivip_max only if you are entitled to it.
 
 set -euo pipefail
-mkdir -p .slurm-logs
+export LISA_CONFIG="${1:-full-B}"
+shift || true
+if (($#)); then export "$@"; fi
 
-CONFIG="${1:-B-fd}"
-
-# one JAX process, one GPU; let it grow into the card rather than preallocating
-export XLA_PYTHON_CLIENT_PREALLOCATE=false
-
-# XLA folds the cuDNN attention kernel into a CUDA graph, and on these nodes building
-# that graph fails outright -- cudaGraphAddMemsetNode returns "invalid argument", which
-# killed job 10876803 two minutes in. An empty list switches command buffers off; the
-# same kernels still run, they are just launched one at a time instead of replayed as a
-# graph, and at batch 256 the launch overhead is lost in the noise.
-export XLA_FLAGS="--xla_gpu_enable_command_buffer="
-
-# the CNES egress proxy re-signs TLS, so uv's bundled roots reject it; this points
-# uv at the system trust store, which carries the CNES CA
-export UV_SYSTEM_CERTS=1   # UV_NATIVE_TLS on uv < 0.12
-
-echo "host      : $(hostname)"
-echo "job       : ${SLURM_JOB_ID:-none}"
-echo "config    : ${CONFIG}"
-nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader || true
-
-# --extra cuda: without it uv resolves plain jax and this trains on the CPU.
-# --frozen: use the lockfile as-is, so the job never needs to reach the network --
-# compute nodes commonly cannot. Run `uv sync --extra cuda` once on a login/visu
-# node first, so the venv is already built when the job starts.
-# PYTHON runs another clone's interpreter on this checkout's src, so a scratch checkout
-# (e.g. ~/canna-dev) needs no venv of its own and leaves the venv's editable install alone
-# the reference MCMC of the eval sources, on CPU nodes, if this problem has none yet
-slurm/mcmc-ensure.sh "$CONFIG" || true
-
-if [[ -n "${PYTHON:-}" ]]; then
-    export PYTHONPATH="$PWD/src"
-    srun "$PYTHON" -m canna.lisa.train --config "${CONFIG}" "${@:2}"
-else
-    srun uv run --extra cuda --frozen python -m canna.lisa.train --config "${CONFIG}" "${@:2}"
+# the run's name: given, kept from this job's first start (a requeue reruns the script), or fresh
+NAME_FILE=".slurm-logs/run-${SLURM_JOB_ID:-local}"
+if [[ -z "${LISA_RUN:-}" && -f "$NAME_FILE" ]]; then LISA_RUN=$(cat "$NAME_FILE"); fi
+if [[ -z "${LISA_RUN:-}" ]]; then
+    LISA_RUN=$(uv run --frozen --no-sync python src/canna/lisa/config.py "$LISA_CONFIG")
 fi
+export LISA_RUN
+echo "$LISA_RUN" > "$NAME_FILE"
+
+if [[ -f "${LISA_OUTPUT_DIR:-outputs}/runs/$LISA_RUN/config.yaml" ]]; then source slurm/run-src.sh; fi
+source slurm/gpu.sh
+echo "run       : $LISA_RUN ($LISA_CONFIG $*)"
+
+# training runs in the background so bash can take the time-limit signal and requeue
+trap 'echo "[requeue] time limit near, requeueing ${SLURM_JOB_ID}"; scontrol requeue "$SLURM_JOB_ID"' USR1
+srun uv run --extra cuda --frozen python -m canna.lisa.train &
+wait $!

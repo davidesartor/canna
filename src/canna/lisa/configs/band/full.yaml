@@ -1,0 +1,15 @@
+# response_points autosizes to 1024 from the full f0 range
+problem:
+  n_sources: 4
+  t_obs: 63115200.0
+  oms_noise: 15.0
+  acceleration_noise: 3.0
+  mass_range: [0.15, 1.4]
+  f0_range: [1.0e-4, 12.0e-3]
+  snr_range: [7.0, 1000.0]
+
+warmup_steps: 4800
+total_steps: 240000
+
+network:
+  loss_weights: true

@@ -1,0 +1,4 @@
+network:
+  hidden_dim: 512
+  num_heads: 8
+  num_blocks: 8

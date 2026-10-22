@@ -1,888 +1,535 @@
-from functools import partial
-import time
-from typing import NamedTuple, Self
-from jaxtyping import Array, Float, Key
-from pathlib import Path
-import os
-import argparse
-import yaml
+"""Training: the flow-matching draw, the losses, the scanned train epoch and the checkpoint."""
 
+import dataclasses
+import os
+import subprocess
+import time
+from functools import partial
+from pathlib import Path
+from typing import NamedTuple
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import optax
 import orbax.checkpoint as ocp
-import equinox as eqx
+import yaml
+from einops import rearrange
+from jaxtyping import Array, Float, Key
 from tqdm import tqdm
-from .problem import LisaGB
-from .network import LisaFlow
-from . import schedule_free as sf
+
+from . import config as run_config
+from .chart import physical_to_flow, sample_flow
+from .config import Config
+from .network import (
+    LOSS_GROUPS,
+    LOSS_TIME_BINS,
+    LOSS_TIME_DECADES,
+    LisaFlow,
+)
+from .optim import eval_flow, optimizer, routing_report, schedule_free_state
+from .problem import LisaGB, sample_f
+from .simulator import preprocess, sample_observation, sample_physical
 
 
 class TrainSample(NamedTuple):
-    xt: Float[Array, "S 11"]
-    dx: Float[Array, "S 11"]
-    t: Float[Array, ""]
-    y: Float[Array, "F C"]  # C = 6, or 12 with the template residual (`with_residual`)
-    x_target: Float[Array, "S 11"]
+    xt: Float[Array, "K S 8"]
+    dx: Float[Array, "K S 8"]
+    t: Float[Array, " K"]
+    y: Float[Array, "F 6"]
+    x_target: Float[Array, "S 8"]
     f: Float[Array, ""]
-    # the loss metric at xt (`fisher_metric`); None is the plain Euclidean loss
-    metric: Float[Array, "S 11 11"] | None = None
-
-
-def with_residual(
-    problem: LisaGB, x: Float[Array, "S 11"], y: Float[Array, "F 6"], f: Float[Array, ""]
-) -> Float[Array, "F 12"]:
-    """The whitened data and, beside it, the data minus the sources' signals at x.
-
-    The flow's current point x gives a template for every source; near the end of the path,
-    where the fine structure is resolved, x is close to the answer and the residual is noise
-    plus the signal of the remaining error: an error in phase shows up as a phase rotation
-    between data and template, an error in sky position as a mismatched pattern of the annual
-    Doppler and antenna-pattern sidebands (2004.08464's fast/slow decomposition). Those are
-    O(1) sigma in the residual, against differences of ~1/SNR between large numbers in the
-    data alone. x is an input, so the posterior the flow learns is unchanged.
-    """
-    x = jax.lax.stop_gradient(x)
-    h = problem.preprocess(problem.clean_signal(problem.flow_to_physical(x, f), f), f)
-    return jnp.concat([y, y - h.astype(y.dtype)], axis=-1)
-
-
-def fisher_metric(
-    problem: LisaGB, x: Float[Array, "S 11"], s: Float[Array, ""], f: Float[Array, ""], cap: float
-) -> Float[Array, "S 11 11"]:
-    """Each source's loss metric at x: W = (s^2 + (1 - s)^2) I + clip((1 - s)^2 G, cap).
-
-    G is the source's Fisher information in the flow coordinates at x, from its own response
-    band (whitened, so G = J^T J). W is the inverse variance of the target velocity
-    u = (x1 - x_s) / (1 - s) under a Gaussian posterior of precision G + I along a straight
-    path: measuring the velocity error in its own units makes a well-measured direction count
-    as much as a loose one, which the plain loss does not (F6). Its eigenvalues span ~10
-    decades, so the Fisher part is clipped at `cap`. W depends on x and s, never on the target,
-    so the minimiser is still the conditional mean velocity: the posterior is not biased.
-    """
-    x = jax.lax.stop_gradient(x)
-    power = problem.noise_psd(problem.window_freqs(f)) * problem.t_obs / 2.0
-
-    def band(x_k):  # one source's whitened band, real and imaginary parts
-        idx, seg = problem.source_segments(problem.flow_to_physical(x_k[None], f), f)
-        w = seg[0] * jax.lax.rsqrt(power[jnp.clip(idx[0], 0, problem.window_bins - 1)] / 2.0)
-        return jnp.concat([w.real.ravel(), w.imag.ravel()])
-
-    jac = jax.vmap(jax.jacfwd(band))(x)  # (S, 2 N 3, 11)
-    g = jnp.einsum("sni,snj->sij", jac, jac)
-    lam, v = jnp.linalg.eigh((g + jnp.swapaxes(g, -1, -2)) / 2)
-    lam = jnp.minimum((1 - s) ** 2 * jnp.maximum(lam, 0.0), cap)
-    eye = jnp.eye(x.shape[-1], dtype=x.dtype)
-    return (s**2 + (1 - s) ** 2) * eye + jnp.einsum("sik,sk,sjk->sij", v, lam, v)
-
-
-def geodesic(
-    problem: LisaGB,
-    t: Float[Array, ""],
-    x0: Float[Array, "S 11"],
-    x1: Float[Array, "S 11"],
-) -> Float[Array, "S 11"]:
-    return problem.exp_map(x0, t * problem.log_map(x0, x1))
-
-
-def path_position(t: Float[Array, ""], time_power: float) -> Float[Array, ""]:
-    """How far along the geodesic the flow is at time t: s = 1 - (1 - t)^time_power.
-
-    The fine structure of a posterior of width sigma lives at 1 - s < sigma / (prior
-    width), the last ~1% of a uniform clock for the 0.2-bin f0 floor and the last ~3e-5
-    for a loud source's true width, so a uniform clock barely trains it. Warping the clock
-    with time_power > 1 keeps t uniform but spends more of it near the end of the path.
-    The network is still conditioned on t, which stretches 1 - s by the same power, and
-    the velocity it learns is the one along the path, d/ds, whose size does not shrink
-    as s -> 1; the ODE multiplies it back by ds/dt (`path_speed`).
-    """
-    return t if time_power == 1 else 1 - (1 - t) ** time_power
-
-
-def path_speed(t: Float[Array, ""], time_power: float) -> Float[Array, ""]:
-    """ds/dt of `path_position`."""
-    return jnp.ones_like(t) if time_power == 1 else time_power * (1 - t) ** (time_power - 1)
 
 
 def train_sample(
     problem: LisaGB,
     key: Key[Array, ""],
+    u: Float[Array, " K"] | None = None,
     time_power: float = 1.0,
-    templates: bool = False,
-    fisher_cap: float | None = None,
+    late_time_mix: float = 0.0,
+    late_time_floor: float = 1e-4,
 ) -> TrainSample:
-    """Draw one training example: conditioning, a point on the geodesic, its velocity.
+    """One observation (a window and its noisy data) and K points on straight paths to it, with their velocities d/ds.
 
-    `templates` adds the residual at the point to the conditioning (`with_residual`), and
-    `fisher_cap` the Fisher loss metric there (`fisher_metric`).
+    u: the K draws' uniforms for t (stratified by the caller); one fresh draw when None.
     """
     key_c, key_p, key_o, key_x0, key_t = jr.split(key, 5)
-    f = problem.sample_f(key_c)
-    p = problem.sample_physical(key_p, f)
+    f = sample_f(problem, key_c)
+    p = sample_physical(problem, key_p, f)
+    y = preprocess(problem, sample_observation(problem, key_o, p, f), f)
 
-    # the noisy observation to condition on
-    y = problem.preprocess(problem.sample_observation(key_o, p, f), f)
-
-    # sample and process flow quantities: t is uniform, the point sits at s(t) along the
-    # path, and the target is the velocity along the path at s
-    x0 = problem.sample_flow(key_x0, f)
-    x1 = problem.physical_to_flow(p, f)
-    t = jr.uniform(key_t, ())
-    s = path_position(t, time_power)
-    path = partial(geodesic, problem)
-    xt = path(s, x0, x1)
-    dx = jax.jacobian(path)(s, x0, x1)
-    if templates:
-        y = with_residual(problem, xt, y, f)
-    metric = None if fisher_cap is None else fisher_metric(problem, xt, s, f, fisher_cap)
-    return TrainSample(xt=xt, dx=dx, t=t, y=y, x_target=x1, f=f, metric=metric)
-
-
-# Muon takes the matrices of these fields, AdamW everything else: the encodings (the PLE
-# maps and the token positions), the last layer of the velocity head, and anything 1-D
-MUON_FIELDS = ("backbone", "t_embed", "t_mlp", "f_mlp", "x_modulation")
-
-
-def muon_dimensions(params: LisaFlow) -> LisaFlow:
-    """Muon's view of each parameter: the matrix axes of a weight it takes, None otherwise.
-
-    optax's default rule takes exactly the 2-D arrays. That missed every weight of the
-    MMDiT blocks, which are stacked into (blocks, out, in) and (blocks, 3, out, in) arrays,
-    and sent them to Adam, while it orthogonalised the stacked (blocks, D) biases across
-    blocks -- the case in every run up to R1 and B2. Here the last two axes of an
-    eqx.nn.Linear weight are the matrix, (out, in), and any axes before them are batch
-    axes, each slice orthogonalised on its own.
-    """
-
-    def dims(path, leaf):
-        names = [k.name for k in path if isinstance(k, jax.tree_util.GetAttrKey)]
-        hidden = names[0] in MUON_FIELDS or names[:2] == ["x_unembed", "linear1"]
-        if names[-1] != "weight" or not hidden:
-            return None
-        return optax.contrib.MuonDimensionNumbers(
-            reduction_axis=leaf.ndim - 1, output_axis=leaf.ndim - 2
-        )
-
-    return jax.tree_util.tree_map_with_path(dims, params)
-
-
-def cast_muon_gradients(dtype) -> optax.GradientTransformation:
-    """Cast the gradients Muon takes to dtype, leaving AdamW's alone.
-
-    optax runs Newton-Schulz in the dtype of the momentum estimate, which follows the
-    gradient: float32 here, even with the momentum stored in bf16. That is ~1 TFLOP per XS
-    step, about a quarter of the network's own, at float32 speed. Keller Jordan's reference
-    Muon orthogonalises in bf16; casting the gradient first does the same here.
-    """
-
-    def update(updates, state, params=None):
-        del params
-        is_dims = lambda d: d is None or isinstance(d, optax.contrib.MuonDimensionNumbers)
-        updates = jax.tree.map(
-            lambda d, u: u if d is None else jax.tree.map(lambda a: a.astype(dtype), u),
-            muon_dimensions(updates),
-            updates,
-            is_leaf=is_dims,
-        )
-        return updates, state
-
-    return optax.GradientTransformation(lambda params: optax.EmptyState(), update)
-
-
-def normuon_rows(beta2: float = 0.95, eps: float = 1e-8) -> optax.GradientTransformation:
-    """NorMuon's row-wise normalisation of Muon's orthogonalised update.
-
-    NorMuon (Li et al. 2025, arXiv:2510.05491; the base of SF-NorMuon, arXiv:2605.23061)
-    keeps a second moment per neuron, v <- beta2 v + (1 - beta2) mean_row(O^2), and divides
-    each row of the orthogonalised update O by sqrt(v) + eps, so no output neuron's update
-    dominates. A row is an output neuron: axis -2 of an eqx.nn.Linear weight (out, in),
-    each slice of a stacked weight on its own. It runs after optax's Muon, on the leaves Muon
-    takes, and rescales each matrix back to the Frobenius norm Muon gave it: the update's
-    RMS stays 0.2 lr (consistent_rms), only its distribution over rows changes.
-    """
-    is_dims = lambda d: d is None or isinstance(d, optax.contrib.MuonDimensionNumbers)
-
-    def init(params):
-        return jax.tree.map(
-            lambda d, p: jax.tree.map(
-                lambda a: jnp.zeros(a.shape[:-1] if d is not None else (), jnp.float32), p
-            ),
-            muon_dimensions(params),
-            params,
-            is_leaf=is_dims,
-        )
-
-    def normalise(u, v):
-        u32 = u.astype(jnp.float32)
-        frob = lambda a: jnp.sqrt(jnp.sum(jnp.square(a), axis=(-2, -1), keepdims=True))
-        unit = u32 / jnp.maximum(frob(u32) / jnp.sqrt(u32.shape[-2] * u32.shape[-1]), 1e-30)
-        v = beta2 * v + (1.0 - beta2) * jnp.mean(jnp.square(unit), axis=-1)
-        rows = unit / (jnp.sqrt(v)[..., None] + eps)
-        out = rows * frob(u32) / jnp.maximum(frob(rows), 1e-30)
-        return out.astype(u.dtype), v
-
-    def update(updates, state, params=None):
-        del params
-        dims = muon_dimensions(updates)
-        pairs = jax.tree.map(
-            lambda d, u, v: jax.tree.map(lambda a, b: normalise(a, b) if d is not None else (a, b), u, v),
-            dims,
-            updates,
-            state,
-            is_leaf=is_dims,
-        )
-        is_pair = lambda t: isinstance(t, tuple) and len(t) == 2
-        new_updates = jax.tree.map(lambda t: t[0], pairs, is_leaf=is_pair)
-        new_state = jax.tree.map(lambda t: t[1], pairs, is_leaf=is_pair)
-        return new_updates, new_state
-
-    return optax.GradientTransformation(init, update)
-
-
-def decoupled_decay(weight_decay: float, decay_lr) -> optax.GradientTransformation:
-    """Decoupled weight decay on the trained weights, each at its group's lr (no schedule-free).
-
-    Kept outside the base optimizer so that NorMuon's row normalisation never touches it.
-    Matrices and embedding tables only, as in schedule_free.
-    """
-
-    def update(updates, state, params):
-        lrs = decay_lr(state, params)
-        updates = jax.tree.map(
-            lambda u, p, li: u - li * weight_decay * p if p.ndim >= 2 else u, updates, params, lrs
-        )
-        return updates, optax.safe_increment(state)
-
-    return optax.GradientTransformation(lambda params: jnp.zeros((), jnp.int32), update)
-
-
-def optimizer(args: argparse.Namespace) -> optax.GradientTransformation:
-    """Schedule-free Muon, with AdamW for the parameters Muon does not take.
-
-    The base is Muon (RMS-matched, consistent_rms=0.2, so its lr is in AdamW's units) with
-    its own momentum, and AdamW with an inner first moment: both are "inner momentum" in
-    ScheduleFree+'s sense. Neither decays the weights: the decay acts on schedule-free's
-    fast sequence z, inside `schedule_free.schedule_free`, where SF-NorMuon shows it must
-    (F36, F37). Without --schedule_free the decay is optax's usual decoupled one, on the
-    trained weights.
-    """
-    get = lambda name, default: getattr(args, name, default)
-    warmup = lambda peak: optax.linear_schedule(0.0, peak, args.warmup_steps)
-    muon_lr, adam_lr = warmup(args.learning_rate), warmup(args.adam_learning_rate)
-    use_sf = get("schedule_free", True)
-    # the base never decays: schedule-free decays z, the plain path adds a decoupled decay
-    base = optax.contrib.muon(
-        muon_lr,
-        beta=get("muon_momentum", 0.8),
-        weight_decay=0.0,
-        mu_dtype=jnp.bfloat16,
-        consistent_rms=0.2,
-        adam_b1=get("adam_b1", 0.9),
-        adam_b2=0.95,
-        adam_learning_rate=adam_lr,
-        adam_weight_decay=0.0,
-        muon_weight_dimension_numbers=muon_dimensions,
+    # t is uniform, the point sits at s = 1 - (1 - t)^time_power along the path, the target is d/ds there
+    t = jr.uniform(key_t, (1,)) if u is None else u
+    x0 = jax.vmap(sample_flow, in_axes=(None, 0, None))(
+        problem, jr.split(key_x0, t.shape[0]), f
     )
-    if get("normuon", False):
-        base = optax.chain(base, normuon_rows())
-    ns_dtype = get("newton_schulz_dtype", "bfloat16")
-    if ns_dtype != "float32":
-        base = optax.chain(cast_muon_gradients(jnp.dtype(ns_dtype)), base)
+    x1 = physical_to_flow(problem, p, f)
+    # a late_time_mix share of draws has 1 - s log-uniform on [late_time_floor, 1] instead
+    if late_time_mix > 0:
+        key_mix = jr.fold_in(key_t, 1)
+        t_late = 1 - late_time_floor ** (t / time_power)
+        t = jnp.where(jr.bernoulli(key_mix, late_time_mix, t.shape), t_late, t)
+    s = t if time_power == 1 else 1 - (1 - t) ** time_power
+    return TrainSample(
+        xt=x0 + s[:, None, None] * (x1 - x0),
+        dx=x1 - x0,
+        t=t,
+        y=y,
+        x_target=x1,
+        f=f,
+    )
 
-    def decay_lr(step, params):
-        """Each parameter's decay goes at its own group's lr, Muon's or AdamW's.
 
-        With --no-decay_adamw the AdamW group is not decayed at all (F49): the decay bounds z
-        under Muon's fixed-size steps, which AdamW's scale-adaptive ones do not need, and on
-        the velocity head it pulled the weakly learned phi0 rows to zero (F48)."""
-        is_dims = lambda d: d is None or isinstance(d, optax.contrib.MuonDimensionNumbers)
-        lr_m, lr_a = muon_lr(step), adam_lr(step)
-        if not get("decay_adamw", True):
-            lr_a = jnp.zeros_like(lr_a)
-        return jax.tree.map(
-            lambda d, p: jax.tree.map(lambda _: lr_a if d is None else lr_m, p),
-            muon_dimensions(params),
-            params,
-            is_leaf=is_dims,
+def losses(
+    flow: LisaFlow,
+    batch: TrainSample,
+    time_power: float = 1.0,
+    use_hat: bool | Array = False,
+    by_bin: bool = False,
+) -> Float[Array, "3"] | tuple[Float[Array, "3"], Float[Array, "T G"]]:
+    """The flow-matching loss, the error of the x1 it implies, and the flow objective trained on.
+
+    by_bin: also the mean squared error per (time bin, coordinate group) the learned weights see.
+    """
+    # the data stream is encoded once per observation and shared by its K draws
+    cache = jax.vmap(flow.encode)(batch.y, batch.f)
+    remaining = ((1 - batch.t) ** time_power)[..., None, None]
+    per_draw = lambda f: jax.vmap(f, in_axes=(0, 0, None, None, 0, None))
+    per_observation = jax.vmap(per_draw(flow))
+
+    def predict(x_hat):
+        out = per_observation(batch.xt, batch.t, batch.y, batch.f, x_hat, cache)
+        x1 = out if flow.prediction == "x" else batch.xt + remaining * out
+        return out, x1
+
+    # self-conditioning: on use_hat, a first, stopped pass's x1 conditions the second
+    if flow.self_condition:
+        first = lambda: jax.lax.stop_gradient(predict(None)[1])
+        out, x_pred = jax.lax.cond(
+            use_hat, lambda: predict(first()), lambda: predict(None)
         )
+    else:
+        out, x_pred = predict(None)
 
-    if not use_sf:
-        # plain Muon and AdamW at a constant lr after the warmup: the weights trained are the
-        # weights evaluated
-        return optax.chain(
-            optax.clip_by_global_norm(1.0), base, decoupled_decay(args.weight_decay, decay_lr)
+    # x-prediction: the velocity (x1 - xt) / (1 - s), floored at the last λ bin's 1 - s, below which no weight can tame it
+    if flow.prediction == "x":
+        error = (out - batch.xt - remaining * batch.dx) / jnp.maximum(
+            remaining, 10.0**-LOSS_TIME_DECADES
         )
+    else:
+        error = out - batch.dx
+    flow_loss = jnp.mean(jnp.square(error))
 
-    warm_start = get("sf_warm_start", None)
-    return optax.chain(
-        optax.clip_by_global_norm(1.0),
-        sf.schedule_free(
-            base,
-            muon_lr,
-            weight_decay=args.weight_decay,
-            decay_lr=decay_lr,
-            beta_start=get("sf_beta", 0.9),
-            beta_end=get("sf_beta_end", 0.965),
-            total_steps=args.total_steps,
-            warm_start=2 * args.warmup_steps if warm_start is None else warm_start,
-            r=get("sf_r", 1.0),
-            l1_weighting=get("sf_l1_weighting", False),
+    # learned loss weights (Kendall et al. 2018, EDM2): e exp(-lambda) + lambda per (time bin, coordinate group)
+    groups = jnp.stack(
+        [jnp.mean(jnp.square(error[..., g]), axis=(-2, -1)) for g in LOSS_GROUPS],
+        axis=-1,
+    )
+    decades = time_power * jnp.log10(jnp.maximum(1 - batch.t, 1e-30))
+    bins = jnp.clip(
+        (decades / LOSS_TIME_DECADES + 1) * LOSS_TIME_BINS, 0, LOSS_TIME_BINS - 1
+    ).astype(int)
+    objective = flow_loss
+    if flow.loss_log_var is not None:
+        log_var = flow.loss_log_var[bins]
+        objective = jnp.mean(groups * jnp.exp(-log_var) + log_var)
+    x_error = jnp.mean(jnp.square(x_pred - batch.x_target[:, None]))
+    parts = jnp.stack([flow_loss, x_error, objective])
+    if not by_bin:
+        return parts
+    one_hot = jax.nn.one_hot(bins, LOSS_TIME_BINS)
+    binned = jnp.einsum("bkt,bkg->tg", one_hot, groups)
+    count = jnp.sum(one_hot, axis=(0, 1))[:, None]
+    # an empty bin has no error to report
+    return parts, jnp.where(count > 0, binned / jnp.maximum(count, 1), jnp.nan)
+
+
+class TrainState(NamedTuple):
+    flow: LisaFlow
+    opt_state: optax.OptState
+    key: Key[Array, ""]
+
+
+def setup(
+    config: Config,
+) -> tuple[LisaGB, optax.GradientTransformation, TrainState]:
+    """The problem, the optimizer and a fresh training state, all from the run config."""
+    _, key_network, key_train = jr.split(jr.key(config.seed), 3)
+    problem = LisaGB(**config.problem)
+    flow = LisaFlow(
+        problem,
+        **config.network,
+        dtype=jnp.bfloat16 if config.bf16 == "backbone" else jnp.float32,
+        attention_dtype=None if config.bf16 == "none" else jnp.bfloat16,
+        param_dtype=jnp.float32,
+        key=key_network,
+    )
+    tx = optimizer(config)
+    opt_state = tx.init(eqx.filter(flow, eqx.is_inexact_array))
+    return problem, tx, TrainState(flow, opt_state, key_train)
+
+
+@eqx.filter_jit
+def train_step(
+    tx: optax.GradientTransformation,
+    state: TrainState,
+    batch: TrainSample,
+    time_power: float = 1.0,
+    use_hat: bool | Array = False,
+    micro_batches: int = 1,
+) -> tuple[TrainState, Float[Array, "4"]]:
+    """One optimizer step on the flow objective; the flow loss, the x1 error, the objective and the grad norm."""
+
+    def total(flow, chunk):
+        parts = losses(flow, chunk, time_power, use_hat)
+        return parts[2], parts
+
+    # the batch's gradient as the mean over equal chunks, one chunk's activations live at a time
+    grad = eqx.filter_value_and_grad(total, has_aux=True)
+    params = eqx.filter(state.flow, eqx.is_inexact_array)
+
+    def chunk_grad(chunk):
+        (_, parts), grads = grad(state.flow, chunk)
+        return parts, grads
+
+    def accumulate(carry, chunk):
+        return jax.tree.map(jnp.add, carry, chunk_grad(chunk)), None
+
+    chunks = jax.tree.map(
+        lambda a: rearrange(a, "(m b) ... -> m b ...", m=micro_batches), batch
+    )
+    zeros = jax.tree.map(
+        lambda a: jnp.zeros(a.shape, a.dtype),
+        jax.eval_shape(chunk_grad, jax.tree.map(lambda a: a[0], chunks)),
+    )
+    (parts, grads), _ = jax.lax.scan(accumulate, zeros, chunks)
+    parts, grads = jax.tree.map(lambda a: a / micro_batches, (parts, grads))
+    updates, opt_state = tx.update(grads, state.opt_state, params)
+    state = state._replace(
+        flow=eqx.apply_updates(state.flow, updates), opt_state=opt_state
+    )
+    return state, jnp.concat([parts, optax.global_norm(grads)[None]])
+
+
+@eqx.filter_jit
+def train_epoch(
+    problem: LisaGB,
+    tx: optax.GradientTransformation,
+    state: TrainState,
+    batch_size: int,
+    n_steps: int,
+    time_power: float = 1.0,
+    draws: int = 1,
+    late_time_mix: float = 0.0,
+    late_time_floor: float = 1e-4,
+    micro_batches: int = 1,
+) -> tuple[TrainState, Float[Array, "S 4"]]:
+    """Fuse n_steps (batch draw + train_step) pairs into one XLA dispatch via lax.scan.
+
+    A batch is batch_size (x0, t) samples, `draws` per observation, t stratified over all of them.
+    """
+    observations = batch_size // draws
+    dynamic, static = eqx.partition(state, eqx.is_array)
+    sample = partial(
+        train_sample,
+        problem,
+        time_power=time_power,
+        late_time_mix=late_time_mix,
+        late_time_floor=late_time_floor,
+    )
+
+    def scan_step(dynamic: TrainState, _) -> tuple[TrainState, Float[Array, "4"]]:
+        state = eqx.combine(dynamic, static)
+        key, key_batch, key_perm, key_u, key_hat = jr.split(state.key, 5)
+        # one t in each of the batch's batch_size equal strata, shuffled
+        u = (
+            jr.permutation(key_perm, batch_size) + jr.uniform(key_u, (batch_size,))
+        ) / batch_size
+        batch = jax.vmap(sample)(
+            jr.split(key_batch, observations), rearrange(u, "(b k) -> b k", k=draws)
+        )
+        # half the steps self-condition (when the flow does)
+        use_hat = jr.bernoulli(key_hat)
+        state, parts = train_step(
+            tx, state._replace(key=key), batch, time_power, use_hat, micro_batches
+        )
+        return eqx.filter(state, eqx.is_array), parts
+
+    dynamic, history = jax.lax.scan(scan_step, dynamic, length=n_steps)
+    return eqx.combine(dynamic, static), history
+
+
+@eqx.filter_jit
+def diagnostics(
+    problem: LisaGB,
+    state: TrainState,
+    key: Key[Array, ""],
+    batch_size: int,
+    time_power: float = 1.0,
+) -> tuple[Float[Array, "4"], Float[Array, "T G"]]:
+    """Flow loss (self-conditioned, as sampled) of x and of y, backbone weight RMS of x, and RMS of z - x, on the batch from `key`.
+
+    Also y's error per (time bin, coordinate group), on a second batch whose 1 - s is stratified log-uniformly over the bins.
+    """
+    key_batch, key_binned, key_u = jr.split(key, 3)
+    sample = partial(train_sample, problem, time_power=time_power)
+    batch = jax.vmap(sample)(jr.split(key_batch, batch_size))
+    # every draw late, 1 - s = floor^u: batch_size / LOSS_TIME_BINS draws in each bin
+    spread_over_bins = partial(
+        sample, late_time_mix=1.0, late_time_floor=10.0**-LOSS_TIME_DECADES
+    )
+    u = (jnp.arange(batch_size) + jr.uniform(key_u, (batch_size,))) / batch_size
+    binned = jax.vmap(spread_over_bins)(
+        jr.split(key_binned, batch_size), rearrange(u, "b -> b 1")
+    )
+    x = eval_flow(state.flow, state.opt_state)
+    rms = lambda tree: jnp.sqrt(
+        sum(jnp.sum(jnp.square(a.astype(jnp.float32))) for a in jax.tree.leaves(tree))
+        / sum(a.size for a in jax.tree.leaves(tree))
+    )
+    w_rms = rms(eqx.filter(x.backbone, eqx.is_inexact_array))
+    z = schedule_free_state(state.opt_state).z
+    spread = rms(
+        jax.tree.map(lambda zi, xi: zi - xi, z, eqx.filter(x, eqx.is_inexact_array))
+    )
+    held_out = lambda flow: losses(flow, batch, time_power, True)[0]
+    _, bin_error = losses(state.flow, binned, time_power, True, by_bin=True)
+    return jnp.stack([held_out(x), held_out(state.flow), w_rms, spread]), bin_error
+
+
+def checkpoint_manager(run_dir: Path, read_only: bool = False) -> ocp.CheckpointManager:
+    """The run's checkpoints, keeping only the latest (orbax holds the old one while saving).
+
+    read_only: for a reader beside a live trainer, which must not delete the save it is writing.
+    """
+    # a requeue can kill a save midway: drop its partial folder when the run restarts
+    return ocp.CheckpointManager(
+        (run_dir / "checkpoints").absolute(),
+        options=ocp.CheckpointManagerOptions(
+            max_to_keep=None if read_only else 1,
+            cleanup_tmp_directories=not read_only,
+            read_only=read_only,
         ),
     )
 
 
-def schedule_free_state(opt_state: optax.OptState):
-    """The ScheduleFreeState in the optimizer chain, or None for a plain optimizer."""
-    found = [s for s in opt_state if isinstance(s, sf.ScheduleFreeState)]
-    return found[0] if found else None
-
-
-def eval_flow(flow: LisaFlow, opt_state: optax.OptState) -> LisaFlow:
-    """The averaged weights x that schedule-free evaluates (kept in its state).
-
-    Without schedule-free the training weights are the ones to evaluate.
-    """
-    state = schedule_free_state(opt_state)
-    if state is None:
-        return flow
-    return eqx.combine(state.x, eqx.filter(flow, eqx.is_inexact_array, inverse=True))
-
-
-def losses(flow: LisaFlow, batch: TrainSample) -> Float[Array, "2"]:
-    """The flow-matching loss and the parameter-reconstruction loss.
-
-    With a metric in the batch (`fisher_metric`) the flow loss is the Mahalanobis one.
-
-    The sources are ordered (loudest first), so slot k is compared with source k: no
-    matching. The reconstruction is scored in the flow coordinates' ambient space -- the
-    chord, not the arc, on the spheres -- which needs no log map of an off-manifold
-    prediction (the source of F2's NaN).
-    """
-    du_pred, x_pred = jax.vmap(flow)(batch.xt, batch.t, batch.y, batch.f)
-    d = du_pred - batch.dx
-    if batch.metric is None:
-        flow_loss = jnp.mean(jnp.square(d))
-    else:
-        # the Mahalanobis loss d^T W d, normalised by the batch's mean weight so its scale
-        # stays the Euclidean one's beside the reconstruction loss
-        w = batch.metric.astype(d.dtype)
-        scale = jax.lax.stop_gradient(jnp.mean(jnp.trace(w, axis1=-2, axis2=-1)))
-        flow_loss = jnp.mean(jnp.einsum("bsi,bsij,bsj->bs", d, w, d)) / scale
-    x_loss = jnp.mean(jnp.square(x_pred - batch.x_target))
-    return jnp.stack([flow_loss, x_loss])
-
-
-def flow_loss(flow: LisaFlow, batch: TrainSample) -> Float[Array, ""]:
-    return losses(flow, batch)[0]
-
-
-class TrainState(NamedTuple):
-    problem: LisaGB
-    flow: LisaFlow
-    tx: optax.GradientTransformation
-    opt_state: optax.OptState
-    key: Key[Array, ""]
-
-    @classmethod
-    def from_config(cls, args: argparse.Namespace) -> Self:
-        """Build a fresh state from the problem and network in the run config."""
-        key_sample, key_network, key_train = jr.split(jr.key(args.seed), 3)
-        problem = LisaGB(**args.problem)
-
-        # the network is shaped by one sample of the problem
-        network = dict(args.network)
-        sample = train_sample(problem, key_sample, templates=bool(network.get("templates")))
-        if network.get("rope") or network.get("doppler"):
-            network["window"] = problem.window_geometry
-        network["doppler"] = problem.doppler_geometry if network.get("doppler") else None
-        flow = LisaFlow(
-            **network,
-            x_shape=sample.xt.shape,
-            y_shape=sample.y.shape,
-            f_range=problem.f0_range,
-            dtype=jnp.dtype(args.dtype),
-            param_dtype=jnp.float32,
-            key=key_network,
-        )
-
-        tx = optimizer(args)
-        return cls(
-            problem=problem,
-            flow=flow,
-            tx=tx,
-            opt_state=tx.init(eqx.filter(flow, eqx.is_inexact_array)),
-            key=key_train,
-        )
-
-    def routing_report(self) -> str:
-        """How many parameters Muon and AdamW each take; Muon must have the backbone."""
-        params = eqx.filter(self.flow, eqx.is_inexact_array)
-        # Muon's size per parameter and AdamW's, labelled the way optax labels them
-        is_dims = lambda d: d is None or isinstance(d, optax.contrib.MuonDimensionNumbers)
-        split = lambda muon: jax.tree.map(
-            lambda d, p: jax.tree.map(lambda a: a.size * ((d is not None) == muon), p),
-            muon_dimensions(params),
-            params,
-            is_leaf=is_dims,
-        )
-        muon, adam = sum(jax.tree.leaves(split(True))), sum(jax.tree.leaves(split(False)))
-        assert sum(jax.tree.leaves(split(False).backbone)) == 0, (
-            "a backbone parameter is not on Muon"
-        )
-        return (
-            f"[optimizer] Muon {muon / 1e6:.2f}M of {(muon + adam) / 1e6:.2f}M parameters"
-            f" ({muon / (muon + adam):.1%}), AdamW the other {adam / 1e6:.2f}M"
-        )
-
-    @eqx.filter_jit
-    def train_step(
-        self, batch: TrainSample, aux_weight: float = 0.0
-    ) -> tuple[Self, Float[Array, "3"]]:
-        """One optimizer step on flow + aux_weight * reconstruction.
-
-        Returns the two losses and the gradient norm.
-        """
-
-        def total(flow):
-            parts = losses(flow, batch)
-            return parts[0] + aux_weight * parts[1], parts
-
-        (_, parts), grads = eqx.filter_value_and_grad(total, has_aux=True)(self.flow)
-        params = eqx.filter(self.flow, eqx.is_inexact_array)
-        updates, opt_state = self.tx.update(grads, self.opt_state, params)
-        flow = eqx.apply_updates(self.flow, updates)
-        state = self._replace(flow=flow, opt_state=opt_state)
-        return state, jnp.concat([parts, optax.global_norm(grads)[None]])
-
-    @eqx.filter_jit
-    def train_epoch(
-        self,
-        batch_size: int,
-        n_steps: int,
-        time_power: float = 1.0,
-        aux_weight: float = 0.0,
-        fisher_cap: float | None = None,
-    ) -> tuple[Self, Float[Array, "S 3"]]:
-        """Fuse n_steps (gen + train_step) pairs into one XLA dispatch via lax.scan."""
-        dynamic, static = eqx.partition(self, eqx.is_array)
-
-        def scan_step(dynamic: Self, _) -> tuple[Self, Float[Array, "3"]]:
-            state = eqx.combine(dynamic, static)
-            key, key_batch = jr.split(state.key)
-            sample = partial(
-                train_sample, state.problem, time_power=time_power,
-                templates=state.flow.templates, fisher_cap=fisher_cap,
-            )
-            batch = jax.vmap(sample)(jr.split(key_batch, batch_size))
-            state, parts = state._replace(key=key).train_step(batch, aux_weight)
-            return eqx.filter(state, eqx.is_array), parts
-
-        dynamic, losses = jax.lax.scan(scan_step, dynamic, length=n_steps)
-        return eqx.combine(dynamic, static), losses
-
-    @eqx.filter_jit
-    @eqx.filter_jit
-    def diagnostics(
-        self, key: Key[Array, ""], batch_size: int, time_power: float = 1.0
-    ) -> Float[Array, "4"]:
-        """Per-epoch health of the optimizer, on a batch drawn from `key`.
-
-        - the flow loss of the averaged weights x, the model the eval samples from;
-        - the flow loss of the training weights y, where the gradients are taken (the
-          training loss is also at y, but on fresh batches);
-        - the RMS of the backbone's weights in x, which Muon's fixed-size steps grow unless
-          the weight decay holds them;
-        - the RMS of z - x, how far schedule-free's fast sequence sits from its average
-          (0 without schedule-free).
-
-        The same key every epoch scores the same batch, so the curves are free of batch noise.
-        """
-        # the Euclidean loss even for a Fisher run, so the curves compare across runs
-        sample = partial(
-            train_sample, self.problem, time_power=time_power, templates=self.flow.templates
-        )
-        batch = jax.vmap(sample)(jr.split(key, batch_size))
-        x = eval_flow(self.flow, self.opt_state)
-        rms = lambda tree: jnp.sqrt(
-            sum(jnp.sum(jnp.square(a.astype(jnp.float32))) for a in jax.tree.leaves(tree))
-            / sum(a.size for a in jax.tree.leaves(tree))
-        )
-        w_rms = rms(eqx.filter(x.backbone, eqx.is_inexact_array))
-        sf = schedule_free_state(self.opt_state)
-        if sf is None:
-            spread = jnp.zeros(())
-        else:
-            x_params = eqx.filter(x, eqx.is_inexact_array)
-            spread = rms(jax.tree.map(lambda z, a: z - a, sf.z, x_params))
-        return jnp.stack(
-            [flow_loss(x, batch), flow_loss(self.flow, batch), w_rms, spread]
-        )
-
-    def save_to(
-        self,
-        checkpoints: ocp.CheckpointManager,
-        epoch: int,
-        loss_hist: Float[Array, "E S 3"],
-        heldout_hist: Float[Array, "E 4"],
-    ) -> None:
-        """Save the weights, the optimizer state and the histories as named checkpoint items.
-
-        The optimizer state always goes in: schedule-free's averaged weights, the ones to
-        evaluate, are rebuilt from the training weights and the z sequence it holds.
-        """
-        skip = ("problem", "tx", "key")
-        checkpoints.save(
-            epoch,
-            args=ocp.args.Composite(
-                loss_hist=ocp.args.ArraySave(loss_hist),
-                heldout_hist=ocp.args.ArraySave(heldout_hist),
-                # a bare key array is not a pytree StandardSave will take
-                key=ocp.args.ArraySave(jr.key_data(self.key)),
-                **{
-                    name: ocp.args.StandardSave(eqx.filter(field, eqx.is_array))
-                    for name, field in zip(self._fields, self)
-                    if name not in skip
-                },
-            ),
-        )
-
-    def restore_from(
-        self, checkpoints: ocp.CheckpointManager
-    ) -> tuple[Self, int, tuple[np.ndarray, np.ndarray] | None]:
-        """Return the state, epoch and (loss, held-out) histories to resume from, or self at 0."""
-        latest_epoch = checkpoints.latest_step()
-        if latest_epoch is None:
-            return self, 0, None
-
-        skip = ("problem", "tx", "key")
-        skeleton = {
-            name: eqx.filter(field, eqx.is_array)
-            for name, field in zip(self._fields, self)
-            if name not in skip
-        }
-        # the histories and key are bare arrays, with no skeleton to take a sharding from,
-        # so orbax would fall back to the one recorded at save time -- a device that need
-        # not exist here, e.g. a GPU checkpoint read back on a CPU. Place them locally.
-        local = ocp.ArrayRestoreArgs(
-            sharding=jax.sharding.SingleDeviceSharding(jax.devices()[0])
-        )
-        restored = checkpoints.restore(
-            latest_epoch,
-            args=ocp.args.Composite(
-                loss_hist=ocp.args.ArrayRestore(restore_args=local),
-                heldout_hist=ocp.args.ArrayRestore(restore_args=local),
-                key=ocp.args.ArrayRestore(restore_args=local),
-                **{
-                    name: ocp.args.StandardRestore(tree)
-                    for name, tree in skeleton.items()
-                },
-            ),
-        )
-
-        state = self._replace(
-            key=jr.wrap_key_data(restored["key"]),
-            **{
-                name: eqx.combine(restored[name], getattr(self, name))
-                for name in skeleton
-            },
-        )
-        print(f"[checkpoint] resuming at epoch {latest_epoch}", flush=True)
-        return state, latest_epoch, (restored["loss_hist"], restored["heldout_hist"])
-
-
-def run_dir(args: argparse.Namespace) -> Path:
-    """Where a run keeps its checkpoints, plots and scorecards: outputs/lisa-<config>."""
-    return args.output_dir / f"lisa-{args.config}"
-
-
-def checkpoint_manager(out_dir: Path) -> ocp.CheckpointManager:
-    """The run's checkpoints, keeping only the latest (orbax holds the old one while saving)."""
-    return ocp.CheckpointManager(
-        (out_dir / "checkpoints").absolute(),
-        options=ocp.CheckpointManagerOptions(max_to_keep=1),
+def save_checkpoint(
+    checkpoints: ocp.CheckpointManager,
+    state: TrainState,
+    epoch: int,
+    histories: dict[str, np.ndarray],
+) -> None:
+    """Save the training weights, the optimizer state (it holds the averaged x), the key and the named histories; orbax writes them in the background."""
+    checkpoints.save(
+        epoch,
+        args=ocp.args.Composite(
+            flow=ocp.args.StandardSave(eqx.filter(state.flow, eqx.is_array)),
+            opt_state=ocp.args.StandardSave(eqx.filter(state.opt_state, eqx.is_array)),
+            # a bare key array is not a pytree StandardSave will take
+            key=ocp.args.ArraySave(jr.key_data(state.key)),
+            # copies: the trainer fills the next epoch's rows while this one is written
+            **{name: ocp.args.ArraySave(h.copy()) for name, h in histories.items()},
+        ),
     )
 
 
-def load_trained(args: argparse.Namespace) -> tuple[TrainState, int, Path]:
-    """The latest trained state of the run args names, its epoch and its folder.
+def restore_checkpoint(
+    checkpoints: ocp.CheckpointManager,
+    state: TrainState,
+    histories: tuple[str, ...] = (),
+) -> tuple[TrainState, int, dict[str, np.ndarray] | None]:
+    """The state, epoch and the named histories to resume from, or `state` at 0."""
+    epoch = checkpoints.latest_step()
+    if epoch is None:
+        return state, 0, None
 
-    The state's flow is the averaged weights x that schedule-free evaluates, unless
-    args.weights is "training": then it is the training weights y. x is a uniform average
-    over the whole run, so after a late drop in the loss it lags y (F33).
+    # the key and histories have no skeleton to take a sharding from, so orbax would fall back
+    # to the one recorded at save time -- a device that need not exist here (a GPU checkpoint
+    # read on a CPU). Place them locally.
+    local = ocp.ArrayRestoreArgs(
+        sharding=jax.sharding.SingleDeviceSharding(jax.devices()[0])
+    )
+    restored = checkpoints.restore(
+        epoch,
+        args=ocp.args.Composite(
+            flow=ocp.args.StandardRestore(eqx.filter(state.flow, eqx.is_array)),
+            opt_state=ocp.args.StandardRestore(
+                eqx.filter(state.opt_state, eqx.is_array)
+            ),
+            key=ocp.args.ArrayRestore(restore_args=local),
+            **{name: ocp.args.ArrayRestore(restore_args=local) for name in histories},
+        ),
+    )
+    state = TrainState(
+        flow=eqx.combine(restored["flow"], state.flow),
+        opt_state=eqx.combine(restored["opt_state"], state.opt_state),
+        key=jr.wrap_key_data(restored["key"]),
+    )
+    print(f"[checkpoint] resuming at epoch {epoch}", flush=True)
+    return state, epoch, {name: np.asarray(restored[name]) for name in histories}
 
-    For eval and scorecard. restore_from falls back to the fresh state when there is no
-    checkpoint, which is right for a new training run but would quietly score an
-    untrained network here, so stop instead.
-    """
-    out_dir = run_dir(args)
-    checkpoints = checkpoint_manager(out_dir)
-    state, epoch, _ = TrainState.from_config(args).restore_from(checkpoints)
+
+def load_trained(config: Config) -> tuple[LisaGB, LisaFlow, int]:
+    """The problem, the trained flow (averaged x, or y with weights: training) and its epoch."""
+    if not (config.run_dir / "checkpoints").is_dir():
+        raise SystemExit(f"no checkpoint in {config.run_dir}: nothing to evaluate")
+    problem, _, skeleton = setup(config)
+    with checkpoint_manager(config.run_dir, read_only=True) as checkpoints:
+        state, epoch, _ = restore_checkpoint(checkpoints, skeleton)
     if epoch == 0:
-        raise SystemExit(f"no checkpoint in {checkpoints.directory}: nothing to evaluate")
-    # schedule-free trains at y and evaluates the average x
-    if getattr(args, "weights", "average") == "training":
-        return state, epoch, out_dir
-    return state._replace(flow=eval_flow(state.flow, state.opt_state)), epoch, out_dir
+        raise SystemExit(f"no checkpoint in {config.run_dir}: nothing to evaluate")
+    if config.weights == "training":
+        return problem, state.flow, epoch
+    return problem, eval_flow(state.flow, state.opt_state), epoch
 
 
-def peak_memory_report() -> str:
-    """The device's peak memory so far, or "" where the backend does not report it (the CPU)."""
+def print_peak_memory() -> None:
+    """The device's peak memory so far, where the backend reports it (not the CPU)."""
     stats = jax.devices()[0].memory_stats() or {}
-    if "peak_bytes_in_use" not in stats:
-        return ""
-    limit = stats.get("bytes_limit", 0) / 2**30
-    return f"[memory] peak {stats['peak_bytes_in_use'] / 2**30:.1f} GiB of {limit:.0f} GiB"
+    if "peak_bytes_in_use" in stats:
+        print(
+            f"[memory] peak {stats['peak_bytes_in_use'] / 2**30:.1f} GiB"
+            f" of {stats.get('bytes_limit', 0) / 2**30:.0f} GiB",
+            flush=True,
+        )
 
 
-def parse_args() -> argparse.Namespace:
-    """Read the named run .yaml as argparse defaults, so any CLI flag overrides it."""
-    config_parser = argparse.ArgumentParser(add_help=False)
-    config_parser.add_argument("--config", default="B-fd", help="name of a run .yaml")
-    config_parser.add_argument(
-        "--config_root", type=Path, default=Path(__file__).parent / "configs"
-    )
-    config_args, _ = config_parser.parse_known_args()
-
-    parser = argparse.ArgumentParser(parents=[config_parser])
-    parser.add_argument("--output_dir", type=Path, default=Path("outputs"))
-    parser.add_argument("--batch_size", type=int, default=256)
-    parser.add_argument("--learning_rate", type=float, default=1e-3, help="Muon's")
-    parser.add_argument("--adam_learning_rate", type=float, default=3e-4, help="AdamW's")
-    parser.add_argument(
-        "--weight_decay",
-        type=float,
-        default=0.05,
-        help="decay per unit lr; with schedule-free it acts on z (SF-NorMuon), else on the weights",
-    )
-    parser.add_argument(
-        "--decay_adamw",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="decay the AdamW parameters too (head, encodings, positions); off decays Muon's only",
-    )
-    parser.add_argument(
-        "--warmup_steps",
-        type=int,
-        default=10_000,
-        help="linear lr warmup from 0; schedule-free needs no other schedule",
-    )
-    parser.add_argument(
-        "--aux_weight",
-        type=float,
-        default=0.1,
-        help="constant weight of the parameter-reconstruction loss beside the flow loss",
-    )
-    parser.add_argument(
-        "--schedule_free",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="schedule-free averaging around Muon and AdamW; off is a constant lr after warmup",
-    )
-    parser.add_argument(
-        "--muon_momentum",
-        type=float,
-        default=0.8,
-        help="Muon's own momentum, kept inside schedule-free's base optimizer (SF-NorMuon: 0.8)",
-    )
-    parser.add_argument(
-        "--adam_b1",
-        type=float,
-        default=0.9,
-        help="AdamW's inner first moment inside schedule-free (ScheduleFree+)",
-    )
-    parser.add_argument(
-        "--sf_beta",
-        type=float,
-        default=0.9,
-        help="schedule-free interpolation y = (1 - beta) z + beta x, at the start",
-    )
-    parser.add_argument(
-        "--sf_beta_end",
-        type=float,
-        default=0.965,
-        help="the interpolation at total_steps, reached log-linearly (ScheduleFree+)",
-    )
-    parser.add_argument(
-        "--sf_r",
-        type=float,
-        default=1.0,
-        help="averaging weights t^r lr^2: 1 weights late iterates up (ScheduleFree+), 0 is uniform",
-    )
-    parser.add_argument(
-        "--sf_l1_weighting",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="ScheduleFree+'s step weighting 1 / EMA |g|_1, referenced to the warm start",
-    )
-    parser.add_argument(
-        "--normuon",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="NorMuon's row-wise normalisation of Muon's update (as in SF-NorMuon)",
-    )
-    parser.add_argument(
-        "--sf_warm_start",
-        type=int,
-        default=None,
-        help="steps before the averaging starts, x following z (default: twice the warmup)",
-    )
-    parser.add_argument(
-        "--newton_schulz_dtype",
-        default="bfloat16",
-        choices=("bfloat16", "float32"),
-        help="dtype Muon orthogonalises its momentum in",
-    )
-    parser.add_argument(
-        "--fisher_cap",
-        type=float,
-        default=None,
-        help="Mahalanobis flow loss with the Fisher metric clipped at this (train.fisher_metric);"
-        " None is the Euclidean loss",
-    )
-    parser.add_argument("--total_steps", type=int, default=500_000)
-    parser.add_argument("--log_interval", type=int, default=1000)
-    parser.add_argument(
-        "--time_power",
-        type=float,
-        default=1.0,
-        help="flow clock warp, s = 1 - (1 - t)^p; 1 is the plain uniform clock",
-    )
-    parser.add_argument(
-        "--ode_steps",
-        type=int,
-        default=None,
-        help="eval and scorecard only: RK4 steps for sampling (default: eval.ODE_STEPS)",
-    )
-    parser.add_argument(
-        "--n_random",
-        type=int,
-        default=None,
-        help="scorecard only: random injections after the ten eval ones (default: scorecard.N_RANDOM)",
-    )
-    parser.add_argument(
-        "--weights",
-        default="average",
-        choices=("average", "training"),
-        help="eval and scorecard only: schedule-free's averaged weights x, or the training weights y",
-    )
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument(
-        "--dtype",
-        default="bfloat16",
-        choices=("bfloat16", "float32"),
-        help="compute dtype for the network; params are kept in float32",
-    )
-
-    with open(config_args.config_root / f"{config_args.config}.yaml") as f:
-        parser.set_defaults(**yaml.safe_load(f))
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    # headless: these run on cluster nodes with no display. Selecting the backend at
-    # module level instead would hijack it for anything that merely imports the package
-    # -- canna.lisa re-exports train_sample from here, so `from canna.lisa import LisaGB`
-    # was silently switching notebooks to Agg and swallowing their figures.
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    args = parse_args()
-
-    # housekeeping
-    out_dir = run_dir(args)
-    run_id = out_dir.name
-    out_dir.mkdir(parents=True, exist_ok=True)
-    checkpoints = checkpoint_manager(out_dir)
+def main() -> None:
+    config = run_config.load()
+    src = Path(__file__).parents[2]
+    git = lambda *args: subprocess.run(
+        ["git", "-C", str(src), *args], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    if config.run and (config.run_dir / "config.yaml").exists():
+        # a resume: the run's config.yaml holds, on the source it trained at
+        config = run_config.load_run(allowed=run_config.RESUME_FIELDS)
+        if git("rev-parse", "HEAD") != config.commit or git("status", "--porcelain", "--", "."):
+            raise SystemExit(
+                f"{config.run} trained at {config.commit}: resume it from that commit's"
+                f" worktree, outputs/src/{config.commit}"
+            )
+        # an extended (or shortened) run: its config.yaml records the new length
+        record = config.run_dir / "config.yaml"
+        stored = yaml.safe_load(record.read_text())
+        if stored["total_steps"] != config.total_steps:
+            stored["total_steps"] = config.total_steps
+            record.write_text(yaml.safe_dump(stored, sort_keys=False))
+    else:
+        # a new run: pinned to a commit, so its source must be committed
+        if git("status", "--porcelain", "--", "."):
+            raise SystemExit(f"uncommitted changes in {src}: commit them to start a run")
+        config = dataclasses.replace(
+            config,
+            run=config.run or run_config.run_name(config.name, config.output_dir),
+            commit=git("rev-parse", "HEAD"),
+        )
+        config.run_dir.mkdir(parents=True, exist_ok=True)
+        run_config.save(config, config.run_dir / "config.yaml")
+    run_dir = config.run_dir
+    print(f"[run] {config.run} at {config.commit} -> {run_dir}", flush=True)
     print(f"JAX backend: {jax.default_backend()}", flush=True)
     print(f"devices: {jax.local_device_count()}", flush=True)
-    print(f"run {run_id} -> {out_dir}", flush=True)
 
-    # setup the training state
-    state = TrainState.from_config(args)
-    print(state.routing_report(), flush=True)
-    state, start_epoch, histories = state.restore_from(checkpoints)
-    epochs = args.total_steps // args.log_interval
-    # one fixed batch, never trained on, for the averaged weights' loss
-    key_heldout = jr.fold_in(jr.key(args.seed), 1)
-
-    # the checkpoint carries the (epochs, log_interval) grid it was written on, and
-    # total_steps or log_interval may well have changed since -- extending a run is how
-    # you spend more wall time -- so re-allocate at the current shape and copy the
-    # overlap in, rather than indexing off the end of the restored array
-    loss_history = np.full((epochs, args.log_interval, 3), np.nan)
-    heldout_history = np.full((epochs, 4), np.nan)
-    if histories is not None:
-        restored, restored_heldout = histories
-        rows = min(restored.shape[0], epochs)
-        cols = min(restored.shape[1], args.log_interval)
-        loss_history[:rows, :cols] = restored[:rows, :cols]
-        heldout_history[:rows] = np.reshape(restored_heldout, (len(restored_heldout), -1))[:rows]
+    problem, tx, state = setup(config)
+    print(routing_report(state.flow), flush=True)
+    epochs = config.total_steps // config.log_interval
+    histories = dict(
+        loss_history=np.full((epochs, config.log_interval, 4), np.nan),
+        heldout_history=np.full((epochs, 4), np.nan),
+        log_var_history=np.full((epochs, LOSS_TIME_BINS, len(LOSS_GROUPS)), np.nan),
+        bin_error_history=np.full((epochs, LOSS_TIME_BINS, len(LOSS_GROUPS)), np.nan),
+    )
+    checkpoints = checkpoint_manager(run_dir)
+    state, start_epoch, restored = restore_checkpoint(checkpoints, state, tuple(histories))
+    # the restored rows, into histories sized for this (maybe extended) run
+    for name, rows in (restored or {}).items():
+        histories[name][: len(rows)] = rows[: len(histories[name])]
+    loss_history, heldout_history = histories["loss_history"], histories["heldout_history"]
+    log_var_history = histories["log_var_history"]
+    bin_error_history = histories["bin_error_history"]
+    # one fixed batch, never trained on, for the diagnostics: the seed's key setup leaves unused
+    key_heldout = jr.split(jr.key(config.seed), 3)[0]
 
     pbar = tqdm(range(start_epoch, epochs), initial=start_epoch, total=epochs)
     for epoch in pbar:
-        # one fused XLA dispatch for the whole epoch, instead of log_interval separate ones
         started = time.perf_counter()
-        state, epoch_losses = state.train_epoch(
-            args.batch_size, args.log_interval, args.time_power, args.aux_weight, args.fisher_cap
+        state, epoch_losses = train_epoch(
+            problem,
+            tx,
+            state,
+            config.batch_size,
+            config.log_interval,
+            config.time_power,
+            config.draws,
+            config.late_time_mix,
+            config.late_time_floor,
+            config.micro_batches,
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
-        heldout_history[epoch] = jax.device_get(
-            state.diagnostics(key_heldout, args.batch_size, args.time_power)
+        heldout_history[epoch], bin_error_history[epoch] = jax.device_get(
+            diagnostics(
+                problem,
+                state,
+                key_heldout,
+                config.batch_size // config.draws,
+                config.time_power,
+            )
         )
+        if state.flow.loss_log_var is not None:
+            log_var_history[epoch] = jax.device_get(state.flow.loss_log_var)
         seconds = time.perf_counter() - started  # the first epoch includes the compile
 
-        # a non-finite loss has already poisoned the weights: stop, and leave the last
-        # finite checkpoint in place instead of saving over it
+        # a non-finite loss has poisoned the weights: stop before saving over the last checkpoint
         finite = np.isfinite(loss_history[epoch]).all(axis=-1)
         if not finite.all() or not np.isfinite(heldout_history[epoch]).all():
             checkpoints.close()
             raise SystemExit(
                 f"[epoch {epoch + 1}] non-finite loss at step"
-                f" {epoch * args.log_interval + int(np.argmin(finite))}, stopping"
+                f" {epoch * config.log_interval + int(np.argmin(finite))}, stopping"
             )
 
-        # save a checkpoint and log the median of the epoch's losses
-        state.save_to(checkpoints, epoch + 1, loss_history, heldout_history)
-        flow_l, x_l, grad_norm = np.median(loss_history[epoch], axis=0)
+        # orbax writes the checkpoint while the next epoch trains; log the median of the epoch's losses
+        save_checkpoint(checkpoints, state, epoch + 1, histories)
+        flow_l, x_l, _, grad_norm = np.median(loss_history[epoch], axis=0)
         held_x, held_y, w_rms, spread = heldout_history[epoch]
         pbar.set_postfix(flow=f"{flow_l:.5f}", heldout=f"{held_x:.5f}")
         print(
             f"[epoch {epoch + 1}/{epochs}] flow={flow_l:.5f} x={x_l:.5f}"
             f" heldout={held_x:.5f} heldout_y={held_y:.5f} grad_norm={grad_norm:.3f}"
-            f" w_rms={w_rms:.4f} z_x={spread:.4f}"
-            f" time={seconds:.0f}s",
+            f" w_rms={w_rms:.4f} z_x={spread:.4f} time={seconds:.0f}s",
             flush=True,
         )
-        if epoch == start_epoch and peak_memory_report():
-            print(peak_memory_report(), flush=True)
+        if epoch == start_epoch:
+            print_peak_memory()
 
-        # redraw loss curve: median per epoch, shaded 10-90 percentile spread, and the
-        # averaged weights' held-out loss
-        xs = np.arange(1, epoch + 2) * args.log_interval
-        l_lo, l_med, l_up = np.percentile(
-            loss_history[: epoch + 1, :, 0], [10, 50, 90], axis=1
+        # the histories so far, for `-m canna.lisa.plots`; replaced whole so a reader never sees half a file
+        done = epoch + 1
+        log_var = log_var_history[:done]
+        np.savez(
+            run_dir / "history.tmp.npz",
+            epoch=done,
+            steps=np.arange(1, done + 1) * config.log_interval,
+            losses=loss_history[:done],
+            loss_names=np.array(["flow", "x", "objective", "grad_norm"]),
+            heldout=heldout_history[:done],
+            heldout_names=np.array(["heldout_x", "heldout_y", "w_rms", "z_x"]),
+            log_var=log_var,
+            bin_error=bin_error_history[:done],
+            bin_objective=np.where(
+                np.isnan(log_var),
+                bin_error_history[:done],
+                bin_error_history[:done] * np.exp(-log_var) + log_var,
+            ),
+            groups=np.array(["f0", "Mc", "sky", "z+", "z-"]),
+            time_edges=LOSS_TIME_DECADES * (np.arange(LOSS_TIME_BINS + 1) / LOSS_TIME_BINS - 1),
         )
-        fig, ax = plt.subplots()
-        ax.loglog(xs, l_med, label="flow (training weights y)", color="#2a86cf", lw=2)
-        ax.fill_between(xs, l_lo, l_up, color="#2a86cf", alpha=0.15)
-        ax.loglog(
-            xs, heldout_history[: epoch + 1, 0], label="held out (averaged weights x)",
-            color="#d0622a", lw=2,
-        )
-        ax.loglog(
-            xs, np.median(loss_history[: epoch + 1, :, 1], axis=1),
-            label="parameter reconstruction", color="#1a9e6a", lw=2,
-        )
-        ax.set(xlabel="step", ylabel="loss", title=f"training losses ({run_id})")
-        ax.grid(True, which="both", alpha=0.25)
-        ax.legend(frameon=False)
-        fig.savefig(os.path.join(out_dir, "losses.pdf"), bbox_inches="tight")
-        plt.close(fig)
+        os.replace(run_dir / "history.tmp.npz", run_dir / "history.npz")
 
-    # orbax saves in a background thread: the last one has to land before we exit
     checkpoints.close()
-    print(f"[done] {run_id} -> {out_dir}", flush=True)
+    print(f"[done] {config.run} -> {run_dir}", flush=True)
+
+
+if __name__ == "__main__":
+    main()
