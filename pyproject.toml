@@ -11,6 +11,7 @@ dependencies = [
     "jax>=0.10.1",
     "jaxgb>=0.2.1",
     "jaxtyping>=0.3.2",
+    "jexplore>=0.0.3 ; python_full_version >= '3.13'",
     "lisaorbits>=3.1.0",
     "matplotlib>=3.11.1",
     "numpy>=2.5.1",
