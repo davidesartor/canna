@@ -86,3 +86,25 @@ def test_mmditblock_expand_one():
     blk = MMDiTBlock(8, 2, 1, key=key())
     ox, oy = blk(rand((5, 8), 1), rand((3, 8), 2), rand((8,), 3))
     assert ox.shape == (5, 8) and oy.shape == (3, 8)
+
+
+def test_mmdit_decode_with_rope_depends_on_relative_position_only():
+    from canna.networks import MMDiT
+
+    from ._helpers import perturbed
+
+    net = perturbed(MMDiT(8, 2, 2, one_way=True, key=key()))
+    x, y, c = rand((4, 8), 1), rand((6, 8), 2), rand((8,), 3)
+    periods = jnp.asarray([2.0, 5.0])
+
+    def run(px, py):
+        rope = lambda p: (
+            jnp.cos(2 * jnp.pi * p[:, None] / periods),
+            jnp.sin(2 * jnp.pi * p[:, None] / periods),
+        )
+        return net.decode(x, c, net.encode(y, c, rope(py)), rope(px))
+
+    px, py = jnp.array([0.4, 3.0, 5.5, 8.0]), jnp.arange(6.0) * 1.7
+    out = run(px, py)
+    close(run(px + 11.3, py + 11.3), out, atol=1e-4)
+    differs(run(px + 0.6, py), out)
