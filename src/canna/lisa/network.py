@@ -1,309 +1,377 @@
+"""LisaFlow: a one-way MMDiT over source tokens and STFT data tokens, with RoPE on a shared frequency axis."""
+
 import math
 
-from jaxtyping import Array, Float, Key
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import equinox as eqx
-from einops import rearrange
+from einops import rearrange, repeat
+from jaxtyping import Array, Float, Key
 
-from ..networks import MMDiT, FeedForward, Modulation, PiecewiseLinear, SinusoidalEmbed
+from ..networks import MMDiT, FeedForward, Modulation, PiecewiseLinear
 from ..networks.utils import DType
-from .problem import DopplerGeometry, WindowGeometry
+from .chart import SKY
+from .problem import WINDOW_STRIDE, LisaGB
 
-# PLE bins. The data are whitened to unit noise per real and imaginary part, and reach
-# ~700 sigma for the loudest sources on XS; their edges are uniform in arcsinh out to
-# DATA_REACH, so a bin is 0.24 sigma wide near the noise and ~70 sigma wide at 300 sigma.
-# Quantile edges would leave everything from ~80 sigma up in one bin. f0 gets four times
-# the bins of the other coordinates: it is the one the posterior resolves most finely
-# against its prior range (F26).
-DATA_BINS, DATA_REACH = 64, 1000.0
-# with `stft`, each sample is fed as asinh|z| and the gated phase z / sqrt(1 + |z|^2). The
-# amplitude's bins are uniform in asinh from 0 to asinh(DATA_REACH), 0.06 wide (4x finer than
-# the re/im bins above); the phase's are uniform on [-1, 1]
-STFT_AMPLITUDE_BINS, STFT_PHASE_BINS = 128, 64
-STFT_GROUP = 6  # channels per window: re A, E, T, im A, E, T
-COORD_BINS, F0_BINS, WINDOW_BINS = 64, 256, 64
-# the flow coordinates' ranges: log f0 and log A are mapped onto [-1, 1], log Mc is
-# standardised, and the sky, orientation and phase are unit vectors
-COORD_RANGES = ((-1.0, 1.0), (-4.0, 4.0)) + ((-1.0, 1.0),) * 9
-
-
-def uniform_edges(low: float, high: float, bins: int) -> tuple[float, ...]:
-    return tuple(low + (high - low) * i / bins for i in range(bins + 1))
-
-
-def arcsinh_edges(reach: float, bins: int) -> tuple[float, ...]:
-    """Edges symmetric about 0 and uniform in arcsinh, out to +-reach."""
-    return tuple(math.sinh(u) for u in uniform_edges(-math.asinh(reach), math.asinh(reach), bins))
+# PLE bins: STFT amplitudes reach asinh(~1000), f0 gets 4x the other coordinates (F26)
+STFT_AMPLITUDE_BINS, STFT_PHASE_BINS, DATA_REACH = 128, 64, 1000.0
+# channels per window: re A, E, T, im A, E, T
+STFT_GROUP = 6
+COORD_BINS, F0_BINS = 64, 256
+# log10(1 - t) clipped to [-TIME_DECADES, 0]
+TIME_DECADES = 6.0
+# DiT-style sinusoids of each conditioning scalar: SINUSOID_FREQS periods, geometric over SINUSOID_DECADES down from twice its span
+SINUSOID_FREQS, SINUSOID_DECADES = 64, 4.0
+# |z| cos k phi and |z| sin k phi of both helicity amplitudes for k = 2..HARMONICS (k = 1 is the coordinate itself)
+HARMONICS = 6
+HELICITY = (slice(4, 6), slice(6, 8))
+# the helicity radius asinh|z| reaches asinh(snr_range[1]) at sin iota = +-1
+Z_REACH = math.asinh(1000.0)
+# the finest period of f0's Fourier features, in bins
+F0_FINEST_PERIOD = 1 / 64
+# log f0 on [-1, 1], log Mc and the sky standardised, z± within Z_REACH
+COORD_RANGES = ((-1.0, 1.0),) + ((-4.0, 4.0),) * 3 + ((-Z_REACH, Z_REACH),) * 4
+# learned loss weights: one log-variance per (log10(1 - s) bin on [-LOSS_TIME_DECADES, 0], coordinate group)
+LOSS_TIME_BINS, LOSS_TIME_DECADES = 16, 6.0
+LOSS_GROUPS = (slice(0, 1), slice(1, 2), SKY) + HELICITY
 
 
-def stft_tokens(y: Float[Array, "F C"], patch: int) -> Float[Array, "N P"]:
-    """The whitened window as STFT tokens: each token's `patch` rfft bins (its band, as before)
-    turned into the band's `patch` time samples by an orthonormal inverse DFT, T_obs / patch
-    apart (45.7 days for 16 bins over 2 years).
-
-    This is a critically sampled STFT: invertible, each token keeps exactly its band, and the
-    whitened noise stays white with unit variance per part. Within a token, a source's f0
-    offset is the slope of the phase across the samples, its initial phase the intercept,
-    and the sky the annual Doppler and antenna-pattern modulation along them.
-
-    Each complex sample z of A, E and T is fed as asinh|z|, log-like for loud samples and
-    linear near zero, and the gated phase z / sqrt(1 + |z|^2): the unit phasor for loud
-    samples, fading to 0 where the phase is noise. Both are smooth at z = 0, and together they
-    determine z. Features are ordered [amplitudes, real parts, imaginary parts], each over
-    (sample, channel).
-
-    y may stack several such windows as groups of 6 channels (re A, E, T, im A, E, T), as the
-    template residual does (train.with_residual: the data, then the data minus the sources at
-    the flow's current point); each group gets its own features, one group after the other.
-    """
-    groups = []
-    for g in jnp.split(y, y.shape[-1] // STFT_GROUP, axis=-1):
-        z = g[:, :3] + 1j * g[:, 3:]
-        z = rearrange(z, "(n p) c -> n p c", p=patch)
-        z = jnp.fft.ifft(z, axis=1, norm="ortho")
-        phase = z * jax.lax.rsqrt(1.0 + jnp.square(jnp.abs(z)))
-        flat = lambda a: rearrange(a, "n p c -> n (p c)")
-        groups += [flat(jnp.arcsinh(jnp.abs(z))), flat(phase.real), flat(phase.imag)]
-    return jnp.concat(groups, axis=-1).astype(y.dtype)
-
-
-def doppler_bands(
-    y: Float[Array, "F C"],
-    x: Float[Array, "S X"],
-    f: Float[Array, ""],
-    window: WindowGeometry,
-    doppler: DopplerGeometry,
-    band: int,
-) -> Float[Array, "S B"]:
-    """Each source's band of the data, Doppler-demodulated at its current sky and f0 (F57).
-
-    Cornish & Larson's demodulation (gr-qc/0206017): the whitened window (its first 6 channels,
-    re and im of A, E, T) goes to time, is multiplied by exp(-i phi_D(t)) for the source's
-    direction and frequency (DopplerGeometry), and comes back to frequency. At the right sky the
-    source's power, spread by the annual Doppler sidebands, collapses into a few bins; away from
-    it, the leftover spread and phase wobble measure the sky error. phi_D depends on f0 only as a
-    factor, so a frequency off by bins still demodulates correctly. The `band` bins around each
-    source's f0 are returned with the STFT tokens' features (asinh|z|, then the gated phase), so
-    [amplitudes, real parts, imaginary parts], each over (bin, channel).
-    """
-    f32 = jnp.float32
-    z = (y[:, :3] + 1j * y[:, 3:6]).astype(jnp.complex64)
-    n_bins = z.shape[0]
-    times = jnp.arange(n_bins, dtype=f32) * (doppler.t_obs / n_bins)
-    series = jnp.fft.ifft(z, axis=0)
-    start = window.start(f)
-    bins = window.source_bins(x[:, 0].astype(f32), f).astype(f32)
-    f0 = (start + bins) / window.t_obs
-    direction = x[:, 3:6].astype(f32)
-    direction = direction / jnp.linalg.norm(direction, axis=-1, keepdims=True)
-    phase = doppler.phase(f0.astype(f32), direction, times)
-    demodulated = jnp.fft.fft(series[None] * jnp.exp(-1j * phase)[..., None], axis=1)
-    low = jnp.clip(jnp.round(bins).astype(jnp.int32) - band // 2, 0, n_bins - band)
-    cut = jax.vmap(lambda d, lo: jax.lax.dynamic_slice(d, (lo, jnp.zeros_like(lo)), (band, 3)))(demodulated, low)
-    gated = cut * jax.lax.rsqrt(1.0 + jnp.square(jnp.abs(cut)))
-    flat = lambda a: a.reshape(a.shape[0], -1)
+def stft_tokens(y: Float[Array, "F 6"], patch: int) -> Float[Array, "N P"]:
+    """Each token's `patch` bins as its band's time samples (orthonormal inverse DFT): asinh|z| and gated phase."""
+    z = y[:, :3] + 1j * y[:, 3:]
+    z = jnp.fft.ifft(rearrange(z, "(n p) c -> n p c", p=patch), axis=1, norm="ortho")
+    phase = z * jax.lax.rsqrt(1.0 + jnp.square(jnp.abs(z)))
+    flat = lambda a: rearrange(a, "n p c -> n (p c)")
     return jnp.concat(
-        [flat(jnp.arcsinh(jnp.abs(cut))), flat(gated.real), flat(gated.imag)], axis=-1
-    ).astype(f32)
+        [flat(jnp.arcsinh(jnp.abs(z))), flat(phase.real), flat(phase.imag)], axis=-1
+    ).astype(y.dtype)
 
 
 class LisaFlow(eqx.Module):
-    """Velocity field over a set of binaries, conditioned on a whitened frequency-domain window.
-
-    The data are the window's rfft bins, whitened, with the real and imaginary parts of A, E
-    and T stacked as six channels (twelve with `templates`: the residual of the data against
-    the sources at the flow's current point, train.with_residual). `patch` neighbouring bins make one token,
-    either as they are or, with `stft`, as the band's time samples (`stft_tokens`). Every scalar
-    the network takes in -- each data value, each source coordinate, the window frequency --
-    goes through a piecewise linear encoding (`PiecewiseLinear`) and one linear map.
-
-    Precision: the embeddings, the conditioning and the velocity head run in float32 and
-    only the MMDiT backbone in `dtype`. The arcsinh(WDM) input of the earlier networks was
-    cast to bf16 before its first layer, which rounded the loudest pixels by 0.5-3.6 noise
-    sigmas rms; here the cast comes after the encoding.
-
-    The sources come loudest first (LisaGB.loudest_first), so each source slot gets a learned
-    embedding of its own, as each y token gets one for its position.
-
-    Two heads read the source stream: the velocity, and the reconstructed parameters x1 (the
-    auxiliary target: at t = 0 it is the posterior mean of each slot's parameters).
-    """
+    """x1 (or, with prediction="velocity", the velocity) of the (loudest-first) sources, from a data stream that sees only (y, f)."""
 
     dtype: DType = eqx.field(static=True)
     patch: int = eqx.field(static=True)
-    # rotary position embedding in frequency (optional): the window's geometry, to place each
-    # source and each data token in bins, and the rotation periods, in bins
-    window: WindowGeometry | None = eqx.field(static=True)
-    rope_periods: tuple[float, ...] | None = eqx.field(static=True)
-    # the conditioning carries the template residual at the flow's current point beside the
-    # data (train.with_residual): 12 channels instead of 6. The network takes whatever y it is
-    # given; this flag tells the sampler to build the same conditioning at every step
-    templates: bool = eqx.field(static=True)
-    # the data tokens as short-time Fourier transforms (`stft_tokens`) instead of rfft bins
-    stft: bool = eqx.field(static=True)
-    # each source also sees its band of the data Doppler-demodulated at its current sky
-    # (`doppler_bands`), embedded and added to its token; None leaves it out
-    doppler: DopplerGeometry | None = eqx.field(static=True)
-    doppler_band: int = eqx.field(static=True)
-    d_embed: PiecewiseLinear | None
+    prediction: str = eqx.field(static=True)
+    self_condition: bool = eqx.field(static=True)
+    rope_periods: tuple[float, ...] = eqx.field(static=True)
+    f0_periods: tuple[float, ...] = eqx.field(static=True)
+    y_periods: tuple[float, ...] = eqx.field(static=True)
+    c_periods: tuple[tuple[float, ...], ...] = eqx.field(static=True)
+    t_obs: float = eqx.field(static=True)
+    window_bins: int = eqx.field(static=True)
+    guard: int = eqx.field(static=True)
+    f0_range: tuple[float, float] = eqx.field(static=True)
     x_embed: PiecewiseLinear
+    f0_mlp: FeedForward
     y_embed: PiecewiseLinear
-    y_pos: Float[Array, "N D"]
-    x_slot: Float[Array, "S D"] | None
-    t_embed: SinusoidalEmbed
-    t_mlp: FeedForward
-    f_embed: PiecewiseLinear
+    y_mlp: FeedForward
+    x_slot: Float[Array, "S D"]
+    c_mlp: FeedForward
     f_mlp: FeedForward
     backbone: MMDiT
     x_modulation: Modulation
     x_unembed: FeedForward
+    hat_embed: PiecewiseLinear | None
+    loss_log_var: Float[Array, "B G"] | None
+    s_slot: Float[Array, "N D"] | None
 
     def __init__(
         self,
-        x_shape: tuple[int, int],
-        y_shape: tuple[int, int],
-        hidden_dim: int,
-        num_heads: int,
-        num_blocks: int,
-        f_range: tuple[float, float],
-        patch: int = 2,
-        expand: int = 2,
-        slots: bool = True,
-        rope: bool = False,
-        window: WindowGeometry | None = None,
-        rope_min_period: float = 2.0,
-        templates: bool = False,
-        stft: bool = False,
-        doppler: DopplerGeometry | None = None,
-        doppler_band: int = 16,
+        problem: LisaGB,
+        hidden_dim: int = 512,
+        num_heads: int = 8,
+        num_blocks: int = 8,
+        patch: int = 16,
+        prediction: str = "x",
+        self_condition: bool = True,
+        loss_weights: bool = False,
+        sinks: int = 4,
         dtype: DType = jnp.float32,
+        attention_dtype: DType | None = None,
         param_dtype: jnp.dtype = jnp.float32,
         *,
         key: Key[Array, ""],
-        **kwargs,
     ):
-        (n_sources, x_dim), (*_, n_bins, y_dim) = x_shape, y_shape
-        assert x_dim == len(COORD_RANGES), f"expected {len(COORD_RANGES)} flow coordinates"
-        assert n_bins % patch == 0, f"window of {n_bins} bins is not divisible by {patch}"
-        self.dtype, self.patch, self.templates, self.stft = dtype, patch, templates, stft
-        assert not stft or y_dim % STFT_GROUP == 0, f"STFT tokens take groups of {STFT_GROUP} channels"
-        # RoPE: one angle per token and per pair of a head's dimensions, periods log-spaced from
-        # rope_min_period bins to twice the window, so attention resolves f0 - f_token from a
-        # fraction of a bin up to the whole window
-        assert not rope or window is not None, "RoPE needs the window geometry"
-        assert doppler is None or window is not None, "the Doppler bands need the window geometry"
-        self.window = window if (rope or doppler is not None) else None
-        self.doppler, self.doppler_band = doppler, doppler_band
+        n_bins = problem.window_bins
+        assert (
+            n_bins % patch == 0
+        ), f"window of {n_bins} bins is not divisible by {patch}"
+        assert prediction in ("velocity", "x"), f"unknown prediction {prediction!r}"
+        assert hidden_dim // num_heads % 2 == 0, "RoPE pairs a head's dims: head_dim must be even"
+        # x64 is on, so a None dtype would mean float64
+        assert dtype is not None and param_dtype is not None, "dtype and param_dtype must be explicit"
+        self.dtype, self.patch = dtype, patch
+        self.prediction = prediction
+        self.self_condition = self_condition
+        self.t_obs, self.window_bins = problem.t_obs, n_bins
+        self.guard, self.f0_range = (
+            problem.response_points // 2,
+            tuple(problem.f0_range),
+        )
+        # RoPE periods log-spaced from 2 bins to twice the window, one per head-dim pair
         pairs = hidden_dim // num_heads // 2
-        self.rope_periods = (
+        self.rope_periods = tuple(
+            float(2.0 * n_bins ** (k / max(pairs - 1, 1))) for k in range(pairs)
+        )
+        # f0's Fourier periods: octaves from F0_FINEST_PERIOD bins to past twice the band's top bin
+        top_bin = problem.f0_range[1] * problem.t_obs
+        self.f0_periods = tuple(
+            F0_FINEST_PERIOD * 2.0**k
+            for k in range(math.ceil(math.log2(2 * top_bin / F0_FINEST_PERIOD)) + 1)
+        )
+        # a data token's Fourier periods: octaves from two tokens to past twice the band's top bin
+        self.y_periods = tuple(
+            2.0 * patch * 2.0**k
+            for k in range(math.ceil(math.log2(top_bin / patch)) + 1)
+        )
+        # the conditioning scalars t, log10(1 - t) and log f, each over its span
+        spans = (1.0, TIME_DECADES, math.log(self.f0_range[1] / self.f0_range[0]))
+        self.c_periods = tuple(
             tuple(
-                float(rope_min_period * (2.0 * window.window_bins / rope_min_period) ** (k / max(pairs - 1, 1)))
-                for k in range(pairs)
+                2.0 * span * 10.0 ** (-SINUSOID_DECADES * k / (SINUSOID_FREQS - 1))
+                for k in range(SINUSOID_FREQS)
             )
-            if rope
-            else None
+            for span in spans
         )
 
         # eqx.nn's dtype is the parameter dtype; the compute dtype is applied in __call__
-        kwargs = dict(kwargs, dtype=param_dtype)
-        keys = iter(jr.split(key, 11))
+        kwargs = dict(dtype=param_dtype)
+        keys = iter(jr.split(key, 10))
+        edges = lambda lo, hi, bins: tuple(
+            lo + (hi - lo) * i / bins for i in range(bins + 1)
+        )
 
         coord_edges = tuple(
-            uniform_edges(lo, hi, F0_BINS if i == 0 else COORD_BINS)
+            edges(lo, hi, F0_BINS if i == 0 else COORD_BINS)
             for i, (lo, hi) in enumerate(COORD_RANGES)
         )
-        self.x_embed = PiecewiseLinear(coord_edges, hidden_dim, key=next(keys), **kwargs)
-        if stft:
-            # per token and group (the data, and the template residual with `templates`): patch
-            # time samples x 3 complex channels x (amplitude, then the 2 phase parts)
-            n = patch * (STFT_GROUP // 2)
-            data_edges = (
-                (uniform_edges(0.0, math.asinh(DATA_REACH), STFT_AMPLITUDE_BINS),) * n
-                + (uniform_edges(-1.0, 1.0, STFT_PHASE_BINS),) * (2 * n)
-            ) * (y_dim // STFT_GROUP)
-        else:
-            data_edges = (arcsinh_edges(DATA_REACH, DATA_BINS),) * (patch * y_dim)
+        harmonic_edges = (edges(-Z_REACH, Z_REACH, COORD_BINS),) * (4 * (HARMONICS - 1))
+        self.x_embed = PiecewiseLinear(
+            coord_edges + harmonic_edges, hidden_dim, key=next(keys), **kwargs
+        )
+        self.f0_mlp = FeedForward(
+            2 * len(self.f0_periods), hidden_dim, hidden_dim, key=next(keys), **kwargs
+        )
+        n = patch * 3
+        data_edges = (edges(0.0, math.asinh(DATA_REACH), STFT_AMPLITUDE_BINS),) * n + (
+            edges(-1.0, 1.0, STFT_PHASE_BINS),
+        ) * (2 * n)
         self.y_embed = PiecewiseLinear(data_edges, hidden_dim, key=next(keys), **kwargs)
-        # per source: doppler_band bins x 3 channels x (amplitude, 2 phase parts)
-        key_doppler = jr.fold_in(key, 11)  # its own key: the split above keeps every other init as before
-        n = doppler_band * 3
-        self.d_embed = (
-            PiecewiseLinear(
-                (uniform_edges(0.0, math.asinh(DATA_REACH), STFT_AMPLITUDE_BINS),) * n
-                + (uniform_edges(-1.0, 1.0, STFT_PHASE_BINS),) * (2 * n),
-                hidden_dim, key=key_doppler, **kwargs,
-            )
-            if doppler is not None
-            else None
+        self.y_mlp = FeedForward(
+            2 * len(self.y_periods), hidden_dim, hidden_dim, key=next(keys), **kwargs
         )
-        self.y_pos = 0.02 * jr.normal(
-            next(keys), (n_bins // patch, hidden_dim), param_dtype
-        )
-        # a learned embedding per source slot, for ordered sources; without it the source
-        # stream is permutation equivariant, as an unordered set needs
-        key_slot = next(keys)
-        self.x_slot = (
-            0.02 * jr.normal(key_slot, (n_sources, hidden_dim), param_dtype) if slots else None
+        # the sources are ordered, so each slot gets its own embedding
+        self.x_slot = 0.02 * jr.normal(
+            next(keys), (problem.n_sources, hidden_dim), param_dtype
         )
 
-        self.t_embed = SinusoidalEmbed(hidden_dim, key=next(keys), **kwargs)
-        self.t_mlp = FeedForward(hidden_dim, hidden_dim, hidden_dim, key=next(keys), **kwargs)
-        log_f = (uniform_edges(math.log(f_range[0]), math.log(f_range[1]), WINDOW_BINS),)
-        self.f_embed = PiecewiseLinear(log_f, hidden_dim, key=next(keys), **kwargs)
-        self.f_mlp = FeedForward(hidden_dim, hidden_dim, hidden_dim, key=next(keys), **kwargs)
+        # one MLP per conditioning vector: c over (t, log10(1 - t), log f), the data stream's over log f
+        self.c_mlp = FeedForward(
+            2 * SINUSOID_FREQS * len(spans),
+            hidden_dim,
+            hidden_dim,
+            key=next(keys),
+            **kwargs,
+        )
+        self.f_mlp = FeedForward(
+            2 * SINUSOID_FREQS, hidden_dim, hidden_dim, key=next(keys), **kwargs
+        )
 
-        # no biases inside the blocks: every parameter there is a matrix Muon can take
+        # no biases inside the blocks: every parameter there but the qk gain is a matrix Muon can take
         self.backbone = MMDiT(
-            hidden_dim, num_heads, num_blocks, expand, key=next(keys), use_bias=False, **kwargs
+            hidden_dim,
+            num_heads,
+            num_blocks,
+            2,
+            qk_gain=True,
+            sinks=sinks > 0,
+            attention_dtype=attention_dtype,
+            one_way=True,
+            key=next(keys),
+            use_bias=False,
+            **kwargs,
         )
-
         self.x_modulation = Modulation(hidden_dim, key=next(keys), **kwargs)
         self.x_unembed = FeedForward(
-            hidden_dim, hidden_dim, 2 * x_dim, key=next(keys), **kwargs
+            hidden_dim, hidden_dim, len(COORD_RANGES), key=next(keys), **kwargs
+        )
+
+        # the opt-in modules draw from their own key, so the ones above stay as they were
+        self.hat_embed = (
+            PiecewiseLinear(coord_edges, hidden_dim, key=jr.fold_in(key, 1), **kwargs)
+            if self_condition
+            else None
+        )
+        # λ starts at a fresh flow's log error per bin: x-prediction's |x1 - out|² / (1 - s)² at the bin's centre
+        centre_decades = LOSS_TIME_DECADES * (
+            (jnp.arange(LOSS_TIME_BINS) + 0.5) / LOSS_TIME_BINS - 1
+        )
+        log_var = (
+            -2 * math.log(10) * centre_decades
+            if prediction == "x"
+            else jnp.zeros(LOSS_TIME_BINS)
+        )
+        self.loss_log_var = (
+            repeat(log_var, "t -> t g", g=len(LOSS_GROUPS)).astype(param_dtype)
+            if loss_weights
+            else None
+        )
+        # attention sinks: per-draw tokens that start from c, each with its own embedding
+        self.s_slot = (
+            0.02 * jr.normal(jr.fold_in(key, 2), (sinks, hidden_dim), param_dtype)
+            if sinks
+            else None
+        )
+
+    def source_bins(
+        self, x_f: Float[Array, "..."], f: Float[Array, ""]
+    ) -> Float[Array, "..."]:
+        """The bin of f0, from the window start, for the flow coordinate x_f (log f0 mapped onto [-1, 1])."""
+        start = (
+            jnp.round((f * self.t_obs - self.window_bins / 2) / WINDOW_STRIDE)
+            * WINDOW_STRIDE
+        )
+        low = jnp.maximum(self.guard, self.f0_range[0] * self.t_obs - start)
+        high = jnp.minimum(
+            self.window_bins - self.guard, self.f0_range[1] * self.t_obs - start
+        )
+        # f0 = c exp(x_f h): c the geometric centre, h half the log span; c - start cancels start exactly
+        half_log_span = 0.5 * jnp.log1p((high - low) / (start + low))
+        centre = jnp.sqrt((start + low) * (start + high))
+        centre_offset = (start * (low + high) + low * high) / (centre + start)
+        return centre_offset + centre * jnp.expm1(x_f * half_log_span)
+
+    def encode(
+        self, y: Float[Array, "F 6"], f: Float[Array, ""]
+    ) -> tuple[Float[Array, "L M H K"], Float[Array, "L M H K"]]:
+        """Every block's data keys and values: a function of (y, f) alone, so one per observation."""
+        assert (
+            y.shape[-1] == STFT_GROUP
+        ), f"expected {STFT_GROUP} data channels, got {y.shape[-1]}"
+        f32 = jnp.float32
+        turns_f = jnp.mod(
+            (jnp.log(f) - math.log(self.f0_range[0])) / jnp.asarray(self.c_periods[2]),
+            1.0,
+        ).astype(f32)
+        c_f = self.f_mlp(
+            jnp.concat([jnp.cos(2 * jnp.pi * turns_f), jnp.sin(2 * jnp.pi * turns_f)])
+        )
+        tokens_y = jax.vmap(self.y_embed)(stft_tokens(y.astype(f32), self.patch))
+
+        # each data token's centre bin: absolute for its embedding, from the window start for RoPE
+        bins = (
+            self.patch * jnp.arange(tokens_y.shape[0], dtype=f32) + (self.patch - 1) / 2
+        )
+        start = (
+            jnp.round((f * self.t_obs - self.window_bins / 2) / WINDOW_STRIDE)
+            * WINDOW_STRIDE
+        )
+        turns = jnp.mod(
+            (start + bins)[:, None] / jnp.asarray(self.y_periods), 1.0
+        ).astype(f32)
+        tokens_y = tokens_y + jax.vmap(self.y_mlp)(
+            jnp.concat(
+                [jnp.cos(2 * jnp.pi * turns), jnp.sin(2 * jnp.pi * turns)], axis=-1
+            )
+        )
+        # RoPE turns in float64, then cast: float32 angles of far bins are off by ~1e-3 rad
+        angles = 2 * jnp.pi * jnp.mod(
+            bins[:, None] / jnp.asarray(self.rope_periods), 1.0
+        ).astype(f32)
+
+        # mixed precision: the stored params keep param_dtype, the backbone runs in dtype
+        params, static = eqx.partition(self.backbone, eqx.is_inexact_array)
+        backbone = eqx.combine(
+            jax.tree.map(lambda p: p.astype(self.dtype), params), static
+        )
+        return backbone.encode(
+            tokens_y.astype(self.dtype),
+            c_f.astype(self.dtype),
+            (jnp.cos(angles), jnp.sin(angles)),
         )
 
     def __call__(
         self,
         x: Float[Array, "S X"],
         t: Float[Array, ""],
-        y: Float[Array, "F C"],
+        y: Float[Array, "F 6"],
         f: Float[Array, ""],
-    ) -> tuple[Float[Array, "S X"], Float[Array, "S X"]]:
-        assert self.x_slot is None or x.shape[0] == self.x_slot.shape[0], (
-            f"built for {self.x_slot.shape[0]} source slots, got {x.shape[0]} sources"
-        )
+        x_hat: Float[Array, "S X"] | None = None,
+        cache: tuple[Float[Array, "L M H K"], Float[Array, "L M H K"]] | None = None,
+    ) -> Float[Array, "S X"]:
+        """cache: `encode(y, f)`, when the caller already has it."""
+        assert (
+            x.shape[0] == self.x_slot.shape[0]
+        ), f"built for {self.x_slot.shape[0]} source slots, got {x.shape[0]} sources"
+        cache = self.encode(y, f) if cache is None else cache
         f32 = jnp.float32
-        x_in = x  # the input precision, for the sources' positions
-        c = self.t_mlp(self.t_embed(t.astype(f32)))
-        c = c + self.f_mlp(self.f_embed(jnp.log(f.astype(f32))[None]))
-        x = jax.vmap(self.x_embed)(x.astype(f32))
-        if self.doppler is not None:
-            bands = doppler_bands(y.astype(f32), x_in, f, self.window, self.doppler, self.doppler_band)
-            x = x + jax.vmap(self.d_embed)(bands)
-        if self.x_slot is not None:
-            x = x + self.x_slot
-        if self.stft:
-            y = stft_tokens(y.astype(f32), self.patch)
-        else:
-            y = rearrange(y.astype(f32), "(n p) c -> n (p c)", p=self.patch)
-        y = jax.vmap(self.y_embed)(y) + self.y_pos
+        # t on its own and as log10(1 - t), resolving the last decades before the data
+        late = jnp.log10(jnp.maximum(1 - t, 10.0**-TIME_DECADES))
+        scalars = jnp.stack(
+            [t, late + TIME_DECADES, jnp.log(f) - math.log(self.f0_range[0])]
+        )
+        turns_c = jnp.mod(scalars[:, None] / jnp.asarray(self.c_periods), 1.0).astype(
+            f32
+        )
+        c = self.c_mlp(
+            rearrange(
+                jnp.concat(
+                    [jnp.cos(2 * jnp.pi * turns_c), jnp.sin(2 * jnp.pi * turns_c)],
+                    axis=-1,
+                ),
+                "s k -> (s k)",
+            )
+        )
 
-        # mixed precision: the stored params keep param_dtype, the backbone runs in dtype
+        # each helicity amplitude's higher harmonics at its radius beside the coordinates, so they vanish with it
+        # (hypot and arctan2 have no gradient at z = 0: fine while nothing differentiates the flow in x)
+        radius = jnp.stack(
+            [jnp.hypot(x[:, b.start], x[:, b.start + 1]) for b in HELICITY], -1
+        )
+        phi = jnp.stack(
+            [jnp.arctan2(x[:, b.start + 1], x[:, b.start]) for b in HELICITY], -1
+        )
+        k_phi = phi[:, :, None] * jnp.arange(2, HARMONICS + 1)
+        flat = lambda a: rearrange(radius[:, :, None] * a, "s c k -> s (c k)")
+        features = jnp.concat([x, flat(jnp.cos(k_phi)), flat(jnp.sin(k_phi))], axis=-1)
+        tokens_x = jax.vmap(self.x_embed)(features.astype(f32)) + self.x_slot
+
+        # f0's bin, before any cast: absolute for its embedding, from the window start for RoPE
+        bins = self.source_bins(x[:, 0], f)
+        start = (
+            jnp.round((f * self.t_obs - self.window_bins / 2) / WINDOW_STRIDE)
+            * WINDOW_STRIDE
+        )
+        turns = jnp.mod(
+            (start + bins)[:, None] / jnp.asarray(self.f0_periods), 1.0
+        ).astype(f32)
+        tokens_x = tokens_x + jax.vmap(self.f0_mlp)(
+            jnp.concat(
+                [jnp.cos(2 * jnp.pi * turns), jnp.sin(2 * jnp.pi * turns)], axis=-1
+            )
+        )
+        if self.self_condition and x_hat is not None:
+            lo, hi = jnp.asarray(COORD_RANGES, f32).T
+            tokens_x = tokens_x + jax.vmap(self.hat_embed)(
+                jnp.clip(x_hat.astype(f32), lo, hi)
+            )
+        angles = 2 * jnp.pi * jnp.mod(
+            bins[:, None] / jnp.asarray(self.rope_periods), 1.0
+        ).astype(f32)
+
         params, static = eqx.partition(self.backbone, eqx.is_inexact_array)
-        backbone = eqx.combine(jax.tree.map(lambda p: p.astype(self.dtype), params), static)
-        rope = None
-        if self.rope_periods is not None:
-            # positions in bins from the window start, computed before any cast: each source at
-            # its current f0, each data token at its centre bin
-            x_bins = self.window.source_bins(x_in[:, 0], f).astype(f32)
-            y_bins = self.window.token_bins(y.shape[0], self.patch)
-            bins = jnp.concat([x_bins, y_bins])
-            angles = 2 * jnp.pi * bins[:, None] / jnp.asarray(self.rope_periods, f32)[None, :]
-            rope = (jnp.cos(angles), jnp.sin(angles))
-        x, _ = backbone(x.astype(self.dtype), y.astype(self.dtype), c.astype(self.dtype), rope)
-
-        x, _ = self.x_modulation(x.astype(f32), c)
-        dx, x1 = jnp.split(jax.vmap(self.x_unembed)(x), 2, axis=-1)
-        return dx, x1
+        backbone = eqx.combine(
+            jax.tree.map(lambda p: p.astype(self.dtype), params), static
+        )
+        tokens_s = None if self.s_slot is None else c + self.s_slot
+        h = backbone.decode(
+            tokens_x.astype(self.dtype),
+            c.astype(self.dtype),
+            cache,
+            (jnp.cos(angles), jnp.sin(angles)),
+            None if tokens_s is None else tokens_s.astype(self.dtype),
+        )
+        h, _ = self.x_modulation(h.astype(f32), c)
+        return jax.vmap(self.x_unembed)(h)
