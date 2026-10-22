@@ -109,6 +109,7 @@ rfft window, the real and imaginary parts of A, E and T as six channels, 16 bins
 | `XS-stft`, `B-stft` | XS-rope and B-rope with STFT data tokens and no AdamW decay (F50). **B-stft** equals B-long on loud sources at 200k steps (F51) |
 | `XS-stft-ht`, `B-stft-ht` | the STFT runs inferring φ₀ ± 2ψ (`polarisation: helicity`) and given the template residual (`templates: true`, a second group of STFT features). The first models that learn φ₀ and the ψ–φ₀ correlation, at 1.3–1.45× B-stft's f₀ width (F54) |
 | `XS-stft-h`, `B-stft-h` | the same without the template. **The current recipe:** φ₀ ± 2ψ within 1.8–2.3× of the MCMC on B at SNR 17–78, f₀ 1.03–1.25× B-stft's (F56) |
+| `B-stft-hd` | B-stft-h plus each source's band of the data Doppler-demodulated at its current sky (`doppler: true`; Cornish & Larson 2002). Halves the typical sky offset, but not the large per-source ones (F58) |
 | `B-fd-helicity` | B-long + Fisher loss + no AdamW decay + the orientation as sin ι and the circular-mode phases φ₀ ± 2ψ (`polarisation: helicity`; F49, not run) |
 
 **Known limits (F45, F48, F51).**
@@ -122,6 +123,7 @@ rfft window, the real and imaginary parts of A, E and T as six channels, 16 bins
   - **Loud sources' A, ι and sky are 1.2× wider** than without the new coordinates.
 - **The loudest sources' sky** is ~20× wider than the MCMC on the B-stft runs (30–44× on B-long), and ~10× on XS-stft-h.
 - **At mid SNR** the B models are within 1–2× of the MCMC in every parameter but φ₀.
+- **Individually biased sky posteriors:** single sources' λ, β sit up to 2–3 MCMC widths (1–2 flow widths) off at mid SNR, and the loudest by its own width. The Doppler-demodulated band (`B-stft-hd`) trims the typical offset, not these (F58).
 
 The WDM-input code and configs of the earlier runs (`XS-late*`, `XS-pos`, `B-late`,
 `B-pos`, …) live at the tag `wdm-r1`. To rescore one of those checkpoints, check that tag out

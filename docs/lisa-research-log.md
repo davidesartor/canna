@@ -8,6 +8,17 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 
 ## 1. Summary (2026-10-01, updated 2026-10-22)
 
+- **Update, 2026-10-22 (F58): the Doppler band helps a little, not enough.**
+  - **What moved** (B-stft-hd against B-stft-h):
+    - typical sky offsets: median |z| in λ 0.67 → 0.28 where the Doppler shift dominates;
+    - the population's mean offset above SNR 100: −0.34, +0.24 → −0.08, −0.02.
+  - **What didn't:**
+    - 4 of 17 Doppler-dominated sources stay > 1.5 widths off (predicted ≤ 2; B-stft-h: 6);
+    - the MCMC'd sources' offsets and widths are unchanged (q0.10 s2's λ still 2.9 MCMC
+      widths off);
+    - f₀ and the phases are as before.
+  - **The individual sky biases are not explained by a missing Doppler reference.**
+
 - **Update, 2026-10-22 (F57): B-stft-hd launched.**
   - **The change:** B-stft-h, with each source also seeing its band of the data
     Doppler-demodulated at its current sky (Cornish & Larson 2002).
@@ -519,9 +530,75 @@ slurm logs in `.slurm-logs/` on TREX and from the local evals in `outputs/lisa-X
 | **14951676** (+ 14951677, post 14951678) | B-stft-ht (F53): B-stft + helicity phases + template residual, 200k steps | **Completed** 16:36 CEST on 19 Oct (13 h 26 min, trexgpu04, 240 s per epoch); post 1 h 02 min. Fetched as `25-lisa-B-stft-ht` (F54). |
 | **15212052** (+ 15212053, post 15212054) | XS-stft-h (F55): XS-stft-ht without the template, 1.2M steps | **Completed** 13:06 CEST on 21 Oct (11 h 28 min, 34 s per epoch); post 25 min. Fetched as `27-lisa-XS-stft-h` (F56). |
 | **15212055** (+ 15212056, post 15212057) | B-stft-h (F55): B-stft-ht without the template, 200k steps | **Completed** 13:04 CEST on 21 Oct (11 h 26 min, 203 s per epoch); post 39 min. Fetched as `26-lisa-B-stft-h` (F56). |
+| **15298962** (+ 15298963, post 15298964) | B-stft-hd (F57): B-stft-h + per-source Doppler-demodulated band, 200k steps | **Completed** 04:04 CEST on 22 Oct (10 h 44 min, trexgpu04, 210 s per epoch); post 40 min. Held out x 0.5063. Fetched as `28-lisa-B-stft-hd` (F58). |
 | (not submitted) | B-fd-helicity (F49): B-long's recipe + the Fisher loss + no AdamW decay + the helicity phases, 600k steps, `slurm/lisa-chain.sh B-fd-helicity 2 --n_random 50` | Prepared 18 Oct, set aside the same day for F50's STFT runs. |
 
 ## 4. Findings
+
+### F58 (2026-10-22): B-stft-hd — the Doppler-demodulated band trims the typical sky offset but leaves the large ones; the individual biases are not a missing Doppler reference
+
+**Run** (F57, commit 6e2f01e).
+- 15298962: 10 h 44 min, 210 s per epoch, peak 7.6 GiB, 84.5M parameters. Post 15298964:
+  40 min.
+- Fetched as `28-lisa-B-stft-hd`: 100 files, md5-identical. Then deleted on TREX with the logs;
+  TREX keeps only the MCMC cache, which is also local.
+- Held-out x 0.5063 (B-stft-h 0.5011).
+- Analysis:
+  - `lisa_checks/sky_by_doppler.py` (new: offsets per Doppler-index band);
+  - `sky_offsets.py`, `phase_combinations.py`, the MCMC tables, `compare_ht.py`,
+    `width_ratios.py`.
+
+**1. Sky offsets by Doppler modulation index** (sources above SNR 15; |z| = |flow median − truth|
+in flow widths, ecliptic):
+
+| run | index < 1 rad (17): median \|z\| λ, sin β; # > 1.5 | index ≥ 1 rad (17): median \|z\| λ, sin β; # > 1.5 |
+|---|---|---|
+| B-stft (22) | 0.53, 0.55; 3 | 0.60, 0.71; 2 |
+| B-stft-h (26) | 0.46, 0.50; 1 | 0.67, 0.76; 6 |
+| **B-stft-hd (28)** | **0.30, 0.40; 0** | **0.28, 0.87; 4** |
+
+- **The typical λ offset halves in both bands.** sin β does not move.
+- **Counting outliers among 17 sources is noisy.** B-stft and B-stft-h, which differ only in the
+  phase coordinates, give 2 and 6 in the same band. So 6 → 4 is not a clear change.
+- **Population calibration (40 eval sources):**
+  - above SNR 100 the mean z is −0.08, −0.02 (B-stft-h −0.34, +0.24), rms 0.53, 0.75;
+  - at SNR 15–100, rms z in β 0.90 (B-stft-h 1.43, one outlier gone).
+
+**2. Against the MCMC (the MCMC'd sources):**
+- **q0.10 s2** (0.76 mHz, index 2.4): λ still 2.9 MCMC widths (2.0 of the flow's own) off,
+  as in B-stft-h.
+- **q0.10 s0:** sin β now 1.1 MCMC widths off (B-stft-h 0.2).
+- **The loudest source** (0.16 mHz, index 0.5): sin β 21.9 MCMC widths off (B-stft-h 12.4; 0.9
+  and 0.6 of the flow's width).
+- **Sky widths** for q0.10 s0–s2: λ 1.6–2.3×, sin β 1.4–1.7× (B-stft-h: 1.6–2.2×, 1.4–1.5×). The
+  prediction was ≤ 1.2×: missed.
+- **Elsewhere:** the loudest source's f₀ is 60× the MCMC (B-stft-h 172×) and its φ₋ 52× (101×).
+  The mid-SNR pinned φ± is 2.1–3.9× (B-stft-h 1.8–2.3×).
+
+**3. Everything else is unchanged.**
+- Per source against B-stft-h: 0.93–1.15× in every parameter.
+- f₀: 1.07–1.23× B-stft's, 213 sources found (215).
+- Calibration: in68 0.90, in95 1.00.
+
+**Against F57's predictions.**
+1. **Doppler-dominated outliers ≤ 2 of 17: missed** (4), and the MCMC widths did not reach ≤ 1.2×.
+2. **No change below 1 rad: partly wrong.** The offsets shrank there too (median |z| 0.30, 0.40,
+   no outliers), so part of the gain is not specific to the Doppler regime.
+3. **f₀ and the phases unchanged: held.**
+4. **The fallback applies.** The large per-source offsets (q0.10 s2, the loudest source) are not
+   a missing Doppler reference.
+
+**Reading.**
+- **The Doppler band is a mild help:** it halves the typical λ offset and tightens population
+  calibration, at +3% step time and no cost elsewhere.
+- **It is not the fix for the individually biased skies.** The cases the MCMC resolves stay off
+  by 1–3 MCMC widths at mid SNR, and the loudest source by its own width.
+- **Left as causes:**
+  - the antenna-pattern part of the response (needs ψ and ι);
+  - the amortisation error of a single network over 0.1–12 mHz;
+  - a correction the network cannot learn at this size and training length.
+- **A remedy independent of the cause:** a short likelihood polish (Fisher-preconditioned MALA
+  from each flow draw), which moves each draw onto the exact posterior.
 
 ### F57 (2026-10-22): B-stft-hd — each source reads its band of the data Doppler-demodulated at its current sky
 
@@ -4394,6 +4471,7 @@ a finished run gets its number when it is archived here.
 | `25-lisa-B-stft-ht` | `lisa-B-stft-ht` | B-stft-ht (14951676, 19 Oct) |
 | `26-lisa-B-stft-h` | `lisa-B-stft-h` | B-stft-h (15212055, 21 Oct) |
 | `27-lisa-XS-stft-h` | `lisa-XS-stft-h` | XS-stft-h (15212052, 21 Oct) |
+| `28-lisa-B-stft-hd` | `lisa-B-stft-hd` | B-stft-hd (15298962, 21–22 Oct) |
 
 `outputs/sfplus/lisa-{XS,B}-fd` are symlinks to 13 and 14, for `--output_dir outputs/sfplus`
 (the code finds a run at `<output_dir>/lisa-<config>`).
