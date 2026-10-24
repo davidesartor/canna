@@ -371,6 +371,40 @@ def restore_checkpoint(
     return state, epoch, {name: np.asarray(restored[name]) for name in histories}
 
 
+def warm_start(config: Config, flow: LisaFlow) -> LisaFlow:
+    """flow with config.init_from's averaged weights at its latest checkpoint, but for what its own prediction redefines.
+
+    The two runs must share the architecture; precision and prediction may differ. The head's output layer
+    and the loss weights λ are kept fresh when the prediction changes, since they mean a different quantity.
+    """
+    stored = yaml.safe_load(
+        (config.output_dir / "runs" / config.init_from / "config.yaml").read_text()
+    )
+    name = stored.pop("name")
+    source = Config(name=name, **(run_config.merge([stored]) | dict(output_dir=config.output_dir)))
+    _, trained, epoch = load_trained(source)
+    params = eqx.filter(flow, eqx.is_inexact_array)
+    loaded = jax.tree.leaves(eqx.filter(trained, eqx.is_inexact_array))
+    leaves, treedef = jax.tree.flatten(params)
+    assert [a.shape for a in loaded] == [a.shape for a in leaves], (
+        f"{config.init_from} has another architecture"
+    )
+    copied = eqx.combine(jax.tree.unflatten(treedef, loaded), flow)
+    if trained.prediction != flow.prediction:
+        copied = eqx.tree_at(
+            lambda m: (m.x_unembed.linear2, m.loss_log_var),
+            copied,
+            (flow.x_unembed.linear2, flow.loss_log_var),
+        )
+    print(
+        f"[warm start] {config.init_from} epoch {epoch} ({trained.prediction} prediction)"
+        f" -> {flow.prediction} prediction"
+        + (", head output and λ fresh" if trained.prediction != flow.prediction else ""),
+        flush=True,
+    )
+    return copied
+
+
 def load_trained(config: Config) -> tuple[LisaGB, LisaFlow, int]:
     """The problem, the trained flow (averaged x, or y with weights: training) and its epoch."""
     if not (config.run_dir / "checkpoints").is_dir():
@@ -443,6 +477,9 @@ def main() -> None:
     )
     checkpoints = checkpoint_manager(run_dir)
     state, start_epoch, restored = restore_checkpoint(checkpoints, state, tuple(histories))
+    if start_epoch == 0 and config.init_from:
+        flow = warm_start(config, state.flow)
+        state = TrainState(flow, tx.init(eqx.filter(flow, eqx.is_inexact_array)), state.key)
     # the restored rows, into histories sized for this (maybe extended) run
     for name, rows in (restored or {}).items():
         histories[name][: len(rows)] = rows[: len(histories[name])]

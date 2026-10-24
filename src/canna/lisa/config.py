@@ -72,6 +72,8 @@ class Config:
     weights: str = "average"
     # what runs in bfloat16: nothing, the attention scores and weighted sums, or the whole backbone
     bf16: str = "backbone"
+    # a new run's starting weights: this run's averaged x at its latest checkpoint (train.warm_start)
+    init_from: str = ""
 
     def __post_init__(self):
         for field, choices in CHOICES.items():
