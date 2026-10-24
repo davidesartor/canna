@@ -511,7 +511,8 @@ def main() -> None:
             run_dir / "history.tmp.npz",
             epoch=done,
             steps=np.arange(1, done + 1) * config.log_interval,
-            losses=loss_history[:done],
+            # float32: the plots take percentiles of them, and float64 doubles a long run's file
+            losses=loss_history[:done].astype(np.float32),
             loss_names=np.array(["flow", "x", "objective", "grad_norm"]),
             heldout=heldout_history[:done],
             heldout_names=np.array(["heldout_x", "heldout_y", "w_rms", "z_x"]),

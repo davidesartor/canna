@@ -1,4 +1,4 @@
-"""The flow's draws on the ten eval injections, matched to the truth, beside their Fisher forecasts, as draws.npz."""
+"""The flow's draws on the ten eval injections, matched to the truth, beside their Fisher forecasts, as draws.npz (packed, see samples)."""
 
 from functools import partial
 
@@ -16,6 +16,7 @@ from .injections import (
     match_sources,
 )
 from .sample import sample_posterior
+from .samples import pack_draws
 from .simulator import preprocess, sample_observation, snr
 from .train import load_trained, print_peak_memory
 
@@ -51,15 +52,19 @@ def main() -> None:
     path = out_dir / "draws.npz"
     np.savez(
         path,
-        draws=np.stack(draws),
-        matched=np.stack(matched),
-        fisher=np.stack(fisher),
-        truth=np.asarray(latents),
-        f=np.asarray(windows),
-        snr=snrs,
-        source_snr=np.stack(source_snr),
-        quantiles=quantiles,
-        epoch=epoch,
+        **pack_draws(
+            dict(
+                draws=np.stack(draws),
+                matched=np.stack(matched),
+                fisher=np.stack(fisher),
+                truth=np.asarray(latents),
+                f=np.asarray(windows),
+                snr=snrs,
+                source_snr=np.stack(source_snr),
+                quantiles=quantiles,
+                epoch=epoch,
+            )
+        ),
     )
     print(f"saved the draws to {path}", flush=True)
     print_peak_memory()

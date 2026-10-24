@@ -17,6 +17,8 @@ from .chart import flow_to_physical, physical_to_flow, sample_flow
 from .network import LisaFlow
 from .problem import LisaGB, sample_f, window_power
 from .sample import ODE_STEPS, sample_posterior
+from .samples import load as load_samples
+from .samples import pack_validation
 from .simulator import (
     clean_signal,
     log_likelihood,
@@ -324,15 +326,14 @@ def sample(
             )
     rows = {k: np.concat([r[k] for r in rows]) for k in rows[0]}
     path = out_dir / "validation.npz"
-    np.savez(path, epoch=epoch, ode_steps=ode_steps, **rows)
+    np.savez(path, epoch=epoch, ode_steps=ode_steps, **pack_validation(rows))
     print(f"\nsaved {path}", flush=True)
     print_peak_memory()
 
 
 def summarise(out_dir: Path, seed: int) -> None:
     """Rank and score validation.npz, print the report, and save validation_scores.npz."""
-    with np.load(out_dir / "validation.npz") as d:
-        samples = dict(d)
+    samples = load_samples(out_dir / "validation.npz")
     rows = analyse(samples, seed)
     report(
         rows,

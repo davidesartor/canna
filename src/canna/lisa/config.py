@@ -192,9 +192,15 @@ def run_name(name: str, output_dir: Path | str = Config.output_dir) -> str:
             continue
 
 
+def eval_tag(config: Config, epoch: int | str) -> str:
+    """<epoch>-<weights>-<ode_steps>, then -<bf16> when the eval's precision is not the default backbone one."""
+    tag = f"{epoch}-{config.weights}-{config.ode_steps}"
+    return tag if config.bf16 == Config.bf16 else f"{tag}-{config.bf16}"
+
+
 def eval_dir(config: Config, epoch: int, **stage: object) -> Path:
-    """<run>/eval/<epoch>-<weights>-<ode_steps>/, its eval.yaml recording the settings and `stage`'s."""
-    path = config.run_dir / "eval" / f"{epoch}-{config.weights}-{config.ode_steps}"
+    """<run>/eval/<eval_tag>/, its eval.yaml recording the settings and `stage`'s."""
+    path = config.run_dir / "eval" / eval_tag(config, epoch)
     path.mkdir(parents=True, exist_ok=True)
     settings = dict(
         epoch=int(epoch),
