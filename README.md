@@ -63,6 +63,10 @@ outputs/runs/<run>/
                                              # plots: corner.html, validation.pdf
 ```
 
+To keep runs small, the draws in `draws.npz`, `validation.npz` and `mcmc.npz` are
+stored as float16 offsets from the truth in units of their robust width (`canna.lisa.samples`,
+~1e-3 of a width); read them with `samples.load`, which also reads plain files.
+
 ## The LISA problem (`canna.lisa`)
 
 Galactic binaries in simulated LISA data: each frequency window holds four sources, and the

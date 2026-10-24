@@ -30,6 +30,8 @@ from .physics import (
     sky_log_density,
 )
 from .plots import fold_orientation, gb_picks
+from .samples import load as load_samples
+from .samples import pack_chains
 from .problem import LisaGB, f0_window, window_power
 from .simulator import (
     clean_signal,
@@ -44,7 +46,7 @@ NAMES = ["log f0", "log Mc", "log A", "lon", "lat", "psi", "sin iota", "phi0"]
 ANGLES = [3, 5, 7]
 MCMC_ROOT = Path("outputs/mcmc")
 # draws per source kept for the corner pages
-N_PLOT = 20000
+N_PLOT = 4096
 COLUMNS = ["f0 [bins]", "log Mc", "log A", "lon", "lat", "psi", "sin iota", "phi0"]
 
 
@@ -491,7 +493,7 @@ def report(config: run_config.Config, problem: LisaGB, args) -> None:
     assert (
         chains
     ), f"no MCMC for {config.name} in {cache_dir(problem, seed, args.root)}: run it first"
-    d = np.load(eval_dir / "draws.npz")
+    d = load_samples(eval_dir / "draws.npz")
     matched, truth = d["matched"], d["truth"]
     source_snr, quantiles = d["source_snr"], d["quantiles"]
 
@@ -541,10 +543,10 @@ def report(config: run_config.Config, problem: LisaGB, args) -> None:
     print(text)
     (eval_dir / "mcmc_compare.txt").write_text(text + "\n")
     np.savez(eval_dir / "mcmc_compare.npz", **rows)
-    # the chains `plots` overlays on the corner report, N_PLOT per source, in float64: float32 f0 in Hz
-    # steps by ~1e-3 bins at 1 mHz, wider than a loud source's whole posterior
+    # the chains `plots` overlays on the corner report, N_PLOT per source, packed around their medians:
+    # float32 f0 in Hz steps by ~1e-3 bins at 1 mHz, wider than a loud source's whole posterior
     sub = load_chains(problem, seed, args.root)
-    np.savez(eval_dir / "mcmc.npz", **{f"{j}_{s}": v for (j, s), v in sub.items()})
+    np.savez(eval_dir / "mcmc.npz", **pack_chains({f"{j}_{s}": v for (j, s), v in sub.items()}))
     print(f"saved mcmc_compare.txt, mcmc_compare.npz and mcmc.npz -> {eval_dir}")
 
 
@@ -554,7 +556,7 @@ def newest_eval(config: run_config.Config) -> Path:
         (
             path.parent
             for path in config.run_dir.glob(
-                f"eval/*-{config.weights}-{config.ode_steps}/draws.npz"
+                f"eval/{run_config.eval_tag(config, '*')}/draws.npz"
             )
         ),
         key=lambda path: int(path.name.split("-")[0]),

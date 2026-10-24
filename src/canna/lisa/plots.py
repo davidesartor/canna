@@ -8,6 +8,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .samples import robust_width
+
 # the obliquity of the ecliptic at J2000 [rad]: LisaGB's sky is equatorial (lisaorbits v3), papers quote ecliptic
 OBLIQUITY = np.deg2rad(23.4392911)
 # draws per source the corner report keeps of each reference set; the flow keeps all of its own
@@ -75,12 +77,6 @@ def physical_columns(p: np.ndarray, truth: np.ndarray, start_bin: float, t_obs: 
     )
 
 
-def robust_width(x: np.ndarray, axis: int = 0) -> np.ndarray:
-    """1.4826 × the median absolute deviation, ignoring non-finite draws."""
-    median = np.nanmedian(x, axis=axis, keepdims=True)
-    return 1.4826 * np.nanmedian(np.abs(x - median), axis=axis)
-
-
 def corner_data(eval_dir: Path) -> tuple[dict, bytes]:
     """The corner report's index and its draws: every eval injection's flow, Fisher and MCMC draws per source, in
     physical and flow coordinates, as float16 offsets from the truth in units of the flow's robust width."""
@@ -89,13 +85,14 @@ def corner_data(eval_dir: Path) -> tuple[dict, bytes]:
 
     from .chart import physical_to_flow
     from .problem import LisaGB, window_start
+    from .samples import load as load_samples
 
     run_dir = eval_dir.parents[1]
     config = yaml.safe_load((run_dir / "config.yaml").read_text())
     stage = yaml.safe_load((eval_dir / "eval.yaml").read_text()) if (eval_dir / "eval.yaml").exists() else {}
     problem = LisaGB(**config["problem"])
-    d = np.load(eval_dir / "draws.npz")
-    mcmc = dict(np.load(eval_dir / "mcmc.npz")) if (eval_dir / "mcmc.npz").exists() else {}
+    d = load_samples(eval_dir / "draws.npz")
+    mcmc = load_samples(eval_dir / "mcmc.npz") if (eval_dir / "mcmc.npz").exists() else {}
     rng = np.random.default_rng(0)
     n_injections, n_sources = d["source_snr"].shape
 
@@ -124,11 +121,11 @@ def corner_data(eval_dir: Path) -> tuple[dict, bytes]:
             source = {"snr": float(d["source_snr"][j, s]), "truth": {}, "scale": {}, "sets": {}}
             for view in COORDINATES:
                 centre = views["truth"][view][0, s]
-                scale = robust_width(views["flow"][view][:, s])
+                scale = robust_width(views["flow"][view][:, s], 0)
                 # a flow collapsed onto one value in a column falls back to a reference's width, then to 1
                 for name in ("mcmc", "fisher"):
                     if name in views:
-                        fallback = robust_width(views[name][view][:, s])
+                        fallback = robust_width(views[name][view][:, s], 0)
                         scale = np.where(np.isfinite(scale) & (scale > 0), scale, fallback)
                 scale = np.where(np.isfinite(scale) & (scale > 0), scale, 1.0)
                 source["truth"][view] = centre.tolist()
