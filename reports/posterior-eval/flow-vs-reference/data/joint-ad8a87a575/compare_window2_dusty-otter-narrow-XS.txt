@@ -1,0 +1,52 @@
+window2_seed0.npz: 225.7 min, R-hat max 1.0000, tau max 112 iterations, ESS min 171922
+window2_seed1.npz: 236.4 min, R-hat max 1.0000, tau max 112 iterations, ESS min 171639
+
+window 2 (narrow-XS, outputs/runs/dusty-otter-narrow-XS/eval/4-average-32/draws.npz): window SNR 313.9; 1024 flow draws, 80000 MCMC draws over 2 runs
+
+ source 0, SNR 314.1
+                          f0 [bins]     log Mc      log A        lon        lat        psi   sin iota       phi0
+  MCMC width               0.003178     0.2613   0.009377   0.005001   0.003555   0.007515   0.005736    0.01768
+  flow / MCMC width           853.2      0.944      33.05      10.52       16.5       34.1      39.35      133.6
+  flow W1 / MCMC sd           616.6    0.04075      25.64      11.89      16.96       29.2      34.73      88.52
+  Fisher / MCMC width        0.8853      1.198      0.824     0.4489       0.81     0.9267     0.8935     0.9026
+  seed 1 / seed 0 width       1.012     0.9802       1.02      1.079      1.008      1.011      1.009      1.002
+  seed W1 / sd              0.00982    0.01281    0.02063    0.05856    0.06955    0.02412    0.02574    0.01411
+  MCMC median in flow 68       True       True       True       True       True       True       True       True
+  MCMC median in flow 95       True       True       True       True       True       True       True       True
+  flow draws > 1 bin from the MCMC median in f0: 0.739
+
+ source 1, SNR 15.7
+                          f0 [bins]     log Mc      log A        lon        lat        psi   sin iota       phi0
+  MCMC width                0.04069      0.257     0.2359    0.04188    0.06951     0.3571     0.2044      0.723
+  flow / MCMC width           442.2     0.9046      3.537      3.662      2.519      1.756      2.403      3.294
+  flow W1 / MCMC sd           396.7     0.0745      2.743       4.95      5.624     0.3507      2.446      1.338
+  Fisher / MCMC width        0.8753     0.8312      0.706     0.9046     0.9154     0.6359      0.625      0.607
+  seed 1 / seed 0 width      0.9975     0.9999      0.994      1.018     0.9913     0.9981     0.9998     0.9854
+  seed W1 / sd               0.2734    0.01766   0.007773    0.01231     0.0112    0.01527   0.004483    0.01425
+  MCMC median in flow 68       True       True       True       True       True       True      False       True
+  MCMC median in flow 95       True       True       True       True       True       True       True       True
+  flow draws > 1 bin from the MCMC median in f0: 0.921
+
+ source 2, SNR 14.2
+                          f0 [bins]     log Mc      log A        lon        lat        psi   sin iota       phi0
+  MCMC width                0.03583     0.2572     0.1825    0.06055    0.03417     0.5858     0.1612      1.169
+  flow / MCMC width              87     0.9373      2.026      4.067      3.388     0.8203      1.849      1.971
+  flow W1 / MCMC sd           159.7    0.06408      1.325      5.173       3.83    0.08746      2.301     0.6639
+  Fisher / MCMC width         1.222     0.6853      1.257      1.204      1.569       0.39      1.095     0.3944
+  seed 1 / seed 0 width      0.9978     0.9817      1.009     0.9934     0.9851       1.01      1.008      1.006
+  seed W1 / sd              0.02046    0.01584    0.01267    0.04342    0.01309    0.01018    0.01079    0.01555
+  MCMC median in flow 68       True       True       True       True       True       True      False       True
+  MCMC median in flow 95       True       True       True       True       True       True       True       True
+  flow draws > 1 bin from the MCMC median in f0: 0.805
+
+ source 3, SNR 7.3
+                          f0 [bins]     log Mc      log A        lon        lat        psi   sin iota       phi0
+  MCMC width                 0.2356     0.2552     0.3584    0.08572       0.12     0.7787     0.2944      2.215
+  flow / MCMC width           23.24     0.9561      1.143      2.202       1.54     0.8148      1.133        1.1
+  flow W1 / MCMC sd           87.36     0.0518      1.133      3.074      1.702     0.1621     0.6364     0.1129
+  Fisher / MCMC width        0.4328     0.9578     0.9532      1.839      1.009     0.4595     0.8639     0.3049
+  seed 1 / seed 0 width       1.191      1.002      1.015      1.031     0.9979     0.9742      1.028      1.011
+  seed W1 / sd               0.5539    0.01449    0.01345    0.02556     0.1048    0.01283    0.02359    0.02463
+  MCMC median in flow 68      False       True       True       True      False       True       True       True
+  MCMC median in flow 95       True       True       True       True       True       True       True       True
+  flow draws > 1 bin from the MCMC median in f0: 0.979
