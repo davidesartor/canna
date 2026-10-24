@@ -19,3 +19,8 @@ outputs
 
 # report data that regenerates in minutes with the folder's scripts/*.sbatch; pages stay tracked
 reports/diagnostics/forward-model/data/
+reports/prior/f0-fdot-amplitude/data/
+reports/prior/polarization/data/
+reports/prior/response-span/data/
+reports/prior/sky/data/
+reports/prior/source-count/data/
