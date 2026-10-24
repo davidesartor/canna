@@ -16,3 +16,6 @@ CLAUDE.md
 
 # training runs and local plots
 outputs
+
+# report data that regenerates in minutes with the folder's scripts/*.sbatch; pages stay tracked
+reports/diagnostics/forward-model/data/
