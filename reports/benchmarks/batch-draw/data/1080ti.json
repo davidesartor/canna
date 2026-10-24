@@ -1,0 +1,618 @@
+{
+ "device": "GPU (NVIDIA GeForce GTX 1080 Ti)",
+ "platform": "gpu",
+ "job": "66002207",
+ "xla_flags": "--xla_gpu_enable_command_buffer=",
+ "records": [
+  {
+   "band": "narrow-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 16,
+   "ms": 0.2569661010056734,
+   "rate": 62265.02226317683,
+   "unit": "src",
+   "compile_s": 0.7883240878582001
+  },
+  {
+   "band": "narrow-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 64,
+   "ms": 0.2637950237840414,
+   "rate": 242612.6129369077,
+   "unit": "src",
+   "compile_s": 0.7212975227739662
+  },
+  {
+   "band": "narrow-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 256,
+   "ms": 0.4229939077049494,
+   "rate": 605209.6622123633,
+   "unit": "src",
+   "compile_s": 0.9480063039809465
+  },
+  {
+   "band": "narrow-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 1024,
+   "ms": 0.8960238192230463,
+   "rate": 1142826.7620027373,
+   "unit": "src",
+   "compile_s": 0.959941843058914
+  },
+  {
+   "band": "narrow-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 4096,
+   "ms": 2.433036919683218,
+   "rate": 1683492.7439297962,
+   "unit": "src",
+   "compile_s": 1.7926838409621269
+  },
+  {
+   "band": "narrow-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 16384,
+   "ms": 6.850203033536673,
+   "rate": 2391753.9260936547,
+   "unit": "src",
+   "compile_s": 1.793286828091368
+  },
+  {
+   "band": "narrow-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 65536,
+   "ms": 24.556892924010754,
+   "rate": 2668741.5302414545,
+   "unit": "src",
+   "compile_s": 1.907263491069898
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 16,
+   "ms": 1.8036130350083113,
+   "rate": 8871.082482460695,
+   "unit": "obs",
+   "compile_s": 8.76235904591158
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 64,
+   "ms": 1.859826035797596,
+   "rate": 34411.82065856674,
+   "unit": "obs",
+   "compile_s": 10.158178672892973
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 256,
+   "ms": 1.994759077206254,
+   "rate": 128336.30032080818,
+   "unit": "obs",
+   "compile_s": 12.12320632697083
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 1024,
+   "ms": 3.4665679559111595,
+   "rate": 295393.02648138907,
+   "unit": "obs",
+   "compile_s": 12.187279883073643
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 4096,
+   "ms": 9.262109873816371,
+   "rate": 442231.85168416484,
+   "unit": "obs",
+   "compile_s": 10.606063329149038
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 16384,
+   "ms": 31.269924016669393,
+   "rate": 523953.94345269294,
+   "unit": "obs",
+   "compile_s": 10.459479366894811
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 65536,
+   "ms": 113.20999613963068,
+   "rate": 578888.8104825069,
+   "unit": "obs",
+   "compile_s": 11.209138547768816
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 1,
+   "n": 16,
+   "ms": 2.8858620207756758,
+   "rate": 5544.2706147466615,
+   "unit": "obs",
+   "compile_s": 20.18103815894574
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 1,
+   "n": 64,
+   "ms": 3.100096946582198,
+   "rate": 20644.51567250465,
+   "unit": "obs",
+   "compile_s": 22.54946134914644
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 1,
+   "n": 256,
+   "ms": 5.93142188154161,
+   "rate": 43159.971607594394,
+   "unit": "obs",
+   "compile_s": 23.065914562204853
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 1,
+   "n": 1024,
+   "ms": 14.99826810322702,
+   "rate": 68274.54963147889,
+   "unit": "obs",
+   "compile_s": 23.890594074735418
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 1,
+   "n": 4096,
+   "ms": 50.63813296146691,
+   "rate": 80887.65838023396,
+   "unit": "obs",
+   "compile_s": 22.760762707097456
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 1,
+   "n": 16384,
+   "ms": 178.0465559568256,
+   "rate": 92020.87573080012,
+   "unit": "obs",
+   "compile_s": 21.046516915084794
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 4,
+   "n": 16,
+   "ms": 1.86818721704185,
+   "rate": 8564.452135228146,
+   "unit": "obs",
+   "compile_s": 8.65042198379524
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 4,
+   "n": 64,
+   "ms": 1.8741539679467678,
+   "rate": 34148.74182942146,
+   "unit": "obs",
+   "compile_s": 10.265804189024493
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 4,
+   "n": 256,
+   "ms": 2.7905208989977837,
+   "rate": 91739.14450593882,
+   "unit": "obs",
+   "compile_s": 9.54062591609545
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 4,
+   "n": 1024,
+   "ms": 6.87544303946197,
+   "rate": 148935.8568055466,
+   "unit": "obs",
+   "compile_s": 10.661050384864211
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 4,
+   "n": 4096,
+   "ms": 21.389648085460067,
+   "rate": 191494.5016222271,
+   "unit": "obs",
+   "compile_s": 10.713588241953403
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 4,
+   "n": 16384,
+   "ms": 79.19484796002507,
+   "rate": 206882.14476110996,
+   "unit": "obs",
+   "compile_s": 11.142343956977129
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 4,
+   "n": 16,
+   "ms": 3.0970170628279448,
+   "rate": 5166.261494662253,
+   "unit": "obs",
+   "compile_s": 17.712843441870064
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 4,
+   "n": 64,
+   "ms": 5.591463064774871,
+   "rate": 11446.020345406114,
+   "unit": "obs",
+   "compile_s": 21.300969077041373
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 4,
+   "n": 256,
+   "ms": 13.912878930568695,
+   "rate": 18400.217616896625,
+   "unit": "obs",
+   "compile_s": 19.172788168070838
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 4,
+   "n": 1024,
+   "ms": 48.60401898622513,
+   "rate": 21068.216607565148,
+   "unit": "obs",
+   "compile_s": 21.496137471171096
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 4,
+   "n": 4096,
+   "ms": 169.9242270551622,
+   "rate": 24104.861743289395,
+   "unit": "obs",
+   "compile_s": 20.793610039865598
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 16,
+   "n": 16,
+   "ms": 1.8447069451212883,
+   "rate": 8673.46439081575,
+   "unit": "obs",
+   "compile_s": 10.874161174055189
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 16,
+   "n": 64,
+   "ms": 2.4179278407245874,
+   "rate": 26468.945401125344,
+   "unit": "obs",
+   "compile_s": 9.786018140148371
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 16,
+   "n": 256,
+   "ms": 6.082646083086729,
+   "rate": 42086.94645441035,
+   "unit": "obs",
+   "compile_s": 11.875610671937466
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 16,
+   "n": 1024,
+   "ms": 18.924999982118607,
+   "rate": 54108.32237609153,
+   "unit": "obs",
+   "compile_s": 10.349618464009836
+  },
+  {
+   "band": "narrow-B",
+   "kind": "observation",
+   "sources": 16,
+   "n": 4096,
+   "ms": 69.00981813669205,
+   "rate": 59353.873268971634,
+   "unit": "obs",
+   "compile_s": 11.449892317643389
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 16,
+   "n": 16,
+   "ms": 5.425497889518738,
+   "rate": 2949.0381022743813,
+   "unit": "obs",
+   "compile_s": 21.052158957114443
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 16,
+   "n": 64,
+   "ms": 13.691653031855822,
+   "rate": 4674.380796175141,
+   "unit": "obs",
+   "compile_s": 19.55326987383887
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 16,
+   "n": 256,
+   "ms": 47.63612220995128,
+   "rate": 5374.07303792921,
+   "unit": "obs",
+   "compile_s": 21.28353924374096
+  },
+  {
+   "band": "narrow-B",
+   "kind": "train_sample",
+   "sources": 16,
+   "n": 1024,
+   "ms": 168.8229830469936,
+   "rate": 6065.524856381427,
+   "unit": "obs",
+   "compile_s": 20.894117473857477
+  },
+  {
+   "band": "full-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 16,
+   "ms": 0.43376185931265354,
+   "rate": 36886.59953955812,
+   "unit": "src",
+   "compile_s": 0.9932310581207275
+  },
+  {
+   "band": "full-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 64,
+   "ms": 1.654903870075941,
+   "rate": 38672.94116428837,
+   "unit": "src",
+   "compile_s": 1.7741929171606898
+  },
+  {
+   "band": "full-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 256,
+   "ms": 3.7884549237787724,
+   "rate": 67573.72204514823,
+   "unit": "src",
+   "compile_s": 1.7370628302451223
+  },
+  {
+   "band": "full-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 1024,
+   "ms": 12.275893939659,
+   "rate": 83415.51377303971,
+   "unit": "src",
+   "compile_s": 1.7264174192678183
+  },
+  {
+   "band": "full-B",
+   "kind": "get_tdi",
+   "sources": null,
+   "n": 4096,
+   "ms": 43.17517299205065,
+   "rate": 94869.33615191652,
+   "unit": "src",
+   "compile_s": 1.7296727979555726
+  },
+  {
+   "band": "full-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 16,
+   "ms": 2.4813180789351463,
+   "rate": 6448.185799245203,
+   "unit": "obs",
+   "compile_s": 9.416893053101376
+  },
+  {
+   "band": "full-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 64,
+   "ms": 5.748223047703505,
+   "rate": 11133.875541863132,
+   "unit": "obs",
+   "compile_s": 10.937066490994766
+  },
+  {
+   "band": "full-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 256,
+   "ms": 16.372354002669454,
+   "rate": 15636.114388820331,
+   "unit": "obs",
+   "compile_s": 12.84092867700383
+  },
+  {
+   "band": "full-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 1024,
+   "ms": 58.569343062117696,
+   "rate": 17483.54935301156,
+   "unit": "obs",
+   "compile_s": 13.136884019011632
+  },
+  {
+   "band": "full-B",
+   "kind": "observation",
+   "sources": 1,
+   "n": 4096,
+   "ms": 207.54789421334863,
+   "rate": 19735.203845477332,
+   "unit": "obs",
+   "compile_s": 10.635923389811069
+  },
+  {
+   "band": "full-B",
+   "kind": "train_sample",
+   "sources": 1,
+   "n": 16,
+   "ms": 8.5569869261235,
+   "rate": 1869.817044029112,
+   "unit": "obs",
+   "compile_s": 20.530267182039097
+  },
+  {
+   "band": "full-B",
+   "kind": "train_sample",
+   "sources": 1,
+   "n": 64,
+   "ms": 26.74527605995536,
+   "rate": 2392.9459489043998,
+   "unit": "obs",
+   "compile_s": 24.322922479826957
+  },
+  {
+   "band": "full-B",
+   "kind": "train_sample",
+   "sources": 1,
+   "n": 256,
+   "ms": 95.00090102665126,
+   "rate": 2694.7112841401636,
+   "unit": "obs",
+   "compile_s": 23.777414753800258
+  },
+  {
+   "band": "full-B",
+   "kind": "observation",
+   "sources": 4,
+   "n": 16,
+   "ms": 4.520057002082467,
+   "rate": 3539.778368420692,
+   "unit": "obs",
+   "compile_s": 10.231107185827568
+  },
+  {
+   "band": "full-B",
+   "kind": "observation",
+   "sources": 4,
+   "n": 64,
+   "ms": 11.5109549369663,
+   "rate": 5559.920992694559,
+   "unit": "obs",
+   "compile_s": 11.846584260929376
+  },
+  {
+   "band": "full-B",
+   "kind": "observation",
+   "sources": 4,
+   "n": 256,
+   "ms": 39.85018306411803,
+   "rate": 6424.060827728242,
+   "unit": "obs",
+   "compile_s": 10.547999502858147
+  },
+  {
+   "band": "full-B",
+   "kind": "train_sample",
+   "sources": 4,
+   "n": 16,
+   "ms": 25.330969132483006,
+   "rate": 631.6378941649928,
+   "unit": "obs",
+   "compile_s": 18.901759417029098
+  },
+  {
+   "band": "full-B",
+   "kind": "train_sample",
+   "sources": 4,
+   "n": 64,
+   "ms": 90.29765287414193,
+   "rate": 708.7670383770003,
+   "unit": "obs",
+   "compile_s": 23.06651121727191
+  },
+  {
+   "band": "full-B",
+   "kind": "observation",
+   "sources": 16,
+   "n": 16,
+   "ms": 9.63171198964119,
+   "rate": 1661.1792397039947,
+   "unit": "obs",
+   "compile_s": 11.858499365160242
+  },
+  {
+   "band": "full-B",
+   "kind": "observation",
+   "sources": 16,
+   "n": 64,
+   "ms": 35.05678800866008,
+   "rate": 1825.6093508678,
+   "unit": "obs",
+   "compile_s": 10.524500448955223
+  },
+  {
+   "band": "full-B",
+   "kind": "train_sample",
+   "sources": 16,
+   "n": 16,
+   "ms": 86.2952210009098,
+   "rate": 185.4100356244677,
+   "unit": "obs",
+   "compile_s": 23.293213258031756
+  }
+ ]
+}
