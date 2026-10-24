@@ -125,3 +125,25 @@ def test_the_averaged_weights_start_at_the_initial_ones():
             params(eval_flow(state.flow, state.opt_state)), params(state.flow)
         )
     )
+
+
+def test_warm_start_copies_the_averaged_weights_but_a_redefined_head_and_lambda(tmp_path):
+    from canna.lisa.train import warm_start
+
+    load = lambda **kw: config.load("narrow-B", bf16="none", output_dir=tmp_path, **kw)
+    source = load(run="source", network=NETWORK | dict(loss_weights=True))
+    source.run_dir.mkdir(parents=True)
+    config.save(source, source.run_dir / "config.yaml")
+    state = moved_state(source)
+    with checkpoint_manager(source.run_dir) as checkpoints:
+        save_checkpoint(checkpoints, state, 2, {})
+    averaged = eval_flow(state.flow, state.opt_state)
+
+    target = load(network=NETWORK | dict(loss_weights=True, prediction="velocity"), init_from="source")
+    fresh = setup(target)[2].flow
+    started = warm_start(target, fresh)
+    assert started.prediction == "velocity"
+    assert same(started.backbone, averaged.backbone) and same(started.x_embed, averaged.x_embed)
+    assert same(started.x_unembed.linear1, averaged.x_unembed.linear1)
+    assert same(started.x_unembed.linear2, fresh.x_unembed.linear2)
+    assert jnp.array_equal(started.loss_log_var, fresh.loss_log_var)
