@@ -1,4 +1,4 @@
-# canna.lisa takeaways (current state, 2026-10-22)
+# canna.lisa takeaways (current state, 2026-10-25, F61)
 
 One `0<nn>-<slug>.md` per finding F<nn>, outcome first. The literature lives in
 [../literature/](../literature/): [GW and cosmology
@@ -7,6 +7,18 @@ schedules](../literature/optimizers-schedules/000-takeaways.md), [diffusion and 
 matching](../literature/diffusion-flow-matching/000-takeaways.md) and the others; the findings
 keep only its consequences for our code.
 
+- **The oneshot code's first runs** ([F59](059-oneshot-first-runs-narrow-s-full-b.md)):
+  narrow-S is the narrow-band model (779 of 840 found, every parameter within 0.8–3.3× of the
+  MCMC at SNR 15–100 in the medians, the exceptions close pairs, at 2.2× fewer parameters than
+  XS-stft-h); full-B's f₀ is stuck at
+  0.4–0.6 bins at every SNR, 10× B-stft-h's, and φ₀ follows (36–70×). The floor is a fixed
+  fraction (~1.5 × 10⁻⁴) of the window.
+- **Half of full-B's f₀ floor is bf16 rounding** ([F61](061-fp32-backbone-halves-f0-but-overconfident.md)):
+  a float32 backbone at eval halves f₀'s width (only f₀'s) but makes it overconfident (in68
+  0.5–0.6); the rest is a learned f₀ error. The fix is in training: x̂₁ = x_t + (1 − s)·head(h).
+- **full-B's f₀ floor is not the sampler** ([F60](060-sampler-grid-not-the-f0-floor.md)): the eval's 32
+  uniform steps are converged, and steps late in the path widen f₀. Suspect: x̂₁ read out
+  absolutely from the bf16 backbone, one floor of ~3 × 10⁻⁴ in x_f on both bands.
 - **B-long is the B model:** 221 of 240 sources found, calibrated, within 1.0–1.6× of the MCMC
   in A, sky, ψ and ι at SNR 17–78 ([F48](048-b-long-best-b-phi0-broke.md)).
 - **φ₀ is learned, settled:** the helicity coordinates (φ₊, φ₋) did it, not the template. B-stft-h
@@ -54,12 +66,20 @@ keep only its consequences for our code.
 | B | B-stft-h, 200k | φ₀ ± 2ψ 1.8–2.3× at mid SNR; f₀ 1.03–1.25× B-stft's; 215 found (F56) |
 | XS | R1, WDM era | loud f₀ 0.0067 bins (4× ideal), 6.3× MCMC; 739 of 840 found ([F31](031-r1-final.md)) |
 | XS | XS-rope | loud f₀ 0.0106 bins, 11.4× MCMC; 687 found (F43) |
+| narrow | narrow-S (oneshot), 650k | all parameters 0.8–3.3× MCMC at SNR 15–100; loud f₀ 0.021 bins, 31×; 779 of 840 found (F59) |
+| full | full-B (oneshot), 240k | sky, A, ψ, ι ≤ 2.7× below SNR 300; f₀ 0.41–0.57 bins (38–164× MCMC), φ₀ 36–70× (F59) |
 
 No model is biased: the MCMC median is inside the flow's 95% in 123–127 of 128 pairs on XS
 ([F27](027-flow-vs-mcmc-xs-windows.md), F43) and 48 of 48 for B-rope at mid SNR (F45).
 
 ## Still broken
 
+- **full-B's f₀ (oneshot):** 0.41–0.57 bins at every SNR and every f₀, ~1.5 × 10⁻⁴ of its
+  3072-bin window, against B-stft-h's 0.033–0.13; φ₀ widens with it. Suspects: learning rates
+  10× and 3×, time_power 3 → 1, the new data stream or RoPE axis (F59); not the sampler's grid,
+  and first the bf16 readout of an absolute x̂₁ (F60).
+- **TARP was void in F59's scorecards:** its reference was the truth (`fold_in(key, 1)` equals
+  `split(key, 4)[1]`), so every cell read −0.50; fixed by `key_tarp` (b6e0218), rescore to use it.
 - **φ₀ on the loudest source:** φ₋ is 101× the MCMC on B-stft-h (72× with the template, 52×
   with the Doppler band) and 51× on XS-stft-h, the same floor as its sky (F54, F56, F58). Every
   run F39–F51 ignored the data's phase (F52); the helicity coordinates fixed that at mid SNR
@@ -80,6 +100,9 @@ No model is biased: the MCMC median is inside the flow's 95% in 123–127 of 128
 
 ## Next, most urgent first
 
+- **full-B's f₀ floor (F59–F61):** one full-B run predicting x̂₁ = x_t + (1 − s)·head(h), the
+  bf16 backbone kept; with B-stft-h's time_power 3 and learning rates folded in or as the next
+  run. A per-f₀ window later.
 - **φ₀, analytic extrinsics (training-free):** for each flow draw of (f₀, ḟ, sky), the four
   F-statistic templates make the likelihood Gaussian in four amplitudes; sampling them,
   importance-weighted by the (A, ι, ψ, φ₀) prior, gives φ±, the ridge and the amplitudes
