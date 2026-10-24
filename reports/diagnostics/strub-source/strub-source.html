@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strub source check</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --ref: #52514e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --ref: #c3c2b7;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --ref: #c3c2b7;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 960px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.92em; }
+a { color: var(--s1); }
+h1 { font-size: 24px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+.sub { color: var(--ink-2); margin: 0 0 24px; max-width: 72ch; }
+.note { color: var(--ink-2); font-size: 13px; margin: 4px 0 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+.card + .card { margin-top: 16px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.tile .k { color: var(--ink-2); font-size: 13px; }
+.tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tile .d { color: var(--muted); font-size: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink-2); margin: 0 0 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend svg { width: auto; display: inline-block; flex: none; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; margin: 0 0 16px; }
+.controls .k { color: var(--ink-2); font-size: 13px; margin-right: 8px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { font: inherit; font-size: 13px; padding: 5px 12px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--page); }
+svg { width: 100%; height: auto; display: block; overflow: visible; }
+svg text { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+svg .lbl { fill: var(--ink-2); }
+.banner { background: #c62828; color: #fff; padding: 8px 16px; font: 13px/1.4 system-ui, sans-serif; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; width: 100%; }
+th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink-2); font-weight: 500; }
+#t-strub td:last-child, #t-strub th:last-child { text-align: left; white-space: normal; min-width: 220px; }
+ul.means { padding-left: 20px; margin: 8px 0 0; max-width: 80ch; }
+ul.means li { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div id="banner" class="banner" hidden></div>
+<script>
+window.onerror = (message, source, line) => {
+  const b = document.getElementById("banner");
+  b.hidden = false;
+  b.textContent = `This page hit an error: ${message} (line ${line}). Some cards may be blank.`;
+};
+</script>
+<main>
+<h1>Does the pipeline reproduce a published LISA posterior?</h1>
+<p class="sub" id="sub"></p>
+<div class="tiles" id="tiles"></div>
+<div class="card">
+  <h2>How do its posterior and SNR gain compare with Strub et al.'s?</h2>
+  <p class="note">The verification binary of Strub et al., analysed alone with this repo's simulator and likelihood but under their priors: one source at f₀ = 1.40457 mHz with an optimal SNR near 7.9, for which they publish the posterior's widths and the SNR gained by fitting.</p>
+  <div class="controls"><div><span class="k">View</span><span class="seg" id="strub"></span></div></div>
+  <p class="note" id="note-f"></p>
+  <div class="legend" id="legend-f"></div>
+  <div id="p-strub"></div>
+  <div id="p-strub2"></div>
+  <div class="tablewrap" id="t-strub"></div>
+</div>
+<div class="card">
+  <h2>What this means</h2>
+  <ul class="means" id="means"></ul>
+</div>
+</main>
+<script>const DATA = {"built":"2026-10-24","strub":{"commit":"3a166cc0edbb4e9ac00f3a0aa7b3c1263dd13872","src_tree":"8d80491ef154910fe654333142b1134d4a1e7580","f0":0.00140457,"log10_fdot":-17.3,"amplitude":4.55e-23,"ecliptic_lon":1.5,"ecliptic_lat":0.2,"psi":2.0,"iota":1.2,"phi0":3.0,"t_obs":63115200.0,"ra":1.4862375846621672,"dec":0.60790259612849,"chirp_mass":0.43393340353435933,"snr_rp64":7.950811607272233,"snr_ae_rp64":7.950810936667054,"snr_unrotated_rp64":7.959431636248978,"snr_rp128":7.950812427606751,"snr_ae_rp128":7.9508117570020715,"snr_unrotated_rp128":7.95943041601433,"snr_rp256":7.950812705745865,"snr_ae_rp256":7.950812035141526,"snr_unrotated_rp256":7.959429670655418,"snr_rp512":7.950812811435391,"snr_ae_rp512":7.950812140831237,"snr_unrotated_rp512":7.959429263717006,"snr_full_b":7.9508128548824795,"full_b_response_points":1024,"response_points":64,"snr":7.950811607272233,"snr_strub":7.93,"snr_relative_gap":0.002624414536221087,"strub_f0_plus_nhz":1.9,"strub_f0_minus_nhz":1.5,"strub_iota_median":1.33,"strub_iota_plus":0.1,"strub_iota_minus":0.18,"nwalker":32,"burn":10000,"keep":30000,"thin":10,"chain_response_points":64,"noise_seed":0,"sweep_seed":1000,"seconds_max":850.4747470250004,"noiseless_rhat_max":1.0000125752125277,"noiseless_rhat_walker_max":1.0000737330506777,"noiseless_rhat_log_f0":1.0000071552929228,"noiseless_rhat_walker_log_f0":1.0000077731293409,"noiseless_rhat_log_Mc":1.0000022787337537,"noiseless_rhat_walker_log_Mc":1.0000062028764618,"noiseless_rhat_log_A":1.0000125752125277,"noiseless_rhat_walker_log_A":1.0000388465550218,"noiseless_rhat_lon":1.0000080332362995,"noiseless_rhat_walker_lon":0.9999545756964066,"noiseless_rhat_lat":1.000007167201263,"noiseless_rhat_walker_lat":1.0000737330506777,"noiseless_rhat_psi":0.9999931240119898,"noiseless_rhat_walker_psi":0.9999911977202262,"noiseless_rhat_sin_iota":0.9999982908408337,"noiseless_rhat_walker_sin_iota":0.9999887413183514,"noiseless_rhat_phi0":1.0000009627020319,"noiseless_rhat_walker_phi0":0.9999860118042039,"noiseless_pull_f0":-0.223286686799627,"noiseless_truth_quantile_f0":0.5961145833333333,"noiseless_pull_log10_fdot":0.07633796254112973,"noiseless_truth_quantile_log10_fdot":0.47689583333333335,"noiseless_pull_log10_A":-1.3298514117972844,"noiseless_truth_quantile_log10_A":0.8878333333333334,"noiseless_pull_ecl_lon":-0.005670476477149493,"noiseless_truth_quantile_ecl_lon":0.50228125,"noiseless_pull_ecl_lat":-0.17988172601942756,"noiseless_truth_quantile_ecl_lat":0.5734479166666666,"noiseless_pull_psi":0.0040628958131452165,"noiseless_truth_quantile_psi":0.4972916666666667,"noiseless_pull_cos_iota":1.1685189222756065,"noiseless_truth_quantile_cos_iota":0.15058333333333335,"noiseless_pull_phi0":0.008105791504518019,"noiseless_truth_quantile_phi0":0.4952083333333333,"noiseless_rho_mle":7.942212870219724,"noiseless_rho_opt":7.950811607272233,"noiseless_rho_mle_refined":7.950763108110701,"seed0_rho_opt":7.950811607272233,"seed0_rho_obs":8.568285342329839,"seed0_rho_mle":8.600282731908719,"seed0_rho_mle_refined":8.616381586110645,"seed0_rhat_max":1.0000512772441956,"seed0_std_f0":1.4016366728679483e-09,"seed0_std_log10_fdot":0.7019574726080268,"seed0_std_log10_A":0.12400633044373621,"seed0_std_ecl_lon":0.050238877961219806,"seed0_std_ecl_lat":0.10958838372579306,"seed0_std_psi":0.9085637636023325,"seed0_std_cos_iota":0.21258821335175282,"seed0_std_phi0":1.8075009343947714,"seed0_median_f0":0.0014045697053832538,"seed0_median_log10_fdot":-17.300049663045904,"seed0_median_log10_A":-22.48574126687783,"seed0_median_ecl_lon":1.5135452666394982,"seed0_median_ecl_lat":0.13255977665566815,"seed0_median_psi":2.031091982961283,"seed0_median_cos_iota":0.639145534519143,"seed0_median_phi0":2.958274230218148,"seed0_sigma_f0_nhz":1.401636672867944,"seed0_f0_plus_nhz":1.288682500771507,"seed0_f0_minus_nhz":1.4035914336178734,"seed0_corr_f0_log10_fdot":-0.4298121243593073,"seed0_corr_cos_iota_log10_A":-0.8908774983037692,"seed0_log10_fdot_std_over_prior_std":0.9726608058477973,"seed0_log10_fdot_q05":-18.3784475275169,"seed0_log10_fdot_q95":-16.17023963797484,"seed0_sigma_cos_iota":0.21258821335175232,"seed0_cos_iota_half_width68":0.24296068700531245,"seed0_cos_iota_q16":0.39759141289893946,"seed0_cos_iota_q84":0.8835127869095644,"seed0_f0_off_mode_fraction":4.1666666666666665e-05,"seed0_iota_median":0.8774095892451104,"seed0_iota_plus":0.2844963731246375,"seed0_iota_minus":0.38992265911499113,"seed0_ml_f0":0.0014045699817650617,"seed0_ml_log10_fdot":-18.074929008907375,"seed0_ml_log10_A":-22.329048299198863,"seed0_ml_ecl_lon":1.494347642118495,"seed0_ml_ecl_lat":0.13951902942253014,"seed0_ml_psi":2.0303226123472538,"seed0_ml_cos_iota":0.37611705708895704,"seed0_ml_phi0":3.014598928497301,"box_rhat_max":1.0000227275967324,"box_std_f0":5.301506723476563e-10,"box_std_log10_fdot":0.6267441980262959,"box_std_log10_A":0.09050693245720834,"box_std_ecl_lon":0.04482986046021982,"box_std_ecl_lat":0.10328731209617,"box_std_psi":0.0018091299140284216,"box_std_cos_iota":0.14304477460175719,"box_std_phi0":0.0036327647104320783,"box_median_f0":0.0014045698916417314,"box_median_log10_fdot":-17.46496694373213,"box_median_log10_A":-22.374140460550723,"box_median_ecl_lon":1.5150978002803939,"box_median_ecl_lat":0.12786080030110003,"box_median_psi":2.030288223527016,"box_median_cos_iota":0.44344937037529625,"box_median_phi0":3.01464447271335,"box_sigma_f0_nhz":0.5301506723476569,"box_f0_plus_nhz":0.5827801956292955,"box_f0_minus_nhz":0.5741890541591937,"box_corr_f0_log10_fdot":-0.2947713405969395,"box_corr_cos_iota_log10_A":-0.8119548580515239,"box_log10_fdot_std_over_prior_std":0.8684422354644412,"box_log10_fdot_q05":-18.394975591065165,"box_log10_fdot_q95":-16.422671133802183,"box_sigma_cos_iota":0.14304477460175735,"box_cos_iota_half_width68":0.1549491655019062,"box_cos_iota_q16":0.30931746935524057,"box_cos_iota_q84":0.619215800359053,"box_f0_off_mode_fraction":0.0,"box_iota_median":1.1113528431479138,"box_iota_plus":0.14496826397229046,"box_iota_minus":0.20830012638867967,"box_fisher_sigma_log_f0":7.916426911036739e-07,"box_fisher_sigma_log_Mc":NaN,"box_fisher_sigma_log_A":0.20280061218400966,"box_fisher_sigma_lon":0.0526774609566557,"box_fisher_sigma_lat":0.11850280797009616,"box_fisher_sigma_psi":0.15988045704744372,"box_fisher_sigma_sin_iota":0.13218995053448215,"box_fisher_sigma_phi0":0.3787947175107604,"box_half_width_log_f0":7.916426909559959e-07,"box_half_width_log_Mc":1.7269388197455342,"box_half_width_log_A":0.6084018365520265,"box_half_width_lon":0.15803238286996701,"box_half_width_lat":0.3555084239102885,"box_half_width_psi":0.0031415926535895977,"box_half_width_sin_iota":0.3965698516034465,"box_half_width_phi0":0.0062831853071796395,"sweep_count":48,"sweep_converged":48,"sweep_rhat_max":1.0000922471163012,"sweep_rho_opt":7.950811607272233,"sweep_rho_obs_mean":7.9689654362516675,"sweep_rho_obs_std":0.9516299488404879,"sweep_rho_mle_mean":8.373775189746832,"sweep_rho_mle_std":0.8923956167714288,"sweep_gain_obs_mean":0.40480975349516446,"sweep_gain_obs_std":0.2713814352389959,"sweep_gain_obs_sem":0.03917053617207532,"sweep_gain_opt_mean":0.42296358247459903,"sweep_gain_opt_std":0.8923956167714288,"sweep_gain_opt_sem":0.12880621239165663,"sweep_rho_mle_refined_mean":8.393332352699588,"sweep_gain_obs_refined_mean":0.4243669164479205,"sweep_gain_obs_refined_sem":0.03925459608929154,"sweep_gain_opt_refined_mean":0.4425207454273552,"sweep_gain_opt_refined_sem":0.12830719502584434,"sweep_gain_obs_converged_mean":0.40480975349516446,"sweep_sigma_f0_nhz_median":1.643828172225417,"sweep_sigma_f0_nhz_median_converged":1.643828172225417,"sweep_sigma_f0_nhz_mean":3.565038932494834,"strub_gain":0.3200000000000003,"sweep_delta_rho2_refined_mean":6.8306335625437375,"sweep_delta_rho2_refined_sem":0.5983390571406701,"sweep_sigma_f0_nhz_q16":1.3511636742025739,"sweep_sigma_f0_nhz_q84":4.609056124030968,"sweep_f0_half_width68_nhz_median":1.4360265880065948,"sweep_off_mode_count":7,"sweep_off_mode_fraction_max":0.09478125,"sweep_sigma_f0_nhz_median_main_mode":1.4965775272690822,"sweep_rho_obs_list":[10.708064789951377,8.125699661815268,6.849277975174313,8.239329508864115,9.510122718656396,8.821380785057743,6.774827729976548,8.149148239974167,7.143750190641086,8.417672616174878,7.223852900646284,8.227411284809163,6.984317505931843,8.805075364872424,7.1290687684882235,8.507874791022765,8.739206948656498,8.603891336067152,7.762979909663413,6.940567964676768,7.863298935479848,9.587098410410505,8.216073702413945,6.8590215364992595,8.30818690181251,7.252664642013034,9.309469278060234,8.294761862016998,6.435848394095741,6.709949583510789,7.562109569899097,8.01833963114713,9.57953877545584,9.002267792008372,9.373149759786713,7.665366448622176,7.296872450656981,8.331043026608011,8.070684947386203,8.026266171446688,7.968155534006302,6.227265870261208,8.487237884018304,7.577873595007916,7.099506614251859,7.608048960602605,7.1067722232141115,7.009947448267255],"sweep_rho_mle_list":[11.14781600011979,8.407478482128006,6.993241197113072,8.979831327950507,9.714253726969295,8.920129655334616,7.5920499624379,8.32613356646428,7.378395950738697,8.501880825014936,7.455169129671958,8.728541863744086,7.498087247345887,9.228313297016939,7.459143244349158,9.100769862935278,9.209310557953385,8.79656014644133,7.936340257192487,7.383720075773737,8.084600820835929,9.722604772080466,8.455792941193076,7.566122494040573,8.74287405762106,8.578816003157105,9.919972529504262,8.477433657783646,7.69995117747645,7.119727063869063,7.885813728049838,8.287428048482992,9.905507680153464,9.334548098026408,9.696871438520537,8.00538004558366,7.828514449433472,8.479503377752327,8.295200741787989,8.10378927611716,8.436658897650933,6.908324589092224,8.930485877088591,7.997094071852662,7.578653469523369,7.885914337607488,8.028999266274619,7.227459820593244],"sweep_sigma_f0_nhz_list":[1.048283945992984,1.9672379872293249,11.910285905410577,1.3481728252876364,1.2505732742010052,1.3610761688376225,3.0935901766737213,1.7536619514785472,2.8936593534099564,1.6115232505778598,1.9238131236434108,8.320252078878145,4.619770001648522,1.421097042320339,3.8198809497340123,1.2224079911500791,1.4411599968646156,1.4726480921946252,1.4679546818941305,4.599166390845534,1.4965775272690822,1.3365923767993826,1.4610169857557707,3.263022510594378,1.7214759582317078,1.369701426338306,1.2697130609013787,3.3072074147436754,7.324653139850086,19.549209923743067,2.119084477653905,1.512059077961267,1.0858464411617825,1.479263290130087,1.1701422542332272,1.6761330938729746,3.006178332423486,1.4632207000805157,3.7484148789059155,1.3539244578163625,1.5671623313453813,20.77782198849884,1.4006079315855133,2.759024583733731,2.291503199103167,8.876858454916674,1.4000126237789978,12.789225130050736],"sweep_off_mode_fraction_list":[0.0,0.0012291666666666666,0.0033125,0.0,0.0,0.0,0.0018645833333333333,6.25e-05,0.000625,0.00010416666666666667,0.00096875,0.05404166666666667,0.010114583333333333,0.0,0.0008229166666666667,3.125e-05,2.0833333333333333e-05,0.0,1.0416666666666666e-05,0.0026875,0.0,0.0,0.0,0.00030208333333333335,8.333333333333333e-05,0.0,0.0,0.004510416666666667,0.04821875,0.021479166666666667,9.375e-05,1.0416666666666666e-05,0.0,0.00016666666666666666,0.0,6.25e-05,0.0013229166666666667,0.0,0.0029375,0.0,0.0,0.012364583333333333,0.0,0.0009270833333333334,0.00017708333333333335,0.09478125,0.00011458333333333333,0.02534375],"hist_f0":{"edges":[-4.25,-4.108,-3.966,-3.825,-3.683,-3.541,-3.4,-3.258,-3.116,-2.975,-2.833,-2.691,-2.55,-2.408,-2.266,-2.125,-1.983,-1.842,-1.7,-1.558,-1.417,-1.275,-1.133,-0.9916,-0.8499,-0.7083,-0.5666,-0.425,-0.2833,-0.1417,0.0,0.1417,0.2833,0.425,0.5666,0.7083,0.8499,0.9916,1.133,1.275,1.417,1.558,1.7,1.842,1.983,2.125,2.266,2.408,2.55,2.691,2.833,2.975,3.116,3.258,3.4,3.541,3.683,3.825,3.966,4.108,4.25],"strub":[0.00783,0.008273,0.01101,0.01426,0.01573,0.01943,0.02275,0.02666,0.02999,0.04048,0.04232,0.05126,0.0619,0.07276,0.07874,0.08768,0.1039,0.1221,0.1293,0.1442,0.1691,0.1822,0.2059,0.2184,0.2398,0.261,0.2656,0.2844,0.2937,0.3065,0.3039,0.2946,0.2991,0.2855,0.2723,0.2607,0.2511,0.2234,0.2014,0.1869,0.1638,0.142,0.1235,0.1058,0.09196,0.07047,0.05702,0.05111,0.03678,0.03309,0.02371,0.0164,0.0133,0.01093,0.007091,0.005983,0.003989,0.003102,0.002142,0.001182],"box":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0575,0.2942,0.3621,0.44,0.5101,0.5803,0.6352,0.6502,0.6457,0.6316,0.5742,0.4986,0.398,0.3184,0.2355,0.1663,0.06148,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},"hist_cos_iota":{"edges":[-1.0,-0.9667,-0.9333,-0.9,-0.8667,-0.8333,-0.8,-0.7667,-0.7333,-0.7,-0.6667,-0.6333,-0.6,-0.5667,-0.5333,-0.5,-0.4667,-0.4333,-0.4,-0.3667,-0.3333,-0.3,-0.2667,-0.2333,-0.2,-0.1667,-0.1333,-0.1,-0.06667,-0.03333,0.0,0.03333,0.06667,0.1,0.1333,0.1667,0.2,0.2333,0.2667,0.3,0.3333,0.3667,0.4,0.4333,0.4667,0.5,0.5333,0.5667,0.6,0.6333,0.6667,0.7,0.7333,0.7667,0.8,0.8333,0.8667,0.9,0.9333,0.9667,1.0],"strub":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.004375,0.01719,0.04344,0.1184,0.2687,0.4372,0.7125,0.9231,1.112,1.261,1.352,1.407,1.431,1.457,1.424,1.397,1.396,1.374,1.358,1.378,1.413,1.361,1.432,1.428,1.36,1.395,1.368,1.371],"box":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.000625,0.0003125,0.00875,0.03594,0.1422,0.3294,0.7225,1.22,1.72,2.282,2.535,2.66,2.567,2.458,2.271,2.013,1.821,1.608,1.389,1.246,1.097,0.955,0.7975,0.1212,0.0,0.0,0.0,0.0,0.0,0.0]},"f0_q":{"strub":[-1.4036,0.0,1.2887],"box":[-0.57419,-1.0823e-10,0.58278]},"cos_iota_q":{"strub":[0.39759,0.63915,0.88351],"box":[0.30932,0.44345,0.61922]}}};</script>
+<script>
+const ST = DATA.strub;
+const CHOICES = {strub: ["f0", "cosi", "gain", "pulls"]};
+const S = {strub: "f0"};
+const marks = {};
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+const fmt = (v, d = 2) => v === null || v === undefined || !isFinite(v) ? "–" : Number(v).toFixed(d);
+
+function readHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  for (const [k, allowed] of Object.entries(CHOICES)) if (allowed.includes(h.get(k))) S[k] = h.get(k);
+  if (["light", "dark"].includes(h.get("theme"))) document.documentElement.dataset.theme = h.get("theme");
+}
+function writeHash() {
+  const p = {strub: S.strub};
+  if (document.documentElement.dataset.theme) p.theme = document.documentElement.dataset.theme;
+  history.replaceState(null, "", "#" + new URLSearchParams(p).toString());
+}
+readHash();
+
+function seg(id, items, key) {
+  const host = document.getElementById(id);
+  host.innerHTML = items.map(([v, text]) => `<button type="button" data-v="${v}">${text}</button>`).join("");
+  marks[key] = () => host.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === String(S[key]))));
+  host.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+    S[key] = b.dataset.v;
+    marks[key]();
+    schedule();
+  }));
+  marks[key]();
+}
+seg("strub", [["f0", "f₀"], ["cosi", "cos ι"], ["gain", "SNR gain"], ["pulls", "noiseless pulls"]], "strub");
+const legendSwatch = (colour, text, dashed) => `<span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(${colour})" stroke-width="2"${dashed ? ' stroke-dasharray="4 3"' : ""}/></svg>${text}</span>`;
+const legendDot = (colour, text) => `<span><svg width="12" height="12"><circle cx="6" cy="6" r="4" fill="var(${colour})"/></svg>${text}</span>`;
+
+const M = {l: 46, r: 14};
+function ticks(lo, hi, count) {
+  const raw = Math.max((hi - lo) / Math.max(count, 1), 1e-12), e = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map(m => m * e).find(s => s >= raw);
+  const out = [];
+  for (let i = Math.ceil(lo / step); i * step <= hi; i++) out.push(i * step);
+  return out;
+}
+const frame = (W, H) => `<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img">`;
+const hline = (W, y, colour, dash, width = 1) => `<line x1="${M.l}" x2="${W - M.r}" y1="${y}" y2="${y}" stroke="var(${colour})" stroke-width="${width}"${dash ? ' stroke-dasharray="4 3"' : ""}/>`;
+const vline = (x, t, bottom, colour, dash, width = 1) => `<line x1="${x}" x2="${x}" y1="${t}" y2="${bottom}" stroke="var(${colour})" stroke-width="${width}"${dash ? ' stroke-dasharray="4 3"' : ""}/>`;
+const poly = (pts, colour, width = 1.25, extra = "") => pts.length ? `<path d="${pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("")}" fill="none" stroke="var(${colour})" stroke-width="${width}" stroke-linejoin="round" ${extra}/>` : "";
+function xAxis(W, y, X, values, label, format = v => +v.toPrecision(3)) {
+  let s = `<line x1="${M.l}" x2="${W - M.r}" y1="${y}" y2="${y}" stroke="var(--axis)"/>`;
+  values.forEach(v => s += `<line x1="${X(v)}" x2="${X(v)}" y1="${y}" y2="${y + 4}" stroke="var(--axis)"/><text x="${X(v)}" y="${y + 16}" text-anchor="middle">${format(v)}</text>`);
+  return s + `<text x="${(M.l + W - M.r) / 2}" y="${y + 31}" text-anchor="middle">${label}</text>`;
+}
+function yGrid(W, Y, values, format = v => +v.toPrecision(3)) {
+  return values.map(v => `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${M.l - 6}" y="${Y(v) + 4}" text-anchor="end">${format(v)}</text>`).join("");
+}
+const yLabel = (H, t, b, text) => `<text class="lbl" transform="translate(11 ${(t + H - b) / 2}) rotate(-90)" text-anchor="middle">${text}</text>`;
+
+function strubHist(host, h, keys, colours, x0, x1, extra, xlabel) {
+  const W = Math.max(280, host.clientWidth || 600), t = 10, b = 40, H = 250, X = v => M.l + (v - x0) / (x1 - x0) * (W - M.l - M.r);
+  const peak = 1.1 * Math.max(...keys.flatMap(k => h[k].filter(v => v !== null)));
+  const Y = v => t + (peak - v) / peak * (H - t - b);
+  let s = frame(W, H) + extra(X, t, H - b) + yGrid(W, Y, ticks(0, peak, 4));
+  keys.forEach((k, n) => {
+    const pts = [];
+    h[k].forEach((v, i) => { if (h.edges[i] >= x0 && h.edges[i + 1] <= x1) pts.push([X(h.edges[i]), Y(v)], [X(h.edges[i + 1]), Y(v)]); });
+    s += poly(pts, colours[n], 1.5);
+  });
+  s += xAxis(W, H - b, X, ticks(x0, x1, 8), xlabel) + yLabel(H, t, b, "density");
+  host.innerHTML = s + "</svg>";
+}
+function strubPanel() {
+  const host = document.getElementById("p-strub"), host2 = document.getElementById("p-strub2"), note = document.getElementById("note-f"), legend = document.getElementById("legend-f");
+  host2.innerHTML = "";
+  const band = (X, t, bottom, a, z, colour) => `<rect x="${X(a)}" width="${X(z) - X(a)}" y="${t}" height="${bottom - t}" fill="var(${colour})" opacity="0.14"/>`;
+  if (S.strub === "f0") {
+    const e = ST.hist_f0.edges, edge = Math.max(4, ST.strub_f0_plus_nhz * 2.2), q = ST.f0_q.strub;
+    strubHist(host, ST.hist_f0, ["strub", "box"], ["--s1", "--ref"], Math.max(e[0], -edge), Math.min(e[e.length - 1], edge), (X, t, bottom) =>
+      band(X, t, bottom, -ST.strub_f0_minus_nhz, ST.strub_f0_plus_nhz, "--s2") + vline(X(q[0] - q[1]), t, bottom, "--s1", true) + vline(X(q[2] - q[1]), t, bottom, "--s1", true), "f₀ − posterior median [nHz]");
+    note.innerHTML = `Noise realisation 0. Under Strub's priors the 68% interval is +${fmt(ST.seed0_f0_plus_nhz)}/−${fmt(ST.seed0_f0_minus_nhz)} nHz (dashed); Strub et al. report +${ST.strub_f0_plus_nhz}/−${ST.strub_f0_minus_nhz} nHz (orange band, centred on our median). The Fisher box (grey) truncates f₀ at ±1σ, so its f₀ is narrower by construction. Below: σ<sub>f₀</sub> over ${ST.sweep_count} noise realisations, which shows how much a single realisation's width moves; hollow dots put over 1% of their draws in the sideband modes at ±31.7 nHz.`;
+    legend.innerHTML = legendSwatch("--s1", "Strub's priors") + legendSwatch("--ref", "Fisher box") + `<span><svg width="22" height="10"><rect width="22" height="10" fill="var(--s2)" opacity="0.3"/></svg>Strub et al. 68%</span>`;
+    // sigma_f0 over the noise sweep
+    const sig = ST.sweep_sigma_f0_nhz_list, off = ST.sweep_off_mode_fraction_list, W = Math.max(280, host2.clientWidth || 600), t = 14, b = 40, H = 110;
+    const lo = 0.5, hi = 20, X = v => M.l + Math.log(clamp(v, lo, hi) / lo) / Math.log(hi / lo) * (W - M.l - M.r);
+    let s = frame(W, H) + vline(X((ST.strub_f0_plus_nhz + ST.strub_f0_minus_nhz) / 2), t - 6, H - b, "--s2", true) + `<text x="${X((ST.strub_f0_plus_nhz + ST.strub_f0_minus_nhz) / 2) + 4}" y="${t}">Strub's half-interval</text>`;
+    s += vline(X(ST.sweep_sigma_f0_nhz_median), t - 6, H - b, "--ink", true) + `<text class="lbl" x="${X(ST.sweep_sigma_f0_nhz_median) - 4}" y="${t}" text-anchor="end">median ${fmt(ST.sweep_sigma_f0_nhz_median)}</text>`;
+    sig.forEach((v, i) => { const y = t + 10 + (i % 6) * 6; s += `<circle cx="${X(v)}" cy="${y}" r="3" ${off[i] > 0.01 ? 'fill="none" stroke="var(--s1)" stroke-width="1.25"' : 'fill="var(--s1)"'}><title>σ = ${fmt(v, 2)} nHz${off[i] > 0.01 ? `, ${fmt(off[i] * 100, 1)}% in the sideband modes` : ""}</title></circle>`; });
+    s += xAxis(W, H - b, X, [0.5, 1, 2, 5, 10, 20], "σ of f₀ per noise realisation [nHz]");
+    host2.innerHTML = s + "</svg>";
+  } else if (S.strub === "cosi") {
+    const a = Math.cos(ST.strub_iota_median + ST.strub_iota_plus), z = Math.cos(ST.strub_iota_median - ST.strub_iota_minus), truth = Math.cos(ST.iota);
+    strubHist(host, ST.hist_cos_iota, ["strub", "box"], ["--s1", "--ref"], -1, 1, (X, t, bottom) =>
+      band(X, t, bottom, a, z, "--s2") + vline(X(Math.cos(ST.strub_iota_median)), t, bottom, "--s2") + vline(X(truth), t, bottom, "--ink", true) + `<text class="lbl" x="${X(truth) + 4}" y="${t + 10}">truth</text>`, "cos ι");
+    note.innerHTML = `Under Strub's priors cos ι runs out to face-on: ι = ${fmt(ST.seed0_iota_median)} +${fmt(ST.seed0_iota_plus)}/−${fmt(ST.seed0_iota_minus)}. Inside the Fisher box at the maximum-likelihood point (±3σ, which narrows cos ι), ι = ${fmt(ST.box_iota_median)} +${fmt(ST.box_iota_plus)}/−${fmt(ST.box_iota_minus)}, against Strub's ${ST.strub_iota_median} +${ST.strub_iota_plus}/−${ST.strub_iota_minus} (orange). The box's 68% half-width of cos ι is ${fmt(ST.box_cos_iota_half_width68, 3)}; Strub's interval maps to about ${fmt((z - a) / 2, 3)}. cos ι and log A correlate at ${fmt(ST.seed0_corr_cos_iota_log10_A)}.`;
+    legend.innerHTML = legendSwatch("--s1", "Strub's priors") + legendSwatch("--ref", "Fisher box") + `<span><svg width="22" height="10"><rect width="22" height="10" fill="var(--s2)" opacity="0.3"/></svg>Strub et al. ι interval</span>` + legendSwatch("--ink", "truth", true);
+  } else if (S.strub === "gain") {
+    const obs = ST.sweep_rho_obs_list, gain = ST.sweep_rho_mle_list.map((v, i) => v - obs[i]);
+    const W = Math.max(280, host.clientWidth || 600), t = 10, b = 40, H = 270;
+    const x0 = Math.floor(Math.min(...obs)) - 0.5, x1 = Math.ceil(Math.max(...obs)) + 0.5, y0 = Math.min(0, ...gain) - 0.05, y1 = Math.max(...gain, ST.strub_gain) + 0.1;
+    const X = v => M.l + (v - x0) / (x1 - x0) * (W - M.l - M.r), Y = v => t + (y1 - v) / (y1 - y0) * (H - t - b);
+    const m = ST.sweep_gain_obs_mean, e = ST.sweep_gain_obs_sem;
+    let s = frame(W, H) + `<rect x="${M.l}" width="${W - M.l - M.r}" y="${Y(m + e)}" height="${Y(m - e) - Y(m + e)}" fill="var(--s1)" opacity="0.15"/>` + yGrid(W, Y, ticks(y0, y1, 5));
+    s += hline(W, Y(m), "--s1", false, 1.5) + hline(W, Y(ST.strub_gain), "--s2", true, 1.5);
+    s += `<text x="${W - M.r - 4}" y="${Y(m) - 5}" text-anchor="end">mean ${fmt(m, 3)} ± ${fmt(e, 3)}</text><text x="${W - M.r - 4}" y="${Y(ST.strub_gain) + 14}" text-anchor="end">Strub et al. ${fmt(ST.strub_gain)}</text>`;
+    obs.forEach((v, i) => s += `<circle cx="${X(v)}" cy="${Y(gain[i])}" r="3.5" fill="var(--s1)" opacity="0.85"><title>ρ_obs ${fmt(v, 2)}, gain ${fmt(gain[i], 3)}</title></circle>`);
+    s += xAxis(W, H - b, X, ticks(x0, x1, 8), "observed SNR ρ<tspan dy=\"3\" font-size=\"9\">obs</tspan>") + yLabel(H, t, b, "ρ_MLE − ρ_obs");
+    host.innerHTML = s + "</svg>";
+    note.innerHTML = `${ST.sweep_count} noise realisations of the same source: the SNR gained by fitting, ρ<sub>MLE</sub> − ρ<sub>obs</sub>, against the observed SNR. The mean is ${fmt(m, 3)} ± ${fmt(e, 3)} with a scatter of ${fmt(ST.sweep_gain_obs_std)} per realisation, so Strub's ${fmt(ST.strub_gain)} from one realisation is ordinary. Refining the maximum gives ${fmt(ST.sweep_gain_obs_refined_mean, 3)} ± ${fmt(ST.sweep_gain_obs_refined_sem, 3)}, and Δρ² = ${fmt(ST.sweep_delta_rho2_refined_mean)} ± ${fmt(ST.sweep_delta_rho2_refined_sem)}.`;
+    legend.innerHTML = legendDot("--s1", "one realisation") + legendSwatch("--s1", "mean ± s.e.") + legendSwatch("--s2", "Strub et al.", true);
+  } else {
+    const keys = [["f0", "f₀"], ["log10_fdot", "log ḟ"], ["log10_A", "log A"], ["ecl_lon", "λ"], ["ecl_lat", "β"], ["psi", "ψ"], ["cos_iota", "cos ι"], ["phi0", "φ₀"]];
+    const W = Math.max(280, host.clientWidth || 600), t = 10, b = 40, row = 24, H = t + b + row * keys.length, L = 60;
+    const X = v => L + (clamp(v, -2, 2) + 2) / 4 * (W - L - 110);
+    let s = frame(W, H);
+    [-2, -1, 0, 1, 2].forEach(v => s += `<line x1="${X(v)}" x2="${X(v)}" y1="${t}" y2="${H - b}" stroke="var(${v ? "--grid" : "--axis"})"/><text x="${X(v)}" y="${H - b + 16}" text-anchor="middle">${v}</text>`);
+    keys.forEach(([k, name], i) => {
+      const v = ST[`noiseless_pull_${k}`], qn = ST[`noiseless_truth_quantile_${k}`], y = t + i * row + 4;
+      s += `<text class="lbl" x="${L - 8}" y="${y + 12}" text-anchor="end">${name}</text><rect x="${Math.min(X(0), X(v))}" width="${Math.abs(X(v) - X(0))}" y="${y}" height="${row - 8}" fill="var(${Math.abs(v) > 1 ? "--s2" : "--s1"})"/><text x="${W - 100}" y="${y + 12}">truth at q ${fmt(qn, 3)}</text>`;
+    });
+    s += `<text x="${(L + W - 110) / 2}" y="${H - b + 31}" text-anchor="middle">(median − truth) / posterior std</text>`;
+    host.innerHTML = s + "</svg>";
+    note.innerHTML = `Without noise, Strub's priors: how far each marginal's median sits from the truth, in posterior standard deviations. ${keys.filter(([k]) => Math.abs(ST[`noiseless_pull_${k}`]) < 0.25).length} of ${keys.length} are within 0.25. log A and cos ι move together along their degeneracy, towards face-on and lower A. The likelihood still peaks at the truth: the refined maximum-likelihood SNR is ${fmt(ST.noiseless_rho_mle_refined, 5)} against ρ<sub>opt</sub> = ${fmt(ST.noiseless_rho_opt, 5)}, so the offset is prior volume, not a biased peak.`;
+    legend.innerHTML = "";
+  }
+  const rows = [
+    ["Optimal SNR", fmt(ST.snr, 4), fmt(ST.snr_strub, 2), `${fmt(ST.snr_relative_gap * 100, 2)}% gap; ${fmt(ST.snr_unrotated_rp64, 4)} if the sky frame is not rotated`],
+    ["f₀ 68% interval [nHz]", `+${fmt(ST.seed0_f0_plus_nhz)} / −${fmt(ST.seed0_f0_minus_nhz)}`, `+${ST.strub_f0_plus_nhz} / −${ST.strub_f0_minus_nhz}`, `one realisation; σ over ${ST.sweep_count}: median ${fmt(ST.sweep_sigma_f0_nhz_median)} (${fmt(ST.sweep_sigma_f0_nhz_q16)}–${fmt(ST.sweep_sigma_f0_nhz_q84)})`],
+    ["ι, Fisher box", `${fmt(ST.box_iota_median)} +${fmt(ST.box_iota_plus)} / −${fmt(ST.box_iota_minus)}`, `${ST.strub_iota_median} +${ST.strub_iota_plus} / −${ST.strub_iota_minus}`, `full prior: ${fmt(ST.seed0_iota_median)} +${fmt(ST.seed0_iota_plus)} / −${fmt(ST.seed0_iota_minus)}`],
+    ["SNR gain ρ_MLE − ρ_obs", `${fmt(ST.sweep_gain_obs_mean, 3)} ± ${fmt(ST.sweep_gain_obs_sem, 3)}`, fmt(ST.strub_gain), `scatter ${fmt(ST.sweep_gain_obs_std)} per realisation`],
+    ["R̂, all chains", `< ${fmt(Math.max(ST.sweep_rhat_max, ST.noiseless_rhat_max, ST.seed0_rhat_max, ST.box_rhat_max), 4)}`, "–", `${ST.sweep_count} sweep chains and the noiseless, realisation-0 and box chains`],
+  ];
+  document.getElementById("t-strub").innerHTML = `<table><thead><tr><th>quantity</th><th>this pipeline</th><th>Strub et al.</th><th>note</th></tr></thead><tbody>${rows.map(r => `<tr>${r.map(v => `<td>${v}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function tiles() {
+  const tile = (k, v, d) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+  document.getElementById("tiles").innerHTML = [
+    tile("Optimal SNR", fmt(ST.snr, 3), `Strub et al. ${ST.snr_strub}`),
+    tile("f₀ 68% interval", `+${fmt(ST.seed0_f0_plus_nhz)}/−${fmt(ST.seed0_f0_minus_nhz)}`, `nHz; Strub et al. +${ST.strub_f0_plus_nhz}/−${ST.strub_f0_minus_nhz}`),
+    tile("SNR gain", `${fmt(ST.sweep_gain_obs_mean, 3)} ± ${fmt(ST.sweep_gain_obs_sem, 3)}`, `over ${ST.sweep_count} realisations; Strub et al. ${fmt(ST.strub_gain)}`),
+    tile("ι, Fisher box", fmt(ST.box_iota_median), `full prior ${fmt(ST.seed0_iota_median)}; Strub et al. ${ST.strub_iota_median}`),
+  ].join("");
+}
+
+function texts() {
+  document.getElementById("sub").innerHTML = `Strub et al. 2022 (arXiv:2204.04467, Table VII) publish the posterior of one faint verification binary. Here the same source runs through this repo's simulator and likelihood, under their priors, with their published widths and SNR gain as the target. Built ${DATA.built} from <code>data/</code>.`;
+  const items = [
+    `<b>The pipeline reproduces Strub et al.'s verification binary.</b> Its optimal SNR is ${fmt(ST.snr, 4)} against their ${ST.snr_strub}; the f₀ interval is +${fmt(ST.seed0_f0_plus_nhz)}/−${fmt(ST.seed0_f0_minus_nhz)} nHz against +${ST.strub_f0_plus_nhz}/−${ST.strub_f0_minus_nhz}, within the realisation-to-realisation spread; the SNR gain ${fmt(ST.sweep_gain_obs_mean, 2)} ± ${fmt(ST.sweep_gain_obs_sem, 2)} against their single ${fmt(ST.strub_gain)}. Their ι (${ST.strub_iota_median}) is approached only inside a Fisher box (${fmt(ST.box_iota_median)}); under their full prior ι runs towards face-on (${fmt(ST.seed0_iota_median)}).`,
+    `<b>So the simulator, noise and likelihood behind the MCMC reference</b> (<a href="../../mcmc/mcmc.html">mcmc</a>) reproduce a published analysis' SNR and widths; the ι difference comes from the prior volume, since without noise the likelihood still peaks at the truth.`,
+  ];
+  document.getElementById("means").innerHTML = items.map(v => `<li>${v}</li>`).join("");
+}
+
+function render() {
+  tiles(); strubPanel(); texts();
+  writeHash();
+}
+
+let pending = false;
+function schedule() {  // one render per frame however fast the pickers change
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => { pending = false; render(); });
+}
+addEventListener("resize", schedule);
+addEventListener("hashchange", () => { readHash(); Object.values(marks).forEach(m => m()); schedule(); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", schedule);
+new MutationObserver(schedule).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+render();
+</script>
+</body>
+</html>
