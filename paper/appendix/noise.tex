@@ -1,160 +1,342 @@
 % =======================================================================================
-\section{Noise Model, Likelihood and Signal-to-Noise Ratio}
+\section{Noise, Likelihood and Signal-to-Noise Ratio}
 \label{app:noise}
 % =======================================================================================
+
+This appendix gives the noise model, the likelihood it implies, the whitening that turns a
+window into the network's input and the two \acp{snr} we quote, and ends with the checks of the
+simulator against published references. The waveform and the \ac{tdi} response are in
+\cref{app:forward-model}; the amplitude prior, set through the \ac{snr}, is in \cref{app:priors}.
 
 \subsection{Instrument Noise}
 \label{app:noise-psd}
 
-We use the two noise terms of the LISA science requirements as given by
-\citet{babak2021lisa}: the optical metrology system (OMS) and the test-mass acceleration
-noise of one link, as displacement and acceleration spectra (their eqs.~9 and 11),
+The noise is the instrument noise of the \ac{lisa} science requirements \citep{babak2021lisa}: an
+\ac{oms} displacement noise and a test-mass acceleration noise on each link (their eqs.~9 and 11),
 \begin{align}
-  P_{\rm oms}(f) &= (15\,\text{pm})^2\left[1+\Bigl(\frac{2\,\text{mHz}}{f}\Bigr)^4\right]
-  \,\text{m}^2\,\text{Hz}^{-1}, \nonumber\\
-  P_{\rm acc}(f) &= \Bigl(3\,\frac{\text{fm}}{\text{s}^2}\Bigr)^2
-  \left[1+\Bigl(\frac{0.4\,\text{mHz}}{f}\Bigr)^2\right]
-  \left[1+\Bigl(\frac{f}{8\,\text{mHz}}\Bigr)^4\right]
-  \,\text{m}^2\,\text{s}^{-4}\,\text{Hz}^{-1}.
-  \label{eq:single-link}
+  P_{\rm oms}(f) &= \bigl(\qty{\NoiseOms}{\pico\metre}\bigr)^2
+  \left[1+\Bigl(\frac{\qty{2}{\milli\hertz}}{f}\Bigr)^4\right]\unit{\per\hertz}, \nonumber\\
+  P_{\rm acc}(f) &= \bigl(\qty{\NoiseAcc}{\femto\metre\per\second\squared}\bigr)^2
+  \left[1+\Bigl(\frac{\qty{0.4}{\milli\hertz}}{f}\Bigr)^2\right]
+  \left[1+\Bigl(\frac{f}{\qty{8}{\milli\hertz}}\Bigr)^4\right]\unit{\per\hertz}.
+  \label{eq:noise-single-link}
 \end{align}
-A link measures a Doppler shift, so in the relative-frequency units of the response
-(\cref{eq:link-response}) a displacement noise enters as $(2\pi f/c)^2$ in power and an
-acceleration noise picks up a further $(2\pi f)^{-4}$ (their eqs.~10 and 13):
+The response is a fractional frequency shift, so the noise is expressed in the same unit: a
+displacement enters with $(2\pi f/c)^2$ in power and an acceleration with a further
+$(2\pi f)^{-4}$ (their eqs.~10 and 13),
 \begin{equation}
   S_{\rm oms}(f) = \Bigl(\frac{2\pi f}{c}\Bigr)^2P_{\rm oms}(f),\qquad
   S_{\rm acc}(f) = \frac{P_{\rm acc}(f)}{(2\pi f)^2\,c^2}.
 \end{equation}
-For equal arms, identical noise levels on all links and uncorrelated noises, the TDI-1.5
-Michelson combination has the PSD $S_X$ of \citet[eq.~19]{babak2021lisa}, and $X$ and $Y$ have
-the cross spectral density $S_{XY}$, which we obtain from their TDI-2.0 expression (eq.~129)
-by removing the generation-2 transfer factor $4\sin^2 2x$:
+For equal arms of light time $L = \qty{\NoiseArmSeconds}{\second}$
+(\qty{\NoiseArmGm}{\giga\metre}), the same noise levels on every link and uncorrelated noises,
+the \acs{tdi}~1.5 Michelson combination $X$ has the \ac{psd} of \citet[eq.~19]{babak2021lisa},
+and $X$ and $Y$ have a cross spectral density $S_{XY}$. \Citet[eq.~129]{babak2021lisa} give
+$S_{XY}$ for \acs{tdi}~2.0; for equal arms every \acs{tdi}-2.0 channel is its \acs{tdi}-1.5
+counterpart filtered by the same factor, of power $4\sin^2 2x$, and dividing by it gives
 \begin{equation}
   S_X = 16\sin^2x\,\bigl[S_{\rm oms} + (3+\cos2x)\,S_{\rm acc}\bigr],\qquad
   S_{XY} = -8\sin^2x\,\cos x\,\bigl[S_{\rm oms} + 4S_{\rm acc}\bigr],\qquad
   x = 2\pi fL .
 \end{equation}
-The channels of \cref{eq:aet} diagonalise the $XYZ$ covariance, with $S_A = S_E = S_X - S_{XY}$
+The channels $A$, $E$, $T$ diagonalise the $XYZ$ noise covariance, with $S_A = S_E = S_X - S_{XY}$
 and $S_T = S_X + 2S_{XY}$ (their eqs.~127--128):
 \begin{align}
   S_A(f) = S_E(f) &= 8\sin^2x\,\bigl[(2+\cos x)\,S_{\rm oms}
-  + 2\,(3 + 2\cos x + \cos2x)\,S_{\rm acc}\bigr], \nonumber\\
+  + 4\,(1 + \cos x + \cos^2 x)\,S_{\rm acc}\bigr], \nonumber\\
   S_T(f) &= 16\sin^2x\,(1-\cos x)\,\bigl[S_{\rm oms} + 2\,(1-\cos x)\,S_{\rm acc}\bigr].
-  \label{eq:psd}
+  \label{eq:noise-psd}
 \end{align}
-$S_A$ is their eq.~130 divided by $4\sin^22x$. These are the PSDs our simulator draws the
-noise from and our likelihood whitens with; we checked them against the expressions above to
-machine precision, with the same $L = 8.34$\,s as the response. \Cref{fig:band}a shows them.
-The units matter more than they seem: writing the noise as a fractional length (dividing by
-the arm length rather than by $c/2\pi f$) leaves the whitening wrong by $x^2$, a tilt across
-the band rather than a constant, which would silently re-weight low-frequency against
-high-frequency sources. We checked the units by forming the sky-averaged sensitivity from
-the Monte-Carlo-averaged response of the $A$ and $E$ channels and comparing it with the
-analytic curve of \citet{robson2019construction}: the ratio is flat (log-log slope $-0.001$)
-at the expected $1/2$ below 4\,mHz, against a slope of $-2$ for the fractional-length form.
+These one-sided \acp{psd}, dimensionless per hertz, are what the simulator draws noise from, what
+the likelihood weights by and what the network's input is whitened with (\cref{fig:noise-psd}a).
+The band ends well below the transfer frequency $1/(2\pi L) = \qty{\NoiseTransfer}{\milli\hertz}$
+($x = \NoiseXTop{}$ at \qty{\NoiseBandHigh}{\milli\hertz}), so no zero of $\sin x$ falls inside
+it and every $S_c$ is strictly positive. $T$ is far quieter than $A$ and $E$ at low frequency,
+$S_T/S_A = \num{\NoiseTOverALow}$ at \qty{\NoiseBandLow}{\milli\hertz} and \num{\NoiseTOverAHigh}
+at \qty{\NoiseBandHigh}{\milli\hertz}, but its signal response is suppressed with it, so it
+carries almost no \ac{snr} in our band (\cref{app:noise-validation}); the likelihood and the
+network input keep all three channels.
+
+The unit matters more than it looks. Writing the noise as a fractional arm length instead,
+dividing by $L$ rather than by $c/2\pi f$, changes every $S_c$ by $4x^2$: a tilt across the band
+rather than a constant, which would re-weight low- against high-frequency sources without any
+visible failure. \Cref{app:noise-validation} checks the unit directly.
+
+The noise is instrumental only: no Galactic confusion foreground (the $S_c$ term of
+\citealt[eq.~1]{robson2019construction}; \citealt{karnesis2021characterization}), no gaps or
+glitches, and the \acs{psd} is stationary, known and the same for every window.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/noise.pdf}
+  \caption{The noise and the amplitude unit built on it. (a) Amplitude spectral densities
+    $\sqrt{S_c}$ of \cref{eq:noise-psd}, with the \acs{oms} and acceleration terms of $S_A$
+    alone: acceleration noise dominates below a few \unit{\milli\hertz}, and $T$ is orders of
+    magnitude quieter there. Shading marks the narrow and full bands. (b) The sky-averaged
+    constant $C$ of \cref{app:noise-snr}, measured with our \acs{snr} for an isotropic and a
+    Galactic sky ($\pm$ one standard error): flat at low frequency, rising at the top of the full
+    band, where $1+0.6(f/f_\star)^2$ only approximates the response.}
+  \label{fig:noise-psd}
+\end{figure}
 
 \subsection{Data Model and Likelihood}
 \label{app:noise-likelihood}
 
-In a window, the data are the sum of the four responses and Gaussian noise,
+The observation lasts $\Tobs = \qty{\NoiseTobsYears}{\year}$ and sources have $f_0$ in
+\qtyrange{\NoiseBandLow}{\NoiseNarrowHigh}{\milli\hertz} (narrow band) or
+\qtyrange{\NoiseBandLow}{\NoiseBandHigh}{\milli\hertz} (full band). A window is $K$ consecutive
+Fourier bins $f_k = (k_0 + k)/\Tobs$, $k = 0,\dots,K-1$, with $K = \NoiseKNarrow{}$ in the
+narrow band and \NoiseKFull{} in the full band (\cref{app:forward-model-windows}). The data are
+the sum of the \NoiseSourcesWord{} source responses and Gaussian noise,
 \begin{equation}
   \tilde d_{k,c} = \sum_{s=1}^{S}\tilde h_c(f_k;\theta_s) + \tilde n_{k,c},\qquad
-  \tilde n_{k,c} \sim \CN\!\left(0,\ \tfrac{1}{2}S_c(f_k)\,\Tobs\right),
-  \label{eq:data}
+  \tilde n_{k,c} \sim \CN\!\bigl(0,\ P_c(f_k)\bigr),\qquad
+  P_c(f) = \tfrac12\,S_c(f)\,\Tobs,
+  \label{eq:noise-data}
 \end{equation}
-independent across bins $k$ and channels $c\in\{A,E,T\}$: the noise is stationary, and the
-three channels are uncorrelated for equal arms. With the noise-weighted inner product
+independent across bins $k$ and channels $c\in\{A,E,T\}$; the real and imaginary parts each
+have variance $P_c/2$. $P_c$ is evaluated at each bin's own frequency, so the noise level
+changes across a window as it does across the band.
+
+\paragraph{Normalisation.}
+$\tilde h_c$ is the continuous Fourier transform $\int h_c(t)\,e^{-2\pi\ii ft}\,\dd t$, as JaxGB
+returns it \citep{jaxgb}. For stationary noise
+$\E[\tilde n(f)\,\tilde n^*(f')] = \tfrac12 S(f)\,\delta(f-f')$, and over a finite observation
+$\delta(0)$ becomes $\Tobs$, which gives the variance $P_c$ above. The sampling interval appears
+nowhere: a discrete transform would carry it in signal and noise alike, and it would cancel from
+every \ac{snr} and likelihood ratio. An \ac{snr} that changes with the sampling interval is
+therefore a unit error, which is how we test it.
+
+With the noise-weighted inner product, the discrete form of $4\,\mathrm{Re}\int a\,b^*/S\,\dd f$
+with $\dd f = 1/\Tobs$ \citep{cutler1994gravitational},
 \begin{equation}
-  \inner{a}{b} = 4\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{S_c(f_k)\,\Tobs},
+  \inner{a}{b} = 4\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{S_c(f_k)\,\Tobs}
+  = 2\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{P_c(f_k)},
   \label{eq:inner}
 \end{equation}
-the discrete form of $4\,\mathrm{Re}\int a\,b^*/S\,\dd f$, the log-likelihood of the window
-is the Whittle likelihood
+the log-likelihood of a window is the Whittle likelihood of \cref{eq:noise-data},
 \begin{equation}
   \log p(d\mid\theta_{1:S}) = -\tfrac12\inner{d-h}{d-h} + \text{const}
-  = -\sum_{k,c}\frac{\bigl|\tilde d_{k,c}-\tilde h_{k,c}(\theta_{1:S})\bigr|^2}{S_c(f_k)\,\Tobs/2}
-  + \text{const}.
+  = -\sum_{k,c}\frac{\bigl|\tilde d_{k,c}-\tilde h_{k,c}(\theta_{1:S})\bigr|^2}{P_c(f_k)}
+  + \text{const},\qquad
+  \tilde h_{k,c}(\theta_{1:S}) = \sum_{s}\tilde h_c(f_k;\theta_s).
   \label{eq:loglik}
 \end{equation}
-Training never evaluates it, because the flow learns from simulated pairs alone, but it
-defines the posterior that the flow must reproduce, and the Fisher reference
-(\cref{app:evaluation-fisher}) and the MCMC baseline (\cref{app:mcmc}) use it directly.
+The data are simulated from exactly this model, so the likelihood is exact for them: the noise
+the data carry is the noise the posterior assumes. It is the likelihood of the window alone and
+knows nothing of sources outside it (\cref{app:priors}).
 
-\subsection{Signal-to-Noise Ratio and the Amplitude Prior}
+Training never evaluates \cref{eq:loglik}: the flow learns from simulated pairs, and its
+posteriors come from the flow alone. The likelihood defines the posterior the flow must
+reproduce, and only the references we compare against use it: the Fisher matrix
+$F_{ij} = \inner{\partial_i h}{\partial_j h}$, its expected negative Hessian
+\citep{vallisneri2008use}, in \cref{app:evaluation}, and the \ac{mcmc} baseline in
+\cref{app:mcmc}.
+
+\paragraph{Whitening.}
+The network sees the window divided by the noise standard deviation of each real and imaginary
+part,
+\begin{equation}
+  y_{k} = \Bigl[\mathrm{Re}\,\frac{\tilde d_{k,c}}{\sqrt{P_c(f_k)/2}},\
+  \mathrm{Im}\,\frac{\tilde d_{k,c}}{\sqrt{P_c(f_k)/2}}\Bigr]_{c=A,E,T} \in \R^{6},\qquad
+  y \in \R^{K\times 6},
+  \label{eq:noise-whiten}
+\end{equation}
+that is, \num{\NoiseInputsNarrow} numbers in the narrow band and \num{\NoiseInputsFull} in the full band.
+With $\hat h(\theta_{1:S})$ the clean signal whitened the same way, \cref{eq:noise-data} becomes
+$y = \hat h + \varepsilon$ with $\varepsilon\sim\Normal(0, I)$, and \cref{eq:loglik} becomes
+$-\tfrac12\lVert y-\hat h\rVert^2$. We whiten for three reasons. The map is fixed and
+invertible, so nothing is lost. The noise has unit variance in every input wherever the window
+sits, although $S_c$ changes by orders of magnitude across the band (\cref{fig:noise-psd}a), so
+one network serves the whole band. And a source's whitened energy is its \ac{snr},
+$\lVert\hat h(\theta_s)\rVert^2 = \snr_s^2$, so the input scale is set by the \acs{snr} prior and
+not by the frequency (\cref{fig:forward-model-window}). How $y$ is cut into tokens is in
+\cref{app:network}.
+
+\subsection{Signal-to-Noise Ratio}
 \label{app:noise-snr}
 
-The optimal matched-filter SNR is $\snr^2 = \inner{h}{h}$: for noiseless data $d = h$, it is
-twice the log-likelihood gain of the true sources over no source,
-$\snr^2 = 2\,[\log p(d\mid\theta_{1:S}) - \log p(d\mid\text{no source})]$. We quote two
-versions: the SNR of one source (its response alone) and the SNR of a window (all four
-sources). A fixed box in amplitude would be a very different prior at the two ends of the
-band: the same $\Amp$ is undetectable at 0.1\,mHz and very loud at 5\,mHz. As in
-\citet{strub2022bayesian}, we instead set the amplitude prior through the SNR. For a
-monochromatic source averaged over sky position, polarisation, inclination and phase,
+The optimal matched-filter \ac{snr} of a signal $h$ is $\snr = \sqrt{\inner{h}{h}}$; for
+noiseless data $d = h$, $\snr^2$ is twice the log-likelihood gain of the true sources over no
+source. We quote two: that of one source's response alone and that of all a window's sources
+together,
 \begin{equation}
-  \snr^2 \simeq C\,\frac{\Amp^2\,\Tobs}{S_n(f)},\qquad
+  \snr_s^2 = \inner{h(\theta_s)}{h(\theta_s)},\qquad
+  \snr_w^2 = \Bigl\langle\textstyle\sum_s h(\theta_s)\,\Big|\,\sum_s h(\theta_s)\Bigr\rangle
+  = \sum_s\snr_s^2 + 2\sum_{s<s'}\inner{h(\theta_s)}{h(\theta_{s'})}.
+  \label{eq:noise-snr}
+\end{equation}
+The cross terms vanish only when the responses do not overlap, so $\snr_w$ is not the
+quadrature sum of the $\snr_s$ when sources share bins. Both sum over the three channels. The
+per-source $\snr_s$ is the scale of the amplitude prior (log-uniform over
+$[\NoiseSnrLow{},\NoiseSnrHigh{}]$, \cref{app:priors}) and orders the sources loudest first; the
+window's $\snr_w$ selects the evaluation injections (\cref{app:evaluation}).
+
+\paragraph{Sky-averaged sensitivity.}
+The chart measures amplitudes in a unit that depends only on the window,
+$u(\fw) = \sqrt{S_n(\fw)/\Tobs}$ (\cref{app:chart}), with $S_n$ the sky-averaged sensitivity of
+\citet[eq.~1]{robson2019construction} without the confusion term,
+\begin{equation}
   S_n(f) = \frac{10}{3\,(cL)^2}\left[P_{\rm oms} + \frac{4P_{\rm acc}}{(2\pi f)^4}\right]
-  \left[1+0.6\Bigl(\frac{f}{f_\star}\Bigr)^2\right],\quad f_\star = \frac{1}{2\pi L},
-  \label{eq:snr-sky}
+  \left[1+0.6\Bigl(\frac{f}{f_\star}\Bigr)^2\right],\qquad f_\star = \frac{1}{2\pi L}.
+  \label{eq:noise-sky}
 \end{equation}
-with $cL = 2.5$\,Gm the arm length. $S_n$ is the sky-averaged sensitivity of
-\citet[eq.~13]{robson2019construction} in its low-frequency form: their acceleration term
-carries $2\bigl(1+\cos^2(f/f_\star)\bigr)$, which tends to the 4 above for $f\ll f_\star$; the
-two differ by at most 0.7\% in $S_n$ (0.3\% in amplitude) between 0.1 and 12\,mHz, because
-the acceleration noise is negligible where they differ. Rather than take the constant $C$
-from a paper whose normalisation conventions differ from ours, we measure it by Monte Carlo
-against our own $\snr$ with this $S_n$: $C = 3.225$, flat to 0.1\% below 1.5\,mHz and
-drifting by 7\% at 12\,mHz, where the $1+0.6(f/f_\star)^2$ approximation runs out. A window at
-centre frequency $\fw$ then has the amplitude range
-\begin{equation}
-  \Amp \in \bigl[\Amp_{\rm lo}(\fw), \Amp_{\rm hi}(\fw)\bigr]
-  = [\snr_{\min}, \snr_{\max}]\,\sqrt{\frac{S_n(\fw)}{C\,\Tobs}},
-  \qquad [\snr_{\min},\snr_{\max}] = [7, 1000],
-  \label{eq:amp-window}
-\end{equation}
-evaluated at the window centre rather than at each source's frequency: the sensitivity is
-flat across a window, and this keeps the amplitude coordinate (\cref{eq:chart}) a function
-of the window alone. \Cref{fig:band}b shows the range across the band and \cref{fig:priors}b
-the per-source SNR it produces.
+Their eq.~13 carries $2\bigl(1+\cos^2(f/f_\star)\bigr)$ in place of the 4; over
+\qtyrange{\NoiseBandLow}{\NoiseBandHigh}{\milli\hertz} the two differ by at most
+\qty{\NoiseRobsonPower}{\percent} in $S_n$ (\qty{\NoiseRobsonAmplitude}{\percent} in amplitude),
+because the acceleration term is negligible where they differ. $S_n$ enters nothing but this
+unit: the likelihood, the \ac{snr} and the prior all use the full response and
+\cref{eq:noise-psd}. For a monochromatic source averaged over sky, polarisation, inclination and
+phase, $\E[\snr^2] = C\,\Amp^2\Tobs/S_n(f)$. Rather than take $C$ from a paper with other
+normalisation conventions, we measure it with our own $\snr$ on \num{\NoiseCSources} sources
+(\cref{fig:noise-psd}b): $C = \num{\NoiseC \pm \NoiseCError}$ for an isotropic sky
+(\num{\NoiseCGalactic} for the Galactic sky prior), constant to \qty{\NoiseCFlat}{\percent} below
+\qty{\NoiseCFlatBelow}{\milli\hertz} and \qty{\NoiseCRise}{\percent} higher at
+\qty{\NoiseCTop}{\milli\hertz}. The unit $u$ is thus the amplitude of a source at a sky-averaged
+\ac{snr} of $\sqrt C\approx\NoiseSqrtC{}$; the chart needs a scale that tracks the noise across
+the band, not an exact \acs{snr}.
 
 \subsection{Validation of the Forward Model}
 \label{app:noise-validation}
 
-Before training, we checked the simulator and the likelihood against an independent analysis
-and against their own statistics.
-\begin{itemize}
-  \item \textbf{SNR against a published source.} For the faint source of
-        \citet[Table VII]{strub2022bayesian} ($f_0 = 1.40457$\,mHz,
-        $\log_{10}\fdot = -17.3$, $\Amp = 4.55\times10^{-23}$, ecliptic longitude and latitude
-        $(1.5, 0.2)$ rotated to the equatorial $(\alpha,\delta)$ of the orbits,
-        $\iota = 1.2$, $\psi = 2$, $\phi_0 = 3$, two years), our SNR is 7.951 against their
-        7.93. Their value is the SNR in their noise realisation, a draw from
-        $\Normal(\snr_{\rm opt}, 1)$, so the agreement (0.26\%) is better than the check can
-        resolve.
-  \item \textbf{Posterior against a published source.} A parallel-tempered ensemble MCMC on
-        our likelihood (\cref{app:mcmc}) reproduces the width and shape of their posterior:
-        the $f_0$--$\fdot$ correlation, the prior-limited $\fdot$, the $\cos\iota$--$\Amp$
-        anticorrelation, and $\sigma_{f_0} = 1.40$\,nHz against their $+1.9/-1.5$\,nHz.
-        Their narrower $\cos\iota$ comes from sampling inside a $\pm3\sigma$ Fisher box
-        around the maximum-likelihood point, which truncates the tail towards face-on; inside
-        the same box we reproduce their width. Over 48 noise realisations, the gain from the
-        optimal SNR to the maximum-likelihood SNR matches theirs (0.32), which tests the
-        curvature of the likelihood.
-  \item \textbf{Noise generator.} Whitened by the same PSD the likelihood uses, 3000
-        pure-noise windows give complex values of unit variance ($E|z|^2 = 1.0000$, variance
-        0.5000 in each of the real and imaginary parts, correlation $-2\times10^{-4}$), an
-        empirical PSD equal to $S_c$ to Monte-Carlo precision with no frequency tilt, and
-        $\inner{n}{n}$ distributed as the expected $\chi^2$ (Kolmogorov--Smirnov $p = 0.83$).
-  \item \textbf{Response and TDI conventions.} JaxGB's waveform and link response
-        (\cref{eq:waveform,eq:pol-ssb,eq:link-response}) are those of the documentation of
-        JaxGB and of LISA GW Response, which share the triad, the polarisation rotation and
-        the link response term by term. JaxGB's TDI combination (\cref{eq:tdi-x}) agrees with
-        the standard equal-arm TDI-1.5 $X$ of \citet[eq.~14]{babak2021lisa}, built from the
-        same link responses, to $2.4\times10^{-4}$ up to 3\,mHz and $7\times10^{-3}$ at 10\,mHz
-        (\cref{app:signal-tdi}).
-  \item \textbf{Noise PSDs.} The $A$, $E$, $T$ PSDs of the simulator equal
-        \cref{eq:psd}, that is eqs.~19 and 127--130 of \citet{babak2021lisa} at TDI 1.5, to
-        machine precision.
-  \item \textbf{Self-consistency.} The two forms of $\snr^2$ above agree to the last digit, and an MCMC on a noiseless injection recovers the truth at the
-        centre of the posterior with $\hat R\approx1.000$ on all eight parameters.
-\end{itemize}
+We checked the simulator and the likelihood against independent expressions, against their own
+statistics and against a published analysis.
+
+\paragraph{Noise.}
+The \acp{psd} of \cref{eq:noise-psd} equal $S_X - S_{XY}$ and $S_X + 2S_{XY}$ built from eqs.~19
+and 129 of \citet{babak2021lisa} to a relative difference of at most \num{\NoisePsdGap} over the
+full band. The generator draws noise with these statistics (\cref{tab:noise-generator}): over
+\num{\NoiseGeneratorWindows} pure-noise windows of \num{\NoiseGeneratorBins} bins, every moment
+matches to within the Monte-Carlo floor, and $\inner{n}{n}$ over $A$ and $E$ follows
+$\chi^2_{\NoiseGeneratorDof{}}$ (Kolmogorov--Smirnov $p = \NoiseGeneratorKs{}$).
+
+\begin{table}[h]
+\caption{The noise generator against its model, for $z = \tilde n_{k,c}/\sqrt{P_c(f_k)}$ over
+\num{\NoiseGeneratorWindows} pure-noise windows. Correlations are the largest over adjacent bins
+and channel pairs; the tilt is the largest log-log slope of the empirical \acs{psd} over $S_c$
+across a window, against the scatter expected from the finite sample.}
+\label{tab:noise-generator}
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+statistic & measured & expected \\
+\midrule
+$\E|z|^2$ & \NoiseGeneratorAbs{} & 1 \\
+$\mathrm{Var}\,\mathrm{Re}\,z$, $\mathrm{Var}\,\mathrm{Im}\,z$ & \NoiseGeneratorVarRe{}, \NoiseGeneratorVarIm{} & 1/2 \\
+$\mathrm{corr}(\mathrm{Re}\,z, \mathrm{Im}\,z)$ & \num{\NoiseGeneratorCorr} & 0 \\
+largest correlation between bins or channels & \num{\NoiseGeneratorCorrMax} & $\le$\num{\NoiseGeneratorCorrFloor} \\
+\acs{psd} tilt across a window & \num{\NoiseGeneratorTilt} & $\le$\num{\NoiseGeneratorTiltFloor} \\
+mean of $\inner{n}{n}$ ($A$, $E$) & \num{\NoiseGeneratorNnMean} & \num{\NoiseGeneratorDof} \\
+variance of $\inner{n}{n}$ ($A$, $E$) & \num{\NoiseGeneratorNnVar} & \num{\NoiseGeneratorNnVarExpected} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Units.}
+The sky-averaged sensitivity of the simulator,
+$S_{\rm sky} = \bigl(\sum_{c\in\{A,E\}} R_c/S_c\bigr)^{-1}$ with $R_c$ the response power of
+unit-amplitude sources averaged over \num{\NoiseSkyDraws} isotropic sky positions, is flat
+against \cref{eq:noise-sky} with Robson's $\cos^2$ factor (\cref{fig:forward-model-checks}b):
+log-log slope $\NoiseSkySlope{}$ over \qtyrange{\NoiseSkyFitLow}{\NoiseSkyFitTop}{\milli\hertz}
+and ratio \numrange{\NoiseSkyRatioLow}{\NoiseSkyRatioHigh} below
+\qty{\NoiseSkyRatioBelow}{\milli\hertz}. The expected ratio is $1/2$, since $A$ and $E$ together
+are two Michelson-equivalent channels and the analytic curve describes one
+\citep[eq.~43]{babak2021lisa}. In fractional length the same ratio falls with slope
+$\NoiseSkySlopeLength{}$.
+
+\paragraph{\acs{tdi} convention.}
+Our \acs{tdi}-1.5 $X$ (\cref{eq:forward-model-tdi-x}) agrees with the standard equal-arm $X$ of
+\citet[eq.~14]{babak2021lisa}, built from the same link responses for \num{\NoiseTdiSources}
+prior sources, to a relative difference of at most \num{\NoiseTdiLow} up to
+\qty{\NoiseTdiLowTop}{\milli\hertz} and \num{\NoiseTdiHigh} (median; at most
+\num{\NoiseTdiHighMax}) over \qtyrange{\NoiseTdiHighLo}{\NoiseTdiHighHi}{\milli\hertz}. The
+difference grows as $f_0^{\NoiseTdiSlope{}}$, the higher-order term of
+\cref{app:forward-model-tdi}, and the signal powers agree to
+\qty{\NoiseTdiPowerMax}{\percent} over the band (\cref{fig:forward-model-checks}a).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/forward-model-checks.pdf}
+  \caption{The simulator against closed forms. (a) Relative difference between our
+    \acs{tdi}-1.5 $X$ and that of \citet[eq.~14]{babak2021lisa} built from the same link
+    responses, in amplitude and in power (median and spread over sources): it grows as $f_0^3$,
+    the order of the difference between the two delay pairings, and stays below a percent over
+    the band. (b) The simulator's sky-averaged sensitivity over the analytic curve of
+    \citet{robson2019construction}. In fractional frequency (ours) it is flat at the expected
+    $1/2$ until the analytic curve's long-wavelength approximation runs out near
+    $f_\star$; in fractional length it would fall as $f^{-2}$.}
+  \label{fig:forward-model-checks}
+\end{figure}
+
+\paragraph{A published source.}
+For the faint verification binary of \citet[Table~VII]{strub2022bayesian}
+($f_0 = \qty{\NoiseStrubFzeroMhz}{\milli\hertz}$, $\log_{10}\fdot = \NoiseStrubLogFdot{}$,
+$\Amp = \num{\NoiseStrubAmp}$, ecliptic sky $(\NoiseStrubLon{}, \NoiseStrubLat{})$ rotated to the
+equatorial frame of the orbits, $\iota = \NoiseStrubTruthIota{}$, $\psi = \NoiseStrubPsi{}$,
+$\phi_0 = \NoiseStrubPhi{}$, $\Tobs = \qty{\NoiseTobsYears}{\year}$) our $\snr$ is
+\NoiseStrubSnr{}, against their \NoiseStrubSnrTheirs{}, \qty{\NoiseStrubSnrGap}{\percent} apart
+(\cref{tab:noise-strub}). It is converged in the window: from $R = \NoiseStrubRLow{}$ to
+\NoiseStrubRHigh{} response points it moves by at most \num{\NoiseStrubWindowSpread}, and
+dropping $T$ moves it by \num{\NoiseStrubNoT}. A sky left in ecliptic coordinates gives
+\NoiseStrubSnrUnrotated{}, the size of a frame error.
+
+The reference \ac{mcmc} of \cref{app:mcmc}, run on \cref{eq:loglik} under Strub et al.'s priors
+(isotropic sky, log-uniform $\fdot$ and $\Amp$), reproduces the features they report
+(\cref{fig:strub-source}): an $f_0$ width comparable to theirs
+($\sigma_{f_0} = \qty{\NoiseStrubSigmaFzero}{\nano\hertz}$), an $f_0$--$\log\fdot$ correlation
+(\num{\NoiseStrubCorrFzeroFdot}), a prior-limited $\fdot$ (posterior width \NoiseStrubFdotPrior{} of
+the prior's) and the $\cos\iota$--$\log\Amp$ anticorrelation (\num{\NoiseStrubCorrCosIotaAmp}). Our
+$\cos\iota$ interval is wider than theirs. Restricting the prior to a box about the maximum
+(\NoiseStrubBoxSigmas{} Fisher standard deviations in sky and inclination,
+\NoiseStrubBoxFzeroSigmas{} in $f_0$, $\psi$ and $\phi_0$ pinned) cuts the face-on tail and
+narrows it most of the way to theirs, which suggests their interval reflects a narrower
+effective prior rather than a different likelihood; the box's $f_0$ interval is set by the box
+itself. Over \NoiseStrubRealisations{} noise realisations the gain from the observed to the
+maximum-likelihood \acs{snr}, a test of the likelihood's curvature, is
+\num{\NoiseStrubGain \pm \NoiseStrubGainError}, with a scatter of \NoiseStrubGainScatter{} between
+realisations, consistent with their single realisation's \NoiseStrubGainTheirs{}.
+
+\begin{table}[h]
+\caption{The verification binary of \citet{strub2022bayesian}: our \acs{snr} and reference
+\acs{mcmc} posterior under their priors and inside a Fisher box, against their values.
+Intervals are \qty{68}{\percent}; the box clips $f_0$ at
+$\pm\qty{\NoiseStrubBoxFzeroHalfWidth}{\nano\hertz}$, so its $f_0$ interval is not a measurement; Strub et al.'s half-width is that of their single realisation.}
+\label{tab:noise-strub}
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+ & ours, their prior & ours, Fisher box & \citet{strub2022bayesian} \\
+\midrule
+\acs{snr} & \multicolumn{2}{c}{\NoiseStrubSnr{}} & \NoiseStrubSnrTheirs{} \\
+$f_0$ interval [\unit{\nano\hertz}] & $^{+\NoiseStrubFzeroPlus{}}_{-\NoiseStrubFzeroMinus{}}$ & $^{+\NoiseStrubBoxFzeroPlus{}}_{-\NoiseStrubBoxFzeroMinus{}}$ & $^{+\NoiseStrubFzeroPlusTheirs{}}_{-\NoiseStrubFzeroMinusTheirs{}}$ \\
+$f_0$ half-width, median over realisations [\unit{\nano\hertz}] & \NoiseStrubSweepHalfWidth{} & -- & \NoiseStrubHalfWidthTheirs{} \\
+$\cos\iota$ half-width & \NoiseStrubFullHalfWidth{} & \NoiseStrubBoxHalfWidth{} & \NoiseStrubFullHalfWidthTheirs{} \\
+\acs{snr} gain $\snr_{\rm ML} - \snr_{\rm obs}$ & \num{\NoiseStrubGain \pm \NoiseStrubGainError} & -- & \NoiseStrubGainTheirs{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Self-consistency.}
+On the noiseless injection of the same source the chain converges ($\hat R = \NoiseStrubRhat{}$)
+and its likelihood peaks at the truth: the refined maximum-likelihood \acs{snr} is
+\NoiseStrubRhoMle{} against the optimal \NoiseStrubRhoOpt{}. Of the \NoiseStrubMarginals{}
+marginals, \NoiseStrubCentred{} centre on the truth, the largest pull (offset from the truth in
+posterior standard deviations) being \NoiseStrubPullMax{}; $\log_{10}\Amp$ and $\cos\iota$ sit at
+\num{\NoiseStrubPullAmp} and \num{\NoiseStrubPullCosIota}, moved along their degeneracy by prior volume,
+not by the likelihood (\cref{fig:strub-source}a).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/strub-source.pdf}
+  \caption{The reference \acs{mcmc} on the verification binary of \citet{strub2022bayesian}.
+    (a) Pulls on noiseless data: every marginal centres on the truth except $\log_{10}\Amp$ and
+    $\cos\iota$, which slide along their degeneracy. (b) The gain from the observed to the
+    maximum-likelihood \acs{snr}, one dot per noise realisation: its mean ($\pm$ standard
+    error) is consistent with Strub et al.'s single realisation. (c) The $f_0$ posterior of one
+    realisation under their prior and inside the Fisher box, with \qty{68}{\percent} intervals
+    and theirs below: under the same prior the widths are comparable. (d) The same for $\cos\iota$: the
+    box cuts the face-on tail beyond its edge and moves the interval towards theirs.}
+  \label{fig:strub-source}
+\end{figure}

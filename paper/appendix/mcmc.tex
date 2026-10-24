@@ -1,206 +1,265 @@
 % =======================================================================================
-\section{Comparison with MCMC}
+\section{Reference \acs{mcmc}}
 \label{app:mcmc}
 % =======================================================================================
-% STATUS (2026-10-11): filled; windows q0.30 and q0.80 added (research log F28). lisa_checks/mcmc_xs.py (jexplore, needs .venv313) ran on a laptop
-% GPU, two seeds per window; lisa_checks/compare_mcmc.py makes the per-window summaries, which
-% scripts/import_data.py mcmc copies into data/mcmc. Tables from scripts/tables.py, the figure
-% from scripts/fig_mcmc.py. Research log F27.
 
-\subsection{MCMC for Galactic Binaries}
+The flow's posteriors are judged against Markov chains that sample the likelihood of
+\cref{eq:loglik} directly. The chains are an evaluation reference only: training never sees
+them, and the flow's posteriors never use them. This appendix describes the two samplers, their
+convergence, how they compare with each other and with the Fisher forecast of
+\cref{app:evaluation-fisher}, and what they cost. The flow against these chains is in
+\cref{app:results}.
 
-The standard analysis of LISA's galactic binaries is a global fit
+\subsection{\acs{mcmc} for Galactic Binaries}
+\label{app:mcmc-context}
+
+The standard analysis of \ac{lisa}'s \acp{gb} is a global fit
 \citep{cornish2007tests,littenberg2020global,littenberg2023prototype,strub2024global,katz2024efficient,deng2025modular}:
-a Markov chain samples all resolvable sources at once, together with the noise, moves
-between models with different numbers of sources by reversible jumps
-\citep{green1995reversible}, and uses parallel tempering
-\citep{earl2005parallel,vousden2016dynamic} to cross between the modes of
-\cref{app:priors-symmetries}. The frequency band is split into overlapping segments
-that are updated in turn, which is what makes the problem tractable and is also the unit our
-windows imitate. Each new stretch of data, or each change of the noise model, means sampling
-again. An amortised posterior estimator costs one forward integration per window once
-trained, which is what makes it attractive as a proposal distribution, as a fast first pass, or
-for population studies that need many independent analyses.
-Normalising flows have been proposed as priors and proposals for these samplers
-\citep{korsakova2024neural,sasli2026learned}, and sequential Monte Carlo parallelises their
-trans-dimensional moves \citep{demasi2026massively}. Amortised posteriors for one or two
-binaries have been compared with MCMC by \citet{delmond2026neural}, and slot-based posteriors
-of sinusoidal mixtures with RJMCMC by \citet{houba2025slotflow} (\cref{app:related}).
+one Markov chain samples all resolvable sources and the noise together, moves between source
+counts by reversible jumps \citep{green1995reversible}, and crosses between likelihood modes
+(\cref{app:priors}) by parallel tempering \citep{earl2005parallel,vousden2016dynamic}. The band
+is split into overlapping segments updated in turn, the unit our windows imitate, and every new
+stretch of data or noise model means sampling again. Normalising flows have been proposed as
+priors and proposals for these samplers \citep{korsakova2024neural,sasli2026learned}, and
+sequential Monte Carlo parallelises their trans-dimensional moves \citep{demasi2026massively}.
+Amortised posteriors for one or two binaries have been compared with \ac{mcmc} by
+\citet{delmond2026neural}, and slot-based posteriors of sinusoidal mixtures with \ac{rjmcmc} by
+\citet{houba2025slotflow} (\cref{app:related}). Our references are simpler than a global fit:
+the number of sources and the noise are known, so no move changes the model.
 
-\subsection{Sampler}
+\subsection{Narrowband Sampler}
+\label{app:mcmc-narrow}
 
-Our reference sampler is \texttt{jexplore}, a JAX parallel-tempered ensemble MCMC developed in
-the LISA community, with affine-invariant stretch moves \citep{goodman2010ensemble,foreman2013emcee} and temperature swaps, run on the likelihood of \cref{eq:loglik} and the
-priors of \cref{tab:prior}. For one source (8 dimensions), 32 walkers at four temperatures
-(1, 1.6, 2.56, 4.1) for 20\,000 iterations, the second half kept, take about a minute on a GPU,
-with acceptance rates of 0.24 (stretch) and 0.32 (swap) and $\hat R<1.0002$. On a published
-source, this sampler on our likelihood reproduces the published posterior
-(\cref{app:noise-validation}).
+Each source $s$ of each eval injection (\cref{app:evaluation-injections}) is sampled alone, in
+its eight parameters, with the other sources held at their true values $\theta^\star_{s'}$.
+With the residual $\tilde r = \tilde d - \sum_{s'\neq s}\tilde h(\theta^\star_{s'})$,
+\cref{eq:loglik} becomes, up to a constant,
+\begin{equation}
+  \log p(r\mid\theta_s) = -\sum_{c}\sum_{k\in K(\theta_s)}
+  \frac{\bigl|\tilde r_{k,c}-\tilde h_{k,c}(\theta_s)\bigr|^2-\bigl|\tilde r_{k,c}\bigr|^2}{P_c(f_k)},
+  \label{eq:mcmc-narrow}
+\end{equation}
+where $K(\theta_s)$ are the bins of the source's response (\McmcResponsePoints{} in the narrow
+band) inside the window. Outside $K$ the source contributes nothing, and the $|\tilde r|^2$ term
+makes the sum over $K$ differ from the full-window sum by a constant, so \cref{eq:mcmc-narrow} is
+\cref{eq:loglik} with the other sources fixed, at the cost of one response. Its posterior is the
+conditional $p(\theta_s\mid d,\theta^\star_{-s})$: the marginal of the joint posterior when the
+source overlaps no other, narrower next to a neighbour whose uncertainty it removes
+(\cref{app:mcmc-agreement}).
 
-For the four-source windows below, the sampler runs on all 32 parameters jointly. Each source
-is sampled as $(\ln f_0, \ln\Mc, \ln\Amp, \alpha, \sin\delta, \psi, \cos\iota, \phi_0)$ under the
-training prior (\cref{tab:prior}), with the likelihood in double precision. The three angles are
-sampled on $2\pi$ intervals centred on their true values. That is a full period, so the prior
-is unchanged, and no narrow mode is cut by an edge. The chirp-mass prior has no closed form, so
-we compute its density by quadrature over the primary mass. It matches $2\times10^6$ prior
-draws ($\chi^2/\text{dof}=0.72$ over 60 bins).
+\paragraph{Coordinates and prior.}
+Each source is sampled in $u = (\ln f_0, \ln\Mc, \ln\Amp, \alpha, \delta, \psi, \cos\iota,
+\phi_0)$ under the training prior of \cref{app:priors}. In these coordinates $\ln f_0$ is uniform
+over the window, $\cos\iota$, $\psi$ and $\phi_0$ are uniform, and $(\alpha,\delta)$ has the
+Galactic sky density times $\cos\delta$. The chirp-mass density has no closed form; it is
+computed by quadrature over the primary mass and interpolated, and matches
+\McmcMcCheckDraws{} prior draws with $\chi^2/\text{dof} = \McmcMcCheckChi$ over
+\McmcMcCheckBins{} bins. The amplitude prior is log-uniform in the source's own \ac{snr}
+$\snr_s = \inner{h(\theta_s)}{h(\theta_s)}^{1/2}$ on $[\McmcSnrMin,\McmcSnrMax]$; since
+$\snr_s\propto\Amp$ at fixed other parameters, it is flat in $\ln\Amp$ with the \ac{snr} range
+as a cut, applied in the likelihood. The sampler moves in a box: $\alpha$, $\psi$ and $\phi_0$ on
+full $2\pi$ periods centred on the truth, so no mode near it is cut by an edge, and $\ln\Amp$
+within $\ln(\McmcSnrMax/\McmcSnrMin)$ of its true value. The likelihood is computed in double
+precision.
 
-Each iteration is a temperature swap, followed by either a differential-evolution or a stretch
-move, with equal probability. There are 64 walkers at each of six temperatures from 1 to 10.
-The walkers start from the window's Fisher draws, with chirp masses drawn from the prior. We
-discard 100\,000 iterations and keep 300\,000, thinned by 100, and run each window twice with
-independent seeds.
+\paragraph{Moves, start and length.}
+The sampler is a parallel-tempered ensemble Metropolis--Hastings sampler from the \ac{lisa}
+community; each iteration is a temperature swap followed, with equal probability, by a
+differential-evolution move \citep{terbraak2006markov} or an affine-invariant stretch move
+\citep{goodman2010ensemble,foreman2013emcee}, with temperatures spaced geometrically from the
+cold chain to \McmcTempMax{} \citep{earl2005parallel,vousden2016dynamic}. Tempering lets a chain
+leave the mode it starts in. The walkers start from a Gaussian about the truth with the inverse
+Fisher covariance of \cref{eq:mcmc-narrow}, each box added as a weak Gaussian to keep it finite,
+with chirp masses replaced by prior draws (\cref{app:mcmc-fisher}) and amplitudes rescaled into
+the \ac{snr} range. Starting near the truth suits a reference, not inference: it skips the
+search, and burn-in and tempering remove the start. \Cref{tab:mcmc-settings} lists the run
+lengths. With \McmcSlots{} sources in each of the \McmcWindows{} eval windows (window $j$ is the
+injection at the $j$-th \ac{snr} quantile) and \McmcSeeds{} seeds, the narrow band has
+\McmcSources{} sources and \McmcChains{} chains.
+\textcolor{red}{TODO(new runs): full-band narrowband chains (responses of \McmcResponsePointsFull{} bins).}
 
-\subsection{Flow against MCMC}
-
-\paragraph{Protocol.}
-Four XS eval windows, named by their quantile in window SNR (\cref{app:evaluation}). The first
-two probe the two limitations of \cref{app:xs}; the last two were added to test the flow's
-misses, since each holds a faint or moderate source within 0.21 bins of a loud one:
-\begin{itemize}
-  \item q1.00, the loudest (window SNR 1848, sources at SNR 14, 33, 1245 and 1366), where the
-        $f_0$ floor and the amplitude--inclination width matter;
-  \item q0.60, the crowded window of \cref{fig:corner-median} (SNR 26, 27, 62 and 567), where
-        the flow misses an SNR-27 source;
-  \item q0.30 (SNR 9.1, 37, 111 and 235), with the SNR-37 source 0.16 bins from the SNR-235
-        one;
-  \item q0.80 (SNR 9.3, 9.5, 64 and 819), with an SNR-9.3 source 0.21 bins from the SNR-819
-        one and the SNR-64 source 1.1 bins from it.
-\end{itemize}
-For each window, the MCMC uses the same noise realisation as the flow. We relabel its samples
-as the flow's (\cref{app:evaluation-matching}), and fold $\psi$ and $\phi_0$ of both sample
-sets by the exact symmetries of \cref{eq:psi-phi-symmetry} before comparing. For all eight
-parameters we then compare:
-\begin{itemize}
-  \item the marginal widths ($1.4826\,\MAD$);
-  \item the 1-D Wasserstein distances, in units of the MCMC width;
-  \item the coverage of the MCMC medians by the flow's intervals.
-\end{itemize}
-
-\paragraph{The MCMC is converged, and Fisher holds in $f_0$.}
-\Cref{tab:mcmc-checks} checks the sampler itself.
-\begin{itemize}
-  \item The two seeds agree within 7.5\% in every width and within $0.1\sigma$ in $W_1$. The
-        exceptions are the SNR-14 source ($0.49\sigma$), whose sky posterior is broad and
-        multimodal, and an SNR-9.3 source ($0.22\sigma$).
-  \item In $f_0$ the Fisher forecast matches the MCMC within 3\% for every source at SNR
-        $\ge62$, and within 16\% below. So the ``$\times$ ideal'' of \cref{app:xs} compares the
-        flow with the true posterior where the floor is quoted.
-  \item In the other parameters the forecast is within a factor 0.8--1.4 for most sources, but
-        it can be off by up to 2.5 at SNR $\lesssim60$, by 1.9 for the SNR-235 source, and by up to 4.5 for the nearly face-on
-        SNR-819 source of q0.80 ($\cos\iota = 0.995$), where the linearised forecast spreads
-        along the $(\psi,\phi_0)$ and amplitude--inclination degeneracies that the true
-        posterior bounds.
-\end{itemize}
-
-\begin{table}[h]
-\caption{The MCMC itself, per source: its $f_0$ width, the Fisher forecast against it, and the
-two seeds against each other. ``Other'' spans the six parameters besides $f_0$ and the
-prior-dominated $\Mc$. The seed columns are maxima over the eight parameters: of
-$|$width ratio $-1|$, and of $W_1$ in units of the MCMC width.}
-\label{tab:mcmc-checks}
-\centering
-\small
-\input{tables/mcmc_checks}
-\end{table}
-
-\paragraph{Flow against MCMC.}
-\Cref{tab:mcmc} gives the width ratios, and \cref{fig:mcmc} the loudest source.
-\begin{itemize}
-  \item \textbf{Not biased.} The MCMC median lies inside the flow's central 95\% interval for
-        127 of the 128 source--parameter pairs, and inside its 68\% interval for 112. The
-        exception is the sky latitude of an SNR-9.3 source that the flow misses. Where the
-        flow finds a source it is conservative, as the coverage of \cref{app:xs} said.
-  \item \textbf{Loud sources are too wide in every measured parameter.} In $f_0$ the flow is 6.4, 11,
-        38, 44, 66 and 84 times the MCMC width at SNR 111, 235, 567, 819, 1245 and 1366: a
-        width that stays near the floor of \cref{app:xs} while the MCMC's falls as
-        $1/\snr$. The sky, amplitude, inclination and the two phases are 3--8.5 times too wide
-        above SNR 500. The MCMC follows the same curved amplitude--inclination degeneracy as
-        the flow (\cref{fig:mcmc}), but is four times narrower along it. So the flow's excess
-        width there is not a non-Gaussianity that the Fisher forecast misses, and the
-        precision limit is not specific to $f_0$, though $f_0$ is where it costs most.
-  \item \textbf{Moderate sources, once found, are near-optimal when isolated.} At SNR 26--33
-        the flow is within 1.0--2.1 times the MCMC in every parameter but $f_0$ (2.3--4.8),
-        and at SNR 111 within 1.8--2.6. An SNR-64 source 1.1 bins from the SNR-819 one is
-        the exception: 6--11 times too wide in every parameter but $f_0$ (19), with 8\% of its draws
-        relabelled off it.
-  \item \textbf{The flow misses six of the sixteen sources, and the data do not.} The MCMC
-        localises every source, in $f_0$ as the Fisher forecast predicts (\cref{tab:mcmc-checks}),
-        while most of the flow's draws for the missed ones are more than a bin away (56--89\%).
-        Five of the six sit within 2.6 bins of a source 6 to 90 times louder: SNR 14 next to
-        1245, 27 next to 567, 37 next to 235 (at 0.16 bins), 9.1 next to 111 and 9.3 next to
-        819; the sixth, at SNR 9.5, is 4.9 bins from the other SNR-9 source. When one slot does
-        not lock on, the relabelling of \cref{app:evaluation-matching} can hand a brighter
-        neighbour's slot to the missed source in up to a fifth of the draws (SNR 33 and 62),
-        although almost every draw has a slot on the brighter source. The scorecard shows the same pattern over 840 sources: detection falls
-        with the distance to the nearest source, most of all next to a louder one
-        (\cref{tab:xs-separation}).
-  \item $\psi$ and $\phi_0$ of two nearly face-on sources ($\cos\iota=0.98$ at SNR 62 and
-        $0.87$ at SNR 235) are constrained mostly in a combination, in both methods, so
-        the ratio of their separate widths (0.45--0.5) means little. The chirp mass is
-        prior-dominated in both (ratios 0.92--1.06).
-\end{itemize}
-
-\begin{table}[h]
-\caption{Flow against MCMC on the four windows: ratio of marginal widths (flow / MCMC) per
-parameter, after relabelling and folding $\psi$ and $\phi_0$ by their exact symmetries. The
-last column is the share of the flow's draws more than a bin from the MCMC median in $f_0$.
-In every entry but the one marked $^\ast$ (the sky latitude) the MCMC median lies inside the
-flow's central 95\%.}
-\label{tab:mcmc}
-\centering
-\small
-\input{tables/mcmc}
-\end{table}
-
-\paragraph{With position features.}
-\Cref{tab:mcmc-r1} repeats the comparison for the model with position features (R1,
-\cref{app:b}), on the same windows and data, with its eval draws regenerated from the same keys.
-\begin{itemize}
-  \item \textbf{The frequency is fixed.} Loud sources are now 5--12 times the MCMC width in
-        $f_0$ instead of 38--84, and found moderate ones (SNR 26--235) 1.2--3.0 times. The
-        exception is the crowded SNR-64 source (19 times), 1.1 bins from the SNR-819 one.
-  \item \textbf{The other parameters are not.} The amplitude, sky, inclination and phases of the
-        loud sources stay 3--9 times too wide, and 12 times for the crowded SNR-64 one. So the
-        features remove the precision limit of the frequency coordinate, not that of the others.
-  \item \textbf{The same six sources are missed.}
-  \item \textbf{Coverage.} With narrower posteriors, three of the 128 entries fall outside the
-        flow's 95\% interval (125 of 128; 108 inside the 68\%). One is the sky latitude of the
-        missed SNR-9.3 source, as before. The other two are the amplitude and longitude of the
-        SNR-235 source in q0.30, shifted by 3 and 8 MCMC widths ($W_1$). That source sits 0.16
-        bins from the missed SNR-37 one, and the flow assigns part of the neighbour's signal to
-        it. A missed neighbour biases its loud companion, by an amount the wider posteriors
-        without the features covered and the sharper ones no longer do.
-\end{itemize}
-
-\begin{table}[h]
-\caption{Flow against MCMC for the final model and for R1 (position features), on the four
-windows. Width ratios (flow / MCMC) in $f_0$ and, as a median, over $\Amp$, the sky,
-$\cos\iota$, $\psi$ and $\phi_0$; and the share of the flow's draws more than a bin from the MCMC
-median in $f_0$. A star marks a source with a parameter whose MCMC median lies outside the
-flow's central 95\%.}
-\label{tab:mcmc-r1}
-\centering
-\small
-\input{tables/mcmc_r1}
-\end{table}
-
-\begin{figure}[h]
+\begin{table}[t]
   \centering
-  \includegraphics[width=0.92\textwidth]{figures/mcmc.pdf}
-  \caption{The loudest eval source (SNR 1366, window at 0.1009\,mHz): the flow (blue), a joint
-  MCMC of the window's four sources (black), the Fisher forecast (grey, dashed) and the truth
-  (red). Contours enclose 39\% and 86\% of the mass. The MCMC draws are moved at random to
-  the four exact $(\psi,\phi_0)$ copies, to show them on the flow's footing. MCMC and Fisher
-  agree. The flow covers both, but is 4--8 times wider in every parameter but the
-  prior-dominated $\Mc$, and 84 times wider in
-  $f_0$.}
-  \label{fig:mcmc}
+  \caption{Settings of the two reference samplers. Both use the same moves and
+  \McmcTemps{} temperatures, and store every \McmcThin{}th or \McmcJointThin{}th cold iteration
+  after the burn-in.}
+  \label{tab:mcmc-settings}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    & Narrowband & Joint \\
+    \midrule
+    Likelihood & \cref{eq:mcmc-narrow}, one source, others at the truth & \cref{eq:loglik}, all sources \\
+    Dimension & eight & \McmcJointDim \\
+    Windows & \McmcWindows{} (\McmcSources{} sources) & \McmcJointWindows{} (\McmcJointWindowList) \\
+    Walkers per temperature & \McmcWalkers & \McmcJointWalkers \\
+    Burn-in / kept iterations & \McmcBurn{} / \McmcKeep & \McmcJointBurn{} / \McmcJointKeep \\
+    Thinning & \McmcThin & \McmcJointThin \\
+    Seeds / chains & \McmcSeeds{} / \McmcChains & \McmcSeeds{} / \McmcJointChains \\
+    Start & inverse-Fisher Gaussian & Fisher draws \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Joint Sampler}
+\label{app:mcmc-joint}
+
+To see what conditioning on the true neighbours does, \McmcJointWindows{} narrow-band windows,
+with window \acp{snr} \McmcJointSnrLo--\McmcJointSnrHi{} and source \acp{snr}
+\McmcJointSrcSnrLo--\McmcJointSrcSnrHi, are also sampled jointly: one ensemble over all
+\McmcJointDim{} parameters on the full-window likelihood, each source with the coordinates and
+prior above (\cref{tab:mcmc-settings}). The walkers start from the window's Fisher draws, with
+chirp masses from the prior.
+
+Before any width is taken, the joint draws are relabelled to the injected sources by
+\cref{eq:evaluation-matching}, folded onto the injection's branch of the exact $(\psi,\phi_0)$
+symmetries of \cref{eq:psi-phi-symmetry} (the likelihood is checked to be invariant on the
+draws), and $f_0$ is expressed in bins; the narrowband draws are folded the same way. Every width
+in this appendix is the robust $1.4826\,\MAD$ of the folded draws, per parameter.
+
+\Cref{fig:mcmc-posterior} shows what the reference looks like for one window. For the louder
+sources the posterior is close to Gaussian, and the Fisher forecast follows its
+correlations: amplitude against inclination, and $\psi$ against $\phi_0$. The faintest source
+is not. It puts \qty{\McmcPosteriorFarPercent}{\percent} of its draws in a second frequency mode
+\McmcPosteriorFarBins{} bins away, and its declination is shifted by a median
+\qty{\McmcPosteriorDecShift}{\radian} from the truth; the unimodal forecast, centred on the truth, sees
+neither.
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/mcmc-posterior.pdf}
+  \caption{The joint \ac{mcmc} posterior of window \McmcPosteriorWindow{} (window \ac{snr}
+  \McmcPosteriorWindowSnr), one row per source, as offsets from the truth in four pairs of
+  parameters, against the Fisher forecast. The loud sources are near-Gaussian, and the forecast
+  matches their correlations. The faintest source (\ac{snr} \McmcPosteriorFaintSnr) has a second
+  $f_0$ mode \McmcPosteriorFarBins{} bins away holding \qty{\McmcPosteriorFarPercent}{\percent} of the draws, and
+  a declination offset the forecast cannot show. $\ln\Mc$ stays at its prior width in every
+  row.}
+  \label{fig:mcmc-posterior}
 \end{figure}
 
-\paragraph{Cost.}
-Once trained, the flow draws 256 posterior samples of an XS window in about a second on an
-A100, and of a B window in about 42 seconds. The MCMC of one XS window takes 14--18 minutes
-per seed on a laptop GPU: 400\,000 iterations of 384 chains with a double-precision
-likelihood.
-Training costs about 20 A100-hours on XS and 86 on B, paid once.
+\subsection{Convergence}
+\label{app:mcmc-convergence}
+
+For each parameter we compute the split $\hat R$ of \citet{gelman1992inference} over
+\McmcRhatGroups{} groups of cold walkers and the integrated autocorrelation time $\tau$, with
+emcee's estimator on the walker-averaged autocorrelation and Sokal's window
+\citep{foreman2013emcee}; the \ac{ess} is walkers $\times$ kept iterations$/\tau$. Over all
+\McmcChains{} narrowband chains, $\hat R\le\McmcRhatMax$, $\tau\le\McmcTauMax$ iterations and
+$\acs{ess}\ge\McmcEssMin$, and the two seeds' widths agree within \qty{\McmcSeedWidthDev}{\percent}. Over the
+\McmcJointChains{} joint chains, $\hat R\le\McmcJointRhatMax$, $\tau\le\McmcJointTauMax$ and
+$\acs{ess}\ge\McmcJointEssMin$; the seeds agree within \qty{\McmcJointSeedWidthDev}{\percent}, the largest gap
+being the $f_0$ width of the faintest source. Since $\tau$ comes out at about one thinning
+interval, it is an upper bound and the \ac{ess} a lower one.
+
+\paragraph{Burn-in and length.}
+Agreement between walkers can hide a chain that has not settled. The joint sampler is therefore
+rerun unchanged for \McmcConvIterations{} iterations with \McmcConvSeeds{} seeds per window,
+storing every \McmcConvThin{}th iteration from the start. Each marginal's drift is measured
+against the other seeds' second halves, so a seed stuck in its own mode shows up: the shift of
+the median in half \qty{68}{\percent} widths, and the relative change of the \qty{68}{\percent} width. A burn-in $b$ passes
+when $b\ge\McmcConvBurnTaus\,\tau_{\max}$ and every segment of \McmcConvStep{} iterations from
+$b$ on keeps the median within \McmcConvMedianTol{} half-widths and the width within
+\qty{\McmcConvWidthTol}{\percent}. A kept length passes when every parameter has $\acs{ess}\ge\McmcConvEssCrit$
+per seed (enough to resolve a width to a few per cent), $\hat R<\McmcConvRhatCrit$ across seeds,
+and the same drift tolerances.
+
+\Cref{fig:mcmc-convergence} shows the result. At the paper's setting the kept draws pass in every
+window: $\tau_{\max}$ is \McmcConvTauLo--\McmcConvTauHi{} iterations, the \ac{ess} at least
+\McmcConvEssLo{} per seed, $\hat R\le\McmcConvRhatHi$, and the pooled drift at most
+\McmcConvDriftMedianHi{} in the median and \McmcConvDriftWidthHi{} in the width. The strict
+burn-in test holds only in windows \McmcConvPassing, which settle after \McmcConvBurnNine{} and
+\McmcConvBurnSeven{} iterations. Of windows \McmcConvFailing, the first fails narrowly, its worst later segment at
+\McmcConvWindowFiveAfter{} times the tolerance in \McmcConvWindowFiveParam. The second never
+settles: in one seed the right ascension of its loudest source (\ac{snr} \McmcConvWindowTwoSnr)
+hops between sky modes, from \McmcConvWindowTwoFirst{} times the tolerance in the first segment
+to \McmcConvWindowTwoAfter{} times it after the burn-in. Pooled over the kept length and the
+seeds these excursions average out, so that window's reference for that $\alpha$ is a mixture of
+modes with unpinned weights: fair for widths, weak for the shape of that marginal.
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/mcmc-convergence.pdf}
+  \caption{Convergence of the joint chains, one line per window. (a) Worst drift of any marginal
+  in each segment, in units of the tolerance, against the segment's start; windows \McmcConvPassing{} drop
+  below one before the burn-in used, windows \McmcConvFailing{} do not: the first hovers near it, and the second, whose loudest source
+  hops between sky modes, stays above. (b) Smallest \acs{ess} per seed and (c) largest
+  $|\hat R - 1|$ against the kept length; at the length used every window clears both
+  thresholds (horizontal lines).}
+  \label{fig:mcmc-convergence}
+\end{figure}
+
+\subsection{Narrowband against Joint}
+\label{app:mcmc-agreement}
+
+\Cref{fig:mcmc-widths}b compares the narrowband widths with the joint ones over the
+\McmcJointSources{} sources of the joint windows. For a source whose response overlaps no other,
+the two must agree; where responses overlap, the narrowband posterior should be narrower, since
+it holds the neighbours at the truth, and for a Gaussian a conditional variance never exceeds the
+marginal one. The data follow this pattern: of the \McmcNarrowJointCount{} width ratios outside
+$\ln\Mc$, \McmcNarrowJointNear{} lie within \qty{\McmcNarrowJointTol}{\percent} of one, \McmcNarrowJointBelow{}
+below and \McmcNarrowJointAbove{} above; their median is \McmcNarrowJointMedian, and
+\qty{\McmcNarrowJointWithin}{\percent} lie in \McmcNarrowJointBandLo--\McmcNarrowJointBandHi. The
+ratios outside that band sit in \McmcNarrowJointWideSources{} sources. The ratio spans
+\McmcNarrowJointLo--\McmcNarrowJointHi, both extremes from the faintest source (\ac{snr}
+\McmcNarrowJointLoSnr), where neither posterior is Gaussian; the next largest gap is
+\McmcNarrowJointNextParam{} of the \ac{snr}-\McmcNarrowJointNextSnr{} source of window
+\McmcNarrowJointNextWindow{} (\McmcNarrowJointNextRatio), whose joint chain hops between sky modes
+(\cref{app:mcmc-convergence}). In $\ln\Mc$, whose width is the prior's, the ratio is
+\McmcNarrowJointMcLo--\McmcNarrowJointMcHi. The narrowband chains are thus a fair reference for
+the flow's target, the marginal of the joint posterior, except where neighbours overlap strongly.
+
+\subsection{Fisher against \acs{mcmc}}
+\label{app:mcmc-fisher}
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/mcmc.pdf}
+  \caption{Posterior widths over the joint \ac{mcmc} widths, per source of the
+  \McmcJointWindows{} joint windows, against source \ac{snr}. (a) The Fisher forecast. (b) The
+  narrowband \ac{mcmc}. Lines span the seven parameters other than $\ln\Mc$, dots mark their
+  median, diamonds mark $\ln\Mc$; the shaded band is \McmcFisherLo--\McmcFisherHi. Loud sources
+  sit in the band in (a); in (b) ratios fall below one where neighbours overlap.}
+  \label{fig:mcmc-widths}
+\end{figure}
+
+The Fisher forecast is the cheap reference used on every injection; the joint chains test it
+(\cref{fig:mcmc-widths}a). For the \McmcFisherHighCount{} sources with \ac{snr} at least
+\McmcFisherHighSnr, \McmcFisherInside{} of the \McmcFisherTotal{} width ratios outside $\ln\Mc$
+lie in \McmcFisherLo--\McmcFisherHi. The others are \McmcFisherOutliers; the $\alpha$ outlier is
+the mode-hopping source of \cref{app:mcmc-convergence}, of which the Fisher matrix sees one mode.
+Against the narrowband chains of all \McmcWindows{} windows,
+\qty{\McmcFisherNarrowInside}{\percent} of the ratios outside $\ln\Mc$ of the
+\McmcFisherNarrowSources{} sources above \ac{snr} \McmcFisherLowSnr{} lie in the band; the
+forecast misses by more than a factor of two for \McmcFisherNarrowMisses{} sources at \ac{snr}
+\McmcFisherNarrowMissSnrLo--\McmcFisherNarrowMissSnrHi, by up to \McmcFisherNarrowMissMax, along
+the $\ln\Amp$--$\cos\iota$ and $\psi$--$\phi_0$ degeneracies. For the
+\McmcFisherLowCount{} joint-window sources below \ac{snr} \McmcFisherLowSnr{} the ratios spread over
+\McmcFisherLowLo--\McmcFisherLowHi: near the \ac{snr} floor the likelihood is far from Gaussian
+and the \ac{snr} cut truncates it. The \ac{mcmc} width of $\ln\Mc$ is
+\McmcMcWidthLo--\McmcMcWidthHi{} for every source, the robust width of the prior itself
+(\McmcMcPriorWidth): the chirp mass is not measured in these windows. The forecast's Gaussian
+stand-in for that prior gives \McmcFisherMcLo--\McmcFisherMcHi{} of the \ac{mcmc} width. The
+forecast is therefore a fair proxy for the widths of loud sources outside $\ln\Mc$, and no proxy
+for faint sources or the chirp mass.
+
+\subsection{Independent Check}
+\label{app:mcmc-strub}
+
+The sampler and likelihood are also run on a published analysis, the faint verification binary
+of \citet[Table~VII]{strub2022bayesian}, under its authors' priors. They reproduce its posterior
+and its \ac{snr} gain from the observed to the maximum-likelihood value (\cref{app:noise},
+\cref{tab:noise-strub,fig:strub-source}).
+
+\subsection{Cost}
+\label{app:mcmc-cost}
+
+On \McmcCores{} CPU cores, a narrowband chain takes \qtyrange{\McmcCostSourceLo}{\McmcCostSourceHi}{\minute}
+per source and seed, \qtyrange{\McmcCostWindowLo}{\McmcCostWindowHi}{\minute} for the
+\McmcSlots{} sources of a window; a joint chain on \McmcJointCores{} cores takes
+\qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} per window and seed, against a fraction of a
+second for the flow (\cref{app:fm-sampling}). The chains also scale with the band, a full-band response being
+\McmcResponsePointsFull{} bins against \McmcResponsePoints. This cost is why the joint sampler
+covers only \McmcJointWindows{} windows and the full-band chains are still missing.
+
+\textcolor{red}{TODO(new runs): narrow-B and full-B flows against these chains, in \cref{app:results}.}

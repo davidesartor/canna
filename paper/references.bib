@@ -1,8 +1,8 @@
 % Bibliography. arXiv entries were checked against the arXiv API on 2026-10-08 (titles,
 % authors, journal references); software entries against the installed package metadata.
-% Entries added or updated on 2026-10-09 (the related-work survey, docs/lisa-research-log.md
-% section 9) were checked against both INSPIRE-HEP and the arXiv API; published versions
-% carry the journal title.
+% Entries added or updated on 2026-10-09 (the related-work survey,
+% reports/literature/gw-cosmology-inference/) were checked against both INSPIRE-HEP and the
+% arXiv API; published versions carry the journal title.
 
 % ---------------------------------------------------------------------------------------
 % LISA, Galactic binaries, the global fit
@@ -210,7 +210,7 @@
 
 % ---------------------------------------------------------------------------------------
 % Neural and simulation-based inference for LISA (related work; survey of 2026-10-09,
-% docs/lisa-research-log.md section 9)
+% reports/literature/gw-cosmology-inference/)
 % ---------------------------------------------------------------------------------------
 % Galactic binaries: per-source posteriors, several sources, unknown source count
 @misc{delmond2026neural,
@@ -581,6 +581,17 @@
   archiveprefix = {arXiv},
   primaryclass  = {gr-qc},
   note          = {arXiv:2606.20269}
+}
+
+@article{cutler1998angular,
+  title   = {Angular resolution of the {LISA} gravitational wave detector},
+  author  = {Cutler, Curt},
+  journal = {Physical Review D},
+  volume  = {57},
+  pages   = {7089--7102},
+  year    = {1998},
+  doi     = {10.1103/PhysRevD.57.7089},
+  eprint  = {gr-qc/9703068}
 }
 
 @article{cutler1994gravitational,
@@ -999,6 +1010,16 @@
   note          = {arXiv:2502.16982}
 }
 
+@misc{li2025normuon,
+  title         = {{NorMuon}: Making {Muon} more efficient and scalable},
+  author        = {Li, Zichong and Liu, Liming and Liang, Chen and Chen, Weizhu and Zhao, Tuo},
+  year          = {2025},
+  eprint        = {2510.05491},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.LG},
+  note          = {arXiv:2510.05491}
+}
+
 @misc{hu2024minicpm,
   title         = {{MiniCPM}: Unveiling the Potential of Small Language Models with Scalable Training Strategies},
   author        = {Hu, Shengding and Tu, Yuge and Han, Xu and He, Chaoqun and Cui, Ganqu and Long, Xiang and Zheng, Zhi and others},
@@ -1094,4 +1115,291 @@
   doi          = {10.5281/zenodo.6423435},
   howpublished = {\url{https://gitlab.in2p3.fr/lisa-simulation/gw-response}},
   note         = {Python package, version 3.0.2}
+}
+
+% Method references for the current recipe (loss weights, self-conditioning, schedule-free,
+% RoPE, attention sinks); from memory, not yet checked against the arXiv API
+@inproceedings{kendall2018multi,
+  title     = {Multi-Task Learning Using Uncertainty to Weigh Losses for Scene Geometry and Semantics},
+  author    = {Kendall, Alex and Gal, Yarin and Cipolla, Roberto},
+  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2018}
+}
+
+@inproceedings{karras2024analyzing,
+  title     = {Analyzing and Improving the Training Dynamics of Diffusion Models},
+  author    = {Karras, Tero and Aittala, Miika and Lehtinen, Jaakko and Hellsten, Janne and Aila, Timo and Laine, Samuli},
+  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2024}
+}
+
+@inproceedings{chen2023analog,
+  title     = {Analog Bits: Generating Discrete Data using Diffusion Models with Self-Conditioning},
+  author    = {Chen, Ting and Zhang, Ruixiang and Hinton, Geoffrey},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2023}
+}
+
+@inproceedings{defazio2024road,
+  title     = {The Road Less Scheduled},
+  author    = {Defazio, Aaron and Yang, Xingyu Alice and Mehta, Harsh and Mishchenko, Konstantin and Khaled, Ahmed and Cutkosky, Ashok},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2024}
+}
+
+@article{su2024roformer,
+  title   = {{RoFormer}: Enhanced Transformer with Rotary Position Embedding},
+  author  = {Su, Jianlin and Ahmed, Murtadha and Lu, Yu and Pan, Shengfeng and Bo, Wen and Liu, Yunfeng},
+  journal = {Neurocomputing},
+  volume  = {568},
+  pages   = {127063},
+  year    = {2024}
+}
+
+@inproceedings{xiao2024efficient,
+  title     = {Efficient Streaming Language Models with Attention Sinks},
+  author    = {Xiao, Guangxuan and Tian, Yuandong and Chen, Beidi and Han, Song and Lewis, Mike},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2024}
+}
+
+@inproceedings{darcet2024vision,
+  title     = {Vision Transformers Need Registers},
+  author    = {Darcet, Timoth{\'e}e and Oquab, Maxime and Mairal, Julien and Bojanowski, Piotr},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2024}
+}
+
+@inproceedings{gorishniy2022embeddings,
+  title     = {On Embeddings for Numerical Features in Tabular Deep Learning},
+  author    = {Gorishniy, Yury and Rubachev, Ivan and Babenko, Artem},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2022}
+}
+
+@article{jaranowski1998data,
+  title   = {Data analysis of gravitational-wave signals from spinning neutron stars. {I}. {T}he signal and its detection},
+  author  = {Jaranowski, Piotr and Kr{\'o}lak, Andrzej and Schutz, Bernard F.},
+  journal = {Physical Review D},
+  volume  = {58},
+  pages   = {063001},
+  year    = {1998},
+  doi     = {10.1103/PhysRevD.58.063001},
+  eprint  = {gr-qc/9804014}
+}
+
+@article{whelan2014new,
+  title   = {New coordinates for the amplitude parameter space of continuous gravitational waves},
+  author  = {Whelan, John T. and Prix, Reinhard and Cutler, Curt J. and Willis, Joshua L.},
+  journal = {Classical and Quantum Gravity},
+  volume  = {31},
+  pages   = {065002},
+  year    = {2014},
+  doi     = {10.1088/0264-9381/31/6/065002},
+  eprint  = {1311.0065}
+}
+
+@article{modrak2023simulation,
+  title   = {Simulation-Based Calibration Checking for {B}ayesian Computation: The Choice of Test Quantities Shapes Sensitivity},
+  author  = {Modr{\'a}k, Martin and Moon, Angie H. and Kim, Shinyoung and B{\"u}rkner, Paul and Huurre, Niko and Faltejskov{\'a}, Kate{\v{r}}ina and Gelman, Andrew and Vehtari, Aki},
+  journal = {Bayesian Analysis},
+  volume  = {20},
+  number  = {2},
+  pages   = {461--488},
+  year    = {2025},
+  doi     = {10.1214/23-BA1404}
+}
+
+@article{sailynoja2022graphical,
+  title   = {Graphical test for discrete uniformity and its applications in goodness-of-fit evaluation and multiple sample comparison},
+  author  = {S{\"a}ilynoja, Teemu and B{\"u}rkner, Paul-Christian and Vehtari, Aki},
+  journal = {Statistics and Computing},
+  volume  = {32},
+  number  = {2},
+  pages   = {32},
+  year    = {2022},
+  doi     = {10.1007/s11222-022-10090-6}
+}
+
+@article{thorarinsdottir2016assessing,
+  title   = {Assessing the Calibration of High-Dimensional Ensemble Forecasts Using Rank Histograms},
+  author  = {Thorarinsdottir, Thordis L. and Scheuerer, Michael and Heinz, Christopher},
+  journal = {Journal of Computational and Graphical Statistics},
+  volume  = {25},
+  number  = {1},
+  pages   = {105--122},
+  year    = {2016},
+  doi     = {10.1080/10618600.2014.977447}
+}
+
+@article{gneiting2007strictly,
+  title   = {Strictly Proper Scoring Rules, Prediction, and Estimation},
+  author  = {Gneiting, Tilmann and Raftery, Adrian E.},
+  journal = {Journal of the American Statistical Association},
+  volume  = {102},
+  number  = {477},
+  pages   = {359--378},
+  year    = {2007},
+  doi     = {10.1198/016214506000001437}
+}
+
+@article{gneiting2007probabilistic,
+  title   = {Probabilistic Forecasts, Calibration and Sharpness},
+  author  = {Gneiting, Tilmann and Balabdaoui, Fadoua and Raftery, Adrian E.},
+  journal = {Journal of the Royal Statistical Society Series B: Statistical Methodology},
+  volume  = {69},
+  number  = {2},
+  pages   = {243--268},
+  year    = {2007},
+  doi     = {10.1111/j.1467-9868.2007.00587.x}
+}
+
+@inproceedings{lemos2023sampling,
+  title     = {Sampling-Based Accuracy Testing of Posterior Estimators for General Inference},
+  author    = {Lemos, Pablo and Coogan, Adam and Hezaveh, Yashar and Perreault-Levasseur, Laurence},
+  booktitle = {Proceedings of the 40th International Conference on Machine Learning},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {202},
+  pages     = {19256--19273},
+  year      = {2023},
+  eprint    = {2302.03026}
+}
+
+@inproceedings{kingma2021variational,
+  title     = {Variational Diffusion Models},
+  author    = {Kingma, Diederik P. and Salimans, Tim and Poole, Ben and Ho, Jonathan},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2021},
+  eprint    = {2107.00630}
+}
+
+@inproceedings{stark2024harmonic,
+  title     = {Harmonic Self-Conditioned Flow Matching for Joint Multi-Ligand Docking and Binding Site Design},
+  author    = {St{\"a}rk, Hannes and Jing, Bowen and Barzilay, Regina and Jaakkola, Tommi},
+  booktitle = {Proceedings of the 41st International Conference on Machine Learning},
+  series    = {Proceedings of Machine Learning Research},
+  year      = {2024},
+  eprint    = {2310.05764}
+}
+
+@article{dax2023neural,
+  title   = {Neural Importance Sampling for Rapid and Reliable Gravitational-Wave Inference},
+  author  = {Dax, Maximilian and Green, Stephen R. and Gair, Jonathan and P{\"u}rrer, Michael and Wildberger, Jonas and Macke, Jakob H. and Buonanno, Alessandra and Sch{\"o}lkopf, Bernhard},
+  journal = {Physical Review Letters},
+  volume  = {130},
+  pages   = {171403},
+  year    = {2023},
+  doi     = {10.1103/PhysRevLett.130.171403},
+  eprint  = {2210.05686}
+}
+
+@inproceedings{dax2022group,
+  title     = {Group equivariant neural posterior estimation},
+  author    = {Dax, Maximilian and Green, Stephen R. and Gair, Jonathan and Deistler, Michael and Sch{\"o}lkopf, Bernhard and Macke, Jakob H.},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2022},
+  eprint    = {2111.13139}
+}
+
+@article{gebhard2025flow,
+  title   = {Flow Matching for Atmospheric Retrieval of Exoplanets: Where Reliability meets Adaptive Noise Levels},
+  author  = {Gebhard, Timothy D. and Wildberger, Jonas and Dax, Maximilian and Kofler, Annalena and Angerhausen, Daniel and Quanz, Sascha P. and Sch{\"o}lkopf, Bernhard},
+  journal = {Astronomy \& Astrophysics},
+  volume  = {693},
+  pages   = {A42},
+  year    = {2025},
+  doi     = {10.1051/0004-6361/202451861},
+  eprint  = {2410.21477}
+}
+
+@misc{arruda2025diffusion,
+  title         = {Diffusion Models in Simulation-Based Inference: A Tutorial Review},
+  author        = {Arruda, Jonas and Bracher, Niels and K{\"o}the, Ullrich and Hasenauer, Jan and Radev, Stefan T.},
+  year          = {2025},
+  eprint        = {2512.20685},
+  archiveprefix = {arXiv},
+  primaryclass  = {stat.ML},
+  note          = {arXiv:2512.20685}
+}
+
+@article{kucharsky2026amortized,
+  title   = {Amortized Bayesian Mixture Models},
+  author  = {Kucharsk{\'y}, {\v{S}}imon and B{\"u}rkner, Paul-Christian},
+  journal = {Statistics and Computing},
+  volume  = {36},
+  pages   = {162},
+  year    = {2026},
+  doi     = {10.1007/s11222-026-10911-y},
+  eprint  = {2501.10229}
+}
+
+@misc{yim2023fast,
+  title         = {Fast protein backbone generation with {SE(3)} flow matching},
+  author        = {Yim, Jason and Campbell, Andrew and Foong, Andrew Y. K. and Gastegger, Michael and Jim{\'e}nez-Luna, Jos{\'e} and Lewis, Sarah and Satorras, Victor Garcia and Veeling, Bastiaan S. and Barzilay, Regina and Jaakkola, Tommi and No{\'e}, Frank},
+  year          = {2023},
+  eprint        = {2310.05297},
+  archiveprefix = {arXiv},
+  primaryclass  = {q-bio.BM},
+  note          = {arXiv:2310.05297}
+}
+
+@misc{vandermeulen2026fast,
+  title         = {Fast Inference on Astronomical Time Series with Trans-Dimensional Flow Matching Posterior Estimation},
+  author        = {van der Meulen, Noemi and Had{\v{z}}i Veljkovi{\'c}, Davide and Huppenkothen, Daniela and Miller, Christopher and Weniger, Christoph},
+  year          = {2026},
+  eprint        = {2607.21134},
+  archiveprefix = {arXiv},
+  primaryclass  = {astro-ph.IM},
+  note          = {arXiv:2607.21134}
+}
+
+@misc{apte2026anytime,
+  title         = {Anytime Training with Schedule-Free Spectral Optimization},
+  author        = {Apte, Anuj and Deshpande, Pranav and Kumar, Niraj and Chakrabarti, Shouvanik and Kim, Junhyung Lyle},
+  year          = {2026},
+  eprint        = {2605.23061},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.LG},
+  note          = {arXiv:2605.23061}
+}
+
+@misc{defazio2026schedulefreeplus,
+  title         = {{ScheduleFree+}: Scaling Learning-Rate-Free \& Schedule-Free Learning to Large Language Models},
+  author        = {Defazio, Aaron},
+  year          = {2026},
+  eprint        = {2605.19095},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.LG},
+  note          = {arXiv:2605.19095}
+}
+
+@inproceedings{miyato2024gta,
+  title         = {{GTA}: A Geometry-Aware Attention Mechanism for Multi-View Transformers},
+  author        = {Miyato, Takeru and Jaeger, Bernhard and Welling, Max and Geiger, Andreas},
+  booktitle     = {International Conference on Learning Representations},
+  year          = {2024},
+  eprint        = {2310.10375},
+  archiveprefix = {arXiv}
+}
+
+@article{terbraak2006markov,
+  title   = {A {M}arkov Chain {M}onte {C}arlo version of the genetic algorithm Differential Evolution: easy {B}ayesian computing for real parameter spaces},
+  author  = {ter Braak, Cajo J. F.},
+  journal = {Statistics and Computing},
+  volume  = {16},
+  number  = {3},
+  pages   = {239--249},
+  year    = {2006},
+  doi     = {10.1007/s11222-006-8769-1}
+}
+
+@article{gelman1992inference,
+  title   = {Inference from Iterative Simulation Using Multiple Sequences},
+  author  = {Gelman, Andrew and Rubin, Donald B.},
+  journal = {Statistical Science},
+  volume  = {7},
+  number  = {4},
+  pages   = {457--472},
+  year    = {1992},
+  doi     = {10.1214/ss/1177011136}
 }

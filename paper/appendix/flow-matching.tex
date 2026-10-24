@@ -1,153 +1,401 @@
 % =======================================================================================
-\section{Conditional Flow Matching from Prior to Posterior}
+\section{Flow Matching: Objective and Sampler}
 \label{app:fm}
 % =======================================================================================
 
-\subsection{Objective}
-\label{app:fm-objective}
+The flow is trained on straight paths from prior draws to the true sources. The network predicts
+the endpoint of the path and is trained on the implied velocity. A clock sends a share of the
+training draws to the very end of the path, and learned weights balance the loss across time and
+coordinates. \Cref{tab:fm-recipe} lists the choices. A Gaussian model of one coordinate
+(\cref{app:fm-sensitivity}) shows why the end of the path matters for narrow posteriors, and what
+the clock and the sampler can and cannot resolve there. The network is described in
+\cref{app:network}, the optimiser in \cref{app:training}.
 
-For a window $w$ with data $d$ and conditioning input $y = y(d, w)$ (\cref{app:conditioning}),
-the target is the posterior $p(X\mid y, w)\propto p(d\mid X)\,\pi_w(X)$ over the set of sources
-$X\in\manifold^S$ in flow coordinates. We learn a time-dependent vector field
-$\vnet(X, t; y, w)$ whose flow transports the prior to the posterior: draws
-$X(0)\sim\pi_w$, integrated along
+\begin{table*}[t]
+  \centering
+  \caption{The objective and the sampler at a glance.}
+  \label{tab:fm-recipe}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    component & setting & reason \\
+    \midrule
+    base & the prior, sorted loudest first & undetectable slots need no transport \\
+    path & straight, $X_s = X_0 + s(X_1 - X_0)$ & flat coordinates (\cref{app:chart}) \\
+    output & endpoint $\hat X_1$, velocity loss & bounded output, late times keep their weight \\
+    loss weights & one $\lambda$ per time bin and group & errors span orders of magnitude \\
+    clock & uniform, $\FlowMatchingLateMix{}$ log-uniform to $1-s=10^{\FlowMatchingLateFloor{}}$ & narrow posteriors are resolved late \\
+    self-conditioning & probability $\FlowMatchingSelfCondition{}$ per step & refine the previous estimate \\
+    sampler & \FlowMatchingOdeSteps{} midpoint steps, \FlowMatchingEvaluations{} evaluations & data encoded once per window \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+\subsection{Straight Paths from the Prior}
+\label{app:fm-paths}
+
+A window with centre frequency $\fw$ holds $S$ sources $\theta_{1:S}$, sorted loudest first,
+and its data $d$ enter the network as the input $y = y(d,\fw)$ (\cref{app:network}). Write
+$X = \varphi(\theta_{1:S};\fw)\in\R^{8S}$ for the sources in the flow coordinates of
+\cref{eq:chart}, slot by slot. The target is the posterior $p(X\mid y,\fw)\propto p(d\mid
+X)\,\pi(X\mid\fw)$, with the likelihood of \cref{eq:loglik} and the prior of \cref{app:priors}.
+The flow transports draws $X(0)$ from the prior along
 \begin{equation}
-  \frac{\dd X}{\dd t} = \dot s(t)\,\vnet\bigl(X, t; y, w\bigr),\qquad t\in[0,1],
-  \label{eq:ode}
+  \frac{\dd X}{\dd t} = \dot s(t)\,\vnet\bigl(X, t; y, \fw\bigr),\qquad t\in[0,1],
+  \label{eq:fm-ode}
 \end{equation}
-should end at $X(1)\sim p(\cdot\mid y,w)$. The clock $s(t)$ is the identity in plain flow
-matching; \cref{app:fm-warp} warps it.
+so that $X(1)$ is a posterior draw. The clock $s(t)$ is described in \cref{app:fm-clock}; it
+is the identity in the trained recipe ($p=\FlowMatchingTimePower{}$).
 
-Training uses the conditional flow-matching construction
-\citep{lipman2023flow,liu2023flow,albergo2023building} on a Riemannian manifold
-\citep{chen2024flow}. A training example draws a window $w$, a target set
-$X_1\sim\pi_w$ and the data $d\sim p(d\mid X_1)$ from the simulator, and an independent base
-set $X_0\sim\pi_w$ in the same window. The conditional path is the geodesic between the
-aligned sets of \cref{eq:set-log},
+Training uses conditional flow matching \citep{lipman2023flow,liu2023flow,albergo2023building}.
+One training observation draws $\fw$ and $\theta_{1:S}$ from the prior, simulates the data
+(\cref{app:forward-model,app:noise}) and sets $X_1 = \varphi(\theta_{1:S};\fw)$. It then draws
+\FlowMatchingDraws{} independent base points $X_0 = \varphi(\theta'_{1:S};\fw)$,
+$\theta'_{1:S}\sim\pi(\cdot\mid\fw)$, each sorted loudest first and each with its own time; a
+batch holds \FlowMatchingWindows{} observations, \FlowMatchingBatch{} points in all. The path is
+the straight line, slot by slot,
 \begin{equation}
-  X_s = \Exp_{X_0}\bigl(s\,\Log_{X_0}(X_1)\bigr),\qquad
-  u_s = \frac{\dd X_s}{\dd s},
-  \label{eq:cond-path}
+  X_s = X_0 + s\,(X_1 - X_0),\qquad
+  u = \frac{\dd X_s}{\dd s} = X_1 - X_0 .
+  \label{eq:fm-path}
 \end{equation}
-and the network regresses the conditional velocity,
-\begin{equation}
-  \mathcal L_{\rm flow}(\eta) =
-  \E_{t\sim\Unif(0,1)}\;\E_{w,\,X_0,\,X_1,\,d}\;
-  \frac{1}{11S}\Bigl\lVert \vnet\bigl(X_{s(t)}, t; y, w\bigr) - u_{s(t)}\Bigr\rVert^2 .
-  \label{eq:loss-flow}
-\end{equation}
-Its minimiser is the marginal field $v^\star(X,s;y,w) = \E[u_s\mid X_s = X, y, w]$, which
-generates the marginal path from $p_0 = \pi_w$ (because $X_0$ is independent of the data) to
-$p_1 = p(\cdot\mid y,w)$ \citep{lipman2023flow,chen2024flow}. The base distribution is thus the
-prior itself, not a Gaussian: on most factors of $\manifold$ the prior is uniform
-(\cref{app:geometry-chart}), and starting from it means that a source the data say nothing
-about only needs to stay where it is. Flow-matching posterior estimation with a Gaussian base
-is studied by \citet{dax2023flow}, and has been applied to LISA signals: to massive black-hole
-binaries \citep{liang2024rapid} and to one galactic-binary-like source in gapped data
-\citep{mao2025robust}.
+Regressing a field on $u$ has the marginal field $v^\star(X,s;y,\fw) = \E[u\mid X_s = X,
+y,\fw]$ as its minimiser, which carries $p_0$ to $p_1 = p(\cdot\mid y,\fw)$
+\citep{lipman2023flow}. Because $X_0$ is independent of the data, $p_0$ is the prior itself. All
+eight coordinates are flat (\cref{app:chart}), so the line needs no geodesics.
 
-\subsection{A Warped Clock}
-\label{app:fm-warp}
+The prior is the natural base for two reasons. A source the data say nothing about, such as a
+slot far below the noise, has a posterior close to its prior and needs almost no transport. And
+every base draw is a valid set of sources in the window, so the path never leaves the region
+where the network is trained. \Ac{fmpe} with a Gaussian base is studied by \citet{dax2023flow},
+and has been applied to \ac{lisa} massive black-hole binaries \citep{liang2024rapid} and to a
+single \ac{gb}-like source in gapped data \citep{mao2025robust}.
 
-The fine structure of a narrow posterior is resolved only at the very end of the path
-(\cref{app:sensitivity}), where a uniform clock spends almost none of its samples. We keep
-$t\sim\Unif(0,1)$ and the network's time input $t$, but place the point at
-\begin{equation}
-  s(t) = 1 - (1-t)^p,\qquad p = 3,
-  \label{eq:warp}
-\end{equation}
-along the path, and keep the target $u_s = \dd X_s/\dd s$, which stays of order one as
-$s\to1$. Equivalently, the regression in \cref{eq:loss-flow} is weighted by the density of
-path positions
-\begin{equation}
-  q_p(s) = \frac{1}{p}(1-s)^{1/p-1},\qquad
-  \Pr\bigl(1-s<\epsilon\bigr) = \epsilon^{1/p}.
-  \label{eq:warp-density}
-\end{equation}
-For $p=3$, 21\% of the samples fall in the first half of the path ($1-2^{-1/3}$, against 50\%),
-and 1\% of them within $10^{-6}$ of its end (against $10^{-6}$). The minimiser is unchanged,
-since only the weighting over $s$ moves, and the sampler restores the clock through the factor
-$\dot s(t) = p(1-t)^{p-1}$ in \cref{eq:ode}. Conditioning the network on $t$ rather than $s$
-stretches the end of the path: $1-s = 10^{-6}$ is $1-t = 10^{-2}$, which the sinusoidal time
-embedding resolves (\cref{app:architecture}). This plays the role of the non-uniform noise
-levels used to train diffusion models \citep{karras2022elucidating,kingma2023understanding,esser2024scaling},
-applied here to the end of the path rather than to its middle. Flow-matching posterior
-estimation already up-weights late times with a power-law time prior
-\citep[Sec.~3.3]{dax2023flow}, whose density stays bounded; ours diverges as $s\to1$, and
-\cref{app:sensitivity} shows why the end of the path needs that much weight.
+\subsection{Endpoint Prediction and the Loss}
+\label{app:fm-loss}
 
-\subsection{Auxiliary Heads and the Full Loss}
-\label{app:fm-aux}
-
-The network has two further heads (\cref{app:architecture}): an estimate $\hat X_1$ of the
-endpoint and a reconstruction $\hat y$ of the noiseless conditioning input, with losses
+\paragraph{Endpoint prediction.}
+The network outputs an estimate $\hat X_1$ of the endpoint, and the velocity is the one that
+reaches it in the remaining path,
 \begin{equation}
-  \mathcal L_{x} = \E\,\frac{1}{11S}\bigl\lVert\Log_{X_1}(\hat X_1)\bigr\rVert^2,
+  \vnet = \frac{\hat X_1 - X_s}{1-s},
   \qquad
-  \mathcal L_{y} = \E\,\frac{1}{\lvert y\rvert}\bigl\lVert\hat y - y_{\rm clean}\bigr\rVert^2,
-  \label{eq:aux-x}
+  e = \frac{\hat X_1 - X_1}{\max\bigl(1-s,\,10^{\FlowMatchingLossDecades{}}\bigr)},
+  \label{eq:fm-error}
 \end{equation}
-where $\Log$ is the set-aligned logarithm of \cref{eq:set-log} and $y_{\rm clean}$ is the
-conditioning input computed from the noiseless signal. The training loss is
+where $e = \vnet - u$ is the velocity error the loss is computed on. The output is a position in
+flow coordinates, whose scale is set by the chart and does not change along the path, while the
+velocity grows as $1/(1-s)$ near the end, where a narrow posterior is resolved
+(\cref{app:fm-sensitivity}). The loss stays a velocity loss, so the minimiser is still $v^\star$
+and the end of the path keeps its weight; endpoint prediction converted to a velocity is also used
+on structured data \citep{stark2024harmonic}. The floor $10^{\FlowMatchingLossDecades{}}$ is the
+lower edge of the last bin of the learned weights, below which no weight could absorb the
+division. Only the uniform part of the clock reaches below it, a share of
+\num{\FlowMatchingShareBelowLossFloor} of the draws.
+
+\paragraph{Learned loss weights.}
+The size of $e$ changes by orders of magnitude along the path and between coordinates: a fresh
+network's endpoint error is of order one everywhere, so its $e^2$ grows as $(1-s)^{-2}$, and a
+trained network contracts frequency and chirp mass far more than the phases. Unweighted, the
+largest of these errors would set the gradient. Following \citet{kendall2018multi} and
+\citet{karras2024analyzing}, the objective learns one log-variance $\lambda_{b,g}$ per time bin
+$b$ and coordinate group $g$,
 \begin{equation}
-  \mathcal L = \frac{\mathcal L_{\rm flow}}{V_{\rm flow}}
-  + a(\tau)\left[\frac{\mathcal L_{x}}{V_{x}} + \frac{\mathcal L_{y}}{V_{y}}\right],
+  \mathcal L = \E\;\frac{1}{G}\sum_{g=1}^{G}
+  \Bigl[\bar e_g\,e^{-\lambda_{b(s),g}} + \lambda_{b(s),g}\Bigr],
   \qquad
-  a(\tau) = \tfrac12 + \tfrac12\cos\bigl(\pi\min(\tau/\tau_a, 1)\bigr),
+  \bar e_g = \frac{1}{S\,\lvert g\rvert}\sum_{k=1}^{S}\sum_{i\in g} e_{k,i}^2 ,
   \label{eq:loss}
 \end{equation}
-with $V_\bullet$ the running variance of each target over all training samples so far,
-pooled over coordinates (a Welford accumulator), and $a(\tau)$ a cosine decay over the first
-fraction $f_{\rm aux} = \tau_a/\tau_{\rm total}$ of training ($\tau$ counts epochs of 1000
-steps). The original runs used $f_{\rm aux} = 0.5$; the recipe uses $f_{\rm aux}=0.1$
-(\cref{app:xs}). Once $a=0$ the auxiliary heads get no gradient, their losses drift
-(\cref{app:xs-dynamics}), and sampling never uses them. The logged losses are the raw mean
-squared errors before the variance normalisation.
+with the expectation over the batch's observations and draws. The $G=\FlowMatchingGroups{}$
+groups are $x_f$, $x_{\Mc}$, the sky $(x_l,x_b)$, $z_+$ and $z_-$, each pooled over the slots,
+and $b(s)$ is one of \FlowMatchingLossBins{} equal bins of $\log_{10}(1-s)$ on
+$[\FlowMatchingLossDecades{},0]$, $\FlowMatchingLossBinWidth{}$ of a decade each, with times
+outside clipped to the end bins. For fixed weights the minimiser is unchanged. At the optimum in
+$\lambda$, $e^{\lambda_{b,g}}$ is the bin's mean of $\bar e_g$, so each bin and group contributes
+the logarithm of its mean error and its gradient is its error relative to that mean.
+
+The weights start at the error of a fresh network, $\lambda_{b,g} = -2\ln(1-s_b)$ at the bin
+centre $s_b$, so $e^{-\lambda}$ undoes the $(1-s)^{-2}$ of \cref{eq:fm-error} from the first
+step. Started at zero, the late bins would need tens of units of travel in $\lambda$ to match
+their error, and would dominate the gradient meanwhile. The weights are optimised with the network
+in both bands (\cref{app:training}).
+
+\subsection{The Clock}
+\label{app:fm-clock}
+
+\paragraph{Stratified time.}
+Each point's time is $t\sim\Unif(0,1)$, stratified over the $B=\FlowMatchingBatch{}$ points of a
+batch: with $\pi$ a random permutation, point $i$ gets $t_i = (\pi_i + U_i)/B$,
+$U_i\sim\Unif(0,1)$. Every stratum of $t$ is then covered in every batch, which lowers the
+variance of the batch loss at no cost, as the low-discrepancy sampler of variational diffusion
+models does \citep{kingma2021variational}. The point sits at
+\begin{equation}
+  s(t) = 1 - (1-t)^p
+  \label{eq:fm-warp}
+\end{equation}
+along the path, with the target $u=\dd X_s/\dd s$ and the factor $\dot s$ of \cref{eq:fm-ode}
+applied by the sampler; the trained recipe keeps $p=\FlowMatchingTimePower{}$. The network sees
+$t$ and $\log_{10}(1-t)$, the latter clipped to $[\FlowMatchingTimeDecades{},0]$
+(\cref{app:network}), so it can tell apart times that differ only in how close they are to the
+end.
+
+\paragraph{The late-time mix.}
+With probability $\FlowMatchingLateMix{}$, independently for each point, the time is replaced so
+that $1-s = 10^{\FlowMatchingLateFloor{}\,u}$ for the point's stratified uniform $u$: the
+remaining path is log-uniform on $[10^{\FlowMatchingLateFloor{}},1]$. Each decade of $1-s$ above
+the floor receives $\FlowMatchingPerDecade{}$ of all points, so \qty{\FlowMatchingShareHundredth}{\percent} of
+them have $1-s<10^{-2}$ and \qty{\FlowMatchingShareThousandth}{\percent} have $1-s<10^{-3}$, against \qtylist{1;0.1}{\percent} under the uniform clock. Below the floor only the uniform half reaches, a share of
+\num{\FlowMatchingShareBelowFloor} (\cref{fig:fm-sensitivity}a). Only the weighting over $s$
+changes, so the minimiser does not. Non-uniform time sampling is standard for diffusion models
+\citep{karras2022elucidating,kingma2023understanding,esser2024scaling}, which concentrate it in the
+middle of the path, and \ac{fmpe} up-weights late times with a power law in $t$
+\citep[Sec.~3.3]{dax2023flow}. Here the weight goes to the last decades of the path, which a power
+law with bounded density does not reach.
+
+\paragraph{Why a mixture.}
+A power clock alone also moves points to the end, but takes them from the start of the path, where
+the flow settles the coarse structure of the window: how many slots hold a detectable source and
+roughly where. With $p=3$ only \qty{\FlowMatchingFirstHalfWarp}{\percent} of the points fall in the first half of
+the path ($s<\tfrac12$), against \qty{50}{\percent} for the uniform clock; the mixture keeps
+\qty{\FlowMatchingFirstHalfMix}{\percent}. The price is depth: $p=3$ puts \qty{\FlowMatchingBelowFloorWarp}{\percent} of the
+points below $1-s=10^{\FlowMatchingLateFloor{}}$, where the mixture puts almost none
+(\cref{fig:fm-sensitivity}a).
+
+\subsection{Self-Conditioning}
+\label{app:fm-selfcond}
+
+The network can also take its own earlier estimate of the endpoint as an input
+\citep{chen2023analog,stark2024harmonic}. At each training step one coin, with probability
+$\FlowMatchingSelfCondition{}$, decides for the whole batch whether a first pass without an estimate
+runs and its $\hat X_1$, with gradients stopped, is fed to the trained second pass; otherwise the
+single trained pass sees no estimate. Both passes share one encoding of the data. The sampler always
+feeds the latest estimate (\cref{alg:fm-sample}), which enters through its own embedding
+(\cref{app:network}). The network can then refine a coarse estimate instead of recomputing it from
+the noisy $X_s$, at the cost of one extra evaluation on half the training steps and one per draw at
+sampling.
+
+\subsection{What the Loss Sees of a Narrow Posterior}
+\label{app:fm-sensitivity}
+
+The posteriors of loud sources are orders of magnitude narrower than the prior in $x_f$ and
+$x_{\Mc}$. A Gaussian model of one coordinate shows how much the flow-matching loss rewards getting
+such a width right, and where along the path the reward sits.
+
+\paragraph{Model.}
+Take one coordinate with base $x_0\sim\Normal(0,s_0^2)$, posterior $x_1\sim\Normal(0,\sigma^2)$,
+the straight path $x_s = (1-s)x_0 + s x_1$ and the target $u = x_1 - x_0$. With $\epsilon=1-s$ the
+remaining path, the marginal is $x_s\sim\Normal(0,m^2)$ with $m^2 = \epsilon^2s_0^2 + s^2\sigma^2$,
+and the optimal field is linear,
+\begin{equation}
+  v^\star(x,s) = g(s)\,x,\qquad
+  g(s) = \frac{s\,\sigma^2 - \epsilon\,s_0^2}{m^2},\qquad
+  \Var(u\mid x_s) = \frac{s_0^2\sigma^2}{m^2}.
+\end{equation}
+A model whose field is that of a wider posterior $\Normal(0,\sigma_m^2)$, the field $g_m(s)\,x$ with
+$\sigma\to\sigma_m$ in $g$ and $m$, pays an excess over the irreducible loss $\Var(u\mid x_s)$. By
+the orthogonality of the regression residual, under a clock that puts the remaining path at density
+$q(\epsilon)$,
+\begin{equation}
+  \Delta L(\sigma_m;\sigma) = \int_0^1 m^2\,\bigl[g_m - g\bigr]^2\,q(\epsilon)\,\dd\epsilon .
+  \label{eq:fm-excess}
+\end{equation}
+
+\begin{proposition}
+\label{prop:fm-sensitivity}
+For $\sigma\ll\sigma_m\ll s_0$, the uniform clock ($q=1$) gives
+\begin{equation}
+  \Delta L_{\rm unif} \simeq \frac{\pi}{4}\,s_0\,\sigma_m ,
+  \label{eq:fm-sensitivity-uniform}
+\end{equation}
+and, if also $\epsilon_f\ll\sigma_m/s_0$, the late-time mix (share $\mu$ log-uniform on
+$[\epsilon_f,1]$, the rest uniform) gives
+\begin{equation}
+  \Delta L_{\rm mix} \simeq (1-\mu)\,\frac{\pi}{4}\,s_0\,\sigma_m
+  + \mu\,s_0^2\,\frac{\ln\bigl(\sigma_m/s_0\epsilon_f\bigr) - \tfrac12}{\ln(1/\epsilon_f)} .
+  \label{eq:fm-sensitivity-mix}
+\end{equation}
+To leading order neither depends on the true width $\sigma$.
+\end{proposition}
+
+\begin{proof}
+Set $s_0=1$. Where $\epsilon\gg\sigma$, $m^2\simeq\epsilon^2$ and $g\simeq-1/\epsilon$, so up to a
+relative $O(\epsilon)$
+\begin{equation*}
+  m^2(g_m-g)^2 \simeq \frac{\sigma_m^4}{(\epsilon^2+\sigma_m^2)^2},
+\end{equation*}
+and the region $\epsilon\lesssim\sigma$ contributes a relative $O(\sigma/\sigma_m)$. With
+$\epsilon=\sigma_m z$, the uniform part is $\sigma_m\int_0^\infty(1+z^2)^{-2}\dd z =
+\frac{\pi}{4}\sigma_m$. The log-uniform part has density $1/(\epsilon\ln(1/\epsilon_f))$ on
+$[\epsilon_f,1]$ and gives $\ln(1/\epsilon_f)^{-1}\int_{\epsilon_f/\sigma_m}^{1/\sigma_m}
+z^{-1}(1+z^2)^{-2}\,\dd z$, and $\int_a^\infty z^{-1}(1+z^2)^{-2}\dd z = \ln(1/a) - \frac12 +
+O(a^2)$. The factors of $s_0$ follow from dimensions: $\Delta L$ scales as $s_0^2$ and depends on
+$\sigma_m/s_0$ alone.
+\end{proof}
+
+Quadrature of \cref{eq:fm-excess} confirms both: at $\sigma_m = 10^{-3}s_0$ the uniform clock's
+excess is \FlowMatchingCheckUniform{} of \cref{eq:fm-sensitivity-uniform}, and at
+$\sigma_m=10^{-2}s_0$ the mix's is \FlowMatchingCheckMix{} of \cref{eq:fm-sensitivity-mix}, both for
+a true posterior $10^4$ times narrower than the model (\cref{fig:fm-sensitivity}b).
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/warp.pdf}
+  \caption{The Gaussian model of one coordinate. The bars mark the ideal $f_0$ widths
+  $\sigma/s_0$ of each band over its \ac{snr} range. (a)~Share of the training points within
+  $\epsilon$ of the end of the path. The late-time mix (blue) puts a fixed share in every decade
+  down to $10^{\FlowMatchingLateFloor{}}$ while keeping most of the early path; a $p=3$ power
+  clock goes deeper but empties the start. The dashed line is the floor of \cref{eq:fm-error}.
+  (b)~Excess loss of a model $\sigma_m$ wide when the true posterior is $10^4$ times narrower:
+  quadrature of \cref{eq:fm-excess} (rings) against
+  \cref{eq:fm-sensitivity-uniform,eq:fm-sensitivity-mix} (lines). Under the uniform clock the
+  reward for narrowing vanishes linearly; under the mix it falls only logarithmically.
+  (c)~Width the sampler of \cref{app:fm-sampling} returns, run on the exact endpoint
+  $\E[x_1\mid x_s]$, over the true width. With \FlowMatchingOdeSteps{} steps it collapses well
+  inside the narrow band's range and over all of the full band's; more steps only move the
+  collapse to narrower widths.}
+  \label{fig:fm-sensitivity}
+\end{figure*}
+
+\paragraph{The uniform clock rewards absolute narrowness, weakly.}
+Under the uniform clock the excess is linear in the model's width: halving a width of $10^{-3}s_0$
+is worth a hundredth of halving one of $10^{-1}s_0$. Nothing in the objective grows as a narrow
+posterior approaches its true width, and the reward for the last decades of narrowing is far below
+the scatter of a logged loss.
+
+\paragraph{The mix rewards relative narrowness, down to its floor.}
+The log-uniform part of \cref{eq:fm-sensitivity-mix} pays the same for every e-fold of narrowing,
+$\mu s_0^2/\ln(1/\epsilon_f)$, as long as the model is wider than $s_0\epsilon_f$. At $\sigma_m =
+10^{-3}s_0$ one e-fold of narrowing lowers the loss $\FlowMatchingMixGain{}$ times more under the mix
+than under the uniform clock. The reward follows the model's width, not the true one: a posterior of
+width $\sigma$ is only resolved at $1-s\lesssim\sigma/s_0$, and below the floor $\epsilon_f =
+10^{\FlowMatchingLateFloor{}}$ only the uniform part remains, with its linear reward.
+
+\paragraph{Where the bands sit.}
+The $x_f$ coordinate is uniform on $[-1,1]$ under the prior, so $s_0 = 1/\sqrt3$, and one unit of
+$x_f$ spans \FlowMatchingNarrowBinsPerUnit{} frequency bins in the narrow band and
+\FlowMatchingFullBinsPerUnit{} in the full band (\cref{app:chart}). For a sinusoid of unknown
+amplitude and phase the Fisher bound on the frequency is $\sqrt3/(\pi\snr)$ bins, which over the
+\ac{snr} range $[\FlowMatchingSnrLow{},\FlowMatchingSnrHigh{}]$ gives an ideal $\sigma/s_0$ from
+\num{\FlowMatchingNarrowLoud} to \num{\FlowMatchingNarrowWeak} in the narrow band and from
+\num{\FlowMatchingFullLoud} to \num{\FlowMatchingFullWeak} in the full band (bars in
+\cref{fig:fm-sensitivity}). The mix's floor $10^{\FlowMatchingLateFloor{}}$ thus lies inside the
+narrow band's range and above the whole of the full band's, and the floors of the time input and of
+\cref{eq:fm-error}, $10^{\FlowMatchingLossDecades{}}$, lie inside the full band's range. In the full
+band the mix stops rewarding narrowing before any source reaches its ideal $f_0$ width, and the
+frequency posteriors of its loudest sources are resolved only past the last time the network can
+tell apart.
+
+\paragraph{What the learned weights change.}
+At the optimum in $\lambda$, \cref{eq:loss} divides each bin's error by the mean error of that bin
+and group. The mean is pooled over every observation, slot and \ac{snr} in the batch, and at the end
+of the path it is dominated by the irreducible part $\Var(u\mid x_s)$ of the sources whose
+posteriors are still wide there. The weights therefore keep the late bins from being drowned by the
+early ones, but they do not make the objective relative for each source: one loud source's excess
+is still divided by a pooled mean, not by its own error.
+
+The model is idealised: one coordinate, Gaussian base and posterior, and the simplest model error.
+Its point is the scaling. A flow-matching loss with uniform time is nearly blind to the width of
+posteriors much narrower than the prior, which is the regime of loud \ac{gw} sources. Other amortised
+estimators for \acp{gb} report a related symptom, frequency posteriors wider than \ac{mcmc} at high
+frequency, over wide bands or with many components \citep{delmond2026neural,houba2025slotflow}, and
+attribute it to the conditioning network; the loss is a second candidate.
 
 \subsection{Sampling}
 \label{app:fm-sampling}
 
-To sample a window we draw $N$ base sets from the prior, integrate \cref{eq:ode} with the
-classical fourth-order Runge--Kutta scheme on 32 uniform steps in $t$, and map back with
-$\varphi_w^{-1}$ (\cref{alg:sample}). The four stages are evaluated in the ambient
-coordinates and only the full step is retracted onto the manifold with $\Exp$. Under the
-warped clock, steps uniform in $t$ crowd towards the end of the path: the last of 32 starts at
-$1-s = 32^{-3} = 3\times10^{-5}$. Each draw costs $4\times32 = 128$ network evaluations. Draws
-are independent, so we push them through in chunks of 256 to bound the memory on B. The
-integrator is converged at 32 steps: 64 and 128 steps change neither the widths nor the
-detections (\cref{tab:numerics}).
+\begin{figure}[t]
+  \centering
+  \includegraphics{figures/sampling-cost.pdf}
+  \caption{Wall time to draw posterior samples of one window, against model size: the flow on
+  one A100 (lines full band, rings narrow band; best of three windows), and the \ac{mcmc}
+  reference on two CPU cores (median line and range over chains), for one source with the others
+  fixed and for all sources jointly. The arrow marks the gap at the B size.}
+  \label{fig:fm-cost}
+\end{figure}
 
-\begin{algorithm}[h]
-  \caption{One training step (per example; batched over 256 windows).}
-  \label{alg:train}
+To sample a window, $N$ base sets are drawn from the prior, transported over $K_t =
+\FlowMatchingOdeSteps{}$ uniform steps in $t$ and mapped back with $\varphi^{-1}$
+(\cref{alg:fm-sample}). With $r(t) = (1-t)^p$ the remaining path, a step from $t$ to $t'$ that holds
+the endpoint estimate $\hat X_1$ fixed moves to
+\begin{equation}
+  X \leftarrow X + \Bigl(1 - \frac{r(t')}{r(t)}\Bigr)\bigl(\hat X_1 - X\bigr),
+  \label{eq:fm-x-step}
+\end{equation}
+the exact solution of \cref{eq:fm-ode,eq:fm-error} for a constant $\hat X_1$. Each step evaluates
+$\hat X_1$ at its start, takes a half step to the midpoint, evaluates $\hat X_1$ there and takes the
+full step with that estimate; the last step lands on its estimate. A draw costs
+$2K_t+1=\FlowMatchingEvaluations{}$ network evaluations, the extra one being the first
+self-conditioning estimate at $t=0$. The data stream of the network depends only on $(y,\fw)$, so
+it is encoded once per window and serves every draw and every step (\cref{app:network}).
+
+\paragraph{Cost.}
+On one A100, \FlowMatchingCostDraws{} draws of one window take \qty{\FlowMatchingCostNarrow}{\second} with the
+narrow-band B model and \qty{\FlowMatchingCostFull}{\second} with the full-band one, and
+\FlowMatchingCostDrawsMore{} draws take \qty{\FlowMatchingCostFullMore}{\second}: the cost is linear in the
+draws and almost independent of the band, since the network evaluations dominate and the data are
+encoded once (\cref{fig:fm-cost}). Across sizes, \FlowMatchingCostDraws{} draws take
+\qty{\FlowMatchingCostSmallest}{\second} (XS) to \qty{\FlowMatchingCostLargest}{\second} (full-band XL). The \ac{mcmc}
+reference (\cref{app:mcmc}) takes \qtyrange{\FlowMatchingMcmcSourceLow}{\FlowMatchingMcmcSourceHigh}{\minute}
+per source and chain when it samples one source with the others fixed, and
+\qtyrange{\FlowMatchingMcmcWindowLow}{\FlowMatchingMcmcWindowHigh}{\hour} per window and chain when it samples
+all sources jointly, on two CPU cores. The flow is about $10^{\FlowMatchingMcmcGapDecades{}}$ times
+faster per window. The hardware differs, so the ratio is a wall-time comparison, not one of
+compute; and the flow's cost is paid once more in training (\cref{app:training}).
+
+\paragraph{Resolution at the end of the path.}
+The time grid is uniform in $t$, so the last step starts at $1-s = 1/K_t$ and lands on the estimate
+made at its midpoint, $1-s = \FlowMatchingLastMid{}$. Where a posterior is much narrower than
+$s_0/2K_t$, the exact endpoint $\E[X_1\mid X_s]$ at that midpoint hardly varies across draws: it is
+close to the posterior mean, and the last step puts every draw near it. Run on the exact Gaussian
+endpoint, the sampler returns \FlowMatchingWidthWide{} of the true width at $\sigma = 0.1\,s_0$, but
+\FlowMatchingWidthNarrowWeak{} of it at the narrow band's ideal width for \ac{snr}
+\FlowMatchingSnrLow{} (\FlowMatchingWidthNarrowWeakMore{} with \FlowMatchingOdeStepsMore{} steps,
+\FlowMatchingWidthNarrowWeakMost{} with \FlowMatchingOdeStepsMost{}) and
+\num{\FlowMatchingWidthFullWeak} at the full band's (\FlowMatchingWidthFullWeakMost{} with
+\FlowMatchingOdeStepsMost{} steps; \cref{fig:fm-sensitivity}c). A trained network is not the exact
+endpoint, and errors that widen its posteriors partly offset this, so the effect on trained models
+has to be measured.
+\textcolor{red}{TODO(new runs): narrow-B/full-B $f_0$, $\Mc$ widths and calibration against the
+number of steps.}
+
+\begin{algorithm}[t]
+  \caption{One training step, written for one observation; the batch holds
+  \FlowMatchingWindows{} observations of \FlowMatchingDraws{} points each.}
+  \label{alg:fm-train}
   \begin{algorithmic}
-    \STATE {\bfseries Input:} weights $\eta$, auxiliary weight $a$, running variances $V_\bullet$
-    \STATE draw a window $w$ (\cref{app:signal-windows}) and $\theta_{1:S}\sim\pi_w$
-    \STATE $\tilde d \leftarrow \sum_s\tilde h(\theta_s) + \tilde n$ \hfill (\cref{eq:data})
-    \STATE $y\leftarrow y(\tilde d, w)$,\ \ $y_{\rm clean}\leftarrow y(\tilde h, w)$ \hfill (\cref{app:conditioning})
-    \STATE $X_1\leftarrow\varphi_w(\theta_{1:S})$,\ \ $X_0\leftarrow\varphi_w(\theta'_{1:S})$, $\theta'_{1:S}\sim\pi_w$
-    \STATE $t\sim\Unif(0,1)$,\ \ $s\leftarrow1-(1-t)^p$
-    \STATE $X_s\leftarrow\Exp_{X_0}\bigl(s\Log_{X_0}(X_1)\bigr)$,\ \ $u_s\leftarrow\dd X_s/\dd s$ \hfill (\cref{eq:set-log,eq:cond-path})
-    \STATE $(\hat v, \hat X_1, \hat y)\leftarrow\text{network}_\eta(X_s, t, y, \fw)$
-    \STATE update $V_\bullet$; take a gradient step on \cref{eq:loss} (Muon/Adam, \cref{app:training})
+    \STATE {\bfseries Input:} network weights $\eta$ and loss log-variances $\lambda$
+    \STATE draw $\fw$ and $\theta_{1:S}\sim\pi(\cdot\mid\fw)$, loudest first (\cref{app:priors})
+    \STATE simulate the data $d$ and form $y = y(d,\fw)$ (\cref{app:forward-model,app:noise})
+    \STATE $X_1\leftarrow\varphi(\theta_{1:S};\fw)$;\ \ encode the data stream of $(y,\fw)$ once
+    \FOR{each of the \FlowMatchingDraws{} points}
+      \STATE $X_0\leftarrow\varphi(\theta'_{1:S};\fw)$, $\theta'_{1:S}\sim\pi(\cdot\mid\fw)$;\ \ $u$ from its stratum
+      \STATE with probability $\FlowMatchingLateMix{}$: $1-s\leftarrow10^{\FlowMatchingLateFloor{}u}$;\ \ else $s\leftarrow1-(1-u)^p$ \hfill (\cref{eq:fm-warp})
+      \STATE $X_s\leftarrow X_0 + s(X_1 - X_0)$ \hfill (\cref{eq:fm-path})
+    \ENDFOR
+    \STATE once per step, with probability $\FlowMatchingSelfCondition{}$: $\hat X\leftarrow\operatorname{sg}\bigl[\hat X_{1,\eta}(X_s, t; y, \fw)\bigr]$, else none
+    \STATE $\hat X_1\leftarrow\hat X_{1,\eta}(X_s, t; y, \fw, \hat X)$;\ \ $e\leftarrow(\hat X_1 - X_1)/\max(1-s, 10^{\FlowMatchingLossDecades{}})$ \hfill (\cref{eq:fm-error})
+    \STATE take an optimiser step on \cref{eq:loss} in $(\eta,\lambda)$ (\cref{app:training})
   \end{algorithmic}
 \end{algorithm}
 
-\begin{algorithm}[h]
+\begin{algorithm}[t]
   \caption{Sampling the posterior of one window.}
-  \label{alg:sample}
+  \label{alg:fm-sample}
   \begin{algorithmic}
-    \STATE {\bfseries Input:} data $\tilde d$ of window $w$, number of draws $N$, steps $K_t=32$
-    \STATE $y\leftarrow y(\tilde d, w)$;\ \ $\Delta t\leftarrow1/K_t$
+    \STATE {\bfseries Input:} the input $y$ of a window $\fw$, number of draws $N$, steps $K_t=\FlowMatchingOdeSteps{}$
+    \STATE encode the data stream of $(y,\fw)$ once;\ \ $\Delta t\leftarrow1/K_t$;\ \ $r(t) = (1-t)^p$
     \FOR{$n=1$ {\bfseries to} $N$ (in parallel)}
-      \STATE $X\leftarrow\varphi_w(\theta_{1:S})$, $\theta_{1:S}\sim\pi_w$
+      \STATE $X\leftarrow\varphi(\theta_{1:S};\fw)$, $\theta_{1:S}\sim\pi(\cdot\mid\fw)$
+      \STATE $\hat X\leftarrow\hat X_{1,\eta}(X, 0; y, \fw)$
       \FOR{$j=0$ {\bfseries to} $K_t-1$}
-        \STATE $t\leftarrow j\Delta t$;\ \ $F(X,t) := p(1-t)^{p-1}\,\vnet(X,t;y,\fw)$
-        \STATE $k_1\leftarrow F(X,t)$,\ \ $k_2\leftarrow F(X+\tfrac{\Delta t}{2}k_1, t+\tfrac{\Delta t}{2})$
-        \STATE $k_3\leftarrow F(X+\tfrac{\Delta t}{2}k_2, t+\tfrac{\Delta t}{2})$,\ \ $k_4\leftarrow F(X+\Delta t\,k_3, t+\Delta t)$
-        \STATE $X\leftarrow\Exp_X\bigl(\tfrac{\Delta t}{6}(k_1+2k_2+2k_3+k_4)\bigr)$
+        \STATE $t\leftarrow j\Delta t$;\ \ $t'\leftarrow t+\tfrac{\Delta t}{2}$
+        \STATE $\hat X\leftarrow\hat X_{1,\eta}(X, t; y, \fw, \hat X)$;\ \
+               $X'\leftarrow X + \bigl(1-\tfrac{r(t')}{r(t)}\bigr)(\hat X - X)$
+        \STATE $\hat X\leftarrow\hat X_{1,\eta}(X', t'; y, \fw, \hat X)$;\ \
+               $X\leftarrow X + \bigl(1-\tfrac{r(t+\Delta t)}{r(t)}\bigr)(\hat X - X)$ \hfill (\cref{eq:fm-x-step})
       \ENDFOR
-      \STATE {\bfseries output} $\varphi_w^{-1}(X)$
+      \STATE {\bfseries output} $\varphi^{-1}(X;\fw)$
     \ENDFOR
   \end{algorithmic}
 \end{algorithm}

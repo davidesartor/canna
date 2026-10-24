@@ -1,135 +1,256 @@
 % =======================================================================================
-\section{Priors, Symmetries and the Simulated Dataset}
+\section{Priors and the Training Distribution}
 \label{app:priors}
 % =======================================================================================
 
-\subsection{The Prior over a Window}
-\label{app:priors-table}
+The flow learns $p(X\mid y, \fw)$ for the $S=\PriorsSources{}$ sources of one frequency window,
+so its prior is a prior over windows: where the window sits, and what its sources are given the
+window. This appendix states both, the exact symmetries of the likelihood they leave, and the
+stream of simulated windows the network trains on. \Cref{fig:priors} shows the prior;
+\cref{tab:priors-bands} collects what differs between the two bands.
 
-Given a window $w$ (\cref{app:signal-windows}), the $S=4$ sources are independent and
-identically distributed under the per-source prior of \cref{tab:prior}, so the prior over
-the window is $\pi_w(\theta_{1:S}) = \prod_{s}\pi_w(\theta_s)$. Only the frequency and the
-amplitude depend on the window.
+\subsection{The Window}
+\label{app:priors-window}
 
-\begin{table}[h]
-\caption{Prior of one source in window $w$. $\Unif$ is uniform; $f_{\rm lo,hi}$ and
-$\Amp_{\rm lo,hi}$ are given by \cref{eq:window-interior,eq:amp-window}.}
-\label{tab:prior}
+A window is $4R$ consecutive frequency bins of width $1/\Tobs$, with $\Tobs = \qty{\PriorsTobsYears}{\year}$, starting at an even bin $k_0 = \PriorsStride{}j$; its centre is $\fw = (k_0 +
+2R)/\Tobs$. A source belongs to the window when its whole $R$-bin response fits inside it
+(\cref{app:forward-model}), which confines $f_0$ to the $\PriorsInteriorResponses{}R$-bin interior, cut to
+the band $[f_{\min}, f_{\max}]$:
+\begin{equation}
+  f_0\Tobs \in \bigl[\max(k_0 + R/2,\ f_{\min}\Tobs),\ \min(k_0 + 4R - R/2,\ f_{\max}\Tobs)\bigr].
+  \label{eq:priors-interior}
+\end{equation}
+The window index comes from a log-uniform centre snapped to the even grid,
+\begin{equation}
+  f_c = f_{\min}\,(f_{\max}/f_{\min})^{u},\quad u\sim\Unif(0,1),\qquad
+  j = \operatorname{clip}\!\Bigl(\operatorname{round}\frac{f_c\Tobs - 2R}{\PriorsStride{}},\ j_{\rm lo},\ j_{\rm hi}\Bigr),
+  \label{eq:priors-window}
+\end{equation}
+where $j_{\rm lo}$ and $j_{\rm hi}$ are the first and last windows whose interior reaches the
+band, and within the window each $f_0$ is log-uniform over \cref{eq:priors-interior}. The $f_0$
+marginal is then log-uniform over the band except within a few $R$ of its edges, where the
+clipping piles the outermost centres onto the last windows and the cut shortens their interiors
+(\cref{fig:priors}d). The departure exceeds a percent only within the distance listed in \cref{tab:priors-bands},
+a couple of windows at each end of a band of tens of thousands of them or more.
+
+The two bands share every prior except the band itself. $R$ is not a free choice: it is the
+smallest power of two that holds the response of the heaviest source at the top of the band
+(\cref{app:forward-model}). Log-uniform $f_0$ is a training choice, not a population model. The
+Galactic population falls steeply with frequency \citep{maoz2018separation,korol2022observationally};
+following it would starve the high-frequency end of the band, where sources are rare but loud
+and well measured.
+
+\begin{table}[t]
+\caption{The two bands. Every other prior is shared. Training figures are for one run of the
+B network at the batch of \cref{app:priors-training}; the simulation share is the time spent
+drawing a batch inside one training step on an \PriorsStepChip{}.}
+\label{tab:priors-bands}
 \centering
 \small
-\begin{tabular}{llll}
+\begin{tabular}{lrr}
 \toprule
-parameter & prior & support & note \\
+ & narrow & full \\
 \midrule
-$f_0$ & $\log f_0\sim\Unif(\log f_{\rm lo}, \log f_{\rm hi})$ & window interior, $3R$ bins & window placed log-uniformly in the band \\
-$\Mc$ & DWD population, \cref{eq:mc-prior} & $[0.131, 1.219]\,\Msun$ & \citet{korol2022observationally} \\
-$\fdot$ & derived, \cref{eq:fdot} & & not sampled \\
-$\Amp$ & $\log\Amp\sim\Unif(\log\Amp_{\rm lo}, \log\Amp_{\rm hi})$ & sky-averaged SNR 7 to 1000 & set at the window centre \\
-$\alpha$ & $\Unif(0, 2\pi)$ & & isotropic sky (right ascension) \\
-$\delta$ & $\sin\delta\sim\Unif(-1, 1)$ & & isotropic sky (declination) \\
-$\psi$ & $\Unif(0, 2\pi)$ & & double cover, \cref{app:priors-symmetries} \\
-$\iota$ & $\cos\iota\sim\Unif(-1, 1)$ & & isotropic orientation \\
-$\phi_0$ & $\Unif(0, 2\pi)$ & & \\
+band & \qtyrange{\PriorsBandLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz} & \qtyrange{\PriorsBandLowMhz}{\PriorsFullHighMhz}{\milli\hertz} \\
+response $R$ / window $4R$ [bins] & \num{\PriorsNarrowR} / \num{\PriorsNarrowW} & \num{\PriorsFullR} / \num{\PriorsFullW} \\
+distinct windows & \num{\PriorsNarrowWindows} & \num{\PriorsFullWindows} \\
+$f_0$ marginal off log-uniform by over a percent within & $\PriorsNarrowEdgeExtent{}R$ & $\PriorsFullEdgeExtent{}R$ \\
+amplitude $\Amp$, 1st--99th percentile & \numrange{\PriorsNarrowAmpLow}{\PriorsNarrowAmpHigh} & \numrange{\PriorsFullAmpLow}{\PriorsFullAmpHigh} \\
+chirp drift above one bin & \qty{\PriorsNarrowDriftShare}{\percent} of sources & \qty{\PriorsFullDriftShare}{\percent} of sources \\
+\midrule
+training steps & \num{\PriorsNarrowSteps} & \num{\PriorsFullSteps} \\
+windows / sources seen & $\num{\PriorsNarrowObservations}$ / $\num{\PriorsNarrowSourcesSeen}$ & $\num{\PriorsFullObservations}$ / $\num{\PriorsFullSourcesSeen}$ \\
+simulation share of a step & \qty{\PriorsNarrowDrawShare}{\percent} (\qty{\PriorsNarrowDrawMs}{\milli\second} of \qty{\PriorsNarrowStepMs}{\milli\second}) & \qty{\PriorsFullDrawShare}{\percent} (\qty{\PriorsFullDrawMs}{\milli\second} of \qty{\PriorsFullStepMs}{\milli\second}) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Frequency.}
-The frequency is log-uniform inside the window, and windows are placed log-uniformly over the
-band, so $f_0$ is log-uniform over 0.1\,mHz to $f_{\max}(R)$. This is a training choice, not a
-population model: the Galactic population falls steeply with frequency
-\citep{maoz2018separation,korol2022observationally}, and following it would starve the
-high-frequency end of the band, where sources are rare but loud and well measured.
+\subsection{The Sources of a Window}
+\label{app:priors-sources}
+
+Given the window, the $S$ sources are drawn independently from the per-source prior of
+\cref{tab:priors-source} and sorted by \ac{snr}, loudest first. Only $f_0$ depends on the window
+directly; the amplitude depends on it, and on the other parameters, through the \ac{snr}.
+
+\begin{table}[t]
+\caption{Prior of one source $\theta = (f_0, \Mc, \Amp, \alpha, \delta, \psi, \iota, \phi_0)$ in
+window $w$. $\rho_1(\theta)$ is the \ac{snr} of the same source at unit amplitude, alone in the window.}
+\label{tab:priors-source}
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+parameter & prior & support \\
+\midrule
+$f_0$ & $\ln f_0 \sim \Unif$ over \cref{eq:priors-interior} & $\PriorsInteriorResponses{}R$ bins at most \\
+$\Mc$ & double-white-dwarf population, \cref{eq:priors-mc} & $[\PriorsMcLow{}, \PriorsMcHigh{}]$\,\unit{\solarmass} \\
+$\fdot$ & derived from $(f_0, \Mc)$ & not sampled \\
+$\Amp$ & $\Amp = \snr/\rho_1(\theta)$, $\ln\snr\sim\Unif(\ln\PriorsSnrLow{}, \ln\num{\PriorsSnrHigh})$ & per-source \acs{snr} \PriorsSnrLow{} to \num{\PriorsSnrHigh} \\
+$(\alpha, \delta)$ & bulge, two disks and a floor in galactic $(l, \sin b)$, \cref{eq:priors-sky} & sphere \\
+$\psi$ & $\Unif(0, 2\pi)$ & \\
+$\iota$ & $\cos\iota\sim\Unif(-1, 1)$ & $[0, \pi]$ \\
+$\phi_0$ & $\Unif(0, 2\pi)$ & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/priors.pdf}
+  \caption{The prior over a window; lines are closed forms or quadrature, filled steps and
+  dots are \num{\PriorsPriorWindows} windows drawn from it. (a)~Chirp mass, \cref{eq:priors-mc}:
+  draws against the quadrature density, median dashed. (b)~Sky, \cref{eq:priors-sky}, in the
+  equal-area galactic $(l, \sin b)$: shading is the log density per steradian, contours enclose the marked share of the sources. (c)~\ac{snr} of
+  each slot after sorting (1 is the loudest) against the log-uniform density of one unsorted
+  source (dashed), and the \ac{snr} of the whole window. (d)~The exact $f_0$ marginal of
+  \cref{eq:priors-window,eq:priors-interior} over log-uniform, near the bottom (solid) and top
+  (dashed) edge of each band. (e)~Amplitude against $f_0$: the dashed lines are the \ac{snr} range of
+  a sky- and orientation-averaged source, so the band follows the noise curve and its width is
+  the inclination. (f)~Chirp drift over the observation, in frequency bins: below one bin (dashed)
+  the chirp mass is barely measurable, which holds for every narrow-band source.}
+  \label{fig:priors}
+\end{figure*}
 
 \paragraph{Chirp mass.}
 We use the observationally driven double-white-dwarf population of
 \citet{korol2022observationally}. The heavier component follows the single-white-dwarf mass
 function of \citet{kepler2015new}, a three-component Gaussian mixture truncated to
-$[m_{\min}, m_{\max}] = [0.15, 1.4]\,\Msun$, and the lighter one is uniform below it, the flat
-mass-ratio distribution of close binaries \citep{moe2017mind}:
+$[m_{\min}, m_{\max}] = [\PriorsMassLow{}, \PriorsMassHigh{}]$\,\unit{\solarmass}, and the lighter one is uniform below
+it, the flat mass-ratio distribution of close binaries \citep{moe2017mind}:
 \begin{equation}
   m_1 \sim \sum_{j=1}^{3} w_j\,\Normal_{[m_{\min}, m_{\max}]}(\mu_j, \sigma_j^2),\qquad
   m_2\mid m_1 \sim \Unif(m_{\min}, m_1),\qquad
   \Mc = \frac{(m_1m_2)^{3/5}}{(m_1+m_2)^{1/5}},
-  \label{eq:mc-prior}
+  \label{eq:priors-mc}
 \end{equation}
-with $w = (0.81, 0.14, 0.05)$, $\mu = (0.65, 0.57, 0.81)\,\Msun$ and
-$\sigma = (0.044, 0.097, 0.187)\,\Msun$. Truncation re-weights the components by the mass
-they keep, $w_j\,[\Phi(b_j) - \Phi(a_j)]$, with $a_j, b_j$ the standardised bounds. The
-induced chirp mass (\cref{fig:priors}a) is unimodal with a mode near $0.47\,\Msun$ and median
-$0.43\,\Msun$; its support runs between the equal-mass extremes, $m\,2^{-1/5}$. The branch of
-\citet{korol2022observationally} for extremely low-mass primaries ($m_1<0.25\,\Msun$) is never
-reached by this mixture and is left out. This distribution peaks at higher chirp mass than
-the population-synthesis catalogues used in the LISA Data Challenges \citep{korol2017prospects,baghi2022lisa}, which peak near $0.25\,\Msun$ \citep[Fig.~3]{korol2022observationally}.
+with $w = (\PriorsPrimaryWeights{})$, $\mu = (\PriorsPrimaryMeans{})$\,\unit{\solarmass} and
+$\sigma = (\PriorsPrimaryStds{})$\,\unit{\solarmass}; truncation re-weights each component by the mass it
+keeps. The induced chirp mass (\cref{fig:priors}a) is unimodal, with mode \qty{\PriorsMcMode}{\solarmass}
+and median \qty{\PriorsMcMedian}{\solarmass}, between the equal-mass extremes $m\,2^{-1/5}$. Its density
+has no closed form; the \ac{mcmc} reference (\cref{app:mcmc}) takes it as a table by quadrature over
+$m_1$, which $\num{\PriorsMcCheckDraws}$ draws match with $\chi^2/\text{dof} = \PriorsMcCheckChi{}$ over
+\PriorsMcCheckDof{} degrees of freedom. This population peaks at a higher chirp mass than the
+population-synthesis catalogues of the \ac{lisa} Data Challenges
+\citep{korol2017prospects,baghi2022lisa}, which peak lower
+\citep[Fig.~3]{korol2022observationally}.
+
+\paragraph{Sky.}
+The sky prior is a mixture in galactic longitude $l$ and $\sin b$, the coordinates in which
+$\dd l\,\dd\!\sin b$ is the solid angle:
+\begin{equation}
+  \pi(l, \sin b) = w_{\rm b}\,\Normal(l; 0, \sigma_l^2)\,\Normal(\sin b; 0, \sigma_b^2)
+  + \sum_{d\in\{\rm thick, thin\}} w_d\,\mathcal{L}_{\pi}(l; \lambda_{l,d})\,\mathcal{L}_{1}(\sin b; \lambda_{b,d})
+  + \frac{w_{\rm f}}{4\pi},
+  \label{eq:priors-sky}
+\end{equation}
+where $\mathcal{L}_{c}(x; \lambda) \propto e^{-|x|/\lambda}$ is a Laplace density truncated to
+$|x|\le c$. The bulge (widths $\PriorsBulgeScales{}$) holds \qty{\PriorsBulgeWeight}{\percent} of the weight,
+the thick and thin disks (scales $\PriorsThickScales{}$ and $\PriorsThinScales{}$) hold
+\qty{\PriorsThickWeight}{\percent} and \qty{\PriorsThinWeight}{\percent}, and the isotropic floor the remaining
+\qty{\PriorsFloorWeight}{\percent}. The mixture was fitted to the sky positions of a catalogue of
+$\num{\PriorsCatalogue}$ double white dwarfs. It traces the plane rather than the centre:
+\qty{\PriorsPlaneShare}{\percent} of the sources lie within \ang{\PriorsPlaneDeg} of the galactic plane
+(\cref{fig:priors}b). The forward model reads equatorial $(\alpha,\delta)$, where the galactic
+centre sits at (\ang{\PriorsCentreRa}, \ang{\PriorsCentreDec}).
 
 \paragraph{Amplitude.}
-The amplitude is log-uniform between a sky-averaged SNR of 7 and of 1000
-(\cref{eq:amp-window}), the search range of \citet{strub2022bayesian}. Because sky position,
-inclination and polarisation scatter the actual SNR around its sky average, the per-source
-SNR (\cref{fig:priors}b) is log-uniform with soft edges: on XS, 3.9\% of the sources fall
-below 7 and 1.8\% above 1000, with median 77 (log-uniform between 7 and 1000 gives
-$\sqrt{7000} = 84$). The amplitude is drawn independently of the chirp mass and the distance;
-drawing $\Amp$ from $(\Mc, f_0, D)$ with a Galactic distance model would make the prior
-astrophysically consistent at the price of a much less controlled SNR distribution.
+Each source's \ac{snr}, alone in the window, is log-uniform between \PriorsSnrLow{} and
+\num{\PriorsSnrHigh}, the \ac{snr} range of the search of \citet{strub2022bayesian}, and the amplitude is set
+to produce it. The \ac{snr} is linear in $\Amp$, so one simulation at unit amplitude gives
+$\rho_1(\theta)$ (\cref{eq:inner}) and
+\begin{equation}
+  \Amp = \snr/\rho_1(\theta),\qquad \ln\snr\sim\Unif(\ln\snr_{\rm lo}, \ln\snr_{\rm hi}).
+  \label{eq:priors-amp}
+\end{equation}
+Given the other seven parameters, $\ln\Amp$ is uniform on an interval that moves with them, so
+the joint density is the product of the other seven priors and a constant in $\ln\Amp$, cut to
+the \ac{snr} range; this is how the \ac{mcmc} reference imposes it (\cref{app:mcmc}). The interval follows
+the noise curve in $f_0$ and, within it, mostly the inclination (\cref{fig:priors}e): a face-on
+source needs a smaller amplitude than an edge-on one for the same \ac{snr}. Over the prior, $\Amp$
+spans more than four decades in each band (\cref{tab:priors-bands}). Drawing the amplitude from
+$(\Mc, f_0, D)$ with a Galactic distance model would make the prior astrophysically consistent,
+at the price of a much less controlled \ac{snr} distribution.
 
-\begin{figure}[h]
-  \centering
-  \includegraphics[width=0.5\textwidth]{figures/priors.pdf}
-  \caption{The two non-trivial priors. (a) Chirp mass of the observationally driven
-  double-white-dwarf population (\cref{eq:mc-prior}), 200\,000 draws. (b) Optimal SNR of single
-  sources under the XS prior, 8192 sources, against the log-uniform target between 7 and 1000.}
-  \label{fig:priors}
-\end{figure}
+\paragraph{Sorting.}
+The sources are sorted by \ac{snr}, loudest first, so the prior over the ordered window is
+\begin{equation}
+  \pi_w(\theta_{1:S}) = S!\,\prod_{s=1}^{S}\pi_w(\theta_s)\quad\text{on}\quad
+  \snr_1 > \dots > \snr_S,
+  \label{eq:priors-window-prior}
+\end{equation}
+and zero elsewhere. With $u_s = \ln(\snr_s/\snr_{\rm lo})/\ln(\snr_{\rm hi}/\snr_{\rm lo})$, slot $k$
+holds the $k$-th largest of $S$ uniforms, $u_k\sim\mathrm{Beta}(S-k+1, k)$, with median \acp{snr}
+\PriorsSlotMedians{} (\cref{fig:priors}c). A window is rarely quiet: its total \ac{snr} has median
+\PriorsWindowSnrMedian{} and 1st and 99th percentiles \PriorsWindowSnrLow{} and \num{\PriorsWindowSnrHigh}.
+
+\paragraph{A fixed number of sources.}
+Every window holds exactly $S$ sources, each above \ac{snr} \PriorsSnrLow{}. A real window holds a
+variable number, most of them below any detection threshold, and a global fit infers that number
+with a trans-dimensional sampler \citep{littenberg2020global}. Our flow answers the narrower
+question ``given that the window holds $S$ resolvable sources, where are they?'', and fainter
+sources are not simulated.
 
 \subsection{Exact Symmetries}
 \label{app:priors-symmetries}
 
-The posterior inherits two groups of exact symmetries, and a sampler has to reproduce both.
+The likelihood (\cref{eq:loglik}) has two groups of exact symmetries, which a posterior sampler
+must either reproduce or remove.
 
 \paragraph{Polarisation and phase.}
-The source-frame polarisation tensors of \cref{eq:xi} are rotated from the SSB ones by
-$2\psi$, so they have period $\pi$ in $\psi$, and a quarter turn flips their sign,
-$e^{+,\times}(\psi+\pi/2) = -e^{+,\times}(\psi)$, as it flips $h_{+,\times}^{\rm SSB}$ in
-\cref{eq:pol-ssb}. A half-cycle of the phase $\Psi$ undoes it, so the waveform
-\cref{eq:waveform} is invariant under
+A quarter turn of $\psi$ flips the sign of both polarisation tensors, and a half turn of $\phi_0$
+flips the sign of both polarisations (\cref{app:forward-model}). Together they leave the signal
+unchanged:
 \begin{equation}
   (\psi, \phi_0) \;\mapsto\; \bigl(\psi + k\tfrac{\pi}{2},\ \phi_0 + k\pi\bigr)
-  \pmod{2\pi},\qquad k = 0,1,2,3.
+  \pmod{2\pi},\qquad k = 0,1,2,3,
   \label{eq:psi-phi-symmetry}
 \end{equation}
-Our prior covers $\psi\in[0,2\pi)$, twice the range that would remove the $k=2$ copy, so every
-source's posterior has exactly four copies in $(\psi,\phi_0)$. We keep the double cover
-because the orientation chart of \cref{app:geometry} needs $\psi$ to range over a full
-circle; the flow learns all four modes (\cref{fig:corner-median}).
+so every source's posterior has four exact copies in $(\psi,\phi_0)\in[0,2\pi)^2$. The helicity
+amplitudes of the flow coordinates depend on these angles only through $\phi_0\pm2\psi$
+(\cref{eq:chart}), which all four copies share: the chart folds them into one point.
 
 \paragraph{Exchangeable sources.}
-The sources in a window are i.i.d.\ under the prior and enter the likelihood through their
-sum, so prior, likelihood and posterior are invariant under the $S! = 24$ permutations of the
-source labels: the label-switching problem of mixture models
-\citep{stephens2000dealing,jasra2005markov}, which MCMC analyses of gravitational-wave sources
-meet as well \citep{buscicchio2019label}. Together with \cref{eq:psi-phi-symmetry}, every
-mode of a window's posterior appears in $24\times4^4 = 6144$ exactly equivalent copies. We
-handle the permutations in the geometry and the architecture (\cref{app:geometry-set,app:architecture-equivariance}), so that the flow works on unordered sets, and let the
-network learn the four $(\psi,\phi_0)$ copies.
+The sources are i.i.d.\ before sorting and enter the likelihood through their sum, so the
+likelihood is invariant under the $S! = \PriorsPermutations{}$ relabellings: the label-switching
+problem of mixture models \citep{stephens2000dealing,jasra2005markov}, which \ac{mcmc} analyses of
+gravitational-wave sources meet as well \citep{buscicchio2019label}. With
+\cref{eq:psi-phi-symmetry}, every mode of an unordered posterior has
+$\PriorsPermutations{}\times4^{\PriorsSources{}} = \num{\PriorsCopies}$ equivalent copies. The \ac{snr} ordering of
+\cref{eq:priors-window-prior} removes the permutations (\cref{app:chart-slots}). The data do not
+fix the \ac{snr} exactly, so two sources of similar \ac{snr} can trade slots between posterior draws; the
+evaluation pairs drawn and injected sources before scoring (\cref{app:evaluation}).
 
 \paragraph{Approximate degeneracies.}
-The data constrain some combinations much better than others: amplitude against inclination
-(a face-on source at larger distance looks like an inclined one nearer by), the
-$(\psi,\phi_0)$ combination that survives for nearly face-on sources, where the wave is close
-to circularly polarised, and,
-at low frequency, where the chirp drift is a small fraction of a bin ($\fdot\Tobs^2\ll1$ bin,
-\cref{fig:band}c), the chirp mass, whose posterior is close to the prior unless the source is
-loud (the drift is resolved to about $4.3/\snr$ bins).
+Amplitude trades against inclination, a distant face-on source against a nearer inclined one;
+for a nearly face-on source one helicity dominates and the phase of the other is barely
+constrained (\cref{app:chart-helicity}). At low frequency the chirp drift $\fdot\Tobs^2$ is a
+small fraction of a bin (\cref{fig:priors}f, \cref{tab:priors-bands}) and the chirp mass stays
+close to its prior. A Fisher forecast at the \PriorsNarrowFisherInjections{} evaluation injections
+of each band makes this quantitative: in the narrow band the median Fisher precision of $\Mc$
+exceeds the prior's by at most \PriorsNarrowMcGain{} decades in any slot, against
+\PriorsFullMcGainLow{} to \PriorsFullMcGainHigh{} decades across the slots of the full band, whose
+loud high-frequency sources resolve the drift.
 
-\subsection{The Simulated Dataset}
-\label{app:priors-dataset}
+\subsection{The Training Distribution}
+\label{app:priors-training}
 
-There is no fixed dataset. Each training step draws, inside the compiled step, 256 fresh
-windows, their sources from the prior, the responses, the noise, and the conditioning input,
-so that a run of $10^6$ steps sees $2.6\times10^8$ independent windows and $10^9$ sources. On XS
-a whole step costs 38.9\,ms on an A100; fitting the step time of XS and S against the
-network's FLOPs attributes about 23\,ms to a fixed per-step cost, which includes the
-simulator, and 15\,ms to the network (\cref{app:training-compute}). On a laptop GPU the
-simulator measured below 1\% of the step. Training on fresh simulations removes overfitting as a
-concern and turns every comparison between runs into a comparison of optimisation, not of
-generalisation.
+There is no fixed dataset: every training example is a freshly simulated window,
+\begin{enumerate}
+  \item a centre $\fw$ by \cref{eq:priors-window} and sources $\theta_{1:S}\sim\pi_w$ by
+  \cref{eq:priors-window-prior};
+  \item noisy data in the window's $4R$ bins and its whitened conditioning input $y$
+  (\cref{app:noise});
+  \item the target $X_1 = \varphi(\theta_{1:S};\fw)$ in flow coordinates, $S\times\PriorsCoords{}$
+  (\cref{eq:chart});
+  \item \PriorsDraws{} base points $X_0 = \varphi(\theta'_{1:S};\fw)$, each from an independent
+  $\theta'_{1:S}\sim\pi_w$ in the same window and each with its own flow time $t$, which give the
+  interpolants and target velocities of \cref{eq:loss} (\cref{app:fm}).
+\end{enumerate}
+The base distribution is the prior itself, so a base point is simulated exactly as the target
+is, amplitude scaling included; one example costs \PriorsPasses{} waveform evaluations. A batch of
+\num{\PriorsBatch} $(X_0, t)$ pairs is $\PriorsObservationsPerStep{}$ windows times \PriorsDraws{} base
+points, drawn inside the compiled training step. A run therefore sees $\num{\PriorsFullObservations}$ to $\num{\PriorsNarrowObservations}$ independent
+windows (\cref{tab:priors-bands}): overfitting is not a concern, and every comparison between runs
+is one of optimisation, not of generalisation. The simulation is cheap next to the network, 
+\qty{\PriorsNarrowDrawShare}{\percent} of a step in the narrow band and \qty{\PriorsFullDrawShare}{\percent} in the full band, where each response
+spans \num{\PriorsFullR} bins instead of \num{\PriorsNarrowR} (\cref{app:training}).
