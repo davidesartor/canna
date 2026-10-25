@@ -54,13 +54,14 @@ Jobs write only data; `canna.lisa.plots` draws the figures.
 outputs/runs/<run>/
   config.yaml
   history.npz                                # losses, held-out losses, λ and error per time bin
-  checkpoints/<epoch>/                       # plots: losses.pdf, lambda.pdf
+  checkpoints/<epoch>/
+  run.html                                   # plots: losses, held-out losses, error and λ per time bin
   eval/<epoch>-<weights>-<ode_steps>/
     eval.yaml                                # the settings it was evaluated with
     draws.npz                                # eval
     scorecard.npz, validation.npz, validation_scores.npz   # scorecard
     mcmc_compare.txt, mcmc_compare.npz, mcmc.npz            # mcmc report
-                                             # plots: corner.html, validation.pdf
+                                             # plots: corner.html, validation.html
 ```
 
 To keep runs small, the draws in `draws.npz`, `validation.npz` and `mcmc.npz` are
@@ -86,7 +87,7 @@ and the two circular-mode phases φ₀ ± 2ψ. Why the code is the way it is liv
 | `train.py` | training draw, loss, step, orbax checkpoints, `main` |
 | `sample.py` | the posterior sampler: midpoint steps for x-prediction, RK4 for velocity |
 | `injections.py` | eval injections, Fisher draws, source matching |
-| `plots.py` | every figure |
+| `plots.py` | every page: a run's `run.html`, an eval's `corner.html` and `validation.html` (each page inline) |
 | `eval.py`, `scorecard.py`, `mcmc.py` | post-training entry points (`validate.py` is the scorecard's validation) |
 
 **Bands and sizes.** A config is a band (how much spectrum a window covers, and the
@@ -156,7 +157,8 @@ draws matched onto the injected sources) or pooled, against the Fisher draws and
 in physical coordinates (sky in ecliptic λ, β) or the flow's own, with the flow/reference
 widths. `scorecard` scores every source of those ten plus `n_random` prior
 injections (f₀ width against the ideal, detection, offset, 68%/95% coverage), then runs the
-SBC/TARP validation over `n_validation` draws. To evaluate a run kept elsewhere, point
+SBC/TARP validation over `n_validation` draws; `plots` puts those, the scorecard and the MCMC
+comparison on `validation.html`. To evaluate a run kept elsewhere, point
 `LISA_OUTPUT_DIR` at the folder holding its `runs/<run>`.
 
 **Reference MCMC.** `canna.lisa.mcmc` samples each eval source alone, the others held at
