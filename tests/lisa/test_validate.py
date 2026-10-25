@@ -165,7 +165,7 @@ def test_a_whole_validation_runs_end_to_end(small_flow, tmp_path, capsys):
             "joint_rank_log_likelihood",
             "joint_rank_tarp",
         } <= set(scores)
-    assert eval_pages(tmp_path) == [tmp_path / "validation.pdf"]
+    assert eval_pages(tmp_path) == [tmp_path / "validation.html"]
     assert (
-        "slot 0" in capsys.readouterr().out and (tmp_path / "validation.pdf").exists()
+        "slot 0" in capsys.readouterr().out and (tmp_path / "validation.html").exists()
     )
