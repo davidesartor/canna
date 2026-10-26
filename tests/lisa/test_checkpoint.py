@@ -147,3 +147,11 @@ def test_warm_start_copies_the_averaged_weights_but_a_redefined_head_and_lambda(
     assert same(started.x_unembed.linear1, averaged.x_unembed.linear1)
     assert same(started.x_unembed.linear2, fresh.x_unembed.linear2)
     assert jnp.array_equal(started.loss_log_var, fresh.loss_log_var)
+
+    # a residual head has twice the outputs and no λ
+    residual = load(network=NETWORK | dict(loss_weights=True, prediction="residual"), init_from="source")
+    fresh = setup(residual)[2].flow
+    started = warm_start(residual, fresh)
+    assert started.loss_log_var is None
+    assert same(started.backbone, averaged.backbone)
+    assert same(started.x_unembed.linear2, fresh.x_unembed.linear2)

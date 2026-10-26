@@ -49,7 +49,10 @@ def stft_tokens(y: Float[Array, "F 6"], patch: int) -> Float[Array, "N P"]:
 
 
 class LisaFlow(eqx.Module):
-    """x1 (or, with prediction="velocity", the velocity) of the (loudest-first) sources, from a data stream that sees only (y, f)."""
+    """x1 (or, with prediction="velocity", the velocity) of the (loudest-first) sources, from a data stream that sees only (y, f).
+
+    prediction="residual": (x1 - xt) / σ and log σ² per coordinate, σ the flow's own scale of x1 - xt.
+    """
 
     dtype: DType = eqx.field(static=True)
     patch: int = eqx.field(static=True)
@@ -98,7 +101,7 @@ class LisaFlow(eqx.Module):
         assert (
             n_bins % patch == 0
         ), f"window of {n_bins} bins is not divisible by {patch}"
-        assert prediction in ("velocity", "x"), f"unknown prediction {prediction!r}"
+        assert prediction in ("velocity", "x", "residual"), f"unknown prediction {prediction!r}"
         assert hidden_dim // num_heads % 2 == 0, "RoPE pairs a head's dims: head_dim must be even"
         # x64 is on, so a None dtype would mean float64
         assert dtype is not None and param_dtype is not None, "dtype and param_dtype must be explicit"
@@ -194,8 +197,13 @@ class LisaFlow(eqx.Module):
             **kwargs,
         )
         self.x_modulation = Modulation(hidden_dim, key=next(keys), **kwargs)
+        # a residual flow also emits each coordinate's log σ²
         self.x_unembed = FeedForward(
-            hidden_dim, hidden_dim, len(COORD_RANGES), key=next(keys), **kwargs
+            hidden_dim,
+            hidden_dim,
+            len(COORD_RANGES) * (2 if prediction == "residual" else 1),
+            key=next(keys),
+            **kwargs,
         )
 
         # the opt-in modules draw from their own key, so the ones above stay as they were
@@ -213,9 +221,10 @@ class LisaFlow(eqx.Module):
             if prediction == "x"
             else jnp.zeros(LOSS_TIME_BINS)
         )
+        # a residual flow weighs its error by its own σ, so it has no λ
         self.loss_log_var = (
             repeat(log_var, "t -> t g", g=len(LOSS_GROUPS)).astype(param_dtype)
-            if loss_weights
+            if loss_weights and prediction != "residual"
             else None
         )
         # attention sinks: per-draw tokens that start from c, each with its own embedding
@@ -300,7 +309,7 @@ class LisaFlow(eqx.Module):
         f: Float[Array, ""],
         x_hat: Float[Array, "S X"] | None = None,
         cache: tuple[Float[Array, "L M H K"], Float[Array, "L M H K"]] | None = None,
-    ) -> Float[Array, "S X"]:
+    ) -> Float[Array, "S O"]:
         """cache: `encode(y, f)`, when the caller already has it."""
         assert (
             x.shape[0] == self.x_slot.shape[0]
