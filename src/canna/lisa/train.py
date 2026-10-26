@@ -33,6 +33,9 @@ from .optim import eval_flow, optimizer, routing_report, schedule_free_state
 from .problem import LisaGB, sample_f
 from .simulator import preprocess, sample_observation, sample_physical
 
+# β-NLL's β: 0 is the Gaussian NLL, 1 weighs every coordinate's x1 error alike
+NLL_BETA = 0.5
+
 
 class TrainSample(NamedTuple):
     xt: Float[Array, "K S 8"]
@@ -88,10 +91,12 @@ def losses(
     time_power: float = 1.0,
     use_hat: bool | Array = False,
     by_bin: bool = False,
-) -> Float[Array, "3"] | tuple[Float[Array, "3"], Float[Array, "T G"]]:
+) -> Float[Array, "3"] | tuple[Float[Array, "3"], Float[Array, "3 T G"]]:
     """The flow-matching loss, the error of the x1 it implies, and the flow objective trained on.
 
-    by_bin: also the mean squared error per (time bin, coordinate group) the learned weights see.
+    A residual flow's flow loss is its Gaussian NLL of x1, ((x1 - xt) / σ - out)² + log σ², and its objective β-NLL's.
+    by_bin: also, per (time bin, coordinate group), x1's squared error, the one the flow expects (σ², or e^λ times the
+    velocity-to-x1 scale²) and their ratio.
     """
     # the data stream is encoded once per observation and shared by its K draws
     cache = jax.vmap(flow.encode)(batch.y, batch.f)
@@ -101,8 +106,12 @@ def losses(
 
     def predict(x_hat):
         out = per_observation(batch.xt, batch.t, batch.y, batch.f, x_hat, cache)
-        x1 = out if flow.prediction == "x" else batch.xt + remaining * out
-        return out, x1
+        if flow.prediction == "x":
+            return out, out
+        if flow.prediction == "velocity":
+            return out, batch.xt + remaining * out
+        z, log_var = jnp.split(out, 2, axis=-1)
+        return out, batch.xt + jnp.exp(log_var / 2) * z
 
     # self-conditioning: on use_hat, a first, stopped pass's x1 conditions the second
     if flow.self_condition:
@@ -113,34 +122,57 @@ def losses(
     else:
         out, x_pred = predict(None)
 
-    # x-prediction: the velocity (x1 - xt) / (1 - s), floored at the last λ bin's 1 - s, below which no weight can tame it
+    # each prediction's error and the scale from it to x1's error; x-prediction's is the velocity (x1 - xt) / (1 - s),
+    # floored at the last λ bin's 1 - s, below which no weight can tame it
     if flow.prediction == "x":
-        error = (out - batch.xt - remaining * batch.dx) / jnp.maximum(
-            remaining, 10.0**-LOSS_TIME_DECADES
-        )
-    else:
+        to_x1 = jnp.maximum(remaining, 10.0**-LOSS_TIME_DECADES)
+        error = (out - batch.xt - remaining * batch.dx) / to_x1
+    elif flow.prediction == "velocity":
+        to_x1 = remaining
         error = out - batch.dx
-    flow_loss = jnp.mean(jnp.square(error))
+    else:
+        z, log_var = jnp.split(out, 2, axis=-1)
+        to_x1 = jnp.exp(log_var / 2)
+        error = z - remaining * batch.dx / to_x1
+    if flow.prediction == "residual":
+        nll = jnp.square(error) + log_var
+        flow_loss = jnp.mean(nll)
+        # β-NLL (Seitzer et al. 2022): each coordinate's NLL weighed by its stopped σ^(2β)
+        objective = jnp.mean(jax.lax.stop_gradient(jnp.exp(NLL_BETA * log_var)) * nll)
+    else:
+        flow_loss = jnp.mean(jnp.square(error))
+        objective = flow_loss
 
     # learned loss weights (Kendall et al. 2018, EDM2): e exp(-lambda) + lambda per (time bin, coordinate group)
-    groups = jnp.stack(
-        [jnp.mean(jnp.square(error[..., g]), axis=(-2, -1)) for g in LOSS_GROUPS],
-        axis=-1,
+    by_group = lambda a: jnp.stack(
+        [jnp.mean(a[..., g], axis=(-2, -1)) for g in LOSS_GROUPS], axis=-1
     )
+    groups = by_group(jnp.square(error))
     decades = time_power * jnp.log10(jnp.maximum(1 - batch.t, 1e-30))
     bins = jnp.clip(
         (decades / LOSS_TIME_DECADES + 1) * LOSS_TIME_BINS, 0, LOSS_TIME_BINS - 1
     ).astype(int)
-    objective = flow_loss
     if flow.loss_log_var is not None:
-        log_var = flow.loss_log_var[bins]
-        objective = jnp.mean(groups * jnp.exp(-log_var) + log_var)
+        weight_log_var = flow.loss_log_var[bins]
+        objective = jnp.mean(groups * jnp.exp(-weight_log_var) + weight_log_var)
     x_error = jnp.mean(jnp.square(x_pred - batch.x_target[:, None]))
     parts = jnp.stack([flow_loss, x_error, objective])
     if not by_bin:
         return parts
+
+    # the error each draw expects, in the error's units: 1 for a residual flow's, e^λ with learned weights
+    if flow.prediction == "residual":
+        expected = jnp.ones_like(groups)
+    elif flow.loss_log_var is not None:
+        expected = jnp.exp(flow.loss_log_var[bins])
+    else:
+        expected = jnp.full_like(groups, jnp.nan)
+    scale = jnp.square(jnp.broadcast_to(to_x1, error.shape))
+    per_draw_bins = jnp.stack(
+        [by_group(jnp.square(error) * scale), expected * by_group(scale), groups / expected]
+    )
     one_hot = jax.nn.one_hot(bins, LOSS_TIME_BINS)
-    binned = jnp.einsum("bkt,bkg->tg", one_hot, groups)
+    binned = jnp.einsum("bkt,nbkg->ntg", one_hot, per_draw_bins)
     count = jnp.sum(one_hot, axis=(0, 1))[:, None]
     # an empty bin has no error to report
     return parts, jnp.where(count > 0, binned / jnp.maximum(count, 1), jnp.nan)
@@ -268,10 +300,11 @@ def diagnostics(
     key: Key[Array, ""],
     batch_size: int,
     time_power: float = 1.0,
-) -> tuple[Float[Array, "4"], Float[Array, "T G"]]:
+) -> tuple[Float[Array, "4"], Float[Array, "3 T G"]]:
     """Flow loss (self-conditioned, as sampled) of x and of y, backbone weight RMS of x, and RMS of z - x, on the batch from `key`.
 
-    Also y's error per (time bin, coordinate group), on a second batch whose 1 - s is stratified log-uniformly over the bins.
+    Also y's x1 error, expected error and their ratio per (time bin, coordinate group), on a second batch whose 1 - s
+    is stratified log-uniformly over the bins.
     """
     key_batch, key_binned, key_u = jr.split(key, 3)
     sample = partial(train_sample, problem, time_power=time_power)
@@ -295,8 +328,8 @@ def diagnostics(
         jax.tree.map(lambda zi, xi: zi - xi, z, eqx.filter(x, eqx.is_inexact_array))
     )
     held_out = lambda flow: losses(flow, batch, time_power, True)[0]
-    _, bin_error = losses(state.flow, binned, time_power, True, by_bin=True)
-    return jnp.stack([held_out(x), held_out(state.flow), w_rms, spread]), bin_error
+    _, by_bin = losses(state.flow, binned, time_power, True, by_bin=True)
+    return jnp.stack([held_out(x), held_out(state.flow), w_rms, spread]), by_bin
 
 
 def checkpoint_manager(run_dir: Path, read_only: bool = False) -> ocp.CheckpointManager:
@@ -375,7 +408,8 @@ def warm_start(config: Config, flow: LisaFlow) -> LisaFlow:
     """flow with config.init_from's averaged weights at its latest checkpoint, but for what its own prediction redefines.
 
     The two runs must share the architecture; precision and prediction may differ. The head's output layer
-    and the loss weights λ are kept fresh when the prediction changes, since they mean a different quantity.
+    and the loss weights λ are kept fresh when the prediction changes, since they mean a different quantity
+    (and a residual flow's head has twice the outputs and no λ).
     """
     stored = yaml.safe_load(
         (config.output_dir / "runs" / config.init_from / "config.yaml").read_text()
@@ -383,6 +417,14 @@ def warm_start(config: Config, flow: LisaFlow) -> LisaFlow:
     name = stored.pop("name")
     source = Config(name=name, **(run_config.merge([stored]) | dict(output_dir=config.output_dir)))
     _, trained, epoch = load_trained(source)
+    fresh = trained.prediction != flow.prediction
+    if fresh:
+        trained = eqx.tree_at(
+            lambda m: (m.x_unembed.linear2, m.loss_log_var),
+            trained,
+            (flow.x_unembed.linear2, flow.loss_log_var),
+            is_leaf=lambda a: a is None,
+        )
     params = eqx.filter(flow, eqx.is_inexact_array)
     loaded = jax.tree.leaves(eqx.filter(trained, eqx.is_inexact_array))
     leaves, treedef = jax.tree.flatten(params)
@@ -390,16 +432,10 @@ def warm_start(config: Config, flow: LisaFlow) -> LisaFlow:
         f"{config.init_from} has another architecture"
     )
     copied = eqx.combine(jax.tree.unflatten(treedef, loaded), flow)
-    if trained.prediction != flow.prediction:
-        copied = eqx.tree_at(
-            lambda m: (m.x_unembed.linear2, m.loss_log_var),
-            copied,
-            (flow.x_unembed.linear2, flow.loss_log_var),
-        )
     print(
         f"[warm start] {config.init_from} epoch {epoch} ({trained.prediction} prediction)"
         f" -> {flow.prediction} prediction"
-        + (", head output and λ fresh" if trained.prediction != flow.prediction else ""),
+        + (", head output and λ fresh" if fresh else ""),
         flush=True,
     )
     return copied
@@ -472,8 +508,7 @@ def main() -> None:
     histories = dict(
         loss_history=np.full((epochs, config.log_interval, 4), np.nan),
         heldout_history=np.full((epochs, 4), np.nan),
-        log_var_history=np.full((epochs, LOSS_TIME_BINS, len(LOSS_GROUPS)), np.nan),
-        bin_error_history=np.full((epochs, LOSS_TIME_BINS, len(LOSS_GROUPS)), np.nan),
+        bin_history=np.full((epochs, 3, LOSS_TIME_BINS, len(LOSS_GROUPS)), np.nan),
     )
     checkpoints = checkpoint_manager(run_dir)
     state, start_epoch, restored = restore_checkpoint(checkpoints, state, tuple(histories))
@@ -484,8 +519,7 @@ def main() -> None:
     for name, rows in (restored or {}).items():
         histories[name][: len(rows)] = rows[: len(histories[name])]
     loss_history, heldout_history = histories["loss_history"], histories["heldout_history"]
-    log_var_history = histories["log_var_history"]
-    bin_error_history = histories["bin_error_history"]
+    bin_history = histories["bin_history"]
     # one fixed batch, never trained on, for the diagnostics: the seed's key setup leaves unused
     key_heldout = jr.split(jr.key(config.seed), 3)[0]
 
@@ -505,7 +539,7 @@ def main() -> None:
             config.micro_batches,
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
-        heldout_history[epoch], bin_error_history[epoch] = jax.device_get(
+        heldout_history[epoch], bin_history[epoch] = jax.device_get(
             diagnostics(
                 problem,
                 state,
@@ -514,8 +548,6 @@ def main() -> None:
                 config.time_power,
             )
         )
-        if state.flow.loss_log_var is not None:
-            log_var_history[epoch] = jax.device_get(state.flow.loss_log_var)
         seconds = time.perf_counter() - started  # the first epoch includes the compile
 
         # a non-finite loss has poisoned the weights: stop before saving over the last checkpoint
@@ -543,7 +575,6 @@ def main() -> None:
 
         # the histories so far, for `-m canna.lisa.plots`; replaced whole so a reader never sees half a file
         done = epoch + 1
-        log_var = log_var_history[:done]
         np.savez(
             run_dir / "history.tmp.npz",
             epoch=done,
@@ -553,13 +584,9 @@ def main() -> None:
             loss_names=np.array(["flow", "x", "objective", "grad_norm"]),
             heldout=heldout_history[:done],
             heldout_names=np.array(["heldout_x", "heldout_y", "w_rms", "z_x"]),
-            log_var=log_var,
-            bin_error=bin_error_history[:done],
-            bin_objective=np.where(
-                np.isnan(log_var),
-                bin_error_history[:done],
-                bin_error_history[:done] * np.exp(-log_var) + log_var,
-            ),
+            bin_x_error=bin_history[:done, 0],
+            bin_expected=bin_history[:done, 1],
+            bin_ratio=bin_history[:done, 2],
             groups=np.array(["f0", "Mc", "sky", "z+", "z-"]),
             time_edges=LOSS_TIME_DECADES * (np.arange(LOSS_TIME_BINS + 1) / LOSS_TIME_BINS - 1),
         )

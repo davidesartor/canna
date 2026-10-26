@@ -1,4 +1,4 @@
-"""The opt-in flow options: mid-time phase chart, self-conditioning, x-prediction, loss weights, late times."""
+"""The opt-in flow options: mid-time phase chart, self-conditioning, x- and residual prediction, loss weights, late times."""
 
 from types import SimpleNamespace
 
@@ -192,6 +192,43 @@ def test_x_prediction_loss_vanishes_at_the_true_x1(small_flow):
     assert parts[0] < 1e-8 and parts[1] == 0
     others = jnp.roll(batch.x_target, 1, axis=0)
     assert losses(Echo(), batch._replace(y=others), 3.0)[0] > 1e-2
+
+
+class Residual(eqx.Module):
+    """A stand-in residual flow that steps to its conditioning as x1, with a fixed σ."""
+
+    log_var: float
+    prediction: str = eqx.field(static=True, default="residual")
+    self_condition: bool = eqx.field(static=True, default=False)
+    loss_log_var: None = None
+
+    def encode(self, y, f):
+        return None
+
+    def __call__(self, x, t, y, f, x_hat=None, cache=None):
+        log_var = jnp.full_like(x, self.log_var)
+        return jnp.concatenate([(y - x) / jnp.exp(log_var / 2), log_var], axis=-1)
+
+
+def test_residual_sampler_lands_on_its_x1(small_flow):
+    problem, _, u0, _, f = small_flow
+    x1 = sample_flow(problem, jr.key(9), f)
+    out = sample_posterior(Residual(np.log(1e-4)), u0, x1, f, 8, 3.0)
+    np.testing.assert_allclose(out, jnp.broadcast_to(x1, out.shape), atol=1e-6)
+
+
+def test_residual_loss_is_the_nll_and_its_objective_beta_nll(small_flow):
+    from canna.lisa.train import NLL_BETA
+
+    problem, _, _, _, _ = small_flow
+    batch = eqx.filter_jit(jax.vmap(lambda k: train_sample(problem, k, time_power=3.0)))(
+        jr.split(jr.key(4), 8)
+    )
+    log_var = np.log(1e-2)
+    flow_loss, x_error, objective = losses(Residual(log_var), batch._replace(y=batch.x_target), 3.0)
+    np.testing.assert_allclose(flow_loss, log_var, atol=1e-4)
+    assert x_error < 1e-10
+    np.testing.assert_allclose(objective, np.exp(NLL_BETA * log_var) * log_var, atol=1e-4)
 
 
 def test_late_time_draws_reach_the_floor_and_are_off_by_default(small_flow):

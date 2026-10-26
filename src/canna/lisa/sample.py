@@ -26,7 +26,7 @@ def sample_posterior(
 ) -> Array:
     """RK4 transport of base draws u along the learned velocity d/ds, scaled by ds/dt.
 
-    An x-predicting flow takes midpoint steps toward its x1 instead, exact for a constant x1.
+    An x- or residual-predicting flow takes midpoint steps toward its x1 instead, exact for a constant x1.
     """
     # the data stream sees only (y, f): one encoding serves every draw and every step
     cache = flow.encode(y, f)
@@ -39,8 +39,12 @@ def sample_posterior(
         # the flow's output and its x1 (a velocity's endpoint), which a self-conditioned flow is fed back
         def predict(u: Array, t: Array, x_hat: Array | None) -> tuple[Array, Array]:
             out = flow(u, t, y, f, x_hat if flow.self_condition else None, cache)
-            x1 = out if flow.prediction == "x" else u + remaining(t) * out
-            return out, x1
+            if flow.prediction == "x":
+                return out, out
+            if flow.prediction == "velocity":
+                return out, u + remaining(t) * out
+            z, log_var = jnp.split(out, 2, axis=-1)
+            return out, u + jnp.exp(log_var / 2) * z
 
         def velocity(u: Array, t: Array, x_hat: Array) -> tuple[Array, Array]:
             v, x1 = predict(u, t, x_hat)
@@ -68,12 +72,12 @@ def sample_posterior(
             h = predict(toward(u, h, t, t + dt / 2), t + dt / 2, h)[1].astype(h.dtype)
             return toward(u, h, t, t + dt), h
 
-        # the carried x1 takes the flow's output dtype (float32), not the draws' (float64)
+        # the carried x1 takes the dtype of the flow's x1: float32 for x, float64 (the draws') for an anchored x1
         first = lambda: predict(u, jnp.zeros((), u.dtype), None)[1]
         shape = jax.eval_shape(first)
         x_hat = first() if flow.self_condition else jnp.zeros(shape.shape, shape.dtype)
         # fori_loop, not a python loop: unrolled, compile time grows with ode_steps
-        step = x_step if flow.prediction == "x" else rk4_step
+        step = rk4_step if flow.prediction == "velocity" else x_step
         return jax.lax.fori_loop(0, ode_steps, step, (u, x_hat))[0]
 
     n = u.shape[0]

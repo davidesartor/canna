@@ -858,8 +858,8 @@ window.onerror = (message, source, line) => {
     <details>
       <summary>What the curves are</summary>
       <ul>
-        <li><b>flow</b>: the training loss, the mean squared velocity error over the batch; <b>x</b>: the mean squared error of the predicted x₁; <b>objective</b>: what the optimizer descends, Σ e·e<sup>−λ</sup> + λ over (time bin, group) with the learned λ, else the flow loss; <b>grad norm</b>: before clipping.</li>
-        <li><b>Per flow time</b>: the held-out velocity error per coordinate group (f₀, M<sub>c</sub>, sky, z₊, z₋) on a batch spread evenly over the time bins, binned in log₁₀(1 − s), 1 − s the flow time left. Its x-space version multiplies by (1 − s)², the scale between a velocity and an x₁ error. With learned weights, e<sup>λ</sup> (dashed) is the error each bin's weight expects; at its optimum λ = ln e, so error ÷ e<sup>λ</sup> = 1 where λ has caught up.</li>
+        <li><b>flow</b>: the training loss. For a velocity or x flow, the mean squared velocity error e over the batch; for a residual flow, which predicts z = (x₁ − x<sub>t</sub>)/σ and log σ² per coordinate, the Gaussian NLL (z − z<sub>true</sub>)² + log σ², negative once σ &lt; 1. <b>x</b>: the mean squared error of the predicted x₁. <b>objective</b>: what the optimizer descends: Σ e·e<sup>−λ</sup> + λ over (time bin, group) with learned λ; β-NLL, each coordinate's NLL weighed by its stopped σ<sup>2β</sup>, for a residual flow; else the flow loss. <b>grad norm</b>: before clipping.</li>
+        <li><b>Per flow time</b>: the held-out x₁ error per coordinate group (f₀, M<sub>c</sub>, sky, z₊, z₋) on a batch spread evenly over the time bins, binned in log₁₀(1 − s), 1 − s the flow time left. Dashed, the x₁ error the flow expects: a residual flow's own σ², the resolution it claims; with learned weights e<sup>λ</sup>(1 − s)², the error each bin's weight expects. Error ÷ expected is a residual flow's mean squared z error and is 1 where its σ is calibrated, for λ where the weight has caught up.</li>
       </ul>
     </details>
   </div>
@@ -872,12 +872,12 @@ window.onerror = (message, source, line) => {
 const META = DATA.meta, E = META.epochs, G = META.groups, NT = META.time_edges.length - 1;
 const LOSSES = {flow: "flow loss", x: "x₁ error", objective: "objective", grad_norm: "grad norm"};
 const HELDOUT = {w_rms: "backbone weight RMS", z_x: "RMS of z − x"};
+const EXPECTED = META.prediction === "residual" ? "σ²" : "e<sup>λ</sup>(1 − s)²";
 const MODES = [
-  {v: "velocity", html: "velocity error"},
-  {v: "x", html: "x error, × (1 − s)²"},
-  ...(META.has_lambda ? [{v: "ratio", html: "error ÷ e<sup>λ</sup>"}] : []),
+  {v: "x", html: "x₁ error"},
+  ...(META.has_expected ? [{v: "ratio", html: `error ÷ ${EXPECTED}`}] : []),
 ];
-const S = {xlog: false, mode: "velocity", epoch: E - 1, bin: 0};
+const S = {xlog: false, mode: "x", epoch: E - 1, bin: 0};
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 function rgba(name, alpha) {
@@ -1074,18 +1074,18 @@ function heldout() {
   }
 }
 
-// the flow-time view: error [epoch][bin][group] in the chosen mode, and e^λ in the same units (null in the ratio mode)
+// the flow-time view: [measured, expected] per [epoch][bin][group] in the chosen mode (expected NaN in the ratio mode)
 const CENTRES = META.time_edges.slice(0, -1).map((e, k) => 10 ** ((e + META.time_edges[k + 1]) / 2));
 function shown(e, b, grp) {
-  const err = DATA.time.error[e][b][grp], lam = META.has_lambda ? Math.exp(DATA.time.log_var[e][b][grp]) : NaN;
-  const scale = S.mode === "x" ? CENTRES[b] ** 2 : 1;
-  return S.mode === "ratio" ? [err / lam, NaN] : [err * scale, lam * scale];
+  const T = DATA.time;
+  return S.mode === "ratio" ? [T.ratio[e][b][grp], NaN] : [T.x_error[e][b][grp], META.has_expected ? T.expected[e][b][grp] : NaN];
 }
 const COLOURS = ["--s1", "--s2", "--s3", "--s4", "--s5"];
 const GROUP_TEXT = {f0: "f₀", Mc: "M<sub>c</sub>", sky: "sky", "z+": "z₊", "z-": "z₋"};
 function flowTime() {
-  const parent = document.getElementById("time"), lam = META.has_lambda && S.mode !== "ratio";
-  const yLabel = {velocity: "velocity error", x: "x error", ratio: "error ÷ e^λ"}[S.mode];
+  const parent = document.getElementById("time"), lam = META.has_expected && S.mode !== "ratio";
+  const expectedText = EXPECTED.replace(/<\/?sup>/g, "");
+  const yLabel = S.mode === "ratio" ? `error ÷ ${expectedText}` : "x₁ error";
   const bins = [...CENTRES.keys()], epochs = [...Array(E).keys()], step = DATA.epoch_step;
   const layers = (index, xsOf, pick) => G.flatMap((grp, gi) => {
     const v = index.map(i => pick(i, gi));
@@ -1094,7 +1094,7 @@ function flowTime() {
       ...(lam ? [{type: "line", x: xsOf, y: v.map(p => p[1]), colour: COLOURS[gi], dash: [5, 3], width: 1.5}] : []),
     ];
   });
-  const table = vals => `<table>${G.map((grp, gi) => row(COLOURS[gi], GROUP_TEXT[grp] || grp, lam ? `${sig(vals[gi][0])} <span style="color:var(--muted)">e^λ ${sig(vals[gi][1])}</span>` : sig(vals[gi][0]))).join("")}</table>`;
+  const table = vals => `<table>${G.map((grp, gi) => row(COLOURS[gi], GROUP_TEXT[grp] || grp, lam ? `${sig(vals[gi][0])} <span style="color:var(--muted)">${EXPECTED} ${sig(vals[gi][1])}</span>` : sig(vals[gi][0]))).join("")}</table>`;
   const ratio = S.mode === "ratio" ? [{type: "hline", at: 1}] : [];
   const binText = b => `1 − s ∈ [${decade(META.time_edges[b])}, ${decade(META.time_edges[b + 1])}]`;
   plot(chartIn(parent, "time-at-epoch", "over flow time, at the picked epoch"), {
@@ -1109,11 +1109,12 @@ function flowTime() {
     hover: {x: step, html: e => `epoch ${e + 1}, step ${kilo(step[e])}, ${binText(S.bin)}${table(G.map((_, gi) => shown(e, S.bin, gi)))}`},
     click: e => { S.epoch = e; writeHash(); render(); },
   });
-  document.getElementById("time-note").innerHTML = `Held-out error per coordinate group and log-spaced bin of flow time; ` +
-    (S.mode === "ratio" ? "the ratio is 1 where a bin's learned weight has caught up with its error." : lam ? "solid: measured, dashed: e<sup>λ</sup>, the error the learned weight expects." : "no learned weights in this run.") +
+  const claim = META.prediction === "residual" ? "the flow's own σ², the resolution it claims" : "the error the learned weight expects";
+  document.getElementById("time-note").innerHTML = `Held-out x₁ error per coordinate group and log-spaced bin of flow time; ` +
+    (S.mode === "ratio" ? (META.prediction === "residual" ? "the ratio is 1 where σ is calibrated, above it where σ is overconfident." : "the ratio is 1 where a bin's learned weight has caught up with its error.") : lam ? `solid: measured, dashed: ${EXPECTED}, ${claim}.` : "this run predicts no expected error.") +
     " Click the left chart to pick the time bin, the right one to pick the epoch.";
   document.getElementById("time-legend").innerHTML = G.map((grp, gi) => `<span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(${COLOURS[gi]})" stroke-width="2"/></svg>${GROUP_TEXT[grp] || grp}</span>`).join("") +
-    (lam ? `<span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="5 3"/></svg>e<sup>λ</sup></span>` : "");
+    (lam ? `<span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="5 3"/></svg>${EXPECTED}</span>` : "");
   const ep = document.getElementById("epoch"), bin = document.getElementById("bin");
   ep.max = E - 1; ep.value = S.epoch; bin.max = NT - 1; bin.value = S.bin;
   document.getElementById("epoch-out").textContent = `${S.epoch + 1} of ${E}, step ${kilo(step[S.epoch])}`;
@@ -1225,7 +1226,8 @@ def run_report(run_dir: Path) -> Path:
             "steps_per_epoch": int(epoch_steps[-1]),
             "groups": [str(g) for g in h["groups"]],
             "time_edges": significant(h["time_edges"]),
-            "has_lambda": bool(np.isfinite(h["log_var"]).any()),
+            "prediction": config.get("network", {}).get("prediction", "x"),
+            "has_expected": bool(np.isfinite(h["bin_expected"]).any()),
             "loss_names": loss_names,
             "evals": evals,
         },
@@ -1246,8 +1248,9 @@ def run_report(run_dir: Path) -> Path:
         },
         "epoch_step": steps.astype(int).tolist(),
         "time": {
-            "error": significant(h["bin_error"]),
-            "log_var": significant(h["log_var"]),
+            "x_error": significant(h["bin_x_error"]),
+            "expected": significant(h["bin_expected"]),
+            "ratio": significant(h["bin_ratio"]),
         },
     }
     page = RUN_PAGE
