@@ -1,7 +1,8 @@
-# response_points autosizes to 32, which lose up to 1.2% of a source's power past the segment; the f0 top is the old 16-point truncation, to the ulp
+# response_points 32 keeps all the above-noise power of 99.9% of sources (reports/prior/response-span); the f0 top is the old 16-point truncation, to the ulp
 problem:
   n_sources: 4
   t_obs: 63115200.0
+  response_points: 32
   oms_noise: 15.0
   acceleration_noise: 3.0
   f0_range: [1.0e-4, 1.2637070256260989e-3]

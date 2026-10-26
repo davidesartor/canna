@@ -15,7 +15,7 @@ from canna.lisa.simulator import clean_signal, sample_physical
 from canna.lisa.train import train_sample
 
 NARROW = dict(
-    n_sources=4, t_obs=63115200.0, response_points=32, f0_range=(1.0e-4, 12.0e-3)
+    n_sources=4, t_obs=63115200.0, response_points=32, f0_range=(1.0e-4, 1.2637070256260989e-3)
 )
 
 

@@ -96,7 +96,7 @@ training length) and a network size:
 | band | window | f₀ reach | tokens (16 bins each) | steps |
 |---|---|---|---|---|
 | `narrow` | 128 bins | ≤ 1.3 mHz | 8 | 650k |
-| `full` | 4096 bins | 0.1–12 mHz | 256 | 240k |
+| `full` | 512 bins | 0.1–12 mHz | 32 | 240k |
 
 | size | width × blocks | heads | parameters |
 |---|---|---|---|
@@ -121,9 +121,9 @@ Every run so far used `B`. The research log calls the bands `XS` and `B`: its `X
   z± = A (1 ∓ sin ι)²/4 · e^{i(φ₀ ± 2ψ)} in units of SNR ≈ 1, radius warped by asinh. Phases
   are referenced to the middle of the observation.
 - **Prior.** (log₁₀ f₀, log₁₀ ḟ, log₁₀ A) is a Gaussian fitted to a WD–WD galaxy catalogue
-  (`physics.SOURCE_MEAN`, `SOURCE_COVARIANCE`), truncated to the window's f₀ range and
-  5σ above ḟ's conditional mean; most drawn sources are below detection. The window
-  slides log-uniformly over the band, and the sky and orientation priors are unchanged.
+  (`physics.SOURCE_MEAN`, `SOURCE_COVARIANCE`), truncated to the window's f₀ range;
+  most drawn sources are below detection. The window centre follows the same f₀ marginal,
+  and the sky and orientation priors are unchanged.
 - **Embeddings.** Values go through piecewise-linear encodings in float32; time, window
   frequency and positions go in as sinusoids and an MLP. Each source also carries
   |z| cos kφ, |z| sin kφ for k = 2–6 and Fourier features of its f₀ bin.

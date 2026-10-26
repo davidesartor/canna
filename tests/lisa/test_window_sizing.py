@@ -1,8 +1,6 @@
 """clean_signal's F axis is exactly the sliding window, and preprocess keeps it: one row
 of six channels per rfft bin."""
 
-import warnings
-
 import jax.random as jr
 import pytest
 
@@ -59,22 +57,20 @@ def test_stream_shape_invariants_hold_across_a_range_of_observation_baselines():
 
 
 def test_conditioning_shape_at_the_shipped_two_year_config():
-    # regression pin for B.yaml: t_obs=2yr, response_points auto-sized to 1024, so
-    # the window is 4096 bins, and LisaFlow's 16-bin tokens make 256 of them
+    # regression pin for B.yaml: t_obs=2yr, response_points 128, so the window is 512
+    # bins, and LisaFlow's 16-bin tokens make 32 of them
     problem = LisaGB(**SHIPPED)
     p = sample_physical(problem, jr.key(60), window(problem))
     o = clean_signal(problem, p, window(problem))
     stream = preprocess(problem, o, window(problem))
-    assert problem.response_points == 1024
-    assert o.shape == (4096, 3)
-    assert stream.shape == (4096, 6)
+    assert problem.response_points == 128
+    assert o.shape == (512, 3)
+    assert stream.shape == (512, 6)
 
 
-@pytest.mark.parametrize("band, response_points", [("narrow", 32), ("full", 1024)])
-def test_each_band_sizes_its_response_points_without_trimming_f0(band, response_points):
+@pytest.mark.parametrize("band, response_points", [("narrow", 32), ("full", 128)])
+def test_each_band_sets_its_response_points_and_keeps_f0(band, response_points):
     problem_config = config.load(f"{band}-B").problem
-    with warnings.catch_warnings():
-        warnings.filterwarnings("error", message="response_points")
-        problem = LisaGB(**problem_config)
+    problem = LisaGB(**problem_config)
     assert problem.response_points == response_points
     assert problem.f0_range == tuple(problem_config["f0_range"])

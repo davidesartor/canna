@@ -32,8 +32,6 @@ SOURCE_SLOPE = SOURCE_COVARIANCE[0, 1:] / SOURCE_COVARIANCE[0, 0]
 SOURCE_INTERCEPT = SOURCE_MEAN[1:] - SOURCE_SLOPE * SOURCE_MEAN[0]
 SOURCE_RESIDUAL = SOURCE_COVARIANCE[1:, 1:] - np.outer(SOURCE_SLOPE, SOURCE_COVARIANCE[0, 1:])
 FDOT_STD = float(np.sqrt(SOURCE_RESIDUAL[0, 0]))
-# log10 fdot is cut this many FDOT_STDs above its mean at f0 (3e-7 of the prior), so every response has a finite span
-FDOT_SIGMAS = 5.0
 
 # galactic-binary sky, fitted to the sky of a WD-WD catalogue of this many sources: bulge, thick disk, thin disk, isotropic floor
 SKY_CATALOGUE_SOURCES = 9_000_000
@@ -57,11 +55,6 @@ def log10_fdot_mean(f0: Float[Array, "..."]) -> Float[Array, "..."]:
     return SOURCE_INTERCEPT[0] + SOURCE_SLOPE[0] * jnp.log10(f0)
 
 
-def fdot_ceiling(f0: Float[Array, "..."]) -> Float[Array, "..."]:
-    """The largest fdot [Hz/s] the prior draws at f0: FDOT_SIGMAS above its mean."""
-    return 10.0 ** (log10_fdot_mean(f0) + FDOT_SIGMAS * FDOT_STD)
-
-
 def response_span(f0: float, fdot: float, t_obs: float) -> int:
     """Bins the response of a source at f0 covers: twice its doppler sideband, chirp drift and antenna-pattern sidebands."""
     drift = fdot * t_obs
@@ -72,14 +65,14 @@ def response_span(f0: float, fdot: float, t_obs: float) -> int:
 def sample_sources(
     key: Key[Array, ""], f_lo: Float[Array, ""], f_hi: Float[Array, ""], n: int
 ) -> Float[Array, "n 3"]:
-    """n (f0, fdot, A) from the source prior, f0 truncated to [f_lo, f_hi] and fdot to its ceiling."""
+    """n (f0, fdot, A) from the source prior, f0 truncated to [f_lo, f_hi]."""
     key_f, key_fdot, key_amp = jr.split(key, 3)
     mean, std = SOURCE_MEAN[0], np.sqrt(SOURCE_COVARIANCE[0, 0])
     bounds = (jnp.log10(jnp.stack([f_lo, f_hi])) - mean) / std
     log_f0 = mean + std * jr.truncated_normal(key_f, bounds[0], bounds[1], (n,))
 
-    # fdot's residual, then A's given it: the conditional Gaussian, cut only in fdot
-    residual_fdot = FDOT_STD * jr.truncated_normal(key_fdot, -jnp.inf, FDOT_SIGMAS, (n,))
+    # fdot's residual, then A's given it: the conditional Gaussian
+    residual_fdot = FDOT_STD * jr.normal(key_fdot, (n,))
     slope = SOURCE_RESIDUAL[0, 1] / SOURCE_RESIDUAL[0, 0]
     amp_std = np.sqrt(SOURCE_RESIDUAL[1, 1] - slope * SOURCE_RESIDUAL[0, 1])
     residual_amp = slope * residual_fdot + amp_std * jr.normal(key_amp, (n,))
@@ -90,14 +83,9 @@ def sample_sources(
 
 
 def source_log_density(log10_source: Float[Array, "... 3"]) -> Float[Array, "..."]:
-    """log p(log10 f0, log10 fdot, log10 A) up to a constant: the parent Gaussian, -inf above the fdot ceiling.
-
-    Inside one f0 window the truncations only rescale it: the fdot cut keeps the same share at every f0.
-    """
+    """log p(log10 f0, log10 fdot, log10 A) up to a constant: the parent Gaussian, which f0's truncation only rescales."""
     x = log10_source - SOURCE_MEAN
-    log_p = -0.5 * jnp.einsum("...i,ij,...j->...", x, np.linalg.inv(SOURCE_COVARIANCE), x)
-    ceiling = log10_fdot_mean(10.0 ** log10_source[..., 0]) + FDOT_SIGMAS * FDOT_STD
-    return jnp.where(log10_source[..., 1] <= ceiling, log_p, -jnp.inf)
+    return -0.5 * jnp.einsum("...i,ij,...j->...", x, np.linalg.inv(SOURCE_COVARIANCE), x)
 
 
 def equatorial_to_galactic(
