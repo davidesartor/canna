@@ -96,7 +96,7 @@ def fisher_samples(
 ) -> np.ndarray:
     """Fisher forecast draws [N_POSTERIOR, S, 8]: the nll Hessian averaged over noise realisations, plus the prior.
 
-    Drawn in log Mc (the Jacobian taken at the truth), so the chirp mass stays positive.
+    Drawn in log fdot (the Jacobian taken at the truth), so the chirp stays positive.
     """
     p0 = latent.reshape(-1)
     nll = lambda p, o: -log_likelihood(problem, p.reshape(latent.shape), o, f)
@@ -109,7 +109,7 @@ def fisher_samples(
         jax.lax.map(lambda o: jax.hessian(nll)(p0, o), replicas).mean(0) + prior_prec_p
     )
 
-    # dp/dq at the truth, q being p with log Mc in place of Mc
+    # dp/dq at the truth, q being p with log fdot in place of fdot
     jac = jnp.ones_like(latent).at[..., 1].set(latent[..., 1]).reshape(-1)
     q0 = latent.at[..., 1].set(jnp.log(latent[..., 1])).reshape(-1)
     draws = fisher_draws(

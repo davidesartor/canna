@@ -1,4 +1,4 @@
-"""The amplitude prior is an snr range: each drawn source has its own snr in snr_range."""
+"""The amplitude comes from the (f0, fdot, A) prior, the sources loudest first; the chart's amplitude unit."""
 
 from functools import partial
 
@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
+from canna.lisa.physics import SOURCE_COVARIANCE, SOURCE_MEAN, SOURCE_RESIDUAL
 from canna.lisa.problem import (
     LisaGB,
     amplitude_unit,
@@ -21,27 +22,27 @@ jax.config.update("jax_enable_x64", True)
 YEAR = 31557600.0
 
 
-def test_drawn_sources_have_their_snr_in_range_loudest_first():
+def test_drawn_sources_come_loudest_first():
     problem = LisaGB(n_sources=4, f0_range=(1.2e-3, 1.6e-3))
     f = window(problem)
     draw = eqx.filter_jit(jax.vmap(partial(sample_physical, problem), in_axes=(0, None)))
     p = draw(jr.split(jr.key(0), 64), f)
     rho = source_snrs(problem, p, f)
-    assert jnp.all(rho >= problem.snr_range[0] * (1 - 1e-6))
-    assert jnp.all(rho <= problem.snr_range[1] * (1 + 1e-6))
+    assert jnp.all(p[..., 2] > 0)
     assert jnp.all(jnp.diff(rho, axis=-1) <= 1e-6 * rho[..., 1:])
 
 
-def test_drawn_snrs_are_log_uniform():
-    # 1/rho over [7, 1000]: log rho uniform, so its mean is the midpoint of the log range
+def test_drawn_amplitudes_follow_the_catalogue_not_the_snr():
+    # log10 A given f0 is the prior's conditional: about -22.9 +- 0.25 at 1.4 mHz, whatever the noise
     problem = LisaGB(n_sources=1, f0_range=(1.2e-3, 1.6e-3))
     f = window(problem)
     draw = eqx.filter_jit(jax.vmap(partial(sample_physical, problem), in_axes=(0, None)))
-    p = draw(jr.split(jr.key(1), 512), f)
-    log_rho = jnp.log(source_snrs(problem, p, f))
-    lo, hi = jnp.log(jnp.asarray(problem.snr_range))
-    assert jnp.allclose(jnp.mean(log_rho), (lo + hi) / 2, atol=0.25)
-    assert jnp.allclose(jnp.std(log_rho), (hi - lo) / jnp.sqrt(12.0), rtol=0.1)
+    p = draw(jr.split(jr.key(1), 2048), f)[:, 0]
+    slope = SOURCE_COVARIANCE[0, 2] / SOURCE_COVARIANCE[0, 0]
+    mean = SOURCE_MEAN[2] + slope * (jnp.log10(p[:, 0]) - SOURCE_MEAN[0])
+    residual = jnp.log10(p[:, 2]) - mean
+    assert abs(float(residual.mean())) < 0.02
+    assert jnp.allclose(residual.std(), jnp.sqrt(SOURCE_RESIDUAL[1, 1]), rtol=0.05)
 
 
 def test_amplitude_unit_tracks_the_sensitivity_across_the_band():

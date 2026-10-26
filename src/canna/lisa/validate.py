@@ -31,7 +31,7 @@ from .train import print_peak_memory
 N_DRAWS = 127
 BATCH = 10
 SNR_BANDS = [(0, 15), (15, 40), (40, 100), (100, np.inf)]
-COORDS = ["f0", "mc", "lon", "lat", "re_zp", "im_zp", "re_zm", "im_zm"]
+COORDS = ["f0", "fdot", "lon", "lat", "re_zp", "im_zp", "re_zm", "im_zm"]
 GAMMA_SIMS = 1000
 ALPHA = 0.05
 
@@ -126,11 +126,11 @@ def analyse(samples: dict, seed: int = 0) -> dict:
     rng = np.random.default_rng(seed)
     x = rearrange(samples["x"], "n m s d -> n s m d")
     n, n_sources, m = x.shape[:3]
-    x_f, x_mc = x[..., 0], x[..., 1]
+    x_f, x_fdot = x[..., 0], x[..., 1]
     per_slot = {name: x[..., c] for c, name in enumerate(COORDS)}
     per_slot |= {
-        "f0_plus_mc": x_f + x_mc,
-        "f0_minus_mc": x_f - x_mc,
+        "f0_plus_fdot": x_f + x_fdot,
+        "f0_minus_fdot": x_f - x_fdot,
         "abs_zp": np.hypot(x[..., 4], x[..., 5]),
         "abs_zm": np.hypot(x[..., 6], x[..., 7]),
         "overlap": rearrange(samples["overlap"], "n m s -> n s m"),

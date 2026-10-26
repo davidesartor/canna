@@ -10,12 +10,7 @@ import lisaorbits
 from jaxgb import jaxgb
 from jaxtyping import Array, Float, Int, Key
 
-from .physics import (
-    SPEED_OF_LIGHT,
-    chirp_mass_moments,
-    chirp_mass_support,
-    response_span,
-)
+from .physics import SPEED_OF_LIGHT, fdot_ceiling, response_span
 
 WINDOW_STRIDE = 2  # window starts snap to even bins
 # the window spans 4 response bands; f0 keeps half a band clear of each edge, so 3 are drawable
@@ -31,28 +26,19 @@ class LisaGB(eqx.Module):
     response_points: int | None = eqx.field(static=True, default=None)
     oms_noise: float = eqx.field(static=True, default=15.0)
     acceleration_noise: float = eqx.field(static=True, default=3.0)
-    mass_range: tuple[float, float] = eqx.field(static=True, default=(0.15, 1.4))
     f0_range: tuple[float, float] = eqx.field(static=True, default=(1e-4, 12.0e-3))
-    # amplitudes are drawn as a matched-filter snr range, as Strub et al. 2022 (arXiv:2204.04467)
-    snr_range: tuple[float, float] = eqx.field(static=True, default=(7.0, 1000.0))
     # "middle" charts phi0 at mid-observation, phi0 - pi f0 T - pi fdot T^2 / 4: the data phase at f0's bin
     phase_reference: str = eqx.field(static=True, default="middle")
-    log_mc_mean: Float[Array, "1"] = eqx.field(init=False)
-    log_mc_std: Float[Array, "1"] = eqx.field(init=False)
     response: jaxgb.JaxGB = eqx.field(init=False, static=True)
 
     def __post_init__(self):
-        self.mass_range = tuple(self.mass_range)
         self.f0_range = tuple(self.f0_range)
-        self.snr_range = tuple(self.snr_range)
         assert self.phase_reference in ("start", "middle"), self.phase_reference
-        self.log_mc_mean, self.log_mc_std = chirp_mass_moments(self.mass_range)
-        mc_hi = chirp_mass_support(self.mass_range)[1]
+        span = lambda f0: response_span(f0, float(fdot_ceiling(f0)), self.t_obs)
 
         # the window follows the priors, or, when response_points is given, the priors the window
         if self.response_points is None:
-            span = response_span(self.f0_range[1], mc_hi, self.t_obs)
-            self.response_points = 1 << (span - 1).bit_length()
+            self.response_points = 1 << (span(self.f0_range[1]) - 1).bit_length()
         else:
             assert (
                 self.response_points & (self.response_points - 1) == 0
@@ -61,19 +47,19 @@ class LisaGB(eqx.Module):
             lo, hi = 0.0, 1.0
             while math.nextafter(lo, hi) < hi:
                 mid = (lo + hi) / 2
-                fits = response_span(mid, mc_hi, self.t_obs) <= self.response_points
+                fits = span(mid) <= self.response_points
                 lo, hi = (mid, hi) if fits else (lo, mid)
             if lo < self.f0_range[1]:
                 warnings.warn(
-                    f"response_points={self.response_points} holds a Mc={mc_hi:.2f}Msun"
-                    f" source only up to {lo:.4e}Hz: f0_range stops there",
+                    f"response_points={self.response_points} holds the prior's fastest chirp"
+                    f" only up to {lo:.4e}Hz: f0_range stops there",
                     stacklevel=2,
                 )
                 self.f0_range = (self.f0_range[0], lo)
             assert (
                 self.f0_range[0] < self.f0_range[1]
             ), f"response_points={self.response_points} leaves no band at all"
-        needed = response_span(self.f0_range[1], mc_hi, self.t_obs)
+        needed = span(self.f0_range[1])
         assert (
             needed <= self.response_points
         ), f"response_points={self.response_points} is too narrow for f0_max: it needs {needed} bins"
@@ -103,7 +89,7 @@ class LisaGB(eqx.Module):
 
 
 def sample_f(problem: LisaGB, key: Key[Array, ""]) -> Float[Array, ""]:
-    """Centre frequency of a log-uniformly slid window, so it tracks the f0 prior."""
+    """Centre frequency of a log-uniformly slid window: the band trained evenly in log f, whatever the f0 prior."""
     f_lo, f_hi = problem.f0_range
     f_centre = f_lo * (f_hi / f_lo) ** jr.uniform(key)
     lo, hi = problem.window_index_range

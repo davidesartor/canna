@@ -20,7 +20,6 @@ SHIPPED = dict(
     n_sources=1,
     t_obs=63115200.0,
     f0_range=(1.0e-4, 12.0e-3),
-    snr_range=(7.0, 1000.0),
 )
 
 

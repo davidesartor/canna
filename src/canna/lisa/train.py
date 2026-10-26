@@ -587,7 +587,7 @@ def main() -> None:
             bin_x_error=bin_history[:done, 0],
             bin_expected=bin_history[:done, 1],
             bin_ratio=bin_history[:done, 2],
-            groups=np.array(["f0", "Mc", "sky", "z+", "z-"]),
+            groups=np.array(["f0", "fdot", "sky", "z+", "z-"]),
             time_edges=LOSS_TIME_DECADES * (np.arange(LOSS_TIME_BINS + 1) / LOSS_TIME_BINS - 1),
         )
         os.replace(run_dir / "history.tmp.npz", run_dir / "history.npz")

@@ -8,7 +8,7 @@ import jax.random as jr
 import numpy as np
 import pytest
 
-from canna.lisa.physics import chirp_mass_support, fdot_from_chirp_mass, response_span
+from canna.lisa.physics import fdot_ceiling, response_span
 from canna.lisa.problem import WINDOW_STRIDE, LisaGB, f0_window, sample_f, window_start
 from canna.lisa.simulator import clean_signal, preprocess
 from ._helpers import window
@@ -20,7 +20,7 @@ MONTH = 2592000.0
 YEAR = 31557600.0
 TWO_YEARS = 2 * YEAR
 V_OVER_C = 29785.0 / 299792458.0
-CHIRP_MASS = 0.3  # a typical double white dwarf [Msun]
+FDOT = 1e-17  # a typical double white dwarf's chirp at a few mHz [Hz/s]
 
 
 def test_the_loudest_pixel_sits_at_the_injected_frequency():
@@ -29,7 +29,7 @@ def test_the_loudest_pixel_sits_at_the_injected_frequency():
     f0 = float(jnp.sqrt(low * high))
     signal = clean_signal(
         problem,
-        jnp.array([[f0, CHIRP_MASS, 1e-22, 1.0, 0.3, 2.0, 0.5, 0.0]]),
+        jnp.array([[f0, FDOT, 1e-22, 1.0, 0.3, 2.0, 0.5, 0.0]]),
         window(problem),
     )
 
@@ -46,7 +46,7 @@ def test_no_signal_energy_lives_outside_the_sources_response_segment():
     f0 = float(jnp.sqrt(low * high))
     signal = clean_signal(
         problem,
-        jnp.array([[f0, CHIRP_MASS, 1e-22, 1.0, 0.3, 2.0, 0.5, 0.0]]),
+        jnp.array([[f0, FDOT, 1e-22, 1.0, 0.3, 2.0, 0.5, 0.0]]),
         window(problem),
     )
     power = jnp.abs(signal[:, 0]) ** 2
@@ -95,7 +95,7 @@ def test_response_points_covers_the_doppler_the_drift_and_the_antenna_sidebands(
     # the chirp only drifts upward, so half the window has to hold doppler + drift + 4/yr
     problem = LisaGB(n_sources=1, t_obs=TWO_YEARS)
     f0_hi = problem.f0_range[1]
-    fdot_hi = fdot_from_chirp_mass(chirp_mass_support(problem.mass_range)[1], f0_hi)
+    fdot_hi = fdot_ceiling(f0_hi)
     bin_width = 1.0 / problem.t_obs
     doppler_bins = f0_hi * V_OVER_C / bin_width
     drift_bins = fdot_hi * problem.t_obs / bin_width
@@ -104,8 +104,8 @@ def test_response_points_covers_the_doppler_the_drift_and_the_antenna_sidebands(
 
 
 def test_a_response_window_narrower_than_the_chirp_caps_the_f0_prior():
-    # the loudest chirp the prior allows sits at the top of the f0 band with the
-    # heaviest pair; at a two-year baseline it needs far more than 256 bins, so a
+    # the fastest chirp the prior allows sits at the top of the f0 band, at the
+    # fdot ceiling; at a two-year baseline it needs far more than 256 bins, so a
     # 256-bin budget lowers f0_range[1] to the band it can hold instead of failing
     asked = (1e-4, 12.0e-3)
     with pytest.warns(UserWarning, match="response_points=256"):
@@ -119,9 +119,10 @@ def test_a_response_window_narrower_than_the_chirp_caps_the_f0_prior():
 
     # the cap is tight: the top of the capped band fills the window exactly, and the
     # next representable f0 above it would already overrun it
-    mc, hi = chirp_mass_support(problem.mass_range)[1], problem.f0_range[1]
-    assert response_span(hi, mc, TWO_YEARS) == 256
-    assert response_span(math.nextafter(hi, 1.0), mc, TWO_YEARS) > 256
+    hi = problem.f0_range[1]
+    assert response_span(hi, float(fdot_ceiling(hi)), TWO_YEARS) == 256
+    above = math.nextafter(hi, 1.0)
+    assert response_span(above, float(fdot_ceiling(above)), TWO_YEARS) > 256
 
 
 def test_a_budget_leaving_no_band_at_all_is_rejected_at_init():
@@ -152,7 +153,7 @@ def test_the_local_response_segment_decays_to_its_edges():
         [
             [
                 problem.f0_range[1],
-                chirp_mass_support(problem.mass_range)[1],
+                fdot_ceiling(problem.f0_range[1]),
                 1e-22,
                 1.0,
                 0.3,
@@ -162,10 +163,7 @@ def test_the_local_response_segment_decays_to_its_edges():
             ]
         ]
     )
-    fdot = fdot_from_chirp_mass(p[:, 1], p[:, 0])
-    segments = problem.response.get_tdi(
-        p.at[:, 1].set(fdot), tdi_generation=1.5, tdi_combination="AET"
-    )
+    segments = problem.response.get_tdi(p, tdi_generation=1.5, tdi_combination="AET")
     power = jnp.abs(jnp.stack(segments, axis=-1)[0, :, 0]) ** 2
     edge = (power[:8].sum() + power[-8:].sum()) / power.sum()
     assert float(edge) < 1e-3

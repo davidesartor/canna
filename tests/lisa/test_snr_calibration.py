@@ -20,14 +20,14 @@ MONTH = 2419200.0
 YEAR = 31536000.0
 # a band the window can sit on whole, so the zero context brackets 8.5 mHz
 BAND = (8.0e-3, 9.0e-3)
-CHIRP_MASS = 0.3  # a typical double white dwarf [Msun]
+FDOT = 1e-17  # a typical double white dwarf's chirp at a few mHz [Hz/s]
 
 
 def source_in(problem: LisaGB, amplitude: float = 1e-22) -> jnp.ndarray:
     """One source at the geometric centre of the window the zero context selects."""
     low, high = f0_window(problem, window(problem))
     f0 = float(jnp.sqrt(low * high))
-    return jnp.array([[f0, CHIRP_MASS, amplitude, 1.0, 0.3, 2.0, 0.5, 0.0]])
+    return jnp.array([[f0, FDOT, amplitude, 1.0, 0.3, 2.0, 0.5, 0.0]])
 
 
 def test_snr_is_linear_in_amplitude():
@@ -48,7 +48,7 @@ def test_snr_converges_as_the_response_grid_is_refined():
     )
     coarse = LisaGB(response_points=256, **common)
     fine = LisaGB(response_points=512, **common)
-    p = jnp.array([[3.1e-3, CHIRP_MASS, 1e-22, 1.0, 0.3, 2.0, 0.5, 0.0]])
+    p = jnp.array([[3.1e-3, FDOT, 1e-22, 1.0, 0.3, 2.0, 0.5, 0.0]])
     assert jnp.allclose(
         snr(coarse, p, window(coarse)), snr(fine, p, window(fine)), rtol=0.1
     )

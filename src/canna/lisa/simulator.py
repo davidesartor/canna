@@ -1,13 +1,11 @@
 """The prior over sources, their jaxgb A/E/T response in the window, and the noisy, whitened data."""
 
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, Complex, Float, Int, Key
 
-from .physics import fdot_from_chirp_mass, sample_chirp_mass, sample_sky
+from .physics import sample_sky, sample_sources
 from .problem import LisaGB, f0_window, window_power, window_start
 
 
@@ -15,8 +13,7 @@ def source_segments(
     problem: LisaGB, p: Float[Array, "S 8"], f: Float[Array, ""]
 ) -> tuple[Int[Array, "S N"], Complex[Array, "S N 3"]]:
     """Each source's own `response_points` A, E, T bins and their indices in the window."""
-    # jaxgb wants the chirp, not the chirp mass, and iota as colatitude
-    p = p.at[..., 1].set(fdot_from_chirp_mass(p[..., 1], p[..., 0]))
+    # jaxgb wants iota as colatitude
     p = p.at[..., 6].set(jnp.pi / 2 - p[..., 6])
     segments = jnp.stack(
         problem.response.get_tdi(p, tdi_generation=1.5, tdi_combination="AET"), axis=-1
@@ -59,32 +56,20 @@ def source_snrs(
 def sample_physical(
     problem: LisaGB, key: Key[Array, ""], f: Float[Array, ""]
 ) -> Float[Array, "S 8"]:
-    """The window's sources from the prior, [f0, Mc, A, lon, lat, psi, iota, phi0], loudest first.
+    """The window's sources from the prior, [f0, fdot, A, lon, lat, psi, iota, phi0], loudest first.
 
-    Each source's own snr is log-uniform over snr_range, its amplitude whatever gives it that snr.
+    (f0, fdot, A) come from the catalogue's Gaussian with f0 inside the window, so most sources are faint.
     """
-    keys = jr.split(key, 7)
+    keys = jr.split(key, 5)
     shape = (problem.n_sources, 1)
-    log_f = jnp.log(jnp.stack(f0_window(problem, f)))
-
-    f0 = jnp.exp(jr.uniform(keys[0], shape, minval=log_f[0], maxval=log_f[1]))
-    mc = jax.vmap(partial(sample_chirp_mass, mass_range=problem.mass_range))(
-        jr.split(keys[1], problem.n_sources)
-    )
-    log_snr = jnp.log(jnp.asarray(problem.snr_range))
-    target_snr = jnp.exp(
-        jr.uniform(keys[2], (problem.n_sources,), minval=log_snr[0], maxval=log_snr[1])
-    )
+    sources = sample_sources(keys[0], *f0_window(problem, f), problem.n_sources)
     # a galactic sky, an isotropic orientation: psi uniform, sin iota uniform
-    sky = jax.vmap(sample_sky)(jr.split(keys[3], problem.n_sources))
-    psi = jr.uniform(keys[4], shape, maxval=2 * jnp.pi)
-    iota = jnp.arcsin(jr.uniform(keys[5], shape, minval=-1.0, maxval=1.0))
-    phi0 = jr.uniform(keys[6], shape, maxval=2 * jnp.pi)
-    ones = jnp.ones(shape)
-    unit = jnp.concat([f0, mc, ones, sky, psi, iota, phi0], axis=-1)
-    # snr is linear in A: scale each unit-amplitude source to its drawn snr
-    p = unit.at[:, 2].multiply(target_snr / source_snrs(problem, unit, f))
-    return p[jnp.argsort(-target_snr)]
+    sky = jax.vmap(sample_sky)(jr.split(keys[1], problem.n_sources))
+    psi = jr.uniform(keys[2], shape, maxval=2 * jnp.pi)
+    iota = jnp.arcsin(jr.uniform(keys[3], shape, minval=-1.0, maxval=1.0))
+    phi0 = jr.uniform(keys[4], shape, maxval=2 * jnp.pi)
+    p = jnp.concat([sources, sky, psi, iota, phi0], axis=-1)
+    return p[jnp.argsort(-source_snrs(problem, p, f))]
 
 
 def sample_observation(

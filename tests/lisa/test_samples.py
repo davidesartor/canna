@@ -7,8 +7,8 @@ from canna.lisa import samples
 
 def test_a_packed_eval_reads_back_close_and_plain_files_unchanged(tmp_path):
     rng = np.random.default_rng(0)
-    truth = np.array([[1.234567e-3, 0.5, 1e-22, 1.0, 0.2, 0.3, 0.4, 0.5]] * 4)[None].repeat(3, 0)
-    width = np.array([1e-10, 0.05, 1e-24, 1e-3, 1e-3, 0.1, 0.1, 0.1])
+    truth = np.array([[1.234567e-3, 2e-18, 1e-22, 1.0, 0.2, 0.3, 0.4, 0.5]] * 4)[None].repeat(3, 0)
+    width = np.array([1e-10, 2e-19, 1e-24, 1e-3, 1e-3, 0.1, 0.1, 0.1])
     draws = truth[:, None] + width * rng.standard_normal((3, 256, 4, 8))
     draws[0, :3, 0, 0] += 3e-5  # three draws a few hundred thousand widths away
     np.savez(tmp_path / "draws.npz", draws=draws, matched=draws, fisher=draws, truth=truth, epoch=1)

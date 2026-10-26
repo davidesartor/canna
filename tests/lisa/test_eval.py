@@ -110,7 +110,7 @@ def test_the_warped_clock_still_covers_the_whole_path(small_flow, time_power):
     exactly that velocity, whatever the warp: RK4 integrates ds/dt = p (1 - t)^(p-1),
     a polynomial of degree <= 2 here, exactly."""
     _, _, u0, y, f = small_flow
-    # column 1 is log chirp mass
+    # column 1 is the standardised log fdot
     v = jnp.zeros(u0.shape[-1]).at[1].set(0.7)
     post = sample_posterior(ConstantVelocity(v), u0, y, f, 8, time_power)
     assert jnp.allclose(post[..., 1], u0[..., 1] + 0.7, atol=1e-10)
