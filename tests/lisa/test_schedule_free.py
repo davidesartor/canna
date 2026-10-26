@@ -149,7 +149,6 @@ def test_weight_decay_shrinks_the_muon_matrices_only():
         "x_embed.linear.weight",
         "x_unembed.linear2.weight",
         "x_unembed.linear2.bias",
-        "x_slot",
     )
     assert not any(muon[n] for n in adamw)
     for (path, before), after in zip(leaves, jax.tree.leaves(z)):

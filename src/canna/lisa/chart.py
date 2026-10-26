@@ -91,6 +91,6 @@ def flow_to_physical(
 def sample_flow(
     problem: LisaGB, key: Key[Array, ""], f: Float[Array, ""]
 ) -> Float[Array, "S 8"]:
-    """A prior draw in flow coordinates: the flow's base distribution."""
+    """A prior draw in flow coordinates: the flow's base distribution, its sources in no particular order."""
     return physical_to_flow(problem, sample_physical(problem, key, f), f)
 

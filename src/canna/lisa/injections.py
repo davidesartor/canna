@@ -11,7 +11,13 @@ from einops import rearrange
 from jaxtyping import Array
 
 from .problem import LisaGB, f0_window, sample_f
-from .simulator import log_likelihood, sample_observation, sample_physical, snr
+from .simulator import (
+    log_likelihood,
+    sample_observation,
+    sample_physical,
+    snr,
+    source_snrs,
+)
 
 N_POSTERIOR = 1024
 N_CANDIDATES = 1024
@@ -36,6 +42,11 @@ def fisher_draws(
     w = jnp.maximum(w, prior_w)
     z = jr.normal(key, (n, mean.size), mean.dtype)
     return mean + (z / jnp.sqrt(w)) @ v.T / d
+
+
+def sort_by_snr(problem: LisaGB, p: Array, f: Array) -> Array:
+    """The window's sources loudest first: only to show them apart, training and sampling never sort."""
+    return p[jnp.argsort(-source_snrs(problem, p, f))]
 
 
 def match_sources(
@@ -66,7 +77,7 @@ def match_sources(
 
 
 def eval_injections(problem: LisaGB, seed: int):
-    """The ten eval injections at the SNR deciles of N_CANDIDATES prior draws.
+    """The ten eval injections at the SNR deciles of N_CANDIDATES prior draws, each one's sources loudest first.
 
     Returns (latents [10, S, 8], windows, window SNRs, quantiles, noise keys, prior precision).
     """
@@ -80,9 +91,10 @@ def eval_injections(problem: LisaGB, seed: int):
     snrs = np.asarray(jax.lax.map(lambda pc: snr(problem, *pc), (latents, windows)))
     quantiles = np.linspace(1.0 / N_QUANTILES, 1.0, N_QUANTILES)
     chosen = np.argsort(snrs)[np.round(quantiles * (N_CANDIDATES - 1)).astype(int)]
+    picked = jax.vmap(partial(sort_by_snr, problem))(latents[chosen], windows[chosen])
     # latents stay on device: clean_signal writes the chirp in with .at[].set()
     return (
-        latents[chosen],
+        picked,
         windows[chosen],
         snrs[chosen],
         quantiles,

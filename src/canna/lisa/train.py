@@ -46,6 +46,11 @@ class TrainSample(NamedTuple):
     f: Float[Array, ""]
 
 
+def match_f0(x0: Float[Array, "S 8"], x1: Float[Array, "S 8"]) -> Float[Array, "S 8"]:
+    """x0's sources relabelled onto x1's by f0 rank: the k-th lowest f0 heads for the k-th lowest, so no paths cross in f0."""
+    return x0[jnp.argsort(x0[:, 0])][jnp.argsort(jnp.argsort(x1[:, 0]))]
+
+
 def train_sample(
     problem: LisaGB,
     key: Key[Array, ""],
@@ -69,6 +74,8 @@ def train_sample(
         problem, jr.split(key_x0, t.shape[0]), f
     )
     x1 = physical_to_flow(problem, p, f)
+    # the sources are exchangeable: each draw's sources head for x1's in f0 order
+    x0 = jax.vmap(match_f0, in_axes=(0, None))(x0, x1)
     # a late_time_mix share of draws has 1 - s log-uniform on [late_time_floor, 1] instead
     if late_time_mix > 0:
         key_mix = jr.fold_in(key_t, 1)

@@ -49,7 +49,9 @@ def stft_tokens(y: Float[Array, "F 6"], patch: int) -> Float[Array, "N P"]:
 
 
 class LisaFlow(eqx.Module):
-    """x1 (or, with prediction="velocity", the velocity) of the (loudest-first) sources, from a data stream that sees only (y, f).
+    """x1 (or, with prediction="velocity", the velocity) of the sources, from a data stream that sees only (y, f).
+
+    Permutation equivariant in the sources: no token carries a slot label.
 
     prediction="residual": (x1 - xt) / σ and log σ² per coordinate, σ the flow's own scale of x1 - xt.
     """
@@ -70,7 +72,6 @@ class LisaFlow(eqx.Module):
     f0_mlp: FeedForward
     y_embed: PiecewiseLinear
     y_mlp: FeedForward
-    x_slot: Float[Array, "S D"]
     c_mlp: FeedForward
     f_mlp: FeedForward
     backbone: MMDiT
@@ -165,11 +166,6 @@ class LisaFlow(eqx.Module):
         self.y_mlp = FeedForward(
             2 * len(self.y_periods), hidden_dim, hidden_dim, key=next(keys), **kwargs
         )
-        # the sources are ordered, so each slot gets its own embedding
-        self.x_slot = 0.02 * jr.normal(
-            next(keys), (problem.n_sources, hidden_dim), param_dtype
-        )
-
         # one MLP per conditioning vector: c over (t, log10(1 - t), log f), the data stream's over log f
         self.c_mlp = FeedForward(
             2 * SINUSOID_FREQS * len(spans),
@@ -311,9 +307,6 @@ class LisaFlow(eqx.Module):
         cache: tuple[Float[Array, "L M H K"], Float[Array, "L M H K"]] | None = None,
     ) -> Float[Array, "S O"]:
         """cache: `encode(y, f)`, when the caller already has it."""
-        assert (
-            x.shape[0] == self.x_slot.shape[0]
-        ), f"built for {self.x_slot.shape[0]} source slots, got {x.shape[0]} sources"
         cache = self.encode(y, f) if cache is None else cache
         f32 = jnp.float32
         # t on its own and as log10(1 - t), resolving the last decades before the data
@@ -345,7 +338,7 @@ class LisaFlow(eqx.Module):
         k_phi = phi[:, :, None] * jnp.arange(2, HARMONICS + 1)
         flat = lambda a: rearrange(radius[:, :, None] * a, "s c k -> s (c k)")
         features = jnp.concat([x, flat(jnp.cos(k_phi)), flat(jnp.sin(k_phi))], axis=-1)
-        tokens_x = jax.vmap(self.x_embed)(features.astype(f32)) + self.x_slot
+        tokens_x = jax.vmap(self.x_embed)(features.astype(f32))
 
         # f0's bin, before any cast: absolute for its embedding, from the window start for RoPE
         bins = self.source_bins(x[:, 0], f)

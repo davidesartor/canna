@@ -1,14 +1,10 @@
-"""Reordering sources must not change the physics; sampling lists them loudest first."""
+"""Reordering sources must not change the physics; training pairs sources in f0 order."""
 
-from functools import partial
-
-import equinox as eqx
-import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from canna.lisa.physics import sample_sources
-from canna.lisa.problem import LisaGB, f0_window, window_start
+from canna.lisa.injections import sort_by_snr
+from canna.lisa.problem import LisaGB, window_start
 from canna.lisa.simulator import (
     clean_signal,
     preprocess,
@@ -17,6 +13,8 @@ from canna.lisa.simulator import (
     snr,
     source_snrs,
 )
+from canna.lisa.train import match_f0, train_sample
+
 from ._helpers import window
 
 
@@ -82,25 +80,26 @@ def test_iota_change_on_one_source_leaves_a_siblings_band_untouched():
     assert jnp.allclose(o[band0], o_pert[band0], atol=1e-30)
 
 
-def test_sample_physical_lists_the_sources_loudest_first():
+def test_sort_by_snr_reorders_whole_rows_loudest_first():
     problem = LisaGB(n_sources=4)
     f = window(problem)
-    draw = eqx.filter_jit(jax.vmap(partial(sample_physical, problem), in_axes=(0, None)))
-    p = draw(jr.split(jr.key(30), 64), f)
-    snrs = source_snrs(problem, p, f)
-    assert snrs.shape == (64, 4)
-    assert jnp.all(jnp.diff(snrs, axis=-1) <= 0)
+    p = sample_physical(problem, jr.key(31), f)
+    shown = sort_by_snr(problem, p, f)
+    assert sorted(map(tuple, shown.tolist())) == sorted(map(tuple, p.tolist()))
+    assert jnp.all(jnp.diff(source_snrs(problem, shown, f)) <= 0)
 
 
-def test_loudest_first_is_a_reordering_of_the_draw():
+def test_match_f0_relabels_by_f0_rank():
+    x0, x1 = jr.normal(jr.key(40), (4, 8)), jr.normal(jr.key(41), (4, 8))
+    paired = match_f0(x0, x1)
+    assert jnp.array_equal(jnp.argsort(paired[:, 0]), jnp.argsort(x1[:, 0]))
+    assert sorted(map(tuple, paired.tolist())) == sorted(map(tuple, x0.tolist()))
+
+
+def test_train_sample_pairs_each_draw_in_f0_order():
     problem = LisaGB(n_sources=4)
-    f = window(problem)
-    key = jr.key(31)
-    p = sample_physical(problem, key, f)
-    # the unsorted draw's (f0, fdot, A), off sample_physical's own keys
-    sources = sample_sources(jr.split(key, 5)[0], *f0_window(problem, f), 4)
-    # every row moves whole: each sorted row is one drawn row, and each drawn row appears once
-    rows = jnp.argmax(jnp.all(p[:, None, :3] == sources[None], axis=-1), axis=1)
-    assert sorted(rows.tolist()) == [0, 1, 2, 3]
-    assert jnp.array_equal(p[:, :3], sources[rows])
-    assert jnp.all(jnp.diff(source_snrs(problem, p, f)) <= 0)
+    # u = 0 puts every point at the base draw
+    batch = train_sample(problem, jr.key(42), jnp.zeros(16))
+    order = jnp.argsort(batch.x_target[:, 0])
+    for x0 in batch.xt:
+        assert jnp.array_equal(jnp.argsort(x0[:, 0]), order)

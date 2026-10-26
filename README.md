@@ -114,7 +114,9 @@ Every run so far used `B`. The research log calls the bands `XS` and `B`: its `X
 - **Data tokens.** The whitened rfft window (A, E, T, real and imaginary), 16 bins per token,
   each token as its band's 16 time samples (a critically sampled STFT), fed as asinh|z| and
   the gated phase z / √(1 + |z|²) (F50, F51).
-- **Sources.** Sorted loudest first, each slot with a learned embedding. 8 flat coordinates
+- **Sources.** An unordered set: no slot embeddings, so the network is permutation
+  equivariant, and each training draw pairs x0's sources with x1's in f₀ order, so no two
+  paths cross in f₀ (`train.match_f0`). 8 flat coordinates
   per source, `[f0, fdot, l, b, Re z+, Im z+, Re z−, Im z−]`: log f₀ over the window,
   log₁₀ ḟ standardised by the prior's conditional mean and std at f₀, the sky in galactic
   (l, b) divided by the galactic-mixture prior's stds, and the helicity amplitudes

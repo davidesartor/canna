@@ -1,4 +1,4 @@
-"""The amplitude comes from the (f0, fdot, A) prior, the sources loudest first; the chart's amplitude unit."""
+"""The amplitude comes from the (f0, fdot, A) prior; the chart's amplitude unit."""
 
 from functools import partial
 
@@ -20,16 +20,6 @@ from ._helpers import window
 jax.config.update("jax_enable_x64", True)
 
 YEAR = 31557600.0
-
-
-def test_drawn_sources_come_loudest_first():
-    problem = LisaGB(n_sources=4, f0_range=(1.2e-3, 1.6e-3))
-    f = window(problem)
-    draw = eqx.filter_jit(jax.vmap(partial(sample_physical, problem), in_axes=(0, None)))
-    p = draw(jr.split(jr.key(0), 64), f)
-    rho = source_snrs(problem, p, f)
-    assert jnp.all(p[..., 2] > 0)
-    assert jnp.all(jnp.diff(rho, axis=-1) <= 1e-6 * rho[..., 1:])
 
 
 def test_drawn_amplitudes_follow_the_catalogue_not_the_snr():
