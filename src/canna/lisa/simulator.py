@@ -54,9 +54,11 @@ def source_snrs(
 
 
 def sample_physical(
-    problem: LisaGB, key: Key[Array, ""], f: Float[Array, ""]
+    problem: LisaGB,
+    key: Key[Array, ""],
+    f: Float[Array, ""],
 ) -> Float[Array, "S 8"]:
-    """The window's sources from the prior, [f0, fdot, A, lon, lat, psi, iota, phi0], loudest first.
+    """The window's sources from the prior, [f0, fdot, A, lon, lat, psi, iota, phi0], in no particular order.
 
     (f0, fdot, A) come from the catalogue's Gaussian with f0 inside the window, so most sources are faint.
     """
@@ -68,8 +70,7 @@ def sample_physical(
     psi = jr.uniform(keys[2], shape, maxval=2 * jnp.pi)
     iota = jnp.arcsin(jr.uniform(keys[3], shape, minval=-1.0, maxval=1.0))
     phi0 = jr.uniform(keys[4], shape, maxval=2 * jnp.pi)
-    p = jnp.concat([sources, sky, psi, iota, phi0], axis=-1)
-    return p[jnp.argsort(-source_snrs(problem, p, f))]
+    return jnp.concat([sources, sky, psi, iota, phi0], axis=-1)
 
 
 def sample_observation(

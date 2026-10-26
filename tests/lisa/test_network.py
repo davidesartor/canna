@@ -1,4 +1,4 @@
-"""LisaFlow: shapes, labelled source slots, the conditioning, the cached data stream, the attention sinks, and the PLE."""
+"""LisaFlow: shapes, permutation equivariance, the conditioning, the cached data stream, the attention sinks, and the PLE."""
 
 from types import SimpleNamespace
 
@@ -99,10 +99,9 @@ def test_batch_rows_are_independent():
     close(dx, jnp.stack([net(x[i], t[i], y[i], f[i]) for i in range(3)]), atol=2e-3)
 
 
-def test_the_source_count_is_the_slot_count():
-    x, t, y, f = inputs()
-    with pytest.raises(AssertionError, match="source slots"):
-        flow()(rand((S - 1, X), 1), t, y, f)
+def test_takes_any_number_of_sources():
+    _, t, y, f = inputs()
+    assert flow()(rand((S - 1, X), 1), t, y, f).shape == (S - 1, X)
 
 
 @pytest.mark.parametrize("t", [0.0, 1.0])
@@ -180,13 +179,12 @@ def test_velocity_depends_on_f_once_perturbed():
     differs(net(x, t, y, jnp.asarray(1.0e-3)), net(x, t, y, jnp.asarray(9.0e-3)))
 
 
-def test_source_slots_are_labelled_once_perturbed():
-    """Sources come loudest first, so two identical sources in different slots are told apart."""
+def test_permutation_equivariant_once_perturbed():
+    """The sources are an unordered set: reordering them reorders the output, and nothing else."""
     net = perturbed(flow())
-    _, t, y, f = inputs()
-    token = rand((1, X), 1)
-    dx = net(jnp.concat([token] * S, axis=0), t, y, f)
-    differs(dx[0], dx[1])
+    x, t, y, f = inputs()
+    perm = jnp.array([2, 0, 3, 1])
+    close(net(x[perm], t, y, f, x[perm]), net(x, t, y, f, x)[perm], atol=2e-3)
 
 
 def test_velocity_is_differentiable_in_x():

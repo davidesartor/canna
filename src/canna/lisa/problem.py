@@ -16,7 +16,7 @@ WINDOW_RESPONSES = 4
 
 
 class LisaGB(eqx.Module):
-    """Galactic binaries seen by LISA in one sliding frequency window, listed loudest first."""
+    """Galactic binaries seen by LISA in one sliding frequency window."""
 
     n_sources: int = eqx.field(static=True, default=4)
     t_obs: float = eqx.field(static=True, default=2 * 365.25 * 24 * 60 * 60)  # 2yr [s]
