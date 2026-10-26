@@ -1,4 +1,4 @@
-"""The (f0, fdot, A) prior: the catalogue's Gaussian in log10, truncated to the window and the fdot ceiling."""
+"""The (f0, fdot, A) prior: the catalogue's Gaussian in log10, truncated to the window in f0."""
 
 import jax
 import jax.numpy as jnp
@@ -7,11 +7,9 @@ import numpy as np
 from scipy import stats
 
 from canna.lisa.physics import (
-    FDOT_SIGMAS,
     FDOT_STD,
     SOURCE_COVARIANCE,
     SOURCE_MEAN,
-    fdot_ceiling,
     log10_fdot_mean,
     sample_sources,
     source_log_density,
@@ -23,7 +21,7 @@ DRAWS = 200_000
 
 
 def test_an_untruncating_window_draws_the_parent_gaussian():
-    # a window 8 sigma either side of the mean leaves only the fdot cut, 3e-7 of the mass
+    # a window 8 sigma either side of the mean truncates nothing
     sigma = np.sqrt(SOURCE_COVARIANCE[0, 0])
     lo, hi = 10.0 ** (SOURCE_MEAN[0] + np.array([-8, 8]) * sigma)
     x = np.log10(np.asarray(sample_sources(jr.key(0), lo, hi, DRAWS)))
@@ -31,11 +29,11 @@ def test_an_untruncating_window_draws_the_parent_gaussian():
     np.testing.assert_allclose(np.cov(x.T), SOURCE_COVARIANCE, rtol=0.02, atol=2e-3)
 
 
-def test_draws_stay_in_the_window_and_under_the_fdot_ceiling():
+def test_draws_stay_in_the_window():
     lo, hi = 1.0e-4, 2.0e-4
     f0, fdot, amp = np.asarray(sample_sources(jr.key(1), lo, hi, DRAWS)).T
     assert np.all((f0 >= lo) & (f0 <= hi))
-    assert np.all((fdot > 0) & (fdot <= np.asarray(fdot_ceiling(f0))))
+    assert np.all(fdot > 0)
     assert np.all(amp > 0)
 
 
@@ -60,14 +58,9 @@ def test_the_window_density_is_the_truncated_marginal():
     assert result.pvalue > 1e-3
 
 
-def test_the_log_density_is_the_parent_gaussian_and_zero_above_the_ceiling():
+def test_the_log_density_is_the_parent_gaussian():
     rng = np.random.default_rng(4)
     x = rng.multivariate_normal(SOURCE_MEAN, SOURCE_COVARIANCE, 64)
-    x = x[x[:, 1] < log10_fdot_mean(10 ** x[:, 0]) + FDOT_SIGMAS * FDOT_STD]
     log_p = np.asarray(source_log_density(jnp.asarray(x)))
     exact = stats.multivariate_normal(SOURCE_MEAN, SOURCE_COVARIANCE).logpdf(x)
     np.testing.assert_allclose(log_p - exact, (log_p - exact)[0], atol=1e-9)
-
-    above = x[0].copy()
-    above[1] = log10_fdot_mean(10 ** above[0]) + (FDOT_SIGMAS + 0.01) * FDOT_STD
-    assert source_log_density(jnp.asarray(above)) == -jnp.inf

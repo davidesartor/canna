@@ -24,7 +24,7 @@ from canna.lisa.simulator import (
 )
 from canna.lisa.simulator import log_likelihood as window_log_likelihood
 
-NARROW = dict(n_sources=4, t_obs=63115200.0, response_points=32, f0_range=(1.0e-4, 12.0e-3))
+NARROW = dict(n_sources=4, t_obs=63115200.0, response_points=32, f0_range=(1.0e-4, 1.2637070256260989e-3))
 
 
 @pytest.fixture(scope="module")
@@ -83,4 +83,4 @@ def test_sampler_coordinates_round_trip(injections):
     centres[ANGLES] = p[ANGLES]
     back = np.asarray(to_physical(jnp.asarray(to_sampler(p, centres))))
     assert np.allclose(back[[0, 1, 2, 4, 6]], p[[0, 1, 2, 4, 6]], rtol=1e-12)
-    assert np.allclose(np.mod(back[ANGLES] - p[ANGLES], 2 * np.pi) % (2 * np.pi), 0, atol=1e-12)
+    assert np.allclose(np.angle(np.exp(1j * (back[ANGLES] - p[ANGLES]))), 0, atol=1e-12)

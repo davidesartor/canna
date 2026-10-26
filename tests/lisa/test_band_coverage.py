@@ -1,14 +1,11 @@
 """The sliding window covers the f0 it draws from, and response_points covers a source."""
 
-import math
-
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
-import pytest
 
-from canna.lisa.physics import fdot_ceiling, response_span
+from canna.lisa.physics import log10_fdot_mean
 from canna.lisa.problem import WINDOW_STRIDE, LisaGB, f0_window, sample_f, window_start
 from canna.lisa.simulator import clean_signal, preprocess
 from ._helpers import window
@@ -91,69 +88,15 @@ def test_sample_f_snaps_to_a_window_start_that_window_start_recovers():
     np.testing.assert_array_equal(nudged, start)
 
 
-def test_response_points_covers_the_doppler_the_drift_and_the_antenna_sidebands():
-    # the chirp only drifts upward, so half the window has to hold doppler + drift + 4/yr
-    problem = LisaGB(n_sources=1, t_obs=TWO_YEARS)
-    f0_hi = problem.f0_range[1]
-    fdot_hi = fdot_ceiling(f0_hi)
-    bin_width = 1.0 / problem.t_obs
-    doppler_bins = f0_hi * V_OVER_C / bin_width
-    drift_bins = fdot_hi * problem.t_obs / bin_width
-    antenna_bins = 4 * problem.t_obs / YEAR
-    assert problem.response_points / 2.0 > doppler_bins + drift_bins + antenna_bins
-
-
-def test_a_response_window_narrower_than_the_chirp_caps_the_f0_prior():
-    # the fastest chirp the prior allows sits at the top of the f0 band, at the
-    # fdot ceiling; at a two-year baseline it needs far more than 256 bins, so a
-    # 256-bin budget lowers f0_range[1] to the band it can hold instead of failing
-    asked = (1e-4, 12.0e-3)
-    with pytest.warns(UserWarning, match="response_points=256"):
-        problem = LisaGB(
-            n_sources=1, t_obs=TWO_YEARS, response_points=256, f0_range=asked
-        )
-
-    assert problem.f0_range[0] == asked[0]
-    assert problem.f0_range[1] < asked[1]
-    assert problem.response_points == 256
-
-    # the cap is tight: the top of the capped band fills the window exactly, and the
-    # next representable f0 above it would already overrun it
-    hi = problem.f0_range[1]
-    assert response_span(hi, float(fdot_ceiling(hi)), TWO_YEARS) == 256
-    above = math.nextafter(hi, 1.0)
-    assert response_span(above, float(fdot_ceiling(above)), TWO_YEARS) > 256
-
-
-def test_a_budget_leaving_no_band_at_all_is_rejected_at_init():
-    # capping can only lower f0_range[1]; if it lands under f0_range[0] there is no
-    # prior left to sample, and that is an error rather than a warning
-    with pytest.raises(AssertionError, match="no band at all"):
-        LisaGB(
-            n_sources=1,
-            t_obs=TWO_YEARS,
-            response_points=256,
-            f0_range=(9.0e-3, 12.0e-3),
-        )
-
-
-def test_an_ample_response_window_leaves_the_f0_prior_alone():
-    # the budget only ever binds from above: one wider than the band asks for nothing
-    asked = (1e-4, 12.0e-3)
-    problem = LisaGB(
-        n_sources=1, t_obs=TWO_YEARS, response_points=1024, f0_range=asked
-    )
-    assert problem.f0_range == asked
-
-
 def test_the_local_response_segment_decays_to_its_edges():
-    # if response_points were too narrow the segment would still carry power at its ends
+    # if response_points were too narrow the segment would still carry power at its ends;
+    # a mean chirp at 3 mHz spans 2 (19 doppler + 8 antenna) bins
     problem = LisaGB(n_sources=1, t_obs=TWO_YEARS)
     p = jnp.array(
         [
             [
-                problem.f0_range[1],
-                fdot_ceiling(problem.f0_range[1]),
+                3e-3,
+                10.0 ** log10_fdot_mean(3e-3),
                 1e-22,
                 1.0,
                 0.3,

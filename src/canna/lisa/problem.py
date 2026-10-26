@@ -1,16 +1,14 @@
 """The LisaGB problem configuration, its sliding frequency window and the TDI noise."""
 
 import math
-import warnings
 
 import equinox as eqx
 import jax.numpy as jnp
-import jax.random as jr
 import lisaorbits
 from jaxgb import jaxgb
 from jaxtyping import Array, Float, Int, Key
 
-from .physics import SPEED_OF_LIGHT, fdot_ceiling, response_span
+from .physics import SPEED_OF_LIGHT, sample_sources
 
 WINDOW_STRIDE = 2  # window starts snap to even bins
 # the window spans 4 response bands; f0 keeps half a band clear of each edge, so 3 are drawable
@@ -22,8 +20,8 @@ class LisaGB(eqx.Module):
 
     n_sources: int = eqx.field(static=True, default=4)
     t_obs: float = eqx.field(static=True, default=2 * 365.25 * 24 * 60 * 60)  # 2yr [s]
-    # None sizes the window from the priors; a given one caps f0_range[1] at what it can hold
-    response_points: int | None = eqx.field(static=True, default=None)
+    # a source's response bins: 128 keeps 99% of the above-noise power of 99% of full-B sources (reports/prior/response-span)
+    response_points: int = eqx.field(static=True, default=128)
     oms_noise: float = eqx.field(static=True, default=15.0)
     acceleration_noise: float = eqx.field(static=True, default=3.0)
     f0_range: tuple[float, float] = eqx.field(static=True, default=(1e-4, 12.0e-3))
@@ -34,35 +32,9 @@ class LisaGB(eqx.Module):
     def __post_init__(self):
         self.f0_range = tuple(self.f0_range)
         assert self.phase_reference in ("start", "middle"), self.phase_reference
-        span = lambda f0: response_span(f0, float(fdot_ceiling(f0)), self.t_obs)
-
-        # the window follows the priors, or, when response_points is given, the priors the window
-        if self.response_points is None:
-            self.response_points = 1 << (span(self.f0_range[1]) - 1).bit_length()
-        else:
-            assert (
-                self.response_points & (self.response_points - 1) == 0
-            ), f"response_points={self.response_points} is not a power of two"
-            # the highest f0 whose span fits, to the last ulp
-            lo, hi = 0.0, 1.0
-            while math.nextafter(lo, hi) < hi:
-                mid = (lo + hi) / 2
-                fits = span(mid) <= self.response_points
-                lo, hi = (mid, hi) if fits else (lo, mid)
-            if lo < self.f0_range[1]:
-                warnings.warn(
-                    f"response_points={self.response_points} holds the prior's fastest chirp"
-                    f" only up to {lo:.4e}Hz: f0_range stops there",
-                    stacklevel=2,
-                )
-                self.f0_range = (self.f0_range[0], lo)
-            assert (
-                self.f0_range[0] < self.f0_range[1]
-            ), f"response_points={self.response_points} leaves no band at all"
-        needed = span(self.f0_range[1])
         assert (
-            needed <= self.response_points
-        ), f"response_points={self.response_points} is too narrow for f0_max: it needs {needed} bins"
+            self.response_points & (self.response_points - 1) == 0
+        ), f"response_points={self.response_points} is not a power of two"
 
         self.response = jaxgb.JaxGB(
             lisaorbits.EqualArmlengthOrbits(), t_obs=self.t_obs, n=self.response_points
@@ -89,9 +61,12 @@ class LisaGB(eqx.Module):
 
 
 def sample_f(problem: LisaGB, key: Key[Array, ""]) -> Float[Array, ""]:
-    """Centre frequency of a log-uniformly slid window: the band trained evenly in log f, whatever the f0 prior."""
-    f_lo, f_hi = problem.f0_range
-    f_centre = f_lo * (f_hi / f_lo) ** jr.uniform(key)
+    """Centre frequency of a window slid by the source prior's f0 marginal, so training sees the catalogue's f0.
+
+    The sparse high-f0 end, where most visible sources are, is trained rarely; if the posterior there
+    turns out miscalibrated, we may want to correct this (e.g. a flatter window prior reweighted back).
+    """
+    f_centre = sample_sources(key, *map(jnp.asarray, problem.f0_range), 1)[0, 0]
     lo, hi = problem.window_index_range
     index = jnp.clip(
         jnp.round((f_centre * problem.t_obs - problem.window_bins / 2) / WINDOW_STRIDE),

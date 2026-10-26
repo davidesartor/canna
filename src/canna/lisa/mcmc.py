@@ -24,7 +24,6 @@ from .injections import (
     scaled_inverse,
 )
 from .physics import (
-    FDOT_SIGMAS,
     FDOT_STD,
     SOURCE_COVARIANCE,
     SOURCE_INTERCEPT,
@@ -53,6 +52,8 @@ ANGLES = [3, 5, 7]
 MCMC_ROOT = Path("outputs/mcmc")
 # the box's log fdot and log A reach this many conditional stds past the prior's mean across the window
 BOX_SIGMAS = 8.0
+# the chains keep the prior's old 5-sigma fdot cut, and with it their cache ids, until the forward model is final
+FDOT_SIGMAS = 5.0
 # draws per source kept for the corner pages
 N_PLOT = 4096
 COLUMNS = ["f0 [bins]", "log fdot", "log A", "lon", "lat", "psi", "sin iota", "phi0"]
@@ -203,7 +204,7 @@ def make_target(problem: LisaGB, injections, j: int, s: int) -> Target:
     centres = np.zeros(N_PARAMS)
     centres[ANGLES] = truth[ANGLES]
     f_lo, f_hi = (float(v) for v in f0_window(problem, f))
-    # log10 fdot and log10 A's conditional means at the window's ends; the top of fdot is the prior's own cut
+    # log10 fdot and log10 A's conditional means at the window's ends; the top of fdot is the chains' cut
     mean_lo, mean_hi = (SOURCE_INTERCEPT + SOURCE_SLOPE * np.log10(v) for v in (f_lo, f_hi))
     reach = BOX_SIGMAS * np.sqrt(np.diag(SOURCE_RESIDUAL))
     log10_lo = mean_lo - reach
@@ -229,7 +230,9 @@ def make_target(problem: LisaGB, injections, j: int, s: int) -> Target:
 
 def log_prior(target: Target, theta: jax.Array) -> jax.Array:
     inside = jnp.all((theta >= target.lower) & (theta <= target.upper))
-    lp = source_log_density(theta[:3] / jnp.log(10.0))
+    log10_source = theta[:3] / jnp.log(10.0)
+    ceiling = log10_fdot_mean(10.0 ** log10_source[0]) + FDOT_SIGMAS * FDOT_STD
+    lp = jnp.where(log10_source[1] <= ceiling, source_log_density(log10_source), -jnp.inf)
     return jnp.where(inside, lp + sky_log_density(theta[3], theta[4]), -jnp.inf)
 
 

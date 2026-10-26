@@ -1,7 +1,8 @@
-# response_points autosizes to 1024 from the full f0 range
+# response_points 128 keeps 99% of the above-noise power of 99% of sources (reports/prior/response-span)
 problem:
   n_sources: 4
   t_obs: 63115200.0
+  response_points: 128
   oms_noise: 15.0
   acceleration_noise: 3.0
   f0_range: [1.0e-4, 12.0e-3]

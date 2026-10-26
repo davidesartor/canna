@@ -6,7 +6,6 @@ import jax.random as jr
 
 from canna.lisa.physics import (
     equatorial_to_galactic,
-    fdot_ceiling,
     galactic_scales,
     sky_log_density,
 )
@@ -65,7 +64,7 @@ def test_sample_physical_columns_respect_declared_ranges_and_angle_domains():
     orient_azimuth, orient_latitude = p[..., 5], p[..., 6]
     phi0 = p[..., 7]
     assert jnp.all((f0 >= problem.f0_range[0]) & (f0 <= problem.f0_range[1]))
-    assert jnp.all((fdot > 0) & (fdot <= fdot_ceiling(f0)))
+    assert jnp.all(fdot > 0)
     assert jnp.all(amp > 0)
     assert jnp.all((sky_azimuth >= 0) & (sky_azimuth < 2 * jnp.pi))
     assert jnp.all((sky_latitude >= -jnp.pi / 2) & (sky_latitude <= jnp.pi / 2))
