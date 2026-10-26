@@ -26,11 +26,11 @@ SINUSOID_FREQS, SINUSOID_DECADES = 64, 4.0
 # |z| cos k phi and |z| sin k phi of both helicity amplitudes for k = 2..HARMONICS (k = 1 is the coordinate itself)
 HARMONICS = 6
 HELICITY = (slice(4, 6), slice(6, 8))
-# the helicity radius asinh|z| reaches asinh(snr_range[1]) at sin iota = +-1
+# the helicity radius asinh|z| of an snr-1000 source at sin iota = +-1
 Z_REACH = math.asinh(1000.0)
 # the finest period of f0's Fourier features, in bins
 F0_FINEST_PERIOD = 1 / 64
-# log f0 on [-1, 1], log Mc and the sky standardised, z± within Z_REACH
+# log f0 on [-1, 1], log fdot and the sky standardised, z± within Z_REACH
 COORD_RANGES = ((-1.0, 1.0),) + ((-4.0, 4.0),) * 3 + ((-Z_REACH, Z_REACH),) * 4
 # learned loss weights: one log-variance per (log10(1 - s) bin on [-LOSS_TIME_DECADES, 0], coordinate group)
 LOSS_TIME_BINS, LOSS_TIME_DECADES = 16, 6.0

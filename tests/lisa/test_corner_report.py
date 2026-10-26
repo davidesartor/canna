@@ -34,8 +34,9 @@ def test_a_synthetic_eval_round_trips_through_the_page(tmp_path):
     n_injections, n_draws, rng = 2, 64, np.random.default_rng(0)
     f = np.array([float(sample_f(problem, jr.key(j))) for j in range(n_injections)])
     truth = np.stack([np.asarray(sample_physical(problem, jr.key(10 + j), f[j])) for j in range(n_injections)])
-    # draws a hair off the truth in every coordinate, f0 by ~0.01 bins
-    spread = np.array([0.01 / problem.t_obs, 1e-3, 1e-24, 1e-3, 1e-3, 1e-2, 1e-2, 1e-2])
+    # draws a hair off the truth in every coordinate, f0 by ~0.01 bins, fdot and A by 1e-3 of themselves
+    spread = np.array([0.01 / problem.t_obs, 0.0, 0.0, 1e-3, 1e-3, 1e-2, 1e-2, 1e-2])
+    spread = spread + np.array([0, 1e-3, 1e-3, 0, 0, 0, 0, 0]) * np.abs(truth[:, None])
     draws = truth[:, None] + spread * rng.standard_normal((n_injections, n_draws, *truth.shape[1:]))
     np.savez(
         eval_dir / "draws.npz",

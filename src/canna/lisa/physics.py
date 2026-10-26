@@ -1,4 +1,4 @@
-"""Physical constants, the chirp of a circular binary, the Korol et al. 2022 chirp-mass prior and the galactic sky prior."""
+"""Physical constants, the (f0, fdot, A) prior fitted to a WD-WD catalogue and the galactic sky prior."""
 
 import math
 
@@ -16,12 +16,24 @@ YEAR = 31557600.0  # LISA's orbital period [s]
 # the antenna pattern's highest harmonic of the orbital frequency (Cutler 1998, arXiv:gr-qc/9703068)
 ANTENNA_HARMONICS = 4
 
-# double-white-dwarf primary of Korol et al. 2022 (arXiv:2109.10972, Kepler 2015): a 3-Gaussian mixture
-PRIMARY_WEIGHTS = np.array([0.81, 0.14, 0.05])
-PRIMARY_MEANS = np.array([0.65, 0.57, 0.81])
-PRIMARY_STDS = np.array([0.044, 0.097, 0.187])
-# points per axis of chirp_mass_moments' quadrature grid over (m1, m2)
-CHIRP_MASS_GRID = 256
+# (log10 f0 [Hz], log10 fdot [Hz/s], log10 A) of the double white dwarfs of a galaxy catalogue
+# (wdwd_cat_lam_0p0_alpha_1p0_zerotides_MultiCGalaxy, f0 >= 1e-4 Hz): a Gaussian, fitted by maximum
+# likelihood truncated at that cut. This is the untruncated parent; the f0 window truncates it again
+SOURCE_MEAN = np.array([-3.742259, -20.57385, -23.267532])
+SOURCE_COVARIANCE = np.array(
+    [
+        [0.151855, 0.528604, 0.073046],
+        [0.528604, 1.872439, 0.286668],
+        [0.073046, 0.286668, 0.097662],
+    ]
+)
+# (log10 fdot, log10 A) given log10 f0: a linear mean, SOURCE_SLOPE per dex, and a fixed residual covariance
+SOURCE_SLOPE = SOURCE_COVARIANCE[0, 1:] / SOURCE_COVARIANCE[0, 0]
+SOURCE_INTERCEPT = SOURCE_MEAN[1:] - SOURCE_SLOPE * SOURCE_MEAN[0]
+SOURCE_RESIDUAL = SOURCE_COVARIANCE[1:, 1:] - np.outer(SOURCE_SLOPE, SOURCE_COVARIANCE[0, 1:])
+FDOT_STD = float(np.sqrt(SOURCE_RESIDUAL[0, 0]))
+# log10 fdot is cut this many FDOT_STDs above its mean at f0 (3e-7 of the prior), so every response has a finite span
+FDOT_SIGMAS = 5.0
 
 # galactic-binary sky, fitted to the sky of a WD-WD catalogue of this many sources: bulge, thick disk, thin disk, isotropic floor
 SKY_CATALOGUE_SOURCES = 9_000_000
@@ -40,95 +52,52 @@ EQUATORIAL_TO_GALACTIC = np.array(
 )
 
 
-def fdot_from_chirp_mass(
-    chirp_mass: Float[Array, "..."], f0: Float[Array, "..."]
-) -> Float[Array, "..."]:
-    """Radiation-reaction chirp of a circular binary, for chirp mass in solar masses."""
-    ratio = 96.0 / 5.0 * jnp.pi ** (8 / 3) * f0 ** (11 / 3)
-    return ratio * (
-        GRAVITATIONAL_CONSTANT * SUN_MASS / SPEED_OF_LIGHT**3 * chirp_mass
-    ) ** (5 / 3)
+def log10_fdot_mean(f0: Float[Array, "..."]) -> Float[Array, "..."]:
+    """The prior's mean log10 fdot [Hz/s] at f0 [Hz]."""
+    return SOURCE_INTERCEPT[0] + SOURCE_SLOPE[0] * jnp.log10(f0)
 
 
-def response_span(f0: float, chirp_mass: float, t_obs: float) -> int:
+def fdot_ceiling(f0: Float[Array, "..."]) -> Float[Array, "..."]:
+    """The largest fdot [Hz/s] the prior draws at f0: FDOT_SIGMAS above its mean."""
+    return 10.0 ** (log10_fdot_mean(f0) + FDOT_SIGMAS * FDOT_STD)
+
+
+def response_span(f0: float, fdot: float, t_obs: float) -> int:
     """Bins the response of a source at f0 covers: twice its doppler sideband, chirp drift and antenna-pattern sidebands."""
-    drift = float(fdot_from_chirp_mass(chirp_mass, f0)) * t_obs
+    drift = fdot * t_obs
     doppler = f0 * EARTH_ORBIT_SPEED / SPEED_OF_LIGHT
     return 2 * math.ceil((doppler + drift) * t_obs + ANTENNA_HARMONICS * t_obs / YEAR)
 
 
-def sample_chirp_mass(
-    key: Key[Array, ""], mass_range: tuple[float, float]
-) -> Float[Array, "1"]:
-    """One chirp mass [Msun]: a truncated-mixture primary m1 and m2 ~ U[m_min, m1]."""
-    m_min, m_max = mass_range
-    means, stds = jnp.asarray(PRIMARY_MEANS), jnp.asarray(PRIMARY_STDS)
-    key_component, key_primary, key_secondary = jr.split(key, 3)
+def sample_sources(
+    key: Key[Array, ""], f_lo: Float[Array, ""], f_hi: Float[Array, ""], n: int
+) -> Float[Array, "n 3"]:
+    """n (f0, fdot, A) from the source prior, f0 truncated to [f_lo, f_hi] and fdot to its ceiling."""
+    key_f, key_fdot, key_amp = jr.split(key, 3)
+    mean, std = SOURCE_MEAN[0], np.sqrt(SOURCE_COVARIANCE[0, 0])
+    bounds = (jnp.log10(jnp.stack([f_lo, f_hi])) - mean) / std
+    log_f0 = mean + std * jr.truncated_normal(key_f, bounds[0], bounds[1], (n,))
 
-    # truncation leaves each component a different share of the mixture
-    low, high = (m_min - means) / stds, (m_max - means) / stds
-    kept = jax.scipy.stats.norm.cdf(high) - jax.scipy.stats.norm.cdf(low)
-    k = jr.choice(key_component, means.size, p=jnp.asarray(PRIMARY_WEIGHTS) * kept)
+    # fdot's residual, then A's given it: the conditional Gaussian, cut only in fdot
+    residual_fdot = FDOT_STD * jr.truncated_normal(key_fdot, -jnp.inf, FDOT_SIGMAS, (n,))
+    slope = SOURCE_RESIDUAL[0, 1] / SOURCE_RESIDUAL[0, 0]
+    amp_std = np.sqrt(SOURCE_RESIDUAL[1, 1] - slope * SOURCE_RESIDUAL[0, 1])
+    residual_amp = slope * residual_fdot + amp_std * jr.normal(key_amp, (n,))
 
-    m1 = means[k] + stds[k] * jr.truncated_normal(key_primary, low[k], high[k])
-    m2 = jr.uniform(key_secondary, minval=m_min, maxval=m1)
-    return jnp.atleast_1d((m1 * m2) ** 0.6 / (m1 + m2) ** 0.2)
-
-
-def chirp_mass_moments(
-    mass_range: tuple[float, float],
-) -> tuple[Float[Array, "1"], Float[Array, "1"]]:
-    """Mean and std of log Mc, on a grid over the truncated primary and the flat mass ratio."""
-    m_min, m_max = mass_range
-    m1 = jnp.linspace(m_min, m_max, CHIRP_MASS_GRID)[:, None]
-    ratio = jnp.linspace(0.0, 1.0, CHIRP_MASS_GRID)
-    m2 = m_min + ratio * (m1 - m_min)
-    log_mc = 0.6 * jnp.log(m1 * m2) - 0.2 * jnp.log(m1 + m2)
-
-    means, stds, weights = (
-        jnp.asarray(a) for a in (PRIMARY_MEANS, PRIMARY_STDS, PRIMARY_WEIGHTS)
-    )
-    weight = (jax.scipy.stats.norm.pdf(m1[..., None], means, stds) * weights).sum(-1)
-    weight = weight / weight.sum() / ratio.size
-    mean = jnp.atleast_1d((weight * log_mc).sum())
-    return mean, jnp.atleast_1d(jnp.sqrt((weight * (log_mc - mean) ** 2).sum()))
+    log_rest = SOURCE_INTERCEPT + SOURCE_SLOPE * log_f0[:, None]
+    log_rest = log_rest + jnp.stack([residual_fdot, residual_amp], axis=-1)
+    return 10.0 ** jnp.concat([log_f0[:, None], log_rest], axis=-1)
 
 
-def chirp_mass_support(mass_range: tuple[float, float]) -> tuple[float, float]:
-    # both extremes are equal-mass pairs, where the chirp mass is m / 2^(1/5)
-    return mass_range[0] * 2**-0.2, mass_range[1] * 2**-0.2
+def source_log_density(log10_source: Float[Array, "... 3"]) -> Float[Array, "..."]:
+    """log p(log10 f0, log10 fdot, log10 A) up to a constant: the parent Gaussian, -inf above the fdot ceiling.
 
-
-def chirp_mass_log_density(
-    mass_range: tuple[float, float], n_grid: int = 1024, n_m1: int = 8000
-) -> tuple[np.ndarray, np.ndarray]:
-    """log p(log Mc) on a grid, by quadrature over m1: p(Mc) = int dm1 p(m1) / (m1 - m_min) / (dMc/dm2)."""
-    from scipy.special import ndtr
-
-    m_min, m_max = mass_range
-    w, mu, sd = PRIMARY_WEIGHTS, PRIMARY_MEANS, PRIMARY_STDS
-    norm = lambda z: np.exp(-0.5 * z**2) / np.sqrt(2 * np.pi)
-    kept = ndtr((m_max - mu) / sd) - ndtr((m_min - mu) / sd)
-    m1 = np.linspace(m_min, m_max, n_m1 + 1)[1:]
-    p1 = (w * norm((m1[:, None] - mu) / sd) / sd).sum(-1) / (w * kept).sum()
-    chirp = lambda a, b: (a * b) ** 0.6 / (a + b) ** 0.2
-
-    lo, hi = chirp_mass_support(mass_range)
-    log_mc = np.linspace(np.log(lo), np.log(hi), n_grid)
-    mc = np.exp(log_mc)[:, None]
-    low, high = chirp(m1, m_min)[None], chirp(m1, m1)[None]
-    valid = (mc >= low) & (mc <= high)
-    a, b = np.full_like(mc * m1, m_min), np.broadcast_to(m1, (n_grid, n_m1)).copy()
-    for _ in range(60):  # bisection for m2 on [m_min, m1]
-        mid = 0.5 * (a + b)
-        below = chirp(m1[None], mid) < mc
-        a, b = np.where(below, mid, a), np.where(below, b, mid)
-    m2 = 0.5 * (a + b)
-    slope = chirp(m1[None], m2) * (0.6 / m2 - 0.2 / (m1[None] + m2))
-    integrand = np.where(valid, p1[None] / (m1[None] - m_min) / slope, 0.0)
-    density = np.trapezoid(integrand, m1, axis=1)  # p(Mc)
-    with np.errstate(divide="ignore"):
-        return log_mc, np.log(density * np.exp(log_mc))  # p(log Mc) = p(Mc) Mc
+    Inside one f0 window the truncations only rescale it: the fdot cut keeps the same share at every f0.
+    """
+    x = log10_source - SOURCE_MEAN
+    log_p = -0.5 * jnp.einsum("...i,ij,...j->...", x, np.linalg.inv(SOURCE_COVARIANCE), x)
+    ceiling = log10_fdot_mean(10.0 ** log10_source[..., 0]) + FDOT_SIGMAS * FDOT_STD
+    return jnp.where(log10_source[..., 1] <= ceiling, log_p, -jnp.inf)
 
 
 def equatorial_to_galactic(

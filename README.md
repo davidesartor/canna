@@ -71,14 +71,14 @@ stored as float16 offsets from the truth in units of their robust width (`canna.
 ## The LISA problem (`canna.lisa`)
 
 Galactic binaries in simulated LISA data: each frequency window holds four sources, and the
-flow returns their joint posterior over frequency, chirp mass, amplitude, sky, inclination
+flow returns their joint posterior over frequency, its derivative ḟ, amplitude, sky, inclination
 and the two circular-mode phases φ₀ ± 2ψ. Why the code is the way it is lives in
 [`reports/research-log/`](reports/research-log/000-takeaways.md).
 
 | module | holds |
 |---|---|
 | `config.py` | `Config`, `load()` (defaults, yamls, `LISA_*`), `load_run()`, run names |
-| `physics.py` | constants, the chirp-mass and galactic sky priors, `fdot` |
+| `physics.py` | constants, the (f₀, ḟ, A) and galactic sky priors |
 | `problem.py` | `LisaGB` (pure configuration), the frequency window, the noise PSD |
 | `simulator.py` | sources, signal, noise, SNR, likelihood, whitening |
 | `chart.py` | the 8 flat flow coordinates per source |
@@ -115,11 +115,15 @@ Every run so far used `B`. The research log calls the bands `XS` and `B`: its `X
   each token as its band's 16 time samples (a critically sampled STFT), fed as asinh|z| and
   the gated phase z / √(1 + |z|²) (F50, F51).
 - **Sources.** Sorted loudest first, each slot with a learned embedding. 8 flat coordinates
-  per source, `[f0, Mc, l, b, Re z+, Im z+, Re z−, Im z−]`: log f₀ over the window,
-  standardised log M_c, the sky in galactic (l, b) divided by the galactic-mixture prior's
-  stds, and the helicity amplitudes z± = A (1 ∓ sin ι)²/4 · e^{i(φ₀ ± 2ψ)} in units of SNR ≈ 1,
-  radius warped by asinh. Phases are referenced to the middle of the observation. The
-  amplitude prior is log-uniform in each source's SNR over `snr_range`.
+  per source, `[f0, fdot, l, b, Re z+, Im z+, Re z−, Im z−]`: log f₀ over the window,
+  log₁₀ ḟ standardised by the prior's conditional mean and std at f₀, the sky in galactic
+  (l, b) divided by the galactic-mixture prior's stds, and the helicity amplitudes
+  z± = A (1 ∓ sin ι)²/4 · e^{i(φ₀ ± 2ψ)} in units of SNR ≈ 1, radius warped by asinh. Phases
+  are referenced to the middle of the observation.
+- **Prior.** (log₁₀ f₀, log₁₀ ḟ, log₁₀ A) is a Gaussian fitted to a WD–WD galaxy catalogue
+  (`physics.SOURCE_MEAN`, `SOURCE_COVARIANCE`), truncated to the window's f₀ range and
+  5σ above ḟ's conditional mean; most drawn sources are below detection. The window
+  slides log-uniformly over the band, and the sky and orientation priors are unchanged.
 - **Embeddings.** Values go through piecewise-linear encodings in float32; time, window
   frequency and positions go in as sinusoids and an MLP. Each source also carries
   |z| cos kφ, |z| sin kφ for k = 2–6 and Fourier features of its f₀ bin.

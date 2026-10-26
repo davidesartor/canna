@@ -5,13 +5,13 @@ import jax.numpy as jnp
 import jax.random as jr
 
 from canna.lisa.physics import (
-    chirp_mass_support,
     equatorial_to_galactic,
+    fdot_ceiling,
     galactic_scales,
     sky_log_density,
 )
 from canna.lisa.problem import LisaGB, noise_psd
-from canna.lisa.simulator import clean_signal, sample_physical, snr, source_snrs
+from canna.lisa.simulator import clean_signal, sample_physical, snr
 from ._helpers import window
 
 
@@ -55,21 +55,18 @@ def test_clean_signal_frequency_axis_is_even_and_the_window():
 
 
 def test_sample_physical_columns_respect_declared_ranges_and_angle_domains():
-    # Product(f0, chirp_mass, amp, sky, orientation, phi0) fixes physical columns 0..7,
+    # Product(f0, fdot, amp, sky, orientation, phi0) fixes physical columns 0..7,
     # and Isotropic's chart.backward emits (azimuth in [0, 2pi), latitude in
     # [-pi/2, pi/2]) per 2-angle block.
     problem = LisaGB(n_sources=8)
     p = sample_physical(problem, jr.key(44), window(problem))
-    f0, chirp_mass, amp = p[..., 0], p[..., 1], p[..., 2]
+    f0, fdot, amp = p[..., 0], p[..., 1], p[..., 2]
     sky_azimuth, sky_latitude = p[..., 3], p[..., 4]
     orient_azimuth, orient_latitude = p[..., 5], p[..., 6]
     phi0 = p[..., 7]
-    mc_lo, mc_hi = chirp_mass_support(problem.mass_range)
     assert jnp.all((f0 >= problem.f0_range[0]) & (f0 <= problem.f0_range[1]))
-    assert jnp.all((chirp_mass >= mc_lo) & (chirp_mass <= mc_hi))
-    rho = source_snrs(problem, p, window(problem))
+    assert jnp.all((fdot > 0) & (fdot <= fdot_ceiling(f0)))
     assert jnp.all(amp > 0)
-    assert jnp.all((rho >= problem.snr_range[0] * (1 - 1e-6)) & (rho <= problem.snr_range[1] * (1 + 1e-6)))
     assert jnp.all((sky_azimuth >= 0) & (sky_azimuth < 2 * jnp.pi))
     assert jnp.all((sky_latitude >= -jnp.pi / 2) & (sky_latitude <= jnp.pi / 2))
     assert jnp.all((orient_azimuth >= 0) & (orient_azimuth < 2 * jnp.pi))

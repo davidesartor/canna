@@ -18,11 +18,11 @@ REFERENCE_DRAWS = {"fisher": 512, "mcmc": 1024}
 # float16 holds offsets from the truth in robust flow widths; past this they are only "off the page"
 HALF_LIMIT = 6.0e4
 COORDINATES = {
-    "physical": ["f₀", "M<sub>c</sub>", "log₁₀ A", "λ", "β", "ψ", "ι", "φ₀"],
-    "flow": ["x<sub>f</sub>", "m", "l / σ<sub>l</sub>", "b / σ<sub>b</sub>", "Re z<sub>+</sub>", "Im z<sub>+</sub>", "Re z<sub>−</sub>", "Im z<sub>−</sub>"],
+    "physical": ["f₀", "log₁₀ ḟ", "log₁₀ A", "λ", "β", "ψ", "ι", "φ₀"],
+    "flow": ["x<sub>f</sub>", "x<sub>ḟ</sub>", "l / σ<sub>l</sub>", "b / σ<sub>b</sub>", "Re z<sub>+</sub>", "Im z<sub>+</sub>", "Re z<sub>−</sub>", "Im z<sub>−</sub>"],
 }
 UNITS = {
-    "physical": ["bins", "M☉", "", "rad", "rad", "rad", "rad", "rad"],
+    "physical": ["bins", "Hz/s", "", "rad", "rad", "rad", "rad", "rad"],
     "flow": [""] * 8,
 }
 
@@ -63,14 +63,14 @@ def equatorial_to_ecliptic(ra: np.ndarray, dec: np.ndarray) -> tuple[np.ndarray,
 
 def physical_columns(p: np.ndarray, truth: np.ndarray, start_bin: float, t_obs: float) -> np.ndarray:
     """The report's physical columns of draws [..., S, 8] folded onto truth [S, 8]: f0 in bins from the window's
-    first, Mc, log10 A, ecliptic λ (unwrapped around the truth's) and β, ψ, ι, φ0."""
+    first, log10 fdot, log10 A, ecliptic λ (unwrapped around the truth's) and β, ψ, ι, φ0."""
     lam, beta = equatorial_to_ecliptic(p[..., 3], p[..., 4])
     lam_true, _ = equatorial_to_ecliptic(truth[..., 3], truth[..., 4])
     lam = lam_true + (lam - lam_true + np.pi) % (2 * np.pi) - np.pi
     with np.errstate(invalid="ignore", divide="ignore"):
-        log_a = np.log10(p[..., 2])
+        log_fdot, log_a = np.log10(p[..., 1]), np.log10(p[..., 2])
     return np.stack(
-        [p[..., 0] * t_obs - start_bin, p[..., 1], log_a, lam, beta, p[..., 5], p[..., 6], p[..., 7]],
+        [p[..., 0] * t_obs - start_bin, log_fdot, log_a, lam, beta, p[..., 5], p[..., 6], p[..., 7]],
         axis=-1,
     )
 
@@ -176,18 +176,12 @@ CORNER_PAGE = r"""<!doctype html>
   --flow: #eb6834; --fisher: #2a78d6; --mcmc: #1b9a6a; --truth: #0b0b0b;
 }
 @media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) {
+  :root {
     color-scheme: dark;
     --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
     --flow: #d95926; --fisher: #3987e5; --mcmc: #2fb383; --truth: #f0efec;
   }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
-  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
-  --flow: #d95926; --fisher: #3987e5; --mcmc: #2fb383; --truth: #f0efec;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -271,8 +265,8 @@ window.onerror = (message, source, line) => {
     <details>
       <summary>The two coordinate systems</summary>
       <ul>
-        <li><b>Physical:</b> f₀ in frequency bins from the window's first bin (per source: offset from the truth), the chirp mass M<sub>c</sub> in M☉, log₁₀ of the strain amplitude A, the <b>ecliptic</b> longitude λ and latitude β (rotated from the simulator's equatorial RA and Dec by the J2000 obliquity, 23.4393°; λ unwrapped around the truth), the polarisation ψ, the inclination ι (sin ι uniform in [−1, 1]) and the initial phase φ₀. ψ and φ₀ are folded onto the copy nearest the truth by the likelihood's exact symmetries ψ → ψ + π and (ψ, φ₀) → (ψ + π/2, φ₀ + π).</li>
-        <li><b>Flow:</b> the 8 coordinates the network learns (<code>chart.physical_to_flow</code>): x<sub>f</sub> = (2 ln f₀ − ln f<sub>lo</sub> − ln f<sub>hi</sub>) / (ln f<sub>hi</sub> − ln f<sub>lo</sub>) over the window's drawable f₀ range (one unit is half of it); m = (ln M<sub>c</sub> − μ) / σ under the chirp-mass prior; galactic l and b over the galactic sky prior's stds; and the helicity amplitudes z± = asinh(A / A₁ · (1 ∓ sin ι)² / 4) · e<sup>i(φ₀′ ± 2ψ)</sup>, A₁ the amplitude of SNR ≈ 1 and φ₀′ the phase at mid-observation. They need no folding: every (ψ, φ₀) copy has the same z±.</li>
+        <li><b>Physical:</b> f₀ in frequency bins from the window's first bin (per source: offset from the truth), log₁₀ of the chirp ḟ in Hz/s and of the strain amplitude A, the <b>ecliptic</b> longitude λ and latitude β (rotated from the simulator's equatorial RA and Dec by the J2000 obliquity, 23.4393°; λ unwrapped around the truth), the polarisation ψ, the inclination ι (sin ι uniform in [−1, 1]) and the initial phase φ₀. ψ and φ₀ are folded onto the copy nearest the truth by the likelihood's exact symmetries ψ → ψ + π and (ψ, φ₀) → (ψ + π/2, φ₀ + π).</li>
+        <li><b>Flow:</b> the 8 coordinates the network learns (<code>chart.physical_to_flow</code>): x<sub>f</sub> = (2 ln f₀ − ln f<sub>lo</sub> − ln f<sub>hi</sub>) / (ln f<sub>hi</sub> − ln f<sub>lo</sub>) over the window's drawable f₀ range (one unit is half of it); x<sub>ḟ</sub> = (log₁₀ ḟ − μ(f₀)) / σ, standardised by the (f₀, ḟ, A) prior's conditional mean and std at f₀; galactic l and b over the galactic sky prior's stds; and the helicity amplitudes z± = asinh(A / A₁ · (1 ∓ sin ι)² / 4) · e<sup>i(φ₀′ ± 2ψ)</sup>, A₁ the amplitude of SNR ≈ 1 and φ₀′ the phase at mid-observation. They need no folding: every (ψ, φ₀) copy has the same z±.</li>
         <li><b>Sets:</b> the flow's draws matched onto the injected sources, the Fisher forecast (Hessian averaged over noise, plus the prior) and the narrowband MCMC (one source free, the others at their truth), each thinned as the header says. Contours hold 39% and 86% of each set (1σ and 2σ of a 2-D Gaussian); widths are 1.4826 × MAD.</li>
       </ul>
     </details>
@@ -692,11 +686,9 @@ function readHash() {
   if (h.has("sets")) S.sets = h.get("sets").split(",").filter(Boolean);
   if (h.has("points")) S.points = h.get("points").split(",").filter(Boolean);
   if (h.has("cell")) { const [a, b] = h.get("cell").split(",").map(Number); if (a >= 0 && b >= a && b < 8) S.cell = [a, b]; }
-  if (h.has("theme")) document.documentElement.dataset.theme = h.get("theme");
 }
 function writeHash() {
   const h = new URLSearchParams({view: S.view, inj: S.inj, src: S.src, sets: S.sets.join(","), points: S.points.join(","), cell: S.cell.join(",")});
-  if (document.documentElement.dataset.theme) h.set("theme", document.documentElement.dataset.theme);
   history.replaceState(null, "", `#${h}`);
 }
 
@@ -756,18 +748,12 @@ RUN_PAGE = r"""<!doctype html>
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
 }
 @media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) {
+  :root {
     color-scheme: dark;
     --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
   }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
-  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -859,7 +845,7 @@ window.onerror = (message, source, line) => {
       <summary>What the curves are</summary>
       <ul>
         <li><b>flow</b>: the training loss. For a velocity or x flow, the mean squared velocity error e over the batch; for a residual flow, which predicts z = (x₁ − x<sub>t</sub>)/σ and log σ² per coordinate, the Gaussian NLL (z − z<sub>true</sub>)² + log σ², negative once σ &lt; 1. <b>x</b>: the mean squared error of the predicted x₁. <b>objective</b>: what the optimizer descends: Σ e·e<sup>−λ</sup> + λ over (time bin, group) with learned λ; β-NLL, each coordinate's NLL weighed by its stopped σ<sup>2β</sup>, for a residual flow; else the flow loss. <b>grad norm</b>: before clipping.</li>
-        <li><b>Per flow time</b>: the held-out x₁ error per coordinate group (f₀, M<sub>c</sub>, sky, z₊, z₋) on a batch spread evenly over the time bins, binned in log₁₀(1 − s), 1 − s the flow time left. Dashed, the x₁ error the flow expects: a residual flow's own σ², the resolution it claims; with learned weights e<sup>λ</sup>(1 − s)², the error each bin's weight expects. Error ÷ expected is a residual flow's mean squared z error and is 1 where its σ is calibrated, for λ where the weight has caught up.</li>
+        <li><b>Per flow time</b>: the held-out x₁ error per coordinate group (f₀, ḟ, sky, z₊, z₋) on a batch spread evenly over the time bins, binned in log₁₀(1 − s), 1 − s the flow time left. Dashed, the x₁ error the flow expects: a residual flow's own σ², the resolution it claims; with learned weights e<sup>λ</sup>(1 − s)², the error each bin's weight expects. Error ÷ expected is a residual flow's mean squared z error and is 1 where its σ is calibrated, for λ where the weight has caught up.</li>
       </ul>
     </details>
   </div>
@@ -1081,7 +1067,7 @@ function shown(e, b, grp) {
   return S.mode === "ratio" ? [T.ratio[e][b][grp], NaN] : [T.x_error[e][b][grp], META.has_expected ? T.expected[e][b][grp] : NaN];
 }
 const COLOURS = ["--s1", "--s2", "--s3", "--s4", "--s5"];
-const GROUP_TEXT = {f0: "f₀", Mc: "M<sub>c</sub>", sky: "sky", "z+": "z₊", "z-": "z₋"};
+const GROUP_TEXT = {f0: "f₀", fdot: "ḟ", sky: "sky", "z+": "z₊", "z-": "z₋"};
 function flowTime() {
   const parent = document.getElementById("time"), lam = META.has_expected && S.mode !== "ratio";
   const expectedText = EXPECTED.replace(/<\/?sup>/g, "");
@@ -1156,11 +1142,9 @@ function readHash() {
   if (h.has("mode") && MODES.some(m => m.v === h.get("mode"))) S.mode = h.get("mode");
   if (h.has("epoch")) S.epoch = clamp(+h.get("epoch") - 1 || 0, 0, E - 1);
   if (h.has("bin")) S.bin = clamp(+h.get("bin") || 0, 0, NT - 1);
-  if (h.has("theme")) document.documentElement.dataset.theme = h.get("theme");
 }
 function writeHash() {
   const h = new URLSearchParams({x: S.xlog ? "log" : "linear", mode: S.mode, epoch: S.epoch + 1, bin: S.bin});
-  if (document.documentElement.dataset.theme) h.set("theme", document.documentElement.dataset.theme);
   history.replaceState(null, "", `#${h}`);
 }
 
@@ -1278,20 +1262,13 @@ VALIDATION_PAGE = r"""<!doctype html>
   --q1: #86b6ef; --q2: #3987e5; --q3: #1c5cab; --q4: #0d366b; --bad: #d03b3b;
 }
 @media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) {
+  :root {
     color-scheme: dark;
     --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
     --q1: #1c5cab; --q2: #3987e5; --q3: #86b6ef; --q4: #cfe2f8; --bad: #e25c5c;
   }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
-  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
-  --q1: #1c5cab; --q2: #3987e5; --q3: #86b6ef; --q4: #cfe2f8; --bad: #e25c5c;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -1824,12 +1801,10 @@ function readHash() {
   if (C && h.has("q") && C.names.includes(h.get("q"))) S.q = C.names.indexOf(h.get("q"));
   if (C && h.has("col") && C.columns.includes(h.get("col"))) S.col = C.columns.indexOf(h.get("col"));
   if (h.has("mcmc") && MCMC_MODES.some(m => String(m.v) === h.get("mcmc"))) S.mcmc = +h.get("mcmc");
-  if (h.has("theme")) document.documentElement.dataset.theme = h.get("theme");
 }
 function writeHash() {
   const h = new URLSearchParams({band: META.bands[S.band], mcmc: S.mcmc});
   if (C) { h.set("q", C.names[S.q]); h.set("col", C.columns[S.col]); }
-  if (document.documentElement.dataset.theme) h.set("theme", document.documentElement.dataset.theme);
   history.replaceState(null, "", `#${h}`);
 }
 

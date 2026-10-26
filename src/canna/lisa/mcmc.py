@@ -24,10 +24,16 @@ from .injections import (
     scaled_inverse,
 )
 from .physics import (
-    chirp_mass_log_density,
-    chirp_mass_support,
-    sample_chirp_mass,
+    FDOT_SIGMAS,
+    FDOT_STD,
+    SOURCE_COVARIANCE,
+    SOURCE_INTERCEPT,
+    SOURCE_MEAN,
+    SOURCE_RESIDUAL,
+    SOURCE_SLOPE,
+    log10_fdot_mean,
     sky_log_density,
+    source_log_density,
 )
 from .plots import fold_orientation, gb_picks
 from .samples import load as load_samples
@@ -42,12 +48,14 @@ from .simulator import (
 )
 
 N_PARAMS = 8
-NAMES = ["log f0", "log Mc", "log A", "lon", "lat", "psi", "sin iota", "phi0"]
+NAMES = ["log f0", "log fdot", "log A", "lon", "lat", "psi", "sin iota", "phi0"]
 ANGLES = [3, 5, 7]
 MCMC_ROOT = Path("outputs/mcmc")
+# the box's log fdot and log A reach this many conditional stds past the prior's mean across the window
+BOX_SIGMAS = 8.0
 # draws per source kept for the corner pages
 N_PLOT = 4096
-COLUMNS = ["f0 [bins]", "log Mc", "log A", "lon", "lat", "psi", "sin iota", "phi0"]
+COLUMNS = ["f0 [bins]", "log fdot", "log A", "lon", "lat", "psi", "sin iota", "phi0"]
 
 
 def problem_id(problem: LisaGB, seed: int) -> str:
@@ -60,9 +68,7 @@ def problem_id(problem: LisaGB, seed: int) -> str:
             "response_points",
             "oms_noise",
             "acceleration_noise",
-            "mass_range",
             "f0_range",
-            "snr_range",
         )
     }
     # fields the problem has since dropped, at their only values: keeps existing chain caches' ids
@@ -71,7 +77,7 @@ def problem_id(problem: LisaGB, seed: int) -> str:
         True,
         "EqualArmlengthOrbits",
     )
-    fields["amplitude_prior"] = "snr"
+    fields["source_prior"] = [SOURCE_MEAN.tolist(), SOURCE_COVARIANCE.tolist(), FDOT_SIGMAS]
     fields["sky_prior"] = "galactic"
     fields["seed"] = seed
     text = json.dumps(fields, sort_keys=True, default=str)
@@ -129,7 +135,7 @@ def load_chains(
 
 
 def to_physical(theta: jax.Array) -> jax.Array:
-    """Sampler coordinates (log f0, log Mc, log A, lon, lat, psi, sin iota, phi0) -> physical."""
+    """Sampler coordinates (log f0, log fdot, log A, lon, lat, psi, sin iota, phi0) -> physical."""
     t = theta
     return jnp.stack(
         [
@@ -181,8 +187,6 @@ class Target(NamedTuple):
     centres: np.ndarray
     lower: np.ndarray
     upper: np.ndarray
-    mc_grid: Array
-    mc_table: Array
 
 
 def make_target(problem: LisaGB, injections, j: int, s: int) -> Target:
@@ -199,16 +203,15 @@ def make_target(problem: LisaGB, injections, j: int, s: int) -> Target:
     centres = np.zeros(N_PARAMS)
     centres[ANGLES] = truth[ANGLES]
     f_lo, f_hi = (float(v) for v in f0_window(problem, f))
-    # the snr cut in log_likelihood is the amplitude's support; the box only has to hold it near the truth
-    snr_lo, snr_hi = problem.snr_range
-    a_lo, a_hi = truth[2] * snr_lo / snr_hi, truth[2] * snr_hi / snr_lo
-    mc_lo, mc_hi = chirp_mass_support(problem.mass_range)
-    lower = np.array([np.log(f_lo), np.log(mc_lo), np.log(a_lo), 0, -np.pi / 2, 0, -1, 0])
-    upper = np.array([np.log(f_hi), np.log(mc_hi), np.log(a_hi), 0, np.pi / 2, 0, 1, 0])
+    # log10 fdot and log10 A's conditional means at the window's ends; the top of fdot is the prior's own cut
+    mean_lo, mean_hi = (SOURCE_INTERCEPT + SOURCE_SLOPE * np.log10(v) for v in (f_lo, f_hi))
+    reach = BOX_SIGMAS * np.sqrt(np.diag(SOURCE_RESIDUAL))
+    log10_lo = mean_lo - reach
+    log10_hi = mean_hi + np.array([FDOT_SIGMAS * FDOT_STD, reach[1]])
+    lower = np.array([np.log(f_lo), *np.log(10) * log10_lo, 0, -np.pi / 2, 0, -1, 0])
+    upper = np.array([np.log(f_hi), *np.log(10) * log10_hi, 0, np.pi / 2, 0, 1, 0])
     lower[ANGLES], upper[ANGLES] = centres[ANGLES] - np.pi, centres[ANGLES] + np.pi
 
-    grid, table = chirp_mass_log_density(problem.mass_range)
-    finite = np.isfinite(table)
     return Target(
         j=j,
         s=s,
@@ -221,16 +224,12 @@ def make_target(problem: LisaGB, injections, j: int, s: int) -> Target:
         centres=centres,
         lower=lower,
         upper=upper,
-        mc_grid=jnp.asarray(grid[finite]),
-        mc_table=jnp.asarray(table[finite]),
     )
 
 
 def log_prior(target: Target, theta: jax.Array) -> jax.Array:
     inside = jnp.all((theta >= target.lower) & (theta <= target.upper))
-    lp = jnp.interp(
-        theta[1], target.mc_grid, target.mc_table, left=-jnp.inf, right=-jnp.inf
-    )
+    lp = source_log_density(theta[:3] / jnp.log(10.0))
     return jnp.where(inside, lp + sky_log_density(theta[3], theta[4]), -jnp.inf)
 
 
@@ -243,14 +242,11 @@ def log_likelihood(problem: LisaGB, target: Target, theta: jax.Array) -> jax.Arr
     k = jnp.clip(idx, 0, problem.window_bins - 1)
     r, power = target.residual[k], target.power[k]
     d = (jnp.abs(r - seg) ** 2 - jnp.abs(r) ** 2) / power
-    # the amplitude prior's support, the source's own snr in snr_range, off the same response
-    rho = jnp.sqrt(2.0 * jnp.sum(jnp.where(inside[:, None], jnp.abs(seg) ** 2 / power, 0.0)))
-    in_range = (rho >= problem.snr_range[0]) & (rho <= problem.snr_range[1])
-    return jnp.where(in_range, -jnp.sum(jnp.where(inside[:, None], d, 0.0)), -jnp.inf)
+    return -jnp.sum(jnp.where(inside[:, None], d, 0.0))
 
 
 def fisher_cov(problem: LisaGB, target: Target) -> np.ndarray:
-    """Fisher covariance in sampler coordinates, plus the box as a weak Gaussian to keep it finite."""
+    """Fisher covariance in sampler coordinates, plus the (f0, fdot, A) prior and the box as a weak Gaussian."""
     t0 = jnp.asarray(to_sampler(target.truth, target.centres))
 
     def signal(theta):
@@ -260,14 +256,16 @@ def fisher_cov(problem: LisaGB, target: Target) -> np.ndarray:
 
     jac = jax.jacfwd(signal)(t0)
     fisher = 2.0 * np.asarray(jac.T @ jac)
-    prior = 12.0 / (target.upper - target.lower) ** 2
-    return np.asarray(scaled_inverse(jnp.asarray(fisher + np.diag(prior))))
+    prior = np.diag(12.0 / (target.upper - target.lower) ** 2)
+    # the source prior's precision, from log10 to natural-log coordinates
+    prior[:3, :3] += np.linalg.inv(SOURCE_COVARIANCE) / np.log(10) ** 2
+    return np.asarray(scaled_inverse(jnp.asarray(fisher + prior)))
 
 
 def initial_points(
     problem: LisaGB, target: Target, n: int, key: jax.Array
 ) -> np.ndarray:
-    """Walkers on the Fisher ellipse, chirp masses from the prior, clipped into the box and snr_range."""
+    """Walkers on the Fisher-and-prior ellipse, clipped into the box and under the fdot ceiling."""
     t0 = to_sampler(target.truth, target.centres)
     cov = fisher_cov(problem, target)
     theta = np.array(
@@ -275,18 +273,10 @@ def initial_points(
             key, jnp.asarray(t0), jnp.asarray(cov), (n,), method="eigh"
         )
     )
-    mc = jax.vmap(partial(sample_chirp_mass, mass_range=problem.mass_range))(
-        jr.split(jr.fold_in(key, 1), n)
-    )
-    theta[:, 1] = np.log(np.asarray(mc)).reshape(n)
     pad = 1e-9 * (target.upper - target.lower)
     theta = np.clip(theta, target.lower + pad, target.upper - pad)
-    rho = np.asarray(
-        jax.vmap(lambda t: snr(problem, to_physical(t)[None], target.f))(jnp.asarray(theta))
-    )
-    margin = 1 + 1e-6
-    lo, hi = problem.snr_range[0] * margin, problem.snr_range[1] / margin
-    theta[:, 2] += np.log(np.clip(rho, lo, hi) / rho)
+    ceiling = log10_fdot_mean(np.exp(theta[:, 0])) + FDOT_SIGMAS * FDOT_STD
+    theta[:, 1] = np.minimum(theta[:, 1], np.log(10) * ceiling - pad[1])
     return theta
 
 

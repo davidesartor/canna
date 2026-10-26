@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
+from canna.lisa.physics import sample_sources
 from canna.lisa.problem import LisaGB, f0_window, window_start
 from canna.lisa.simulator import (
     clean_signal,
@@ -66,8 +67,8 @@ def test_iota_change_on_one_source_leaves_a_siblings_band_untouched():
     problem = LisaGB(n_sources=2, t_obs=5.0e5, f0_range=(1.0e-3, 6.0e-3))
     p = jnp.array(
         [
-            [1e-3, 0.3, 4e-23, 0.3, 0.2, 0.7, 0.2, 1.1],
-            [6e-3, 0.5, 6e-23, 0.3, 0.2, 0.7, 0.2, 1.1],
+            [1e-3, 1e-18, 4e-23, 0.3, 0.2, 0.7, 0.2, 1.1],
+            [6e-3, 1e-16, 6e-23, 0.3, 0.2, 0.7, 0.2, 1.1],
         ]
     )
     p_pert = p.at[1, 6].set(-0.4)
@@ -96,13 +97,10 @@ def test_loudest_first_is_a_reordering_of_the_draw():
     f = window(problem)
     key = jr.key(31)
     p = sample_physical(problem, key, f)
-    # the unsorted draw's f0 and target snrs, off sample_physical's own keys
-    keys = jr.split(key, 8)
-    log_f = jnp.log(jnp.stack(f0_window(problem, f)))
-    f0 = jnp.exp(jr.uniform(keys[0], (4, 1), minval=log_f[0], maxval=log_f[1]))[:, 0]
-    log_snr = jnp.log(jnp.asarray(problem.snr_range))
-    target = jnp.exp(jr.uniform(keys[2], (4,), minval=log_snr[0], maxval=log_snr[1]))
-    order = jnp.argsort(-target)
-    # every row moves whole: its f0 and its own snr follow the same permutation
-    assert jnp.allclose(p[:, 0], f0[order], rtol=1e-12, atol=0.0)
-    assert jnp.allclose(source_snrs(problem, p, f), target[order], rtol=1e-6)
+    # the unsorted draw's (f0, fdot, A), off sample_physical's own keys
+    sources = sample_sources(jr.split(key, 5)[0], *f0_window(problem, f), 4)
+    # every row moves whole: each sorted row is one drawn row, and each drawn row appears once
+    rows = jnp.argmax(jnp.all(p[:, None, :3] == sources[None], axis=-1), axis=1)
+    assert sorted(rows.tolist()) == [0, 1, 2, 3]
+    assert jnp.array_equal(p[:, :3], sources[rows])
+    assert jnp.all(jnp.diff(source_snrs(problem, p, f)) <= 0)
