@@ -2,7 +2,6 @@
 
 import time
 from functools import cache, partial
-from pathlib import Path
 
 import equinox as eqx
 import jax
@@ -17,8 +16,6 @@ from .chart import flow_to_physical, physical_to_flow, sample_flow
 from .network import LisaFlow
 from .problem import LisaGB, sample_f, window_power
 from .sample import ODE_STEPS, sample_posterior
-from .samples import load as load_samples
-from .samples import pack_validation
 from .simulator import (
     clean_signal,
     log_likelihood,
@@ -74,7 +71,6 @@ def validate_injection(
     problem: LisaGB,
     flow: LisaFlow,
     key: Key[Array, ""],
-    time_power: float = 1.0,
     n_draws: int = N_DRAWS,
     ode_steps: int = ODE_STEPS,
 ) -> dict:
@@ -87,7 +83,7 @@ def validate_injection(
     u0 = jax.vmap(partial(sample_flow, problem), in_axes=(0, None))(
         jr.split(key_u, n_draws), f
     )
-    post = sample_posterior(flow, u0, y, f, ode_steps, time_power)
+    post = sample_posterior(flow, u0, y, f, ode_steps)
     draws = jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)
     # TARP's reference point (Lemos+23): a prior draw independent of the truth, its own stream
     tarp_ref = sample_flow(problem, key_tarp, f)
@@ -293,16 +289,16 @@ def report(rows: dict, title: str) -> None:
 
 
 def sample(
-    config: run_config.Config, problem: LisaGB, flow: LisaFlow, epoch: int, out_dir: Path
-) -> None:
-    """Draw the flow on n_validation prior injections and save every quantity as validation.npz."""
+    config: run_config.Config, problem: LisaGB, flow: LisaFlow
+) -> dict[str, np.ndarray]:
+    """Draw the flow on n_validation prior injections: every quantity, row 0 the truth."""
     n, ode_steps = config.n_validation, config.ode_steps
     print(f"\nvalidation: injections {n}, draws {N_DRAWS}", flush=True)
     # a stream of plain prior injections apart from the eval's and the scorecard's
     keys = jr.split(jr.fold_in(jr.key(config.seed), 1), n)
     # BATCH injections per call: one injection's 127 draws leave the GPU latency-bound
     batched = eqx.filter_jit(
-        eqx.filter_vmap(validate_injection, in_axes=(None, None, 0, None, None, None))
+        eqx.filter_vmap(validate_injection, in_axes=(None, None, 0, None, None))
     )
     rows, start = [], time.perf_counter()
     for i in range(0, n, BATCH):
@@ -313,7 +309,6 @@ def sample(
                     problem,
                     flow,
                     keys[i : i + BATCH],
-                    config.time_power,
                     N_DRAWS,
                     ode_steps,
                 ),
@@ -324,24 +319,14 @@ def sample(
                 f"[{i + BATCH}/{n}] injections drawn, {time.perf_counter() - start:.0f} s",
                 flush=True,
             )
-    rows = {k: np.concat([r[k] for r in rows]) for k in rows[0]}
-    path = out_dir / "validation.npz"
-    np.savez(path, epoch=epoch, ode_steps=ode_steps, **pack_validation(rows))
-    print(f"\nsaved {path}", flush=True)
     print_peak_memory()
+    return {k: np.concat([r[k] for r in rows]) for k in rows[0]}
 
 
-def summarise(out_dir: Path, seed: int) -> None:
-    """Rank and score validation.npz, print the report, and save validation_scores.npz."""
-    samples = load_samples(out_dir / "validation.npz")
+def summarise(samples: dict, seed: int, title: str) -> dict[str, np.ndarray]:
+    """Rank and score the samples, print the report, and return the scores flat (rank_<q>, joint_rank_<q>, ...)."""
     rows = analyse(samples, seed)
-    report(
-        rows,
-        f"{len(samples['f'])} prior injections (epoch {samples['epoch']}, {samples['ode_steps']} ODE steps)",
-    )
+    report(rows, title)
     flat = {f"rank_{k}": v for k, v in rows["rank"].items()}
     flat |= {f"joint_rank_{k}": v for k, v in rows["joint_rank"].items()}
-    flat |= {k: v for k, v in rows.items() if k not in ("rank", "joint_rank")}
-    path = out_dir / "validation_scores.npz"
-    np.savez(path, epoch=samples["epoch"], **flat)
-    print(f"\nsaved {path}", flush=True)
+    return flat | {k: v for k, v in rows.items() if k not in ("rank", "joint_rank")}

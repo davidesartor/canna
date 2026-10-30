@@ -6,7 +6,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-from einops import rearrange, repeat
+from einops import rearrange
 from jaxtyping import Array, Float, Key
 
 from ..networks import MMDiT, FeedForward, Modulation, PiecewiseLinear
@@ -14,8 +14,7 @@ from ..networks.utils import DType
 from .chart import SKY
 from .problem import WINDOW_STRIDE, LisaGB
 
-# PLE bins: STFT amplitudes reach asinh(~1000), f0 gets 4x the other coordinates (F26)
-STFT_AMPLITUDE_BINS, STFT_PHASE_BINS, DATA_REACH = 128, 64, 1000.0
+# PLE bins: f0 gets 4x the other coordinates (F26)
 # channels per window: re A, E, T, im A, E, T
 STFT_GROUP = 6
 COORD_BINS, F0_BINS = 64, 256
@@ -28,11 +27,11 @@ HARMONICS = 6
 HELICITY = (slice(4, 6), slice(6, 8))
 # the helicity radius asinh|z| of an snr-1000 source at sin iota = +-1
 Z_REACH = math.asinh(1000.0)
-# the finest period of f0's Fourier features, in bins
-F0_FINEST_PERIOD = 1 / 64
+# the finest period of the frequency features (f0, a data token's lowest and highest bin), in bins
+FREQ_FINEST_PERIOD = 1 / 64
 # log f0 on [-1, 1], log fdot and the sky standardised, z± within Z_REACH
 COORD_RANGES = ((-1.0, 1.0),) + ((-4.0, 4.0),) * 3 + ((-Z_REACH, Z_REACH),) * 4
-# learned loss weights: one log-variance per (log10(1 - s) bin on [-LOSS_TIME_DECADES, 0], coordinate group)
+# the training diagnostics: x1's error per (log10(1 - s) bin on [-LOSS_TIME_DECADES, 0], coordinate group)
 LOSS_TIME_BINS, LOSS_TIME_DECADES = 16, 6.0
 LOSS_GROUPS = (slice(0, 1), slice(1, 2), SKY) + HELICITY
 
@@ -49,20 +48,15 @@ def stft_tokens(y: Float[Array, "F 6"], patch: int) -> Float[Array, "N P"]:
 
 
 class LisaFlow(eqx.Module):
-    """x1 (or, with prediction="velocity", the velocity) of the sources, from a data stream that sees only (y, f).
+    """The mean m and log std s of x1 per source coordinate, from a data stream that sees only (y, f).
 
     Permutation equivariant in the sources: no token carries a slot label.
-
-    prediction="residual": (x1 - xt) / σ and log σ² per coordinate, σ the flow's own scale of x1 - xt.
     """
 
     dtype: DType = eqx.field(static=True)
     patch: int = eqx.field(static=True)
-    prediction: str = eqx.field(static=True)
-    self_condition: bool = eqx.field(static=True)
     rope_periods: tuple[float, ...] = eqx.field(static=True)
-    f0_periods: tuple[float, ...] = eqx.field(static=True)
-    y_periods: tuple[float, ...] = eqx.field(static=True)
+    freq_periods: tuple[float, ...] = eqx.field(static=True)
     c_periods: tuple[tuple[float, ...], ...] = eqx.field(static=True)
     t_obs: float = eqx.field(static=True)
     window_bins: int = eqx.field(static=True)
@@ -70,15 +64,13 @@ class LisaFlow(eqx.Module):
     f0_range: tuple[float, float] = eqx.field(static=True)
     x_embed: PiecewiseLinear
     f0_mlp: FeedForward
-    y_embed: PiecewiseLinear
+    y_embed: eqx.nn.Linear
     y_mlp: FeedForward
     c_mlp: FeedForward
     f_mlp: FeedForward
     backbone: MMDiT
     x_modulation: Modulation
     x_unembed: FeedForward
-    hat_embed: PiecewiseLinear | None
-    loss_log_var: Float[Array, "B G"] | None
     s_slot: Float[Array, "N D"] | None
 
     def __init__(
@@ -88,9 +80,6 @@ class LisaFlow(eqx.Module):
         num_heads: int = 8,
         num_blocks: int = 8,
         patch: int = 16,
-        prediction: str = "x",
-        self_condition: bool = True,
-        loss_weights: bool = False,
         sinks: int = 4,
         dtype: DType = jnp.float32,
         attention_dtype: DType | None = None,
@@ -102,33 +91,30 @@ class LisaFlow(eqx.Module):
         assert (
             n_bins % patch == 0
         ), f"window of {n_bins} bins is not divisible by {patch}"
-        assert prediction in ("velocity", "x", "residual"), f"unknown prediction {prediction!r}"
-        assert hidden_dim // num_heads % 2 == 0, "RoPE pairs a head's dims: head_dim must be even"
+        assert (
+            hidden_dim // num_heads % 2 == 0
+        ), "RoPE pairs a head's dims: head_dim must be even"
         # x64 is on, so a None dtype would mean float64
-        assert dtype is not None and param_dtype is not None, "dtype and param_dtype must be explicit"
+        assert (
+            dtype is not None and param_dtype is not None
+        ), "dtype and param_dtype must be explicit"
         self.dtype, self.patch = dtype, patch
-        self.prediction = prediction
-        self.self_condition = self_condition
         self.t_obs, self.window_bins = problem.t_obs, n_bins
         self.guard, self.f0_range = (
             problem.response_points // 2,
             tuple(problem.f0_range),
         )
-        # RoPE periods log-spaced from 2 bins to twice the window, one per head-dim pair
+        # RoPE periods in Hz, log-spaced from 2 bins to twice the window, one per head-dim pair
         pairs = hidden_dim // num_heads // 2
         self.rope_periods = tuple(
-            float(2.0 * n_bins ** (k / max(pairs - 1, 1))) for k in range(pairs)
+            float(2.0 * n_bins ** (k / max(pairs - 1, 1))) / problem.t_obs
+            for k in range(pairs)
         )
-        # f0's Fourier periods: octaves from F0_FINEST_PERIOD bins to past twice the band's top bin
+        # the frequency features' periods in Hz: octaves from FREQ_FINEST_PERIOD bins to past twice the band's top
         top_bin = problem.f0_range[1] * problem.t_obs
-        self.f0_periods = tuple(
-            F0_FINEST_PERIOD * 2.0**k
-            for k in range(math.ceil(math.log2(2 * top_bin / F0_FINEST_PERIOD)) + 1)
-        )
-        # a data token's Fourier periods: octaves from two tokens to past twice the band's top bin
-        self.y_periods = tuple(
-            2.0 * patch * 2.0**k
-            for k in range(math.ceil(math.log2(top_bin / patch)) + 1)
+        self.freq_periods = tuple(
+            FREQ_FINEST_PERIOD * 2.0**k / problem.t_obs
+            for k in range(math.ceil(math.log2(2 * top_bin / FREQ_FINEST_PERIOD)) + 1)
         )
         # the conditioning scalars t, log10(1 - t) and log f, each over its span
         spans = (1.0, TIME_DECADES, math.log(self.f0_range[1] / self.f0_range[0]))
@@ -155,16 +141,16 @@ class LisaFlow(eqx.Module):
         self.x_embed = PiecewiseLinear(
             coord_edges + harmonic_edges, hidden_dim, key=next(keys), **kwargs
         )
+        # f0, and a data token's lowest and highest frequency: the same features, separate MLPs
+        n_freq = 2 * len(self.freq_periods)
         self.f0_mlp = FeedForward(
-            2 * len(self.f0_periods), hidden_dim, hidden_dim, key=next(keys), **kwargs
+            n_freq, hidden_dim, hidden_dim, key=next(keys), **kwargs
         )
-        n = patch * 3
-        data_edges = (edges(0.0, math.asinh(DATA_REACH), STFT_AMPLITUDE_BINS),) * n + (
-            edges(-1.0, 1.0, STFT_PHASE_BINS),
-        ) * (2 * n)
-        self.y_embed = PiecewiseLinear(data_edges, hidden_dim, key=next(keys), **kwargs)
+        self.y_embed = eqx.nn.Linear(
+            3 * patch * 3, hidden_dim, key=next(keys), **kwargs
+        )
         self.y_mlp = FeedForward(
-            2 * len(self.y_periods), hidden_dim, hidden_dim, key=next(keys), **kwargs
+            2 * n_freq, hidden_dim, hidden_dim, key=next(keys), **kwargs
         )
         # one MLP per conditioning vector: c over (t, log10(1 - t), log f), the data stream's over log f
         self.c_mlp = FeedForward(
@@ -193,41 +179,29 @@ class LisaFlow(eqx.Module):
             **kwargs,
         )
         self.x_modulation = Modulation(hidden_dim, key=next(keys), **kwargs)
-        # a residual flow also emits each coordinate's log σ²
+        # the mean and log std of x1 per coordinate
         self.x_unembed = FeedForward(
             hidden_dim,
             hidden_dim,
-            len(COORD_RANGES) * (2 if prediction == "residual" else 1),
+            2 * len(COORD_RANGES),
             key=next(keys),
             **kwargs,
         )
 
-        # the opt-in modules draw from their own key, so the ones above stay as they were
-        self.hat_embed = (
-            PiecewiseLinear(coord_edges, hidden_dim, key=jr.fold_in(key, 1), **kwargs)
-            if self_condition
-            else None
-        )
-        # λ starts at a fresh flow's log error per bin: x-prediction's |x1 - out|² / (1 - s)² at the bin's centre
-        centre_decades = LOSS_TIME_DECADES * (
-            (jnp.arange(LOSS_TIME_BINS) + 0.5) / LOSS_TIME_BINS - 1
-        )
-        log_var = (
-            -2 * math.log(10) * centre_decades
-            if prediction == "x"
-            else jnp.zeros(LOSS_TIME_BINS)
-        )
-        # a residual flow weighs its error by its own σ, so it has no λ
-        self.loss_log_var = (
-            repeat(log_var, "t -> t g", g=len(LOSS_GROUPS)).astype(param_dtype)
-            if loss_weights and prediction != "residual"
-            else None
-        )
+        # the opt-in sinks draw from their own key, so the modules above stay as they were
         # attention sinks: per-draw tokens that start from c, each with its own embedding
         self.s_slot = (
             0.02 * jr.normal(jr.fold_in(key, 2), (sinks, hidden_dim), param_dtype)
             if sinks
             else None
+        )
+
+    def frequency_features(self, freq: Float[Array, "..."]) -> Float[Array, "... P"]:
+        """cos and sin of a frequency in Hz over freq_periods, turned in the input's precision, then cast."""
+        turns = jnp.mod(freq[..., None] / jnp.asarray(self.freq_periods), 1.0)
+        turns = turns.astype(jnp.float32)
+        return jnp.concat(
+            [jnp.cos(2 * jnp.pi * turns), jnp.sin(2 * jnp.pi * turns)], axis=-1
         )
 
     def source_bins(
@@ -248,6 +222,14 @@ class LisaFlow(eqx.Module):
         centre_offset = (start * (low + high) + low * high) / (centre + start)
         return centre_offset + centre * jnp.expm1(x_f * half_log_span)
 
+    def rope_angles(
+        self, freq: Float[Array, "N"], start: Float[Array, ""]
+    ) -> Float[Array, "N P"]:
+        """RoPE angles of frequencies in Hz, from the centre of the window at `start`: turned in float64, then cast."""
+        centre = (start + self.window_bins / 2) / self.t_obs
+        turns = jnp.mod((freq - centre)[:, None] / jnp.asarray(self.rope_periods), 1.0)
+        return 2 * jnp.pi * turns.astype(jnp.float32)
+
     def encode(
         self, y: Float[Array, "F 6"], f: Float[Array, ""]
     ) -> tuple[Float[Array, "L M H K"], Float[Array, "L M H K"]]:
@@ -265,26 +247,21 @@ class LisaFlow(eqx.Module):
         )
         tokens_y = jax.vmap(self.y_embed)(stft_tokens(y.astype(f32), self.patch))
 
-        # each data token's centre bin: absolute for its embedding, from the window start for RoPE
-        bins = (
-            self.patch * jnp.arange(tokens_y.shape[0], dtype=f32) + (self.patch - 1) / 2
-        )
+        # each data token's lowest and highest frequency in Hz for its embedding, their mean for RoPE
+        lowest = self.patch * jnp.arange(tokens_y.shape[0], dtype=f32)
         start = (
             jnp.round((f * self.t_obs - self.window_bins / 2) / WINDOW_STRIDE)
             * WINDOW_STRIDE
         )
-        turns = jnp.mod(
-            (start + bins)[:, None] / jnp.asarray(self.y_periods), 1.0
-        ).astype(f32)
-        tokens_y = tokens_y + jax.vmap(self.y_mlp)(
-            jnp.concat(
-                [jnp.cos(2 * jnp.pi * turns), jnp.sin(2 * jnp.pi * turns)], axis=-1
-            )
+        band = (
+            jnp.stack([start + lowest, start + lowest + self.patch - 1], -1)
+            / self.t_obs
         )
-        # RoPE turns in float64, then cast: float32 angles of far bins are off by ~1e-3 rad
-        angles = 2 * jnp.pi * jnp.mod(
-            bins[:, None] / jnp.asarray(self.rope_periods), 1.0
-        ).astype(f32)
+        features = self.frequency_features(band)
+        tokens_y = tokens_y + jax.vmap(self.y_mlp)(
+            rearrange(features, "n e p -> n (e p)")
+        )
+        angles = self.rope_angles(band.mean(-1), start)
 
         # mixed precision: the stored params keep param_dtype, the backbone runs in dtype
         params, static = eqx.partition(self.backbone, eqx.is_inexact_array)
@@ -303,7 +280,6 @@ class LisaFlow(eqx.Module):
         t: Float[Array, ""],
         y: Float[Array, "F 6"],
         f: Float[Array, ""],
-        x_hat: Float[Array, "S X"] | None = None,
         cache: tuple[Float[Array, "L M H K"], Float[Array, "L M H K"]] | None = None,
     ) -> Float[Array, "S O"]:
         """cache: `encode(y, f)`, when the caller already has it."""
@@ -340,28 +316,14 @@ class LisaFlow(eqx.Module):
         features = jnp.concat([x, flat(jnp.cos(k_phi)), flat(jnp.sin(k_phi))], axis=-1)
         tokens_x = jax.vmap(self.x_embed)(features.astype(f32))
 
-        # f0's bin, before any cast: absolute for its embedding, from the window start for RoPE
-        bins = self.source_bins(x[:, 0], f)
+        # f0 in Hz, before any cast, for its embedding and RoPE
         start = (
             jnp.round((f * self.t_obs - self.window_bins / 2) / WINDOW_STRIDE)
             * WINDOW_STRIDE
         )
-        turns = jnp.mod(
-            (start + bins)[:, None] / jnp.asarray(self.f0_periods), 1.0
-        ).astype(f32)
-        tokens_x = tokens_x + jax.vmap(self.f0_mlp)(
-            jnp.concat(
-                [jnp.cos(2 * jnp.pi * turns), jnp.sin(2 * jnp.pi * turns)], axis=-1
-            )
-        )
-        if self.self_condition and x_hat is not None:
-            lo, hi = jnp.asarray(COORD_RANGES, f32).T
-            tokens_x = tokens_x + jax.vmap(self.hat_embed)(
-                jnp.clip(x_hat.astype(f32), lo, hi)
-            )
-        angles = 2 * jnp.pi * jnp.mod(
-            bins[:, None] / jnp.asarray(self.rope_periods), 1.0
-        ).astype(f32)
+        f0 = (start + self.source_bins(x[:, 0], f)) / self.t_obs
+        tokens_x = tokens_x + jax.vmap(self.f0_mlp)(self.frequency_features(f0))
+        angles = self.rope_angles(f0, start)
 
         params, static = eqx.partition(self.backbone, eqx.is_inexact_array)
         backbone = eqx.combine(

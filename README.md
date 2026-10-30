@@ -43,7 +43,7 @@ uv run python -m canna.lisa.plots <run dir, eval dir or .npz>   # figures from s
 `LISA_<FIELD>=value` env var (`LISA_TOTAL_STEPS=1000000`, `LISA_BF16=attention`,
 `LISA_OUTPUT_DIR=…`) over a field of `canna.lisa.config.Config`.
 
-A `lisa` run is named `<adjective>-<noun>-<config>` and addressed by `LISA_RUN`. Its
+A `lisa` run is named `<yymmdd>-<adjective>-<noun>-<config>`, so runs sort by date, and addressed by `LISA_RUN`. Its
 `config.yaml` is the source of truth: the resolved config and the commit it trained at.
 Training refuses uncommitted changes to `src/`; later jobs may change only the eval fields
 (`ode_steps`, `n_random`, `n_validation`, `weights`, `bf16`) and run on the run's commit
@@ -53,18 +53,17 @@ Jobs write only data; `canna.lisa.plots` draws the figures.
 ```
 outputs/runs/<run>/
   config.yaml
-  history.npz                                # losses, held-out losses, λ and error per time bin
+  history.npz                                # losses, eval-catalog losses, λ and error per time bin
   checkpoints/<epoch>/
-  run.html                                   # plots: losses, held-out losses, error and λ per time bin
+  run.html                                   # plots: losses, eval-catalog losses, error and λ per time bin
   eval/<epoch>-<weights>-<ode_steps>/
     eval.yaml                                # the settings it was evaluated with
     draws.npz                                # eval
-    scorecard.npz, validation.npz, validation_scores.npz   # scorecard
-    mcmc_compare.txt, mcmc_compare.npz, mcmc.npz            # mcmc report
+    scorecard.npz                            # scorecard: f0 rows (card_*), validation samples and scores
                                              # plots: corner.html, validation.html
 ```
 
-To keep runs small, the draws in `draws.npz`, `validation.npz` and `mcmc.npz` are
+To keep runs small, the draws in `draws.npz` and `scorecard.npz` are
 stored as float16 offsets from the truth in units of their robust width (`canna.lisa.samples`,
 ~1e-3 of a width); read them with `samples.load`, which also reads plain files.
 
@@ -163,15 +162,17 @@ draws matched onto the injected sources) or pooled, against the Fisher draws and
 in physical coordinates (sky in ecliptic λ, β) or the flow's own, with the flow/reference
 widths. `scorecard` scores every source of those ten plus `n_random` prior
 injections (f₀ width against the ideal, detection, offset, 68%/95% coverage), then runs the
-SBC/TARP validation over `n_validation` draws; `plots` puts those, the scorecard and the MCMC
-comparison on `validation.html`. To evaluate a run kept elsewhere, point
+SBC/TARP validation over `n_validation` draws, all into `scorecard.npz`; `plots` puts those, the
+scorecard and the comparison with the problem's MCMC reference on `validation.html`. To evaluate a run kept elsewhere, point
 `LISA_OUTPUT_DIR` at the folder holding its `runs/<run>`.
 
 **Reference MCMC.** `canna.lisa.mcmc` samples each eval source alone, the others held at
 their true values, on its own band of the data. The chains depend only on the problem, so
-they are cached per problem in `outputs/mcmc/eval-<id>/` and shared by every run. `mcmc report
-[--eval <dir>]` writes the flow-over-MCMC widths (`mcmc_compare.txt`) and the chains
-(`mcmc.npz`), which the corner pages then draw. Needs jexplore (Python 3.13, pinned).
+they are cached per problem in `outputs/mcmc/eval-<id>/` (untracked) and shared by every run.
+`mcmc pack`, once per problem, writes the tracked reference `reports/mcmc/data/eval-<id>.npz`
+(1024 draws per source, packed, with R-hat, ESS and the MCMC's own SBC scores) and its two pages,
+`reports/mcmc/eval-<id>-corner.html` and `-validation.html`; every run's corner and validation
+pages read it from there. Needs jexplore (Python 3.13, pinned).
 
 ## On a Slurm cluster
 
@@ -184,7 +185,7 @@ exported to the module.
 source slurm/unity.env
 sbatch $CANNA_SBATCH_GPU slurm/lisa.sbatch <config>                    # train; requeues itself near the time limit
 sbatch $CANNA_SBATCH_GPU slurm/lisa.sbatch <config> LISA_RUN=<run>     # resume
-sbatch $CANNA_SBATCH_GPU slurm/lisa-post.sbatch <run> scorecard        # or eval, or mcmc report
+sbatch $CANNA_SBATCH_GPU slurm/lisa-post.sbatch <run> scorecard        # or eval
 sbatch $CANNA_SBATCH_CPU --array=0-<n-1> slurm/lisa-mcmc.sbatch <config>  # reference MCMC; n from `mcmc status --count`
 ```
 

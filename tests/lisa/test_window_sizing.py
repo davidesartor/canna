@@ -68,7 +68,7 @@ def test_conditioning_shape_at_the_shipped_two_year_config():
     assert stream.shape == (512, 6)
 
 
-@pytest.mark.parametrize("band, response_points", [("narrow", 32), ("full", 128)])
+@pytest.mark.parametrize("band, response_points", [("narrow", 64), ("full", 128)])
 def test_each_band_sets_its_response_points_and_keeps_f0(band, response_points):
     problem_config = config.load(f"{band}-B").problem
     problem = LisaGB(**problem_config)

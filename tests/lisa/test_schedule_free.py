@@ -270,7 +270,7 @@ def test_the_optimizer_builds_and_steps():
 
     problem, tx, state = setup(small_config())
     state, losses = train_epoch(
-        problem, tx, state, 4, 3, 3.0, draws=2, late_time_mix=0.5
+        problem, tx, state, 4, 3, draws=2
     )
     assert np.all(np.isfinite(np.asarray(losses)))
 

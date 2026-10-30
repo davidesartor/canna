@@ -1,17 +1,17 @@
 #!/bin/bash
-# The narrowband MCMC of a problem's eval sources on CPU nodes, one array task per (source, seed) chain,
-# cached in outputs/mcmc/eval-<problem id>/, where `mcmc report` and the plots find them:
+# The joint MCMC of a problem's eval injections on CPU nodes, one array task per (injection, seed) chain,
+# cached in outputs/mcmc/joint-<problem id>/, which `mcmc pack` turns into reports/mcmc/data/eval-<id>.npz:
 #     sbatch $CANNA_SBATCH_CPU --array=0-$(( $(LISA_CONFIG=narrow-B uv run --frozen python -m canna.lisa.mcmc status --count) - 1 )) \
 #         slurm/lisa-mcmc.sbatch narrow-B
 
 #SBATCH --job-name=canna-mcmc
 #SBATCH --output=.slurm-logs/%x-%A_%a.out
 #SBATCH --error=.slurm-logs/%x-%A_%a.err
-#SBATCH --time=02:00:00
+#SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=8G
+#SBATCH --mem=16G
 
 set -euo pipefail
 export LISA_CONFIG="$1"; shift

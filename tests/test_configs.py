@@ -136,14 +136,15 @@ def test_config_problem_and_network_agree_on_the_conditioning_shape(package, pat
     # shape error the first time the flow is actually called
     _, flow, sample = build(package, path)
 
-    # point has no reconstruction head and lisa's one output is its x1: both return one array
+    # point has no reconstruction head and lisa's one output is z and log σ² per coordinate: both return one array
     if package == "point":
         assert flow(sample.xt, sample.t, sample.y).shape == sample.dx.shape
     elif package == "lisa":
         out = eqx.filter_eval_shape(
             lambda net, s: net(s.xt[0], s.t[0], s.y, s.f), flow, sample
         )
-        assert out.shape == sample.x_target.shape == sample.dx.shape[1:]
+        assert sample.x_target.shape == sample.dx.shape[1:]
+        assert out.shape == (*sample.x_target.shape[:-1], 2 * sample.x_target.shape[-1])
     else:
         outs = flow(*(sample.xt, sample.t, sample.y, *sample[6:]))
         dx, x_target, y_target = outs

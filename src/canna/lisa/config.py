@@ -1,6 +1,7 @@
 """The run config: dataclass defaults, then LISA_CONFIG=<band>-<size>'s two .yamls, then LISA_<FIELD> env vars."""
 
 import dataclasses
+import datetime
 import os
 import random
 import sys
@@ -19,14 +20,22 @@ EVAL_FIELDS = ("ode_steps", "n_random", "n_validation", "weights", "bf16")
 RESUME_FIELDS = ("micro_batches", "total_steps", "ode_steps", "n_random", "n_validation", "weights")
 LOCATION_FIELDS = ("output_dir", "run")
 ADJECTIVES = """
-amber ancient bold brisk calm clever crimson dusty eager faint fierce gentle golden hidden
-hollow humble icy jolly keen lively lucky mellow misty noble odd pale proud quiet rapid rusty
-silent sleepy steady stormy swift tender velvet wild witty young
+agile airy amber ancient arctic azure balmy bold brave breezy bright brisk calm cheery clever cosmic
+cozy crimson crisp curly dapper deft dreamy dusty eager faint fancy fierce fleet fluffy frosty fuzzy
+gentle glossy golden grand hardy hazy hidden hollow humble icy jade jolly jovial keen kind lively
+lofty loyal lucid lucky lunar mellow merry mighty misty mossy nimble noble odd opal pale plucky
+polar proud quaint quiet radiant rapid regal rosy royal ruby rusty sandy serene shiny silent sleepy
+sly snowy solar spry steady stormy sunny swift tawny tender tidy tiny velvet vivid warm wary wild
+witty young zesty
 """.split()
 NOUNS = """
-badger beacon breeze canyon comet coral crane delta ember falcon fern fjord glacier harbor
-heron island lantern lynx maple meadow meteor nebula orbit otter pebble pulsar quasar raven
-reef river spruce summit thistle tide tundra valley walrus willow wren zephyr
+acorn aurora badger bamboo basin beacon bison boulder breeze brook cactus canyon cedar cliff cloud
+comet condor coral cove crane delta dolphin dune eagle eclipse ember falcon fern ferret finch fjord
+forest galaxy gecko geyser glacier grove gull harbor hawk heath heron ibis iris island jaguar
+kestrel kiwi koala lagoon lantern lark lotus lynx maple marsh meadow mesa meteor moose moth nebula
+nova oasis ocelot orbit osprey otter panda pebble pine plume prairie puffin pulsar quartz quasar
+rapids raven reef river sparrow spruce summit swan thistle thunder tide tiger topaz tulip tundra
+valley vortex walrus willow wolf wren yak zephyr
 """.split()
 
 
@@ -43,7 +52,7 @@ class Config:
     commit: str = ""
     seed: int = 0
     # optimizer: Muon's lr and decay (on its z, per unit lr), AdamW's lr, schedule-free's beta ramp
-    batch_size: int = 4096
+    batch_size: int = 1024
     # the batch's gradient accumulated over this many equal chunks, to fit a smaller GPU
     micro_batches: int = 1
     learning_rate: float = 1e-2
@@ -57,14 +66,10 @@ class Config:
     adam_b1: float = 0.9
     sf_beta: float = 0.9
     sf_beta_end: float = 0.965
-    # objective: batch_size (x0, t) samples, `draws` per observation, s = 1 - (1 - t)^time_power,
-    # a late_time_mix share log-uniform in 1 - s
+    # objective: batch_size (x0, t) samples, `draws` per observation, t uniform
     draws: int = 16
     total_steps: int = 500_000
     log_interval: int = 1000
-    time_power: float = 1.0
-    late_time_mix: float = 0.5
-    late_time_floor: float = 1e-4
     # eval, scorecard and validation
     ode_steps: int = 32
     n_random: int = 200
@@ -183,10 +188,10 @@ def save(config: Config, path: Path) -> None:
 
 
 def run_name(name: str, output_dir: Path | str = Config.output_dir) -> str:
-    """A fresh <adjective>-<noun>-<config> run name, its dir under output_dir/runs created so no other run takes it."""
+    """A fresh <yymmdd>-<adjective>-<noun>-<config> run name, its dir under output_dir/runs created so no other run takes it."""
     (Path(output_dir) / "runs").mkdir(parents=True, exist_ok=True)
     while True:
-        run = f"{random.choice(ADJECTIVES)}-{random.choice(NOUNS)}-{name}"
+        run = f"{datetime.date.today():%y%m%d}-{random.choice(ADJECTIVES)}-{random.choice(NOUNS)}-{name}"
         try:
             (Path(output_dir) / "runs" / run).mkdir()
             return run

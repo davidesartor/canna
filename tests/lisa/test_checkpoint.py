@@ -17,7 +17,7 @@ from canna.lisa.train import (
 )
 
 NETWORK = dict(hidden_dim=32, num_blocks=2, num_heads=2, patch=16)
-HISTORIES = dict(loss_history=np.ones((5, 2, 2)), heldout_history=np.arange(5.0))
+HISTORIES = dict(loss_history=np.ones((5, 2, 2)), catalog_history=np.arange(5.0))
 
 
 def small_config(**overrides):
@@ -60,7 +60,7 @@ def test_restore_brings_back_the_weights_the_optimizer_state_and_the_histories(
             checkpoints, setup(cfg)[2], tuple(HISTORIES)
         )
     assert epoch == 3 and histories["loss_history"].shape == (5, 2, 2)
-    assert np.array_equal(histories["heldout_history"], np.arange(5.0))
+    assert np.array_equal(histories["catalog_history"], np.arange(5.0))
     assert same(restored.flow, state.flow)
     opt = lambda s: [a for a in jax.tree.leaves(s.opt_state) if eqx.is_inexact_array(a)]
     assert all(jnp.array_equal(a, b) for a, b in zip(opt(restored), opt(state)))
@@ -127,11 +127,11 @@ def test_the_averaged_weights_start_at_the_initial_ones():
     )
 
 
-def test_warm_start_copies_the_averaged_weights_but_a_redefined_head_and_lambda(tmp_path):
+def test_warm_start_copies_the_averaged_weights(tmp_path):
     from canna.lisa.train import warm_start
 
-    load = lambda **kw: config.load("narrow-B", bf16="none", output_dir=tmp_path, **kw)
-    source = load(run="source", network=NETWORK | dict(loss_weights=True))
+    load = lambda **kw: config.load("narrow-B", bf16="none", output_dir=tmp_path, network=NETWORK, **kw)
+    source = load(run="source")
     source.run_dir.mkdir(parents=True)
     config.save(source, source.run_dir / "config.yaml")
     state = moved_state(source)
@@ -139,19 +139,6 @@ def test_warm_start_copies_the_averaged_weights_but_a_redefined_head_and_lambda(
         save_checkpoint(checkpoints, state, 2, {})
     averaged = eval_flow(state.flow, state.opt_state)
 
-    target = load(network=NETWORK | dict(loss_weights=True, prediction="velocity"), init_from="source")
-    fresh = setup(target)[2].flow
-    started = warm_start(target, fresh)
-    assert started.prediction == "velocity"
-    assert same(started.backbone, averaged.backbone) and same(started.x_embed, averaged.x_embed)
-    assert same(started.x_unembed.linear1, averaged.x_unembed.linear1)
-    assert same(started.x_unembed.linear2, fresh.x_unembed.linear2)
-    assert jnp.array_equal(started.loss_log_var, fresh.loss_log_var)
-
-    # a residual head has twice the outputs and no λ
-    residual = load(network=NETWORK | dict(loss_weights=True, prediction="residual"), init_from="source")
-    fresh = setup(residual)[2].flow
-    started = warm_start(residual, fresh)
-    assert started.loss_log_var is None
-    assert same(started.backbone, averaged.backbone)
-    assert same(started.x_unembed.linear2, fresh.x_unembed.linear2)
+    target = load(init_from="source")
+    started = warm_start(target, setup(target)[2].flow)
+    assert same(started, averaged)

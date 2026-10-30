@@ -208,23 +208,3 @@ def test_snr_broadcasts_over_two_leading_batch_axes():
     assert snr_2d.shape == (2, 3)
     assert jnp.allclose(snr_2d.reshape(-1), snr_flat, rtol=1e-5)
 
-
-def test_the_warped_clock_places_xt_at_s_and_targets_the_path_velocity():
-    """time_power p puts the point at s = 1 - (1 - t)^p and asks for d/ds of the path;
-    p = 1 is the plain sample, bit for bit."""
-    problem = LisaGB(n_sources=2)
-    key = jr.key(53)
-    plain = train_sample(problem, key)
-    assert all(
-        jnp.array_equal(a, b) for a, b in zip(plain, train_sample(problem, key, time_power=1.0))
-    )
-
-    warped = train_sample(problem, key, time_power=3.0)
-    assert jnp.array_equal(
-        warped.t, plain.t
-    )  # the network still sees the uniform clock
-    s = (1 - (1 - plain.t) ** 3)[:, None, None]
-    # every coordinate is flat: the path is a straight line with a constant velocity, so the
-    # warped point is the plain one slid along it to s
-    assert jnp.allclose(warped.xt, plain.xt + (s - plain.t[:, None, None]) * plain.dx)
-    assert jnp.allclose(warped.dx, plain.dx)

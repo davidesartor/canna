@@ -53,15 +53,14 @@ def test_a_shifted_posterior_shows_in_the_offset_rank_and_coverage(setup):
     assert not rows["in68"].any() and not rows["in95"].any()
 
 
-@pytest.mark.parametrize("time_power", [1.0, 3.0])
-def test_a_whole_injection_scores_end_to_end(small_flow, time_power, capsys):
+def test_a_whole_injection_scores_end_to_end(small_flow, capsys):
     """The same path the job takes per injection, on the tiny test network: finite rows of
     the right length, and a summary that prints for them."""
     from canna.lisa.scorecard import score_injection, summary
 
     problem, flow, _, _, f = small_flow
     latent = sample_physical(problem, jr.key(5), f)
-    rows = score_injection(problem, flow, latent, f, jr.key(6), time_power, n_draws=8, ode_steps=2)
+    rows = score_injection(problem, flow, latent, f, jr.key(6), n_draws=8, ode_steps=2)
     assert all(len(v) == problem.n_sources for v in rows.values())
     assert all(np.all(np.isfinite(rows[k])) for k in ("snr", "width", "ideal", "offset", "rank"))
     summary(rows, np.ones(problem.n_sources, bool), "test")

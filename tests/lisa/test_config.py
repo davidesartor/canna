@@ -22,7 +22,7 @@ def saved_run(tmp_path, **overrides):
 def test_a_run_name_is_fresh_ends_in_its_config_and_is_reserved(tmp_path):
     runs = {config.run_name("narrow-B", tmp_path) for _ in range(20)}
     assert len(runs) == 20
-    assert all(run.endswith("-narrow-B") and run.count("-") == 3 for run in runs)
+    assert all(run.endswith("-narrow-B") and run.count("-") == 4 for run in runs)
     assert all((tmp_path / "runs" / run).is_dir() for run in runs)
 
 

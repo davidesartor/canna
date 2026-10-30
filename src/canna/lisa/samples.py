@@ -5,7 +5,7 @@ A packed array `name` is stored as `name.half` (float16 offsets / scale), `name.
 few widths out is good to ~1e-3 of a width: f0 in Hz as float32 would step by ~1e-3 bins at 1 mHz, wider than
 a loud source's posterior. `load` reads packed and plain files alike, as float64.
 
-    python -m canna.lisa.samples <eval dir>...   # pack an eval's draws.npz, validation.npz and mcmc.npz in place
+    python -m canna.lisa.samples <eval dir>...   # pack an eval's draws.npz and scorecard.npz in place
 """
 
 import sys
@@ -47,7 +47,11 @@ def pack(name: str, draws: np.ndarray, centre: np.ndarray, axis: int) -> dict[st
 def load(path: Path | str) -> dict[str, np.ndarray]:
     """Every array of an npz, packed ones unpacked to float64."""
     with np.load(path) as d:
-        raw = {k: d[k] for k in d.files}
+        return unpack({k: d[k] for k in d.files})
+
+
+def unpack(raw: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """The plain arrays as they are, packed ones unpacked to float64."""
     out = {k: v for k, v in raw.items() if "." not in k}
     for key in raw:
         if key.endswith(".half"):
@@ -69,7 +73,7 @@ def pack_draws(d: dict) -> dict:
 
 
 def pack_validation(d: dict) -> dict:
-    """validation.npz: x and f0_bins [I, 1 + draws, ...] around their row 0 (the truth); the per-draw scalars in float32."""
+    """The validation samples: x and f0_bins [I, 1 + draws, ...] around their row 0 (the truth); the per-draw scalars in float32."""
     out = {}
     for k, v in d.items():
         if k in ("x", "f0_bins"):
@@ -81,21 +85,12 @@ def pack_validation(d: dict) -> dict:
     return out
 
 
-def pack_chains(chains: dict[str, np.ndarray]) -> dict:
-    """mcmc.npz: each "<injection>_<source>" chain [N, 8] around its median."""
-    out = {}
-    for k, v in chains.items():
-        out |= pack(k, v, np.median(v, axis=0), axis=0)
-    return out
-
-
 def pack_eval_dir(eval_dir: Path) -> list[Path]:
-    """Pack an eval dir's draws.npz, validation.npz and mcmc.npz in place (a packed file is left as it is)."""
+    """Pack an eval dir's draws.npz and scorecard.npz in place (a packed file is left as it is)."""
     done = []
     for name, packer in (
         ("draws.npz", pack_draws),
-        ("validation.npz", pack_validation),
-        ("mcmc.npz", pack_chains),
+        ("scorecard.npz", pack_validation),
     ):
         path = eval_dir / name
         if not path.exists():
