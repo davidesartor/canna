@@ -1,0 +1,217 @@
+{
+ "criterion": {
+  "text": "per window: burn = the smallest grid burn-in >= 10 tau_max (tau on the post-burn chain) after which every window's median is within 0.1 reference half-widths and its 68% width within 10% of the other seeds' second half; keep = the smallest grid length with ESS >= 2000 per seed in every parameter, split R-hat across seeds < 1.01 and the same median and width tolerance; thin = the largest divisor of the epoch length <= tau_max / 2. The recommendation is the worst window: max burn, max keep, min thin.",
+  "burn_taus": 10,
+  "ess_min": 2000,
+  "rhat_max": 1.01,
+  "median_tol": 0.1,
+  "width_tol": 0.1
+ },
+ "config": "narrow-B",
+ "problem_id": "244bc20185",
+ "chain": {
+  "iterations": 400000,
+  "thin": 20,
+  "nwalker": 64,
+  "chunk": 2000
+ },
+ "windows": {
+  "15": {
+   "window_snr": 4.968008345923238,
+   "snr": [
+    3.141645822466635,
+    2.9881189376361688,
+    1.9805433861393344,
+    1.2038804158550467
+   ],
+   "seeds": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "burn": null,
+   "keep": null,
+   "thin": null,
+   "step": 20000,
+   "window_ess_min": 5258.505174833651,
+   "burn_test_noise_limited": false,
+   "settings": {
+    "paper": {
+     "burn": 100000,
+     "keep": 300000,
+     "thin": 100,
+     "tau_max": 216.8841702752507,
+     "ess_min": 88526.51613823643,
+     "ess_thinned_min": 88526.51613823643,
+     "stored_per_seed": 192000,
+     "rhat_max": 1.0029392673574697,
+     "median_drift_max": 0.18870477247401646,
+     "width_drift_max": 0.24315480054327954,
+     "passes": false
+    },
+    "fml": {
+     "burn": 20000,
+     "keep": 60000,
+     "thin": 20,
+     "tau_max": 118.39060344028863,
+     "ess_min": 32435.006566519773,
+     "ess_thinned_min": 32435.006566519773,
+     "stored_per_seed": 192000,
+     "rhat_max": 1.0038730020880569,
+     "median_drift_max": 0.24995805171226584,
+     "width_drift_max": 0.19569857525406253,
+     "passes": false
+    }
+   }
+  },
+  "29": {
+   "window_snr": 5.6769270686810325,
+   "snr": [
+    5.304160820785554,
+    1.5788338012999459,
+    1.4194543701475804,
+    0.3410022330042911
+   ],
+   "seeds": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "burn": null,
+   "keep": null,
+   "thin": null,
+   "step": 20000,
+   "window_ess_min": 1074.9609850131624,
+   "burn_test_noise_limited": true,
+   "settings": {
+    "paper": {
+     "burn": 100000,
+     "keep": 300000,
+     "thin": 100,
+     "tau_max": 1095.1870468851482,
+     "ess_min": 17531.251903140426,
+     "ess_thinned_min": 17531.251903140426,
+     "stored_per_seed": 192000,
+     "rhat_max": 1.004149365236516,
+     "median_drift_max": 0.2928713465411533,
+     "width_drift_max": 0.2520700412154613,
+     "passes": false
+    },
+    "fml": {
+     "burn": 20000,
+     "keep": 60000,
+     "thin": 20,
+     "tau_max": 527.5619152325481,
+     "ess_min": 7278.7665089648035,
+     "ess_thinned_min": 7278.7665089648035,
+     "stored_per_seed": 192000,
+     "rhat_max": 1.0055856678418924,
+     "median_drift_max": 0.4901880638769417,
+     "width_drift_max": 0.4220360585597085,
+     "passes": false
+    }
+   }
+  },
+  "43": {
+   "window_snr": 4.458324989402913,
+   "snr": [
+    3.5150300713903637,
+    1.8336592705098598,
+    1.423899150126821,
+    0.7141886098326934
+   ],
+   "seeds": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "burn": null,
+   "keep": null,
+   "thin": null,
+   "step": 20000,
+   "window_ess_min": 21618.252663765146,
+   "burn_test_noise_limited": false,
+   "settings": {
+    "paper": {
+     "burn": 100000,
+     "keep": 300000,
+     "thin": 100,
+     "tau_max": 58.16540575988522,
+     "ess_min": 330093.11547245516,
+     "ess_thinned_min": 192000.0,
+     "stored_per_seed": 192000,
+     "rhat_max": 1.0007772339461107,
+     "median_drift_max": 0.09062992278616336,
+     "width_drift_max": 0.16748205068752675,
+     "passes": false
+    },
+    "fml": {
+     "burn": 20000,
+     "keep": 60000,
+     "thin": 20,
+     "tau_max": 57.11166250701227,
+     "ess_min": 67236.70492919932,
+     "ess_thinned_min": 67236.70492919932,
+     "stored_per_seed": 192000,
+     "rhat_max": 1.0016384923742103,
+     "median_drift_max": 0.10407160744677241,
+     "width_drift_max": 0.21257044835253236,
+     "passes": false
+    }
+   }
+  },
+  "57": {
+   "window_snr": 6.21463201451027,
+   "snr": [
+    5.421895895348731,
+    1.983492421566214,
+    1.7372366186017514,
+    1.4136651328050698
+   ],
+   "seeds": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "burn": null,
+   "keep": null,
+   "thin": null,
+   "step": 20000,
+   "window_ess_min": 23765.3385631601,
+   "burn_test_noise_limited": false,
+   "settings": {
+    "paper": {
+     "burn": 100000,
+     "keep": 300000,
+     "thin": 100,
+     "tau_max": 51.48032783686253,
+     "ess_min": 372957.9978752937,
+     "ess_thinned_min": 192000.0,
+     "stored_per_seed": 192000,
+     "rhat_max": 1.0048663437586625,
+     "median_drift_max": 0.2006230176385778,
+     "width_drift_max": 0.6248932880237505,
+     "passes": false
+    },
+    "fml": {
+     "burn": 20000,
+     "keep": 60000,
+     "thin": 20,
+     "tau_max": 57.16144915070282,
+     "ess_min": 67178.14291019923,
+     "ess_thinned_min": 67178.14291019923,
+     "stored_per_seed": 192000,
+     "rhat_max": 1.0098309994324322,
+     "median_drift_max": 0.26135071972279383,
+     "width_drift_max": 0.39083978628411864,
+     "passes": false
+    }
+   }
+  }
+ },
+ "recommended": null
+}
