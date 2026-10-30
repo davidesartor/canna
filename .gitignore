@@ -24,3 +24,6 @@ reports/prior/polarization/data/
 reports/prior/response-span/data/
 reports/prior/sky/data/
 reports/prior/source-count/data/
+reports/architecture/data-tokens/data/
+reports/architecture/frequency-rope/data/
+reports/architecture/source-pairing/data/

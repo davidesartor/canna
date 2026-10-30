@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Source pairing</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --ref: #52514e; --warn-bg: #fbf1dc; --warn: #7a5300;
+  --g0: #2a78d6; --g1: #eb6834; --g2: #199e70; --g3: #8a5cd6; --g4: #b8860b; --bad: #c2362b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --ref: #c3c2b7; --warn-bg: #3a2f14; --warn: #f2c66d;
+    --g0: #3987e5; --g1: #d95926; --g2: #1baf7a; --g3: #a07ce8; --g4: #d4a52a; --bad: #e5675c;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.92em; }
+h1 { font-size: 24px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+.sub { color: var(--ink-2); margin: 0 0 20px; max-width: 72ch; }
+.note { color: var(--ink-2); font-size: 13px; margin: 4px 0 12px; max-width: 80ch; }
+.warn { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin: 0 0 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+.card + .card { margin-top: 16px; }
+.bar, .controls { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; margin: 0 0 12px; }
+.k { color: var(--ink-2); font-size: 13px; margin-right: 8px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .d { color: var(--muted); font-size: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink-2); margin: 0 0 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { font: inherit; font-size: 13px; padding: 5px 10px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--page); }
+svg { width: 100%; height: auto; display: block; overflow: visible; }
+svg text { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tbl th, .tbl td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+.tbl th:first-child, .tbl td:first-child { text-align: left; }
+.tbl th { color: var(--ink-2); font-weight: 600; }
+.scroll { overflow-x: auto; }
+.means ul { margin: 6px 0; padding-left: 20px; max-width: 80ch; }
+.means li { margin: 4px 0; }
+#err { display: none; background: #c2362b; color: #fff; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<div id="err"></div>
+<h1>How should a base draw's sources pair with the target's?</h1>
+<p class="sub">Each training path runs from a prior draw X<sub>0</sub> to the target X<sub>1</sub>, source by source. The sources are exchangeable, so which base source goes to which target source is a choice. This page measures the mean squared path length per source, in flow coordinates, under four pairings: both ends in f<sub>0</sub> order (what training uses, a sort), the nearest of the S! labellings over all coordinates, both ends loudest first, and a random labelling. No network is involved: it follows from the prior and the chart alone.</p>
+<div class="bar"><div><span class="k">Band</span><span class="seg" id="band"></span></div></div>
+<div class="tiles" id="tiles"></div>
+<div class="card">
+  <h2>Where is the path length?</h2>
+  <p class="note">Mean squared path length per source, split by coordinate group (f<sub>0</sub>, log ḟ, the two sky coordinates, the two helicity amplitudes z±). Hover a segment for its value.</p>
+  <div class="legend" id="lg-groups"></div>
+  <div id="p-groups"></div>
+  <div class="scroll" id="t-groups"></div>
+</div>
+<div class="card">
+  <h2>Which sources pay for a fixed order?</h2>
+  <p class="note">The same length per target source, by its loudness rank (1 is the loudest of the window). The nearest labelling's length is the least in total, not for each rank.</p>
+  <div class="legend" id="lg-rank"></div>
+  <div id="p-rank"></div>
+</div>
+<div class="card means">
+  <h2>What this means</h2>
+  
+<ul>
+<li><b>f<sub>0</sub> order is the optimal coupling of f<sub>0</sub> alone</b> (the monotone rearrangement), so no two paths cross in f<sub>0</sub>, and it costs a sort. The coordinates it ignores are paired at random.</li>
+<li><b>The nearest labelling is the shortest pairing by construction</b>: it minimises the same sum over all S! labellings, at the cost of an assignment per draw. The page measures how much shorter it is, and in which coordinates.</li>
+<li><b>Shorter, less crossed paths are an easier target.</b> The straight-path velocity field averages over the paths through each point; paths of exchanged sources crossing each other make that average blur two targets.</li>
+</ul>
+
+</div>
+</main>
+<script>
+window.onerror = (msg, src, line) => { const e = document.getElementById("err"); e.style.display = "block"; e.textContent = `Script error: ${msg} (line ${line})`; };
+const D = {"commit":"d75c5da","groups":["f0","fdot","sky","z+","z-"],"pairings":["f0","nearest","snr","random"],"date":"2026-10-30","bands":{"narrow":{"sources":4,"windows":65536,"mean":{"f0":[0.2644500619477085,2.005452865115021,4.0267714673336314,0.5406251455075197,0.5407207110805454],"nearest":[0.49094929147556654,1.1038717648073866,3.0291118000334176,0.4762344459503573,0.47606460788208665],"snr":[0.6661073855559175,1.557628838169419,4.027128001760257,0.538651530931048,0.5383248390239782],"random":[0.666342484406296,2.000502467775778,4.0310766638750515,0.5394830120765097,0.53970470187049]},"total":{"f0":7.378020250984413,"nearest":5.576231910148826,"snr":7.32784059544065,"random":7.777109330004114},"total_se":{"f0":0.023354655641680624,"nearest":0.01968759845519984,"snr":0.023163417993148423,"random":0.023538783697840213},"by_rank":{"f0":[[0.26255396974425776,2.2080924785326235,3.941366361126669,0.8647353813446356,0.8667103281759514],[0.2664973687595361,1.7915101975047514,4.011618885692421,0.5498397766183308,0.5508256534985932],[0.2638568166996315,1.7993035407417468,4.04181507713787,0.41374378222788555,0.41310893977152185],[0.2648920925874019,2.2229052436808963,4.112285545377681,0.33418164183919796,0.33223792287612375]],"nearest":[[0.5003864561029453,1.153754505993892,2.9647281146890614,0.7986747307008941,0.7963914723785881],[0.48755502536938644,1.0486419602699593,3.0354972583553748,0.4971073753280324,0.49960475383111136],[0.4787135133843575,1.0643920607932313,3.0182993330467234,0.354538979300405,0.3547919646288592],[0.49714217104558456,1.1486985321724812,3.097922494042563,0.25461669847209256,0.2534702406898132]],"snr":[[0.6657366100571132,1.5951725378799342,3.8567139655802776,1.1920239012418896,1.1853114428101006],[0.6662839013300956,1.5143781676443353,3.9578915316485945,0.5507962919209308,0.5566671391638804],[0.666530118045892,1.5223986167511383,4.125945390692892,0.2846481448982122,0.28472325326690034],[0.6658789127906045,1.5985660304023153,4.167961119119335,0.1271377856631859,0.12659752085507123]],"random":[[0.6671816175562898,2.2156682890964325,3.9418283369664273,0.8646541834723112,0.8665199243948218],[0.6656757123245414,1.789280320851998,3.989914249813769,0.5501843461542907,0.545795580096115],[0.6674464243347359,1.7806256877367503,4.069694989657721,0.40948973337143635,0.41517425132699715],[0.6650661834096289,2.2164355734179657,4.122869079062333,0.33360378530798923,0.331329051664015]]},"ratio_quantiles":{"f0":[1.0,1.0,1.0],"nearest":[0.5317604191549173,0.7815816772206012,0.9941181625559162],"snr":[0.7018017446506819,1.0,1.4132043563684453],"random":[0.7709353051565093,1.0509003965164991,1.5256994475242478]},"f0_is_nearest":0.0918731689453125,"f0_is_snr_order":0.0412750244140625},"full":{"sources":4,"windows":65536,"mean":{"f0":[0.2644478065803708,2.005452865115019,4.0267714673336314,4.159661268983277,4.144359293681982],"nearest":[0.5672383469840447,1.367123868932164,3.2661054000733163,2.817540920644472,2.814672403644172],"snr":[0.6661980766224983,1.557426863034597,4.0277819961295425,4.159750421372882,4.145097198097386],"random":[0.6663716858779156,1.9998832745509934,4.032250592126189,4.159002217537264,4.145523323236158]},"total":{"f0":14.60069270169428,"nearest":10.832680940278198,"snr":14.556254555256919,"random":15.003031093328481},"total_se":{"f0":0.03362589273719989,"nearest":0.02603956109130225,"snr":0.033696862515063354,"random":0.03385605777136429},"by_rank":{"f0":[[0.26264570483134597,2.2085536885541295,3.9401807528377413,5.431959671522586,5.386804714483554],[0.26638395154526473,1.7898673841676023,4.00902740096207,4.394663274556209,4.390154616077076],[0.2639270188479199,1.8006147318124015,4.0445744774046775,3.7135990108030716,3.7048912250037978],[0.2648345510969722,2.2227756559258824,4.113303238130157,3.0984231190510605,3.0955866191635817]],"nearest":[[0.5747542610677073,1.4751152390702567,3.224149003436429,3.6165859038169406,3.5861799032085724],[0.5710083684874242,1.2837906650687174,3.2825115796764837,2.9364995745856177,2.941491515088775],[0.5632509708281047,1.2939523682446135,3.216474654222077,2.5282220563119764,2.5452684380556723],[0.5599397875529147,1.4156372033450633,3.341286362958259,2.1888561478634423,2.1857497582236625]],"snr":[[0.6660319709980346,1.5953759945905954,3.857875923890185,6.7223281498054055,6.6526678053099575],[0.6665832178703586,1.5128428045242432,3.9620694973242827,4.595858817880124,4.637418880481312],[0.6661572009013932,1.5230668150392093,4.121681661549234,3.2729382549374457,3.273154659127075],[0.6660199167201751,1.5984218379843904,4.169500901754536,2.047876462868559,2.0171474474711504]],"random":[[0.6672079761513869,2.2154184642216173,3.9431773437930864,5.418763399176156,5.386316372009058],[0.6656965074092542,1.7881701416359552,3.995764891040775,4.382316281874726,4.4027069220990525],[0.6675526756648344,1.7802752693245836,4.069032646646097,3.72358254611188,3.705687992356124],[0.6650295842861453,2.2156692230218407,4.121027487024806,3.1113466429862875,3.0873820064803605]]},"ratio_quantiles":{"f0":[1.0,1.0,1.0],"nearest":[0.5538126414019611,0.7663505348094242,0.9679790046869078],"snr":[0.7325589623086479,1.0,1.3469806761664547],"random":[0.7729865558861266,1.0223237399227219,1.3979212934387104]},"f0_is_nearest":0.065643310546875,"f0_is_snr_order":0.0413665771484375}}};
+const BANDS = Object.keys(D.bands);
+const GCOL = ["var(--g0)", "var(--g1)", "var(--g2)", "var(--g3)", "var(--g4)"];
+const PCOL = {f0: "var(--g0)", nearest: "var(--g2)", snr: "var(--g1)", random: "var(--muted)"};
+const PNAME = {f0: "f0 order (training)", nearest: "nearest labelling", snr: "loudest first", random: "random labels"};
+const S = {band: BANDS[BANDS.length - 1]};
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+const fmt = (v, n = 3) => Number(v).toPrecision(n);
+const pct = v => (v >= 0 ? "+" : "−") + Math.abs(100 * v).toFixed(1) + "%";
+
+const segHost = document.getElementById("band");
+segHost.innerHTML = BANDS.map(b => `<button data-v="${esc(b)}">${esc(b)}</button>`).join("");
+segHost.onclick = e => { const b = e.target.closest("button"); if (!b) return; S.band = b.dataset.v; render(); };
+const sq = c => `<svg width="12" height="12" style="width:12px;display:inline-block"><rect width="12" height="12" rx="2" fill="${c}"/></svg>`;
+const legend = (id, items) => document.getElementById(id).innerHTML = items.map(([c, label]) => `<span>${sq(c)}${esc(label)}</span>`).join("");
+const ticks = (hi, n) => { const step = 10 ** Math.floor(Math.log10(hi / n)); const m = [1, 2, 5, 10].find(m => hi / (m * step) <= n) * step; const out = []; for (let v = 0; v <= hi + 1e-9; v += m) out.push(+v.toFixed(10)); return out; };
+
+// one horizontal bar per pairing, stacked by coordinate group
+function stacked(host, b) {
+  const rowH = 30, M = {l: 190, r: 16, t: 6, b: 34};
+  const W = Math.max(320, host.clientWidth), H = M.t + M.b + rowH * D.pairings.length;
+  const hi = Math.max(...D.pairings.map(k => b.total[k])) * 1.05;
+  const X = v => M.l + v / hi * (W - M.l - M.r);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="path length per pairing and group">`;
+  ticks(hi, Math.max(3, Math.floor((W - M.l) / 70))).forEach(v => s += `<line x1="${X(v)}" x2="${X(v)}" y1="${M.t}" y2="${H - M.b}" stroke="var(--grid)"/><text x="${X(v)}" y="${H - M.b + 16}" text-anchor="middle">${v}</text>`);
+  s += `<text x="${(M.l + W - M.r) / 2}" y="${H - 4}" text-anchor="middle">mean squared path length per source</text>`;
+  D.pairings.forEach((k, i) => {
+    const y = M.t + i * rowH + 5;
+    let x0 = 0;
+    s += `<text x="${M.l - 8}" y="${y + 14}" text-anchor="end" style="fill:var(--ink-2)">${esc(PNAME[k])}</text>`;
+    b.mean[k].forEach((v, g) => { s += `<rect x="${X(x0)}" y="${y}" width="${Math.max(0, X(x0 + v) - X(x0) - 1)}" height="${rowH - 10}" fill="${GCOL[g]}" rx="2"><title>${esc(PNAME[k])}, ${esc(D.groups[g])}: ${fmt(v)}</title></rect>`; x0 += v; });
+    s += `<text x="${X(x0) + 4}" y="${y + 14}">${fmt(b.total[k])}</text>`;
+  });
+  host.innerHTML = s + "</svg>";
+}
+
+// bars per loudness rank, one per pairing
+function byRank(host, b) {
+  const M = {l: 50, r: 12, t: 10, b: 40}, H = 260, W = Math.max(320, host.clientWidth);
+  const totals = Object.fromEntries(D.pairings.map(k => [k, b.by_rank[k].map(r => r.reduce((a, v) => a + v, 0))]));
+  const hi = Math.max(...Object.values(totals).flat()) * 1.08, n = b.sources, P = D.pairings.length;
+  const Y = v => M.t + (hi - v) / hi * (H - M.t - M.b), cw = (W - M.l - M.r) / n, bw = cw * 0.8 / P;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="path length per loudness rank">`;
+  ticks(hi, 6).forEach(v => s += `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${M.l - 6}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`);
+  for (let r = 0; r < n; r++) {
+    s += `<text x="${M.l + (r + 0.5) * cw}" y="${H - M.b + 16}" text-anchor="middle">${r + 1}</text>`;
+    D.pairings.forEach((k, i) => { const v = totals[k][r], x = M.l + r * cw + cw * 0.1 + i * bw; s += `<rect x="${x}" y="${Y(v)}" width="${bw - 2}" height="${Y(0) - Y(v)}" fill="${PCOL[k]}" rx="2"><title>${esc(PNAME[k])}, rank ${r + 1}: ${fmt(v)}</title></rect>`; });
+  }
+  s += `<text x="${(M.l + W - M.r) / 2}" y="${H - 6}" text-anchor="middle">target source's loudness rank in its window</text>`;
+  s += `<text transform="translate(12 ${(M.t + H - M.b) / 2}) rotate(-90)" text-anchor="middle">squared path length</text>`;
+  host.innerHTML = s + "</svg>";
+}
+
+function render() {
+  segHost.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === S.band)));
+  const b = D.bands[S.band], c = b.total.f0;
+  const tile = (k, v, d) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+  document.getElementById("tiles").innerHTML = [
+    tile("f0 order (training)", fmt(b.total.f0), `± ${fmt(b.total_se.f0, 2)}, ${b.windows.toLocaleString("en")} windows of ${b.sources} sources`),
+    tile("Nearest labelling", pct(b.total.nearest / c - 1), `against f0 order (${fmt(b.total.nearest)})`),
+    tile("Loudest first", pct(b.total.snr / c - 1), `against f0 order (${fmt(b.total.snr)})`),
+    tile("f0 order is the nearest", (100 * b.f0_is_nearest).toFixed(1) + "%", `of windows; it is loudest first in ${(100 * b.f0_is_snr_order).toFixed(1)}%`),
+  ].join("");
+  legend("lg-groups", D.groups.map((g, i) => [GCOL[i], g]));
+  stacked(document.getElementById("p-groups"), b);
+  document.getElementById("t-groups").innerHTML = `<table class="tbl"><tr><th>pairing</th>${D.groups.map(g => `<th>${esc(g)}</th>`).join("")}<th>total</th><th>per window / f0 order, 10–50–90%</th></tr>` +
+    D.pairings.map(k => `<tr><td>${esc(PNAME[k])}</td>${b.mean[k].map(v => `<td>${fmt(v)}</td>`).join("")}<td>${fmt(b.total[k])}</td><td>${b.ratio_quantiles[k].map(v => v.toFixed(2)).join(" – ")}</td></tr>`).join("") + `</table>`;
+  legend("lg-rank", D.pairings.map(k => [PCOL[k], PNAME[k]]));
+  byRank(document.getElementById("p-rank"), b);
+}
+addEventListener("resize", render);
+render();
+</script>
+</body>
+</html>

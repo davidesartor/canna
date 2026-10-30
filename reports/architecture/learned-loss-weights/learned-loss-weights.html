@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learned loss weights</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --ref: #52514e; --warn-bg: #fbf1dc; --warn: #7a5300;
+  --g0: #2a78d6; --g1: #eb6834; --g2: #199e70; --g3: #8a5cd6; --g4: #b8860b; --bad: #c2362b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --ref: #c3c2b7; --warn-bg: #3a2f14; --warn: #f2c66d;
+    --g0: #3987e5; --g1: #d95926; --g2: #1baf7a; --g3: #a07ce8; --g4: #d4a52a; --bad: #e5675c;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.92em; }
+h1 { font-size: 24px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+.sub { color: var(--ink-2); margin: 0 0 20px; max-width: 72ch; }
+.note { color: var(--ink-2); font-size: 13px; margin: 4px 0 12px; max-width: 80ch; }
+.warn { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin: 0 0 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+.card + .card { margin-top: 16px; }
+.bar, .controls { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; margin: 0 0 12px; }
+.k { color: var(--ink-2); font-size: 13px; margin-right: 8px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .d { color: var(--muted); font-size: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink-2); margin: 0 0 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { font: inherit; font-size: 13px; padding: 5px 10px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--page); }
+svg { width: 100%; height: auto; display: block; overflow: visible; }
+svg text { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tbl th, .tbl td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+.tbl th:first-child, .tbl td:first-child { text-align: left; }
+.tbl th { color: var(--ink-2); font-weight: 600; }
+.scroll { overflow-x: auto; }
+.means ul { margin: 6px 0; padding-left: 20px; max-width: 80ch; }
+.means li { margin: 4px 0; }
+#err { display: none; background: #c2362b; color: #fff; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<div id="err"></div>
+<h1>What do the learned loss weights do?</h1>
+<p class="sub">The trainer learns one log-variance λ per (time bin, coordinate group) and minimises <code>err·e<sup>−λ</sup> + λ</code>, where err is the group's mean squared velocity error in that bin of log<sub>10</sub>(1 − s). At equilibrium λ = log err, so every bin and group carries the same relative weight. This page follows λ over training and reads off what the final weights emphasise.</p>
+<div class="bar"><div><span class="k">Run</span><span class="seg" id="run"></span></div></div>
+<div id="smoke"></div>
+<div class="tiles" id="tiles"></div>
+<div class="card">
+  <h2>Where in time does training put its draws?</h2>
+  <p class="note">Share of training draws per λ bin: uniform t mixed with 1 − s log-uniform on [floor, 1]. This follows from the config alone. The dashed line is the default sampler's last query (midpoint x-steps). Later bins train the flow at times that sampler never asks about.</p>
+  <div id="p-density"></div>
+</div>
+<div class="card">
+  <h2>How does λ move over training?</h2>
+  <p class="note">λ per time bin for one group, at each logged epoch (darker is later), with its init (dashed). The dotted line is log err measured at the last epoch on a log-stratified diagnostic batch, which is where λ settles at equilibrium.</p>
+  <div class="controls"><div><span class="k">Group</span><span class="seg" id="group"></span></div></div>
+  <div class="legend" id="lg-lambda"></div>
+  <div id="p-lambda"></div>
+</div>
+<div class="card">
+  <h2>Has λ caught up with the error?</h2>
+  <p class="note">λ − log err per bin and group at the last epoch. Zero means equilibrium. A positive gap means the bin is weighted less than its error warrants. AdamW moves λ by at most about its learning rate per step; the tiles above give that bound next to the largest move seen.</p>
+  <div class="legend" id="lg-gap"></div>
+  <div id="p-gap"></div>
+</div>
+<div class="card">
+  <h2>What do the final weights emphasise?</h2>
+  <p class="note">The share of the objective's error term that each time bin contributes: draws in the bin × err × weight, summed over groups. The learned weights (solid) are compared with the plain mean-squared flow loss (dashed). Under the plain loss, late bins dominate because the velocity error grows as 1/(1 − s).</p>
+  <div class="legend" id="lg-share"></div>
+  <div id="p-share"></div>
+  <div class="scroll" id="t-share"></div>
+</div>
+<div class="card means">
+  <h2>What this means</h2>
+  
+<ul>
+<li><b>The learned weights remove the error's scale, not its timing.</b> At equilibrium each (bin, group) term carries the same relative weight, so a bin's share of the gradient follows the share of draws that land in it, not the size of its error. Which times train the flow is then fixed by <code>late_time_mix</code> and <code>late_time_floor</code>.</li>
+<li><b>λ is slow.</b> It sits on AdamW, so it moves by at most about the AdamW learning rate per step. A run must be well past distance/lr steps before its λ reflect the error instead of the init.</li>
+<li><b>Some trained times go unused by the default sampler.</b> Draws later than the sampler's last query only matter if sampling uses more steps or a schedule that reaches them.</li>
+</ul>
+
+</div>
+</main>
+<script>
+window.onerror = (msg, src, line) => { const e = document.getElementById("err"); e.style.display = "block"; e.textContent = `Script error: ${msg} (line ${line})`; };
+const D = {"runs":{"dusty-otter-narrow-XS":{"run":"dusty-otter-narrow-XS","config":"narrow-XS","commit":"11fc8a45eb91680dbaf1b7866a33a0b864e709e0","epoch":4,"device":"cpu","total_steps":2000,"warmup_steps":200,"adam_learning_rate":0.001,"late_time_mix":0.5,"late_time_floor":0.0001,"time_power":1.0,"ode_steps":32,"sampler_default_steps":32,"groups":["f0","Mc","sky","z+","z-"],"group_sizes":[1,1,2,2,2],"time_edges":[-6.0,-5.625,-5.25,-4.875,-4.5,-4.125,-3.75,-3.375,-3.0,-2.625,-2.25,-1.875,-1.5,-1.125,-0.75,-0.375,0.0],"density":[1.1856868528308276e-06,1.626019773120918e-06,3.855900534864875e-06,9.143781140025277e-06,2.1683322165780895e-05,0.031301419260035324,0.04699693428121234,0.047164151748285706,0.047560686852830825,0.04850101977312092,0.05073090053486488,0.05601878114002527,0.0685583221657809,0.09829426003532335,0.16880928121234495,0.3360267482857089],"sampler_min_decade":-1.806179973983887,"unqueried_share":0.2820400032520141,"steps":[500,1000,1500,2000],"log_var":[[[26.7575,26.75751,26.75754,26.75752,26.75752],[25.03267,25.0327,25.03592,25.03598,25.03599],[23.27933,23.28024,23.28106,23.28359,23.2852],[21.53249,21.53246,21.53365,21.5388,21.53575],[19.76503,19.77093,19.77898,19.78299,19.77894],[17.79848,17.8001,17.79736,17.8446,17.84639],[16.07131,16.08043,16.07846,16.13362,16.13664],[14.34409,14.35282,14.35131,14.40615,14.40903],[12.61741,12.62539,12.62518,12.68014,12.68249],[10.89041,10.89872,10.89855,10.95274,10.95542],[9.16328,9.17161,9.16948,9.22574,9.22861],[7.43653,7.44412,7.43996,7.49882,7.5023],[5.70953,5.71638,5.71518,5.77237,5.77558],[3.98254,3.99051,3.98705,4.05113,4.05521],[2.2557,2.26806,2.26254,2.44424,2.45581],[0.5295,0.59034,0.59491,1.1885,1.18819]],[[26.73204,26.73204,26.73208,26.73204,26.73206],[25.01336,25.01339,25.01662,25.01668,25.01668],[23.26734,23.26823,23.26909,23.27158,23.27321],[21.49356,21.49352,21.49468,21.49983,21.49681],[19.69249,19.69862,19.70645,19.71034,19.70647],[17.49593,17.49745,17.49471,17.54186,17.54373],[15.76849,15.77749,15.77551,15.83051,15.83365],[14.04127,14.04986,14.04837,14.10305,14.10602],[12.31451,12.32238,12.32216,12.37696,12.37942],[10.5877,10.59588,10.59571,10.64975,10.65254],[8.86037,8.86862,8.86644,8.92257,8.92553],[7.1338,7.1413,7.1371,7.19581,7.19939],[5.4066,5.41337,5.41213,5.4692,5.4725],[3.67958,3.68756,3.68401,3.74803,3.75218],[1.95275,1.96567,1.95975,2.14089,2.15252],[0.22626,0.4705,0.38004,1.47767,1.47828]],[[26.71883,26.71883,26.71885,26.71883,26.71884],[25.00682,25.00684,25.01004,25.01012,25.01013],[23.24796,23.24887,23.24969,23.25222,23.25386],[21.44459,21.44456,21.44573,21.45086,21.44784],[19.62505,19.63119,19.63902,19.64288,19.63904],[17.17875,17.18024,17.17752,17.22466,17.22655],[15.45115,15.46011,15.45814,15.51313,15.51628],[13.7239,13.73245,13.73098,13.78563,13.78862],[11.99715,12.00498,12.00478,12.05955,12.06203],[10.27029,10.27845,10.2783,10.3323,10.33512],[8.54299,8.55121,8.54904,8.60515,8.60812],[6.81643,6.82391,6.8197,6.87842,6.882],[5.08912,5.09588,5.09464,5.15173,5.15504],[3.36199,3.37003,3.36646,3.43057,3.43474],[1.63508,1.64869,1.64237,1.8239,1.83591],[-0.09143,0.47645,0.18261,1.53597,1.5523]],[[26.70672,26.70672,26.70674,26.70673,26.70674],[24.9947,24.99472,24.99794,24.99802,24.99803],[23.23108,23.23199,23.23283,23.23535,23.237],[21.39573,21.39572,21.3969,21.40203,21.39899],[19.55192,19.55812,19.56592,19.5698,19.56594],[16.85668,16.85818,16.85544,16.90259,16.90446],[15.12884,15.13779,15.13582,15.19081,15.19394],[13.40157,13.41011,13.40863,13.46327,13.46627],[11.67481,11.68261,11.68241,11.7372,11.73967],[9.94796,9.95609,9.95594,10.00996,10.01278],[8.22066,8.22888,8.2267,8.28281,8.28579],[6.49408,6.50155,6.49734,6.55607,6.55965],[4.76669,4.77346,4.77222,4.82935,4.83267],[3.03949,3.04761,3.04402,3.10831,3.11249],[1.31249,1.32707,1.32017,1.50649,1.51957],[-0.41387,0.47307,0.0353,1.33896,1.36099]]],"bin_error":[[[21.25057,22.24351,22.90456,22.81693,22.40517],[18.98668,20.48958,20.2836,20.70348,20.28308],[17.81341,19.47876,20.31895,19.46408,19.71526],[15.63613,16.83248,16.79294,17.82616,16.83271],[13.83873,15.83906,14.74142,15.33293,15.35032],[11.7059,13.98118,14.27705,14.36238,13.91322],[10.25318,11.82017,11.88789,12.4648,11.72655],[8.50874,10.54465,9.6837,10.58465,10.22193],[7.00664,8.93701,8.55813,9.20095,8.40348],[5.25748,6.66487,6.59528,6.89787,6.54218],[3.67594,5.21706,4.88003,5.46387,4.89113],[2.13739,3.68125,3.73761,3.66241,3.49818],[0.37387,1.69087,2.15386,2.28502,2.17664],[-0.60019,0.35804,0.58358,2.09063,1.93347],[-1.03781,0.40451,0.30865,2.20868,2.15594],[-1.00842,0.48788,0.79551,2.21244,1.83847]],[[18.72931,19.87084,21.74045,21.15503,21.09026],[16.90204,18.56894,18.77986,19.14637,19.02296],[15.89834,16.80781,18.73513,17.82813,17.97205],[13.81519,14.35804,15.43996,15.2553,15.69141],[11.80831,12.96725,13.23437,13.99574,13.97804],[9.7662,10.32098,11.58135,12.08937,12.01289],[8.75077,8.9745,9.79117,10.39098,10.5489],[6.51254,7.45701,8.63641,8.86674,8.42059],[5.0306,5.38611,6.96147,6.63808,6.93623],[3.24235,3.66935,4.82508,4.85263,5.00903],[1.70711,2.01148,3.16021,3.22745,3.59838],[-0.21873,0.92788,1.83594,2.47279,2.49616],[-0.92308,0.2922,1.57853,1.77687,1.96811],[-1.39266,0.02779,0.36353,1.77475,1.66858],[-1.56341,0.42396,-0.02734,2.11504,1.78848],[-1.73342,0.47473,0.66604,1.71222,1.25312]],[[18.55553,18.85378,20.06026,20.59653,20.93041],[16.3346,17.12181,18.16059,18.62447,18.79091],[15.14517,16.2997,16.88568,17.13608,17.36869],[13.26958,13.76295,14.63336,14.95206,14.97043],[11.26038,12.60981,12.58092,13.53518,13.44625],[9.53021,10.12834,10.69693,11.75529,11.53436],[8.25728,8.34667,10.05252,9.98685,9.7751],[5.89376,7.09747,7.60938,7.79954,8.36225],[4.36388,4.80894,5.75766,6.55879,6.58069],[2.78167,3.23927,4.45035,4.37531,4.97311],[1.1019,1.60417,2.20204,2.90318,3.19214],[-0.13106,0.55512,1.05752,2.41752,2.48871],[-1.09726,0.19965,0.63253,1.50394,1.73801],[-1.67751,0.14437,0.19529,1.67481,1.61024],[-1.67025,0.36724,-0.10938,1.78133,1.6579],[-2.25638,0.48777,0.57827,1.41102,1.02484]],[[17.83879,18.66631,20.66531,20.21705,20.41461],[15.64251,16.76133,17.50271,18.32287,18.80966],[14.27041,15.03977,16.76336,16.8106,17.20817],[12.57335,13.83768,14.14828,14.76218,15.22238],[10.52753,11.67167,12.68088,12.80752,13.52432],[8.85572,9.66637,11.45204,11.15218,11.91982],[7.14728,8.54022,9.70825,9.74775,10.08433],[5.46061,6.75989,7.52099,7.7923,8.53204],[4.10537,4.67378,5.91716,5.97772,6.72668],[2.22367,2.87655,4.04274,4.33678,4.99124],[0.57523,1.70128,2.00997,2.94819,3.41229],[-0.65356,0.42118,0.79995,2.07962,2.25926],[-1.50135,0.168,0.69061,1.55695,1.60604],[-1.79303,0.14906,0.05309,1.53863,1.36263],[-1.97339,0.42488,-0.08844,1.53384,1.55583],[-2.34061,0.495,0.48036,1.465,0.70007]]],"init":[[26.76755,26.76755,26.76755,26.76755,26.76755],[25.04061,25.04061,25.04061,25.04061,25.04061],[23.31367,23.31367,23.31367,23.31367,23.31367],[21.58673,21.58673,21.58673,21.58673,21.58673],[19.8598,19.8598,19.8598,19.8598,19.8598],[18.13286,18.13286,18.13286,18.13286,18.13286],[16.40592,16.40592,16.40592,16.40592,16.40592],[14.67898,14.67898,14.67898,14.67898,14.67898],[12.95204,12.95204,12.95204,12.95204,12.95204],[11.2251,11.2251,11.2251,11.2251,11.2251],[9.49816,9.49816,9.49816,9.49816,9.49816],[7.77122,7.77122,7.77122,7.77122,7.77122],[6.04429,6.04429,6.04429,6.04429,6.04429],[4.31735,4.31735,4.31735,4.31735,4.31735],[2.59041,2.59041,2.59041,2.59041,2.59041],[0.86347,0.86347,0.86347,0.86347,0.86347]],"final_average":[[26.70763,26.70763,26.70764,26.70763,26.70764],[24.99558,24.99561,24.99882,24.99891,24.99891],[23.23239,23.2333,23.23413,23.23665,23.23831],[21.39886,21.39885,21.40003,21.40516,21.40211],[19.55723,19.56343,19.57123,19.5751,19.57125],[16.8784,16.8799,16.87716,16.92431,16.92619],[15.15058,15.15953,15.15755,15.21255,15.21568],[13.42331,13.43185,13.43037,13.48501,13.48801],[11.69655,11.70435,11.70414,11.75894,11.76141],[9.9697,9.97783,9.97768,10.0317,10.03452],[8.24239,8.25061,8.24843,8.30455,8.30752],[6.51582,6.52329,6.51908,6.57781,6.58139],[4.78844,4.7952,4.79396,4.85109,4.8544],[3.06123,3.06935,3.06576,3.13004,3.13422],[1.33424,1.34875,1.34189,1.52757,1.54053],[-0.39213,0.47228,0.04378,1.3548,1.37661]],"final_training":[[26.70672,26.70672,26.70674,26.70673,26.70674],[24.9947,24.99472,24.99794,24.99802,24.99803],[23.23108,23.23199,23.23283,23.23535,23.237],[21.39573,21.39572,21.3969,21.40203,21.39899],[19.55192,19.55812,19.56592,19.5698,19.56594],[16.85668,16.85818,16.85544,16.90259,16.90446],[15.12884,15.13779,15.13582,15.19081,15.19394],[13.40157,13.41011,13.40863,13.46327,13.46627],[11.67481,11.68261,11.68241,11.7372,11.73967],[9.94796,9.95609,9.95594,10.00996,10.01278],[8.22066,8.22888,8.2267,8.28281,8.28579],[6.49408,6.50155,6.49734,6.55607,6.55965],[4.76669,4.77346,4.77222,4.82935,4.83267],[3.03949,3.04761,3.04402,3.10831,3.11249],[1.31249,1.32707,1.32017,1.50649,1.51957],[-0.41387,0.47307,0.0353,1.33896,1.36099]],"adam_reach":[0.4,0.9,1.4,1.9],"moved":[0.3355,0.63814,0.95536,1.27792],"weight_init":[[3.794199006370615e-12,3.794199006370615e-12,1.8970995031853075e-12,1.8970995031853075e-12,1.8970995031853075e-12],[2.1336336767011358e-11,2.1336336767011358e-11,1.0668168383505679e-11,1.0668168383505679e-11,1.0668168383505679e-11],[1.1998297028462538e-10,1.1998297028462538e-10,5.999148514231269e-11,5.999148514231269e-11,5.999148514231269e-11],[6.747147260363217e-10,6.747147260363217e-10,3.373573630181609e-10,3.373573630181609e-10,3.373573630181609e-10],[3.794197561119329e-09,3.794197561119329e-09,1.8970987805596645e-09,1.8970987805596645e-09,1.8970987805596645e-09],[2.1336328639770773e-08,2.1336328639770773e-08,1.0668164319885387e-08,1.0668164319885387e-08,1.0668164319885387e-08],[1.1998315343130457e-07,1.1998315343130457e-07,5.999157671565228e-08,5.999157671565228e-08,5.999157671565228e-08],[6.747144690302122e-07,6.747144690302122e-07,3.373572345151061e-07,3.373572345151061e-07,3.373572345151061e-07],[3.794199734297706e-06,3.794199734297706e-06,1.897099867148853e-06,1.897099867148853e-06,1.897099867148853e-06],[2.1336340860443868e-05,2.1336340860443868e-05,1.0668170430221934e-05,1.0668170430221934e-05,1.0668170430221934e-05],[0.00011998310772842855,0.00011998310772842855,5.9991553864214273e-05,5.9991553864214273e-05,5.9991553864214273e-05],[0.0006747145337530848,0.0006747145337530848,0.0003373572668765424,0.0003373572668765424,0.0003373572668765424],[0.0037941982890461433,0.0037941982890461433,0.0018970991445230716,0.0018970991445230716,0.0018970991445230716],[0.021336342907160417,0.021336342907160417,0.010668171453580209,0.010668171453580209,0.010668171453580209],[0.11998306202556994,0.11998306202556994,0.05999153101278497,0.05999153101278497,0.05999153101278497],[0.6747143973953738,0.6747143973953738,0.3373571986976869,0.3373571986976869,0.3373571986976869]],"weight_final":[[4.02851733936897e-12,4.02851733936897e-12,2.0142240929395827e-12,2.014247144036901e-12,2.0142279347708165e-12],[2.2319128073807944e-11,2.231853209674729e-11,1.1123480266005234e-11,1.1122504356493689e-11,1.1122483142020442e-11],[1.3014368506146578e-10,1.3002483748758216e-10,6.49583766299937e-11,6.479466586022259e-11,6.468772871097985e-11],[8.141687291376402e-10,8.141780466126296e-10,4.0660712666739017e-10,4.045278058335882e-10,4.057618905776896e-10],[5.13479268926168e-09,5.1030708948117864e-09,2.5317130428132277e-09,2.5219149805858274e-09,2.531664754679632e-09],[7.480351298237146e-08,7.469173829445096e-08,3.744829792374672e-08,3.572346610556563e-08,3.565668610212669e-08],[4.210256795486432e-07,4.1727222499662717e-07,2.0904898716337745e-07,1.978620785538519e-07,1.972439346274335e-07],[2.3683723657032187e-06,2.3482411823163464e-06,1.1758585753494564e-06,1.1133293630670548e-06,1.1099951505952678e-06],[1.331600478387353e-05,1.3212479615353724e-05,6.607613394325641e-06,6.2553063818578185e-06,6.239880688874388e-06],[7.487485667834469e-05,7.426830312533293e-05,3.7139818216843974e-05,3.518675500039386e-05,3.508763414256677e-05],[0.0004212066441963224,0.00041775903262395207,0.00020933519154643475,0.00019791163643470495,0.0001973236327372938],[0.0023677481568097525,0.002350121064320196,0.001180017396816583,0.0011127180676632838,0.0011087404980831602],[0.013320743680413704,0.013230997538564179,0.006623683487227581,0.006255870749480054,0.006235184887620948],[0.07492774098828668,0.07432187535861004,0.037294686997596874,0.03497292467859953,0.03482696981162335],[0.42137121041690834,0.41530253060897415,0.2090801553992324,0.17364947193359065,0.17141411557625952],[2.3682040621167295,0.9977289581062427,0.7657303796973307,0.20640009835921722,0.2019466582282102]],"learned_share":[[8.357675174481118e-11,1.9119392014062838e-10,1.411293422477977e-09,9.014657443287443e-10,1.098350342876197e-09],[7.06203515039978e-11,2.1618063955890757e-10,4.522699752481574e-10,1.026951245408347e-09,1.6709400373668769e-09],[2.477203010218387e-10,5.341887401060031e-10,2.9914412848067173e-09,3.1282510627954953e-09,4.647796784940907e-09],[6.745612738685119e-10,2.388458679625538e-09,3.2546043194955813e-09,5.98250019590532e-09,9.50754566207105e-09],[1.3070439953233221e-09,4.0784431056569285e-09,1.1101977511758265e-08,1.2552017330700156e-08,2.5804304066004002e-08],[5.2504495198038736e-06,1.1792606920311097e-05,7.051891439579363e-05,4.984253684300891e-05,0.00010719312037605126],[8.037662816011669e-06,3.2076600506807944e-05,0.00010335108910897985,0.00010176152056485915,0.0001420368855496975],[8.400441790807306e-06,3.0539809084493454e-05,6.547153393492871e-05,8.131024235722059e-05,0.00016986754192853233],[1.2282573282829037e-05,2.1515731789861757e-05,7.4617658531886e-05,7.504896461840406e-05,0.00015832250447754477],[1.0728621960325098e-05,2.044333763156988e-05,6.562796672106886e-05,8.34310747297327e-05,0.0001600775511927632],[1.2142664862407886e-05,3.7134905648822775e-05,5.067477520310274e-05,0.00012242829362009742,0.00019415458435956083],[2.205779353010702e-05,6.41310054045472e-05,9.405817111776041e-05,0.0003188947813513054,0.0003802839586315868],[6.50565018414383e-05,0.00034304025863231345,0.0005792228112914445,0.0013010082850078816,0.001361952379211867],[0.0003919238273465859,0.002710870749397326,0.0024716769738789223,0.010238426110325827,0.008550307115825556],[0.0031605765170434775,0.03427568178951144,0.02065636800336278,0.08683286492733688,0.08760923411621979],[0.024491097511199208,0.17191112188099048,0.26246416321909677,0.19077458316758283,0.0868452206568379]],"plain_share":[[0.0019166868609385647,0.004384698698793723,0.06473221172755832,0.04134732203408942,0.05037826309109014],[0.0002923300802022841,0.0008948948836288048,0.0037564526917798144,0.008530374472352999,0.013879696324633949],[0.00017578309923246623,0.000379407751451341,0.004252887924964802,0.004458616673425856,0.006635324850368918],[7.637558151066525e-05,0.0002704238919201729,0.0007378531311243304,0.0013632674236786094,0.0021599550198032696],[2.3413501792441716e-05,7.35126176218694e-05,0.00040335267840183595,0.0004578067267260057,0.0009375297032910262],[0.006351039087011018,0.01428587085082378,0.17039021673955107,0.1262455307130143,0.27201711351489544],[0.0017273696212498498,0.006955566757024943,0.044733313592659696,0.046535532321046805,0.06515707250669332],[0.00032093405777143807,0.001176758334812229,0.005038029157970904,0.00660823163473243,0.01384690052364151],[8.346021537957866e-05,0.0001473450182948375,0.0010217876696477217,0.0010855748779271981,0.002295776557076378],[1.2965009711669938e-05,2.490652899671995e-05,0.00015988734225419685,0.00021454279941778053,0.0004128014879208447],[2.608462104933832e-06,8.043069068860825e-06,2.1903570192021813e-05,5.5972693062179416e-05,8.902957160368554e-05],[8.429250938703387e-07,2.4691088515053892e-06,7.212246188475291e-06,2.593134894861132e-05,3.103422698847851e-05],[4.4190024691627233e-07,2.345928213238143e-06,7.91240499790052e-06,1.881724157334712e-05,1.9764082883723586e-05],[4.7328077423037593e-07,3.3003119276143455e-06,5.996627395616847e-06,2.6489257180935866e-05,2.221439842500243e-05],[6.786676400609924e-07,7.468123485675494e-06,8.939467448459723e-06,4.5274875249291006e-05,4.628130615818731e-05],[9.357336503060332e-07,1.5945595691723004e-05,3.142783341500139e-05,8.412749808895063e-05,3.9149883543824307e-05]]}},"smoke_steps":100000};
+const RUNS = Object.keys(D.runs);
+const GCOL = ["var(--g0)", "var(--g1)", "var(--g2)", "var(--g3)", "var(--g4)"];
+const S = {run: RUNS[RUNS.length - 1], group: 0};
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+const fmt = (v, n = 3) => Number(v).toPrecision(n);
+
+function seg(id, items, key) {
+  const host = document.getElementById(id);
+  host.innerHTML = items.map(([v, label]) => `<button data-v="${esc(v)}">${esc(label)}</button>`).join("");
+  host.onclick = e => { const b = e.target.closest("button"); if (!b) return; S[key] = typeof S[key] === "number" ? Number(b.dataset.v) : b.dataset.v; render(); };
+  return () => host.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === String(S[key]))));
+}
+const sw = (color, dash, op = 1) => `<svg width="24" height="10" style="width:24px;display:inline-block"><line x1="1" x2="23" y1="5" y2="5" stroke="${color}" stroke-opacity="${op}" stroke-width="2" stroke-dasharray="${dash || ""}"/></svg>`;
+const legend = (id, items) => document.getElementById(id).innerHTML = items.map(([c, d, label, op]) => `<span>${sw(c, d, op)}${esc(label)}</span>`).join("");
+
+// a linear-axis chart: lines, bars and vertical markers, with a <title> on every point
+function chart(host, o) {
+  const M = {l: 58, r: 14, t: 10, b: 40};
+  const W = Math.max(300, host.clientWidth), H = o.height || 260;
+  const X = v => M.l + (v - o.x[0]) / (o.x[1] - o.x[0]) * (W - M.l - M.r);
+  const Y = v => M.t + (o.y[1] - v) / (o.y[1] - o.y[0]) * (H - M.t - M.b);
+  const ticks = (lo, hi, n) => { const step = 10 ** Math.floor(Math.log10((hi - lo) / n)); const m = [1, 2, 5, 10].find(m => (hi - lo) / (m * step) <= n) * step; const out = []; for (let v = Math.ceil(lo / m) * m; v <= hi + 1e-9; v += m) out.push(+v.toFixed(10)); return out; };
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="${esc(o.label)}">`;
+  ticks(o.y[0], o.y[1], 6).forEach(v => s += `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${M.l - 6}" y="${Y(v) + 4}" text-anchor="end">${(o.yfmt || String)(v)}</text>`);
+  ticks(o.x[0], o.x[1], Math.max(3, Math.floor((W - M.l) / 60))).forEach(v => s += `<line x1="${X(v)}" x2="${X(v)}" y1="${H - M.b}" y2="${H - M.b + 4}" stroke="var(--axis)"/><text x="${X(v)}" y="${H - M.b + 16}" text-anchor="middle">${(o.xfmt || String)(v)}</text>`);
+  s += `<line x1="${M.l}" x2="${W - M.r}" y1="${H - M.b}" y2="${H - M.b}" stroke="var(--axis)"/>`;
+  s += `<text x="${(M.l + W - M.r) / 2}" y="${H - 6}" text-anchor="middle">${o.xlabel}</text>`;
+  s += `<text transform="translate(12 ${(M.t + H - M.b) / 2}) rotate(-90)" text-anchor="middle">${o.ylabel}</text>`;
+  if (o.zero) s += `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--ref)" stroke-width="1"/>`;
+  (o.vlines || []).forEach(v => s += `<line x1="${X(v.x)}" x2="${X(v.x)}" y1="${M.t}" y2="${H - M.b}" stroke="var(--ref)" stroke-dasharray="4 3"/><text x="${X(v.x) + 4}" y="${M.t + 12}" style="fill:var(--ink-2)">${esc(v.label)}</text>`);
+  (o.bars || []).forEach(b => s += `<rect x="${X(b.x0) + 1}" width="${Math.max(1, X(b.x1) - X(b.x0) - 2)}" y="${Y(Math.max(b.y, o.y[0]))}" height="${Math.max(0, Y(o.y[0]) - Y(Math.max(b.y, o.y[0])))}" fill="${b.color}" rx="2"><title>${esc(b.tip)}</title></rect>`);
+  (o.series || []).forEach(se => {
+    const pts = se.pts.filter(p => Number.isFinite(p[1]));
+    s += `<path d="${pts.map(([x, y], i) => `${i ? "L" : "M"}${X(x).toFixed(1)},${Y(y).toFixed(1)}`).join("")}" fill="none" stroke="${se.color}" stroke-opacity="${se.op ?? 1}" stroke-width="${se.width || 2}" stroke-dasharray="${se.dash || ""}"/>`;
+    if (se.dots !== false) pts.forEach(([x, y], i) => s += `<circle cx="${X(x)}" cy="${Y(y)}" r="3" fill="${se.color}" fill-opacity="${se.op ?? 1}"><title>${esc(se.tip ? se.tip(i) : `${se.name}: ${fmt(y)}`)}</title></circle>`);
+  });
+  host.innerHTML = s + "</svg>";
+}
+const gmean = a => Math.exp(a.reduce((s, v) => s + Math.log(v), 0) / a.length);
+const span = (vals, pad = 0.06) => { const v = vals.filter(Number.isFinite); const lo = Math.min(...v), hi = Math.max(...v), d = (hi - lo) || 1; return [lo - pad * d, hi + pad * d]; };
+
+const marks = [seg("run", RUNS.map(r => [r, r]), "run")];
+function render() {
+  const r = D.runs[S.run];
+  if (!marks[1]) marks.push(seg("group", r.groups.map((g, i) => [i, g]), "group"));
+  marks.forEach(m => m());
+  const E = r.time_edges, centre = E.slice(0, -1).map((e, i) => (e + E[i + 1]) / 2);
+  const smoke = r.total_steps < D.smoke_steps;
+  document.getElementById("smoke").innerHTML = smoke ? `<div class="warn"><b>Smoke run.</b> ${esc(r.run)} trained ${r.total_steps.toLocaleString("en")} steps, so λ could move by at most ${fmt(r.adam_reach.at(-1), 2)}. Its λ shows the mechanism only and says nothing about where a trained run's weights settle.</div>` : "";
+  const tile = (k, v, d) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+  document.getElementById("tiles").innerHTML = [
+    tile("Run", esc(r.config), `${esc(r.run)}, commit ${r.commit.slice(0, 7)}`),
+    tile("Trained", r.steps.at(-1).toLocaleString("en") + " steps", `epoch ${r.epoch} of ${r.total_steps.toLocaleString("en")} steps`),
+    tile("Largest λ move", fmt(r.moved.at(-1), 3), `AdamW bound ≈ ${fmt(r.adam_reach.at(-1), 3)} (lr ${r.adam_learning_rate}, warmup ${r.warmup_steps})`),
+    tile("Draws past the sampler", (100 * r.unqueried_share).toFixed(1) + "%", `1 − s below 10^${r.sampler_min_decade.toFixed(2)}, the ${r.ode_steps}-step sampler's last query`),
+  ].join("");
+
+  chart(document.getElementById("p-density"), {
+    label: "training draws per time bin", x: [E[0], E.at(-1)], y: [0, Math.max(...r.density) * 1.1],
+    xlabel: "log10(1 − s)", ylabel: "share of draws", yfmt: v => (100 * v).toFixed(0) + "%",
+    bars: r.density.map((d, i) => ({x0: E[i], x1: E[i + 1], y: d, color: "var(--g0)", tip: `[${E[i].toFixed(3)}, ${E[i + 1].toFixed(3)}): ${(100 * d).toFixed(2)}% of draws`})),
+    vlines: [{x: r.sampler_min_decade, label: `${r.ode_steps}-step sampler's last query`}],
+  });
+
+  const g = S.group, ep = r.log_var.length;
+  const lam = r.log_var.map(e => e.map(b => b[g]));
+  const target = r.bin_error[r.epoch - 1].map(b => b[g]);
+  const series = lam.map((v, k) => ({name: `step ${r.steps[k]}`, pts: centre.map((c, i) => [c, v[i]]), color: "var(--ink)", op: 0.25 + 0.75 * (k + 1) / ep, width: 1.6, tip: i => `step ${r.steps[k]}, bin ${centre[i].toFixed(2)}: λ ${fmt(v[i])}`}));
+  series.push({name: "init", pts: centre.map((c, i) => [c, r.init[i][g]]), color: GCOL[g], dash: "6 4", tip: i => `init, bin ${centre[i].toFixed(2)}: λ ${fmt(r.init[i][g])}`});
+  series.push({name: "log err", pts: centre.map((c, i) => [c, target[i]]), color: GCOL[g], dash: "2 3", tip: i => `log err at epoch ${r.epoch}, bin ${centre[i].toFixed(2)}: ${fmt(target[i])}`});
+  legend("lg-lambda", [["var(--ink)", "", `λ at each logged epoch (${ep})`, 1], [GCOL[g], "6 4", "init", 1], [GCOL[g], "2 3", "log err, last epoch", 1]]);
+  chart(document.getElementById("p-lambda"), {label: "λ per bin over training", x: [E[0], E.at(-1)], y: span(series.flatMap(s => s.pts.map(p => p[1]))), xlabel: "log10(1 − s)", ylabel: `λ (${r.groups[g]})`, series});
+
+  const last = r.log_var[r.epoch - 1];
+  const gaps = r.groups.map((name, j) => ({name, pts: centre.map((c, i) => [c, last[i][j] - r.bin_error[r.epoch - 1][i][j]]), color: GCOL[j], tip: i => `${name}, bin ${centre[i].toFixed(2)}: λ − log err ${fmt(last[i][j] - r.bin_error[r.epoch - 1][i][j])}`}));
+  legend("lg-gap", r.groups.map((name, j) => [GCOL[j], "", name, 1]));
+  chart(document.getElementById("p-gap"), {label: "λ minus log err", x: [E[0], E.at(-1)], y: span(gaps.flatMap(s => s.pts.map(p => p[1])).concat([0])), xlabel: "log10(1 − s)", ylabel: "λ − log err", zero: true, series: gaps});
+
+  const sum = rows => rows.map(b => b.reduce((a, v) => a + v, 0));
+  const learned = sum(r.learned_share), plain = sum(r.plain_share);
+  legend("lg-share", [["var(--ink)", "", "learned weights", 1], ["var(--ink)", "6 4", "plain flow loss", 1]]);
+  chart(document.getElementById("p-share"), {
+    label: "error share per time bin", x: [E[0], E.at(-1)], y: [0, Math.max(...learned, ...plain) * 1.1], xlabel: "log10(1 − s)", ylabel: "share of the error term", yfmt: v => (100 * v).toFixed(0) + "%",
+    series: [{name: "learned", pts: centre.map((c, i) => [c, learned[i]]), color: "var(--ink)"}, {name: "plain", pts: centre.map((c, i) => [c, plain[i]]), color: "var(--ink)", dash: "6 4"}],
+  });
+  const col = (rows, j) => rows.reduce((a, b) => a + b[j], 0);
+  document.getElementById("t-share").innerHTML = `<table class="tbl"><tr><th>group</th><th>coords</th><th>learned share</th><th>plain share</th><th>weight per coord, init</th><th>weight per coord, final</th></tr>` +
+    r.groups.map((name, j) => `<tr><td>${esc(name)}</td><td>${r.group_sizes[j]}</td><td>${(100 * col(r.learned_share, j)).toFixed(1)}%</td><td>${(100 * col(r.plain_share, j)).toFixed(1)}%</td><td>${fmt(gmean(r.weight_init.map(b => b[j])))}</td><td>${fmt(gmean(r.weight_final.map(b => b[j])))}</td></tr>`).join("") +
+    `</table><p class="note">Weights per coordinate are on the squared velocity error, relative to the plain loss's 1/8 per coordinate, as a geometric mean over the time bins (λ itself carries the 1/(1 − s)² scale).</p>`;
+}
+addEventListener("resize", render);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render();
+</script>
+</body>
+</html>
