@@ -57,8 +57,7 @@
 
   % ----------------------------------------------------------------- inputs and embeddings
   \node[xbox, anchor=west] (xemb) at (12, \ys)
-    {\textbf{source tokens}\\ PLE of coordinates\\ + Fourier($f_0$ bin)\\
-     + PLE($\hat X_1$), self-conditioning};
+    {\textbf{source tokens}\\ PLE of coordinates\\ + Fourier($f_0$ bin)};
   \node[sbox, anchor=west] (semb) at (12, 28.4) {\textbf{sink tokens}: $\nu$ + learned};
   \node[cbox, anchor=west] (cemb) at (12, 18.4)
     {\textbf{conditioning}\\ $\nu$ from $t$, $\log_{10}(1-t)$, $\ln f_w$\\ $\nu_f$ from $\ln f_w$};
@@ -133,7 +132,7 @@
     {head\\[-0.6pt] {\sm\color{ink2}adaLN, SwiGLU}};
   \draw[arr] (xp2) -- (head);
   \node[anchor=west, inner sep=1pt, align=center] (out) at ($(head.east)+(2.4,0)$)
-    {$\hat X_1$\\ {\sm\color{ink2}$S\times 8$}};
+    {$\hat X_1,\ \log\sigma$\\ {\sm\color{ink2}$S\times 16$}};
   \draw[arr] (head) -- (out);
   \draw[cond] (xp2.east |- 0,\bx) -| (head.south);
   \node[ychip, text width=18mm, anchor=west] (cache) at ($(frame.east |- 0,\yd)+(3.5,0)$)

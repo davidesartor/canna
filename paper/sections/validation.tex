@@ -1,0 +1,39 @@
+% =======================================================================================
+\section{Validating Without the Truth}
+\label{sec:validation}
+% =======================================================================================
+
+A joint posterior over \RelatedWorkParameters{} parameters has no closed form, and a reference
+\ac{mcmc} exists only for a few windows (\cref{app:mcmc}). The standard checks are rank
+statistics: \ac{sbc} ranks each true parameter among posterior draws over many simulations
+\citep{talts2018validating,modrak2023simulation}, and \ac{tarp} ranks the truth's distance to
+random points \citep{lemos2023sampling}. Both are necessary conditions, and both pass flows that
+are far from the posterior. We check every test on posteriors whose errors are known before
+reading a trained flow with it (\cref{app:evaluation}).
+
+\paragraph{A toy with an exact posterior.} On a linear-Gaussian toy with the problem's structure we
+plant one error at a time (\cref{tab:evaluation-power}). A posterior that returns the prior, one
+that takes a phase or the sky from the prior, and one that shuffles parameters between draws all
+keep every one-dimensional rank uniform: the coordinate ranks reject them at their size,
+\EvaluationPowerPhaseCoord{} at $\alpha=\qty{\EvaluationPowerAlpha}{\percent}$, and \ac{tarp}
+at most at \EvaluationPowerTarpBlind. Ranks of data-space quantities, the overlap of each source's
+signal with the data and the window's log-likelihood, catch all three with power near one, and so
+does the energy score.
+
+\paragraph{Mock posteriors on the real problem.} We then run the whole evaluation, scorecard,
+validation and reference comparison, on mock posteriors built from the Fisher matrix: a Gaussian
+centred on the linearised maximum a posteriori, and copies made too wide, too narrow, biased,
+equal to the prior, with phases from the prior, or with widths that stop shrinking above an
+\ac{snr} (\cref{app:evaluation-mocks}, \cref{tab:evaluation-mocks}). Three lessons carry over to
+the results. Coverage of the truth after relabelling is optimistic: the prior mock covers
+\EvaluationMockPriorCover{} at the \qty{68}{\percent} level. The Gaussian mock is not a clean null,
+so a flow's $p$-values are read against the Gaussian mock's on the same test. And a width floor on
+loud sources reads as conservative coverage; only the width ratio and the per-stratum ranks show it.
+
+\paragraph{References.} For widths the reference is joint \ac{mcmc} (\cref{app:mcmc}): for every
+eval injection, chains over all \RelatedWorkParameters{} parameters of its sources on the window
+likelihood, whose marginals are the flow's target. Every
+source also gets the ideal width of a sinusoid at its \ac{snr} (\cref{eq:evaluation-ideal-width})
+and a Fisher forecast (\cref{app:evaluation-fisher}). The ideal width ignores the measured chirp,
+so on loud full-band sources the calibrated Gaussian mock is \EvaluationMockFisherIdealFull{} times
+wider than it, and the Fisher width is the sharper reference there.

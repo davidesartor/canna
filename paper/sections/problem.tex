@@ -1,26 +1,37 @@
 % =======================================================================================
-\section{Galactic Binaries in LISA Data}
+\section{Problem}
 \label{sec:problem}
 % =======================================================================================
-% The physics, and the simulated dataset. Drafted material: app:signal, app:noise,
-% app:priors, app:mcmc (labels of the appendix sections).
 
-\subsection{Signal Model and Instrument Response}
-\label{sec:problem-signal}
-% quasi-monochromatic chirping binaries, the FastGB-style response, TDI A/E/T;
-% frequency windows and why a window holds a whole response (app:signal, fig:band)
+\paragraph{Data.} A \ac{gb} is a circular, slowly chirping binary. Its signal is fixed by eight
+parameters $\theta=(f_0,\fdot,\Amp,\alpha,\delta,\psi,\iota,\phi_0)$: frequency, frequency
+derivative, amplitude, sky position, polarisation, inclination and initial phase
+(\cref{app:forward-model}). Over $\Tobs=\qty{\ForwardModelTobsYears}{\year}$ the
+constellation's orbit modulates it in amplitude and Doppler-shifts it, so in the frequency
+domain it occupies a few bins to a few hundred around $f_0$. We simulate it with a heterodyned
+response \citep{cornish2007tests,jaxgb} in the three noise-orthogonal \ac{tdi} channels $A$, $E$, $T$,
+add stationary Gaussian instrument noise \citep{babak2021lisa}, and whiten the data by the noise
+\ac{psd} (\cref{app:noise}). The observation $y$ is a window of $K$ whitened bins in each channel,
+$K\times6$ real numbers, centred at $\fw$.
 
-\subsection{Noise Model and Likelihood}
-\label{sec:problem-likelihood}
-% stationary Gaussian noise, the TDI-1.5 PSD, the Whittle likelihood, the SNR (app:noise)
+\paragraph{Prior and posterior.} Each window holds $S=\PriorsSources$ sources. Their frequencies
+follow one Gaussian in $(\log f_0, \log\fdot, \log\Amp)$ fitted to a simulated catalogue of
+Galactic white-dwarf binaries \textcolor{red}{TODO(cite): catalogue}, truncated to the window, and
+sky positions a galactic mixture of bulge and discs. Most sources lie far below the noise: in the
+full band \qty{\RelatedWorkVisibleShare}{\percent} of them reach $\snr\ge\RelatedWorkSnrLow$
+(\cref{app:priors}). The target is the joint posterior
+\begin{equation}
+  p(\theta_1,\dots,\theta_S \mid y) \propto p(y\mid\theta_1,\dots,\theta_S)\,\pi(\theta_1,\dots,\theta_S\mid\fw),
+\end{equation}
+with the Gaussian likelihood of \cref{eq:loglik}, for every $\fw$ in the band, from one network.
+We train two configurations (\cref{tab:forward-model-bands}): the narrow band, windows of
+\PriorsNarrowW{} bins with $f_0\le\qty{\PriorsNarrowHighMhz}{\milli\hertz}$, where sources span
+few bins and crowd the most; and the full band, windows of \PriorsFullW{} bins up to
+\qty{\PriorsFullHighMhz}{\milli\hertz}, where a source's drift and Doppler spread cover up to
+a hundred bins.
 
-\subsection{Priors and the Simulated Dataset}
-\label{sec:problem-dataset}
-% the per-window prior: log-uniform f0, Korol+22 chirp mass, SNR-defined amplitude,
-% isotropic angles; four sources per window; the XS/S/B rungs (app:signal, app:priors; fig:priors)
-
-\subsection{Bayesian Inference and the Global Fit}
-\label{sec:problem-bayes}
-% the posterior over an unordered set; exact symmetries and degeneracies; MCMC global
-% fits (RJMCMC, parallel tempering) and their cost; what amortisation buys (app:mcmc,
-% app:related)
+\paragraph{Symmetries.} The likelihood is invariant under $(\psi,\phi_0)\to(\psi+\pi/2,\phi_0+\pi)$
+and its shifts, four copies of each source in the usual angles (\cref{eq:psi-phi-symmetry}), and
+under the $S!=\PriorsPermutations$ permutations of the sources. A flow on the raw parameters must
+place mass on every copy and every labelling, and evaluating it needs the copies matched
+\citep{stephens2000dealing,jasra2005markov,buscicchio2019label}.
