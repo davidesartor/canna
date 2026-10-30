@@ -1,26 +1,6 @@
-# Committed: the sources (scripts/, figures/src/) and what they produce, light enough for
-# git: figures/*.pdf (vector, contours only, no bitmaps or scatter of draws) and tables/.
-# Not committed: the png previews and the TikZ build products.
-figures/*.png
-figures/preview/
-figures/src/*.pdf
-figures/src/*.aux
-figures/src/*.log
-
-# LaTeX build products; everyone compiles their own main.pdf
-main.pdf
-*.aux
-*.bbl
-*.blg
-*.fdb_latexmk
-*.fls
-*.log
-*.out
-*.synctex.gz
-*.toc
-
-# local only: the inputs the figure scripts read (flow, Fisher and MCMC draws, scorecards,
-# per-epoch logs, the injection cache) live on the maintainer's PC, next to outputs/.
-# git carries the figures and tables made from them, not the draws.
-data/
+# latexmk output (.latexmkrc); figures/ and numbers/ are committed
+build/
 __pycache__/
+
+# fml-era inputs no script reads any more
+data/
