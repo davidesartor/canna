@@ -1,0 +1,3745 @@
+{
+ "setting": "mocks-full",
+ "kind": "mocks",
+ "band": "full",
+ "epoch": -1,
+ "ode_steps": 0,
+ "smoke": false,
+ "injections": 100,
+ "draws": 127,
+ "flows": {
+  "fisher": {
+   "energy": {
+    "all": {
+     "n": 400,
+     "mean": 1.1398271187275828,
+     "median": 0.9149458305472356,
+     "mean_all": 1.1398271187275828,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 1.1398271187275828,
+     "median": 0.9149458305472356,
+     "mean_all": 1.1398271187275828,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "joint_energy": {
+    "all": {
+     "n": 100,
+     "mean": 2.4837332703107227,
+     "median": 2.1185466976337652,
+     "mean_all": 2.4837332703107227,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 100,
+     "mean": 2.4837332703107227,
+     "median": 2.1185466976337652,
+     "mean_all": 2.4837332703107227,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_f0": {
+    "all": {
+     "n": 400,
+     "mean": 0.2743071990837151,
+     "median": 0.21944216736686661,
+     "mean_all": 0.2743071990837151,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.2743071990837151,
+     "median": 0.21944216736686661,
+     "mean_all": 0.2743071990837151,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_fdot": {
+    "all": {
+     "n": 400,
+     "mean": 0.5592667809124781,
+     "median": 0.4198980505871042,
+     "mean_all": 0.5592667809124781,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.5592667809124781,
+     "median": 0.4198980505871042,
+     "mean_all": 0.5592667809124781,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lon": {
+    "all": {
+     "n": 400,
+     "mean": 0.5440053380230774,
+     "median": 0.2694642616027985,
+     "mean_all": 0.5440053380230774,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.5440053380230774,
+     "median": 0.2694642616027985,
+     "mean_all": 0.5440053380230774,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lat": {
+    "all": {
+     "n": 400,
+     "mean": 0.45845577937787513,
+     "median": 0.26711506457732515,
+     "mean_all": 0.45845577937787513,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.45845577937787513,
+     "median": 0.26711506457732515,
+     "mean_all": 0.45845577937787513,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.031776347347119566,
+     "median": 0.026604808359501003,
+     "mean_all": 0.031776347347119566,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.031776347347119566,
+     "median": 0.026604808359501003,
+     "mean_all": 0.031776347347119566,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.03486797054725174,
+     "median": 0.031688454620524574,
+     "mean_all": 0.03486797054725174,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.03486797054725174,
+     "median": 0.031688454620524574,
+     "mean_all": 0.03486797054725174,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.045488736157064384,
+     "median": 0.03735274714036157,
+     "mean_all": 0.045488736157064384,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.045488736157064384,
+     "median": 0.03735274714036157,
+     "mean_all": 0.045488736157064384,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.038171803241473054,
+     "median": 0.030808662934057457,
+     "mean_all": 0.038171803241473054,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.038171803241473054,
+     "median": 0.030808662934057457,
+     "mean_all": 0.038171803241473054,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "width_ratio": {
+    "all": {
+     "n": 400,
+     "mean": 90.28506511983696,
+     "median": 100.72274518456086,
+     "mean_all": 90.28506511983696,
+     "fisher_median": 100.72288024831956
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 90.28506511983696,
+     "median": 100.72274518456086,
+     "mean_all": 90.28506511983696,
+     "fisher_median": 100.72288024831956
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   }
+  },
+  "wide": {
+   "energy": {
+    "all": {
+     "n": 400,
+     "mean": 1.7037666229860065,
+     "median": 1.578264641529946,
+     "mean_all": 1.7037666229860065,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 1.7037666229860065,
+     "median": 1.578264641529946,
+     "mean_all": 1.7037666229860065,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "joint_energy": {
+    "all": {
+     "n": 100,
+     "mean": 3.5878041747589653,
+     "median": 3.4105881185646267,
+     "mean_all": 3.5878041747589653,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 100,
+     "mean": 3.5878041747589653,
+     "median": 3.4105881185646267,
+     "mean_all": 3.5878041747589653,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_f0": {
+    "all": {
+     "n": 400,
+     "mean": 0.34010125657625584,
+     "median": 0.2845221316062694,
+     "mean_all": 0.34010125657625584,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": -0.04307876235079753,
+     "skill_median": 0.13406936742633715
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.34010125657625584,
+     "median": 0.2845221316062694,
+     "mean_all": 0.34010125657625584,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": -0.04307876235079753,
+     "skill_median": 0.13406936742633715
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_fdot": {
+    "all": {
+     "n": 400,
+     "mean": 0.8184403977836356,
+     "median": 0.773314082927539,
+     "mean_all": 0.8184403977836356,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 5.827654015169204,
+     "skill_median": 7.390550157162634
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.8184403977836356,
+     "median": 0.773314082927539,
+     "mean_all": 0.8184403977836356,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 5.827654015169204,
+     "skill_median": 7.390550157162634
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lon": {
+    "all": {
+     "n": 400,
+     "mean": 0.8251330514712572,
+     "median": 0.714733801495513,
+     "mean_all": 0.8251330514712572,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": 8.496516740984783
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.8251330514712572,
+     "median": 0.714733801495513,
+     "mean_all": 0.8251330514712572,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": 8.496516740984783
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lat": {
+    "all": {
+     "n": 400,
+     "mean": 0.7894369180895839,
+     "median": 0.6963719557211615,
+     "mean_all": 0.7894369180895839,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": 6.712409133933456
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.7894369180895839,
+     "median": 0.6963719557211615,
+     "mean_all": 0.7894369180895839,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": 6.712409133933456
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.07427027685145743,
+     "median": 0.07257271225762263,
+     "mean_all": 0.07427027685145743,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 3.016719219550493,
+     "skill_median": 2.8130473193389496
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.07427027685145743,
+     "median": 0.07257271225762263,
+     "mean_all": 0.07427027685145743,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 3.016719219550493,
+     "skill_median": 2.8130473193389496
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.08548882530040833,
+     "median": 0.08292635571364332,
+     "mean_all": 0.08548882530040833,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 2.9741348273737107,
+     "skill_median": 2.6923416635146675
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.08548882530040833,
+     "median": 0.08292635571364332,
+     "mean_all": 0.08548882530040833,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 2.9741348273737107,
+     "skill_median": 2.6923416635146675
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.10460860690703315,
+     "median": 0.09305493209137763,
+     "mean_all": 0.10460860690703315,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 2.7236234977106033,
+     "skill_median": 2.5487266379367886
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.10460860690703315,
+     "median": 0.09305493209137763,
+     "mean_all": 0.10460860690703315,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 2.7236234977106033,
+     "skill_median": 2.5487266379367886
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.08761752491122943,
+     "median": 0.08368389225015457,
+     "mean_all": 0.08761752491122943,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 3.066956670605888,
+     "skill_median": 2.808663308567164
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.08761752491122943,
+     "median": 0.08368389225015457,
+     "mean_all": 0.08761752491122943,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 3.066956670605888,
+     "skill_median": 2.808663308567164
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "width_ratio": {
+    "all": {
+     "n": 400,
+     "mean": 0.0,
+     "median": 407.44984069647086,
+     "mean_all": 0.0,
+     "fisher_median": 100.72288024831956
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.0,
+     "median": 407.44984069647086,
+     "mean_all": 0.0,
+     "fisher_median": 100.72288024831956
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   }
+  },
+  "narrow": {
+   "energy": {
+    "all": {
+     "n": 400,
+     "mean": 1.1717338728203384,
+     "median": 0.9223174886441133,
+     "mean_all": 1.1717338728203384,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 1.1717338728203384,
+     "median": 0.9223174886441133,
+     "mean_all": 1.1717338728203384,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "joint_energy": {
+    "all": {
+     "n": 100,
+     "mean": 2.6033152498605427,
+     "median": 2.210559627941654,
+     "mean_all": 2.6033152498605427,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 100,
+     "mean": 2.6033152498605427,
+     "median": 2.210559627941654,
+     "mean_all": 2.6033152498605427,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_f0": {
+    "all": {
+     "n": 400,
+     "mean": 0.28638243461030405,
+     "median": 0.22946646239103957,
+     "mean_all": 0.28638243461030405,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 0.8085629278966908,
+     "skill_median": 0.8666203303453633
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.28638243461030405,
+     "median": 0.22946646239103957,
+     "mean_all": 0.28638243461030405,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 0.8085629278966908,
+     "skill_median": 0.8666203303453633
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_fdot": {
+    "all": {
+     "n": 400,
+     "mean": 0.6048050376298897,
+     "median": 0.4504434331914092,
+     "mean_all": 0.6048050376298897,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 1.8482458613636905,
+     "skill_median": 1.5523286487877899
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.6048050376298897,
+     "median": 0.4504434331914092,
+     "mean_all": 0.6048050376298897,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 1.8482458613636905,
+     "skill_median": 1.5523286487877899
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lon": {
+    "all": {
+     "n": 400,
+     "mean": 0.5394250992800282,
+     "median": 0.1869202513067226,
+     "mean_all": 0.5394250992800282,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": -0.38970331364154914
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.5394250992800282,
+     "median": 0.1869202513067226,
+     "mean_all": 0.5394250992800282,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": -0.38970331364154914
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lat": {
+    "all": {
+     "n": 400,
+     "mean": 0.42959583984086663,
+     "median": 0.18767355922623527,
+     "mean_all": 0.42959583984086663,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": -0.05718135257362301
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.42959583984086663,
+     "median": 0.18767355922623527,
+     "mean_all": 0.42959583984086663,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": -0.05718135257362301
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.02376551019017091,
+     "median": 0.016249769779654585,
+     "mean_all": 0.02376551019017091,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 0.6198137134515086,
+     "skill_median": 0.5915807912309634
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.02376551019017091,
+     "median": 0.016249769779654585,
+     "mean_all": 0.02376551019017091,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 0.6198137134515086,
+     "skill_median": 0.5915807912309634
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.025673188172830354,
+     "median": 0.01958639191223359,
+     "mean_all": 0.025673188172830354,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 0.641417747606577,
+     "skill_median": 0.6002797831533625
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.025673188172830354,
+     "median": 0.01958639191223359,
+     "mean_all": 0.025673188172830354,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 0.641417747606577,
+     "skill_median": 0.6002797831533625
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.036318803777024816,
+     "median": 0.02359249307366312,
+     "mean_all": 0.036318803777024816,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 0.7326531549857649,
+     "skill_median": 0.6174140738533961
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.036318803777024816,
+     "median": 0.02359249307366312,
+     "mean_all": 0.036318803777024816,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 0.7326531549857649,
+     "skill_median": 0.6174140738533961
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.029178148196304862,
+     "median": 0.019244370860710052,
+     "mean_all": 0.029178148196304862,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 0.6240423911112818,
+     "skill_median": 0.6044289351904524
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.029178148196304862,
+     "median": 0.019244370860710052,
+     "mean_all": 0.029178148196304862,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 0.6240423911112818,
+     "skill_median": 0.6044289351904524
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "width_ratio": {
+    "all": {
+     "n": 400,
+     "mean": 37.86509233338622,
+     "median": 42.91706551469551,
+     "mean_all": 37.86509233338622,
+     "fisher_median": 100.72288024831956
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 37.86509233338622,
+     "median": 42.91706551469551,
+     "mean_all": 37.86509233338622,
+     "fisher_median": 100.72288024831956
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   }
+  },
+  "biased": {
+   "energy": {
+    "all": {
+     "n": 400,
+     "mean": 1.1646258921901507,
+     "median": 0.941263866132492,
+     "mean_all": 1.1646258921901507,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 1.1646258921901507,
+     "median": 0.941263866132492,
+     "mean_all": 1.1646258921901507,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "joint_energy": {
+    "all": {
+     "n": 100,
+     "mean": 2.5322210502445834,
+     "median": 2.1881971060725127,
+     "mean_all": 2.5322210502445834,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 100,
+     "mean": 2.5322210502445834,
+     "median": 2.1881971060725127,
+     "mean_all": 2.5322210502445834,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_f0": {
+    "all": {
+     "n": 400,
+     "mean": 0.33031739805367083,
+     "median": 0.24363682307105777,
+     "mean_all": 0.33031739805367083,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 0.11203152310181011,
+     "skill_median": 0.6780746000141856
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.33031739805367083,
+     "median": 0.24363682307105777,
+     "mean_all": 0.33031739805367083,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 0.11203152310181011,
+     "skill_median": 0.6780746000141856
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_fdot": {
+    "all": {
+     "n": 400,
+     "mean": 0.5592520017000239,
+     "median": 0.41790727047746434,
+     "mean_all": 0.5592520017000239,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 0.9997247060668951,
+     "skill_median": 0.9640022551940132
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.5592520017000239,
+     "median": 0.41790727047746434,
+     "mean_all": 0.5592520017000239,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 0.9997247060668951,
+     "skill_median": 0.9640022551940132
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lon": {
+    "all": {
+     "n": 400,
+     "mean": 0.5437516305187658,
+     "median": 0.2700398145384245,
+     "mean_all": 0.5437516305187658,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": 1.0096899559271062
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.5437516305187658,
+     "median": 0.2700398145384245,
+     "mean_all": 0.5437516305187658,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": 1.0096899559271062
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lat": {
+    "all": {
+     "n": 400,
+     "mean": 0.4589019153248073,
+     "median": 0.27029631176519964,
+     "mean_all": 0.4589019153248073,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": 1.0423349883676651
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.4589019153248073,
+     "median": 0.27029631176519964,
+     "mean_all": 0.4589019153248073,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": 1.0423349883676651
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.031739085389649264,
+     "median": 0.026293998370119576,
+     "mean_all": 0.031739085389649264,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 0.9982315849189528,
+     "skill_median": 0.9877411591505092
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.031739085389649264,
+     "median": 0.026293998370119576,
+     "mean_all": 0.031739085389649264,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 0.9982315849189528,
+     "skill_median": 0.9877411591505092
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.034795628851066504,
+     "median": 0.031159545441639853,
+     "mean_all": 0.034795628851066504,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 0.9971787860436777,
+     "skill_median": 0.9825306068253027
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.034795628851066504,
+     "median": 0.031159545441639853,
+     "mean_all": 0.034795628851066504,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 0.9971787860436777,
+     "skill_median": 0.9825306068253027
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.04523180923020547,
+     "median": 0.036234438217037736,
+     "mean_all": 0.04523180923020547,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 0.992509366432794,
+     "skill_median": 0.9689068782397479
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.04523180923020547,
+     "median": 0.036234438217037736,
+     "mean_all": 0.04523180923020547,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 0.992509366432794,
+     "skill_median": 0.9689068782397479
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.03809306589720857,
+     "median": 0.030623049845619504,
+     "mean_all": 0.03809306589720857,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 0.996708579155943,
+     "skill_median": 0.9936508723084563
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.03809306589720857,
+     "median": 0.030623049845619504,
+     "mean_all": 0.03809306589720857,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 0.996708579155943,
+     "skill_median": 0.9936508723084563
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "width_ratio": {
+    "all": {
+     "n": 400,
+     "mean": 87.32069431291775,
+     "median": 101.92494426649495,
+     "mean_all": 87.32069431291775,
+     "fisher_median": 100.72288024831956
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 87.32069431291775,
+     "median": 101.92494426649495,
+     "mean_all": 87.32069431291775,
+     "fisher_median": 100.72288024831956
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   }
+  },
+  "prior": {
+   "energy": {
+    "all": {
+     "n": 400,
+     "mean": 1.1155823528296922,
+     "median": 0.883573913991666,
+     "mean_all": 1.1155823528296922,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 1.1155823528296922,
+     "median": 0.883573913991666,
+     "mean_all": 1.1155823528296922,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "joint_energy": {
+    "all": {
+     "n": 100,
+     "mean": 2.44818560176605,
+     "median": 2.0649310380352834,
+     "mean_all": 2.44818560176605,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 100,
+     "mean": 2.44818560176605,
+     "median": 2.0649310380352834,
+     "mean_all": 2.44818560176605,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_f0": {
+    "all": {
+     "n": 400,
+     "mean": 0.3373839866354624,
+     "median": 0.29459826162117925,
+     "mean_all": 0.3373839866354624,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 0.0,
+     "skill_median": 0.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.3373839866354624,
+     "median": 0.29459826162117925,
+     "mean_all": 0.3373839866354624,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 0.0,
+     "skill_median": 0.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_fdot": {
+    "all": {
+     "n": 400,
+     "mean": 0.5055815714801543,
+     "median": 0.3645951386861124,
+     "mean_all": 0.5055815714801543,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": -0.0,
+     "skill_median": -0.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.5055815714801543,
+     "median": 0.3645951386861124,
+     "mean_all": 0.5055815714801543,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": -0.0,
+     "skill_median": -0.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lon": {
+    "all": {
+     "n": 400,
+     "mean": 0.5266729815785832,
+     "median": 0.21006740366498491,
+     "mean_all": 0.5266729815785832,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": -0.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.5266729815785832,
+     "median": 0.21006740366498491,
+     "mean_all": 0.5266729815785832,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": -0.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lat": {
+    "all": {
+     "n": 400,
+     "mean": 0.4239965714242871,
+     "median": 0.19197043101214173,
+     "mean_all": 0.4239965714242871,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": -0.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.4239965714242871,
+     "median": 0.19197043101214173,
+     "mean_all": 0.4239965714242871,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": -0.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.01070552643541658,
+     "median": 0.0012508623219084122,
+     "mean_all": 0.01070552643541658,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": -0.0,
+     "skill_median": -0.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.01070552643541658,
+     "median": 0.0012508623219084122,
+     "mean_all": 0.01070552643541658,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": -0.0,
+     "skill_median": -0.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.009225925206052822,
+     "median": 0.0014121208294462977,
+     "mean_all": 0.009225925206052822,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": -0.0,
+     "skill_median": -0.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.009225925206052822,
+     "median": 0.0014121208294462977,
+     "mean_all": 0.009225925206052822,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": -0.0,
+     "skill_median": -0.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.011188977057414996,
+     "median": 0.0013863063324327767,
+     "mean_all": 0.011188977057414996,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": -0.0,
+     "skill_median": -0.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.011188977057414996,
+     "median": 0.0013863063324327767,
+     "mean_all": 0.011188977057414996,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": -0.0,
+     "skill_median": -0.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.014249810887728002,
+     "median": 0.001574239332029919,
+     "mean_all": 0.014249810887728002,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": -0.0,
+     "skill_median": -0.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.014249810887728002,
+     "median": 0.001574239332029919,
+     "mean_all": 0.014249810887728002,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": -0.0,
+     "skill_median": -0.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "width_ratio": {
+    "all": {
+     "n": 400,
+     "mean": 5.935624162747103,
+     "median": 5.484636171346926,
+     "mean_all": 5.935624162747103,
+     "fisher_median": 100.72288024831956
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 5.935624162747103,
+     "median": 5.484636171346926,
+     "mean_all": 5.935624162747103,
+     "fisher_median": 100.72288024831956
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   }
+  },
+  "phases-prior": {
+   "energy": {
+    "all": {
+     "n": 400,
+     "mean": 1.1388913609930313,
+     "median": 0.9094960497858152,
+     "mean_all": 1.1388913609930313,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 1.1388913609930313,
+     "median": 0.9094960497858152,
+     "mean_all": 1.1388913609930313,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "joint_energy": {
+    "all": {
+     "n": 100,
+     "mean": 2.481994680028014,
+     "median": 2.1191675842912803,
+     "mean_all": 2.481994680028014,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 100,
+     "mean": 2.481994680028014,
+     "median": 2.1191675842912803,
+     "mean_all": 2.481994680028014,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_f0": {
+    "all": {
+     "n": 400,
+     "mean": 0.2738473269587656,
+     "median": 0.22134690101843554,
+     "mean_all": 0.2738473269587656,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 1.0072906713039593,
+     "skill_median": 0.974656298062487
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.2738473269587656,
+     "median": 0.22134690101843554,
+     "mean_all": 0.2738473269587656,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 1.0072906713039593,
+     "skill_median": 0.974656298062487
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_fdot": {
+    "all": {
+     "n": 400,
+     "mean": 0.5585370595326831,
+     "median": 0.42520975457765786,
+     "mean_all": 0.5585370595326831,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 0.9864074036869525,
+     "skill_median": 1.0960474558747126
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.5585370595326831,
+     "median": 0.42520975457765786,
+     "mean_all": 0.5585370595326831,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 0.9864074036869525,
+     "skill_median": 1.0960474558747126
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lon": {
+    "all": {
+     "n": 400,
+     "mean": 0.544979242437379,
+     "median": 0.2698949713311398,
+     "mean_all": 0.544979242437379,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": 1.0072513891019663
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.544979242437379,
+     "median": 0.2698949713311398,
+     "mean_all": 0.544979242437379,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": 1.0072513891019663
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lat": {
+    "all": {
+     "n": 400,
+     "mean": 0.45749739758067,
+     "median": 0.26696465756134413,
+     "mean_all": 0.45749739758067,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": 0.9979984330371304
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.45749739758067,
+     "median": 0.26696465756134413,
+     "mean_all": 0.45749739758067,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": 0.9979984330371304
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.03282362891786253,
+     "median": 0.02828078038716797,
+     "mean_all": 0.03282362891786253,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 1.0497029316100965,
+     "skill_median": 1.0661030052356342
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.03282362891786253,
+     "median": 0.02828078038716797,
+     "mean_all": 0.03282362891786253,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 1.0497029316100965,
+     "skill_median": 1.0661030052356342
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.030936362980657616,
+     "median": 0.02855438548939443,
+     "mean_all": 0.030936362980657616,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 0.8466734024419951,
+     "skill_median": 0.8964845231012191
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.030936362980657616,
+     "median": 0.02855438548939443,
+     "mean_all": 0.030936362980657616,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 0.8466734024419951,
+     "skill_median": 0.8964845231012191
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.038629396610215666,
+     "median": 0.03329300450184157,
+     "mean_all": 0.038629396610215666,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 0.8000178506525187,
+     "skill_median": 0.8871241483081354
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.038629396610215666,
+     "median": 0.03329300450184157,
+     "mean_all": 0.038629396610215666,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 0.8000178506525187,
+     "skill_median": 0.8871241483081354
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.04111317189964507,
+     "median": 0.03397793436233219,
+     "mean_all": 0.04111317189964507,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 1.1229566757934164,
+     "skill_median": 1.1084088905400868
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.04111317189964507,
+     "median": 0.03397793436233219,
+     "mean_all": 0.04111317189964507,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 1.1229566757934164,
+     "skill_median": 1.1084088905400868
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "width_ratio": {
+    "all": {
+     "n": 400,
+     "mean": 90.34452366880888,
+     "median": 100.80545186651942,
+     "mean_all": 90.34452366880888,
+     "fisher_median": 100.72288024831956
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 90.34452366880888,
+     "median": 100.80545186651942,
+     "mean_all": 90.34452366880888,
+     "fisher_median": 100.72288024831956
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   }
+  },
+  "loud-floor": {
+   "energy": {
+    "all": {
+     "n": 400,
+     "mean": 1.1398271187275828,
+     "median": 0.9149458305472356,
+     "mean_all": 1.1398271187275828,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 1.1398271187275828,
+     "median": 0.9149458305472356,
+     "mean_all": 1.1398271187275828,
+     "floor_mean": 1.1155823528296922,
+     "floor_median": 0.883573913991666,
+     "fisher_mean": 1.1398271187275828,
+     "fisher_median": 0.9149458305472356,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "joint_energy": {
+    "all": {
+     "n": 100,
+     "mean": 2.4837332703107227,
+     "median": 2.1185466976337652,
+     "mean_all": 2.4837332703107227,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "0-15": {
+     "n": 100,
+     "mean": 2.4837332703107227,
+     "median": 2.1185466976337652,
+     "mean_all": 2.4837332703107227,
+     "floor_mean": 2.44818560176605,
+     "floor_median": 2.0649310380352834,
+     "fisher_mean": 2.4837332703107227,
+     "fisher_median": 2.1185466976337652,
+     "skill_mean": null,
+     "skill_median": null
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_f0": {
+    "all": {
+     "n": 400,
+     "mean": 0.2743071990837151,
+     "median": 0.21944216736686661,
+     "mean_all": 0.2743071990837151,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.2743071990837151,
+     "median": 0.21944216736686661,
+     "mean_all": 0.2743071990837151,
+     "floor_mean": 0.3373839866354624,
+     "floor_median": 0.29459826162117925,
+     "fisher_mean": 0.2743071990837151,
+     "fisher_median": 0.21944216736686661,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_fdot": {
+    "all": {
+     "n": 400,
+     "mean": 0.5592667809124781,
+     "median": 0.4198980505871042,
+     "mean_all": 0.5592667809124781,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.5592667809124781,
+     "median": 0.4198980505871042,
+     "mean_all": 0.5592667809124781,
+     "floor_mean": 0.5055815714801543,
+     "floor_median": 0.3645951386861124,
+     "fisher_mean": 0.5592667809124781,
+     "fisher_median": 0.4198980505871042,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lon": {
+    "all": {
+     "n": 400,
+     "mean": 0.5440053380230774,
+     "median": 0.2694642616027985,
+     "mean_all": 0.5440053380230774,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.5440053380230774,
+     "median": 0.2694642616027985,
+     "mean_all": 0.5440053380230774,
+     "floor_mean": 0.5266729815785832,
+     "floor_median": 0.21006740366498491,
+     "fisher_mean": 0.5440053380230774,
+     "fisher_median": 0.2694642616027985,
+     "skill_mean": null,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_lat": {
+    "all": {
+     "n": 400,
+     "mean": 0.45845577937787513,
+     "median": 0.26711506457732515,
+     "mean_all": 0.45845577937787513,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.45845577937787513,
+     "median": 0.26711506457732515,
+     "mean_all": 0.45845577937787513,
+     "floor_mean": 0.4239965714242871,
+     "floor_median": 0.19197043101214173,
+     "fisher_mean": 0.45845577937787513,
+     "fisher_median": 0.26711506457732515,
+     "skill_mean": null,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.031776347347119566,
+     "median": 0.026604808359501003,
+     "mean_all": 0.031776347347119566,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.031776347347119566,
+     "median": 0.026604808359501003,
+     "mean_all": 0.031776347347119566,
+     "floor_mean": 0.01070552643541658,
+     "floor_median": 0.0012508623219084122,
+     "fisher_mean": 0.031776347347119566,
+     "fisher_median": 0.026604808359501003,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zp": {
+    "all": {
+     "n": 400,
+     "mean": 0.03486797054725174,
+     "median": 0.031688454620524574,
+     "mean_all": 0.03486797054725174,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.03486797054725174,
+     "median": 0.031688454620524574,
+     "mean_all": 0.03486797054725174,
+     "floor_mean": 0.009225925206052822,
+     "floor_median": 0.0014121208294462977,
+     "fisher_mean": 0.03486797054725174,
+     "fisher_median": 0.031688454620524574,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_re_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.045488736157064384,
+     "median": 0.03735274714036157,
+     "mean_all": 0.045488736157064384,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.045488736157064384,
+     "median": 0.03735274714036157,
+     "mean_all": 0.045488736157064384,
+     "floor_mean": 0.011188977057414996,
+     "floor_median": 0.0013863063324327767,
+     "fisher_mean": 0.045488736157064384,
+     "fisher_median": 0.03735274714036157,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "crps_im_zm": {
+    "all": {
+     "n": 400,
+     "mean": 0.038171803241473054,
+     "median": 0.030808662934057457,
+     "mean_all": 0.038171803241473054,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 0.038171803241473054,
+     "median": 0.030808662934057457,
+     "mean_all": 0.038171803241473054,
+     "floor_mean": 0.014249810887728002,
+     "floor_median": 0.001574239332029919,
+     "fisher_mean": 0.038171803241473054,
+     "fisher_median": 0.030808662934057457,
+     "skill_mean": 1.0,
+     "skill_median": 1.0
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   },
+   "width_ratio": {
+    "all": {
+     "n": 400,
+     "mean": 90.28506511983696,
+     "median": 100.72274518456086,
+     "mean_all": 90.28506511983696,
+     "fisher_median": 100.72288024831956
+    },
+    "0-15": {
+     "n": 400,
+     "mean": 90.28506511983696,
+     "median": 100.72274518456086,
+     "mean_all": 90.28506511983696,
+     "fisher_median": 100.72288024831956
+    },
+    "15-40": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    "40-100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    },
+    ">=100": {
+     "n": 0,
+     "mean": null,
+     "median": null,
+     "mean_all": null
+    }
+   }
+  }
+ },
+ "ratios": {
+  "fisher": {
+   "energy": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "joint_energy": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_f0": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_fdot": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_lon": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_lat": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_re_zp": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_im_zp": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_re_zm": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_im_zm": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "width_ratio": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   }
+  },
+  "wide": {
+   "energy": {
+    "ratio": 1.4947588059564358,
+    "lo": 1.4279212440144553,
+    "hi": 1.5714314159087166
+   },
+   "joint_energy": {
+    "ratio": 1.4445207211441506,
+    "lo": 1.3709948792954887,
+    "hi": 1.5279295284027214
+   },
+   "crps_f0": {
+    "ratio": 1.2398553800713823,
+    "lo": 1.1674729137415034,
+    "hi": 1.3146634055519324
+   },
+   "crps_fdot": {
+    "ratio": 1.463416790906658,
+    "lo": 1.4023876625464289,
+    "hi": 1.5414785485391604
+   },
+   "crps_lon": {
+    "ratio": 1.5167738141500628,
+    "lo": 1.4134255797567223,
+    "hi": 1.6439685784639093
+   },
+   "crps_lat": {
+    "ratio": 1.7219477943125727,
+    "lo": 1.5588220953503982,
+    "hi": 1.8962760969495738
+   },
+   "crps_re_zp": {
+    "ratio": 2.3372817536308124,
+    "lo": 2.0330443577062365,
+    "hi": 2.589209996779284
+   },
+   "crps_im_zp": {
+    "ratio": 2.4517866672095856,
+    "lo": 2.314540036257284,
+    "hi": 2.5791214199477834
+   },
+   "crps_re_zm": {
+    "ratio": 2.299659558485831,
+    "lo": 2.116630246228666,
+    "hi": 2.448450642337161
+   },
+   "crps_im_zm": {
+    "ratio": 2.2953467604599407,
+    "lo": 2.0217258045476685,
+    "hi": 2.5788584113274853
+   },
+   "width_ratio": {
+    "ratio": 0.0,
+    "lo": null,
+    "hi": null
+   }
+  },
+  "narrow": {
+   "energy": {
+    "ratio": 1.0279926258715215,
+    "lo": 1.0160765359698718,
+    "hi": 1.038716573415593
+   },
+   "joint_energy": {
+    "ratio": 1.0481460634196278,
+    "lo": 1.034716215751139,
+    "hi": 1.0601897292676046
+   },
+   "crps_f0": {
+    "ratio": 1.0440208480379831,
+    "lo": 1.018376609240126,
+    "hi": 1.071297763500464
+   },
+   "crps_fdot": {
+    "ratio": 1.0814249268356564,
+    "lo": 1.0621803418026037,
+    "hi": 1.0983712943271295
+   },
+   "crps_lon": {
+    "ratio": 0.9915805261034868,
+    "lo": 0.9667525992771618,
+    "hi": 1.013855747440572
+   },
+   "crps_lat": {
+    "ratio": 0.9370496766860014,
+    "lo": 0.9012883920081193,
+    "hi": 0.9641014942413805
+   },
+   "crps_re_zp": {
+    "ratio": 0.7478993708924568,
+    "lo": 0.6807154212817127,
+    "hi": 0.8171467083828441
+   },
+   "crps_im_zp": {
+    "ratio": 0.7362971738787903,
+    "lo": 0.7000200376415386,
+    "hi": 0.7753555143784124
+   },
+   "crps_re_zm": {
+    "ratio": 0.7984131203738558,
+    "lo": 0.7567591288713316,
+    "hi": 0.8412499338754583
+   },
+   "crps_im_zm": {
+    "ratio": 0.7643900921244209,
+    "lo": 0.6953014991410229,
+    "hi": 0.8315831339234522
+   },
+   "width_ratio": {
+    "ratio": 0.41939486096761647,
+    "lo": 0.39201463454574736,
+    "hi": 0.4481028262221327
+   }
+  },
+  "biased": {
+   "energy": {
+    "ratio": 1.0217566094499062,
+    "lo": 1.0146544086452978,
+    "hi": 1.0294771859937455
+   },
+   "joint_energy": {
+    "ratio": 1.0195221365005085,
+    "lo": 1.0131986063652354,
+    "hi": 1.0269437941724189
+   },
+   "crps_f0": {
+    "ratio": 1.2041878563779953,
+    "lo": 1.1404573624698995,
+    "hi": 1.2659420941200974
+   },
+   "crps_fdot": {
+    "ratio": 0.9999735739490371,
+    "lo": 0.9956198409297984,
+    "hi": 1.0043947958397486
+   },
+   "crps_lon": {
+    "ratio": 0.9995336304874627,
+    "lo": 0.9965847071028703,
+    "hi": 1.0022747569206925
+   },
+   "crps_lat": {
+    "ratio": 1.000973127544684,
+    "lo": 0.9978275357935383,
+    "hi": 1.0039512742048877
+   },
+   "crps_re_zp": {
+    "ratio": 0.9988273681344413,
+    "lo": 0.9976015721783649,
+    "hi": 0.9999384709331625
+   },
+   "crps_im_zp": {
+    "ratio": 0.9979252679450558,
+    "lo": 0.9966229402175629,
+    "hi": 0.9990474548188538
+   },
+   "crps_re_zm": {
+    "ratio": 0.9943518561172638,
+    "lo": 0.9920171360319674,
+    "hi": 0.9962979857070946
+   },
+   "crps_im_zm": {
+    "ratio": 0.9979372904191505,
+    "lo": 0.9965574168004969,
+    "hi": 0.9991224295906949
+   },
+   "width_ratio": {
+    "ratio": 0.9671665429605155,
+    "lo": 0.9187446983401308,
+    "hi": 1.0068807047375807
+   }
+  },
+  "prior": {
+   "energy": {
+    "ratio": 0.9787294358069356,
+    "lo": 0.9603559043824889,
+    "hi": 0.9974290414948802
+   },
+   "joint_energy": {
+    "ratio": 0.9856878075558307,
+    "lo": 0.9697602345316344,
+    "hi": 1.0028417276872366
+   },
+   "crps_f0": {
+    "ratio": 1.2299494426775768,
+    "lo": 1.1625839202476953,
+    "hi": 1.306694900078678
+   },
+   "crps_fdot": {
+    "ratio": 0.9040078701890122,
+    "lo": 0.8669187220198376,
+    "hi": 0.9480320671504002
+   },
+   "crps_lon": {
+    "ratio": 0.9681393632873528,
+    "lo": 0.945490016893701,
+    "hi": 0.9922557967289461
+   },
+   "crps_lat": {
+    "ratio": 0.924836353900153,
+    "lo": 0.8925405183925526,
+    "hi": 0.9545890531289658
+   },
+   "crps_re_zp": {
+    "ratio": 0.3369023606920954,
+    "lo": 0.21552679068199346,
+    "hi": 0.44854975501643185
+   },
+   "crps_im_zp": {
+    "ratio": 0.2645959905681978,
+    "lo": 0.18403757155715805,
+    "hi": 0.35502501084457194
+   },
+   "crps_re_zm": {
+    "ratio": 0.2459724758846119,
+    "lo": 0.14668694112373604,
+    "hi": 0.35648414082761115
+   },
+   "crps_im_zm": {
+    "ratio": 0.3733072497933713,
+    "lo": 0.24735039032122122,
+    "hi": 0.4867860363399504
+   },
+   "width_ratio": {
+    "ratio": 0.06574314539031062,
+    "lo": 0.04402223145351374,
+    "hi": 0.09872521038126979
+   }
+  },
+  "phases-prior": {
+   "energy": {
+    "ratio": 0.9991790353824919,
+    "lo": 0.9976555494265765,
+    "hi": 1.000437778545061
+   },
+   "joint_energy": {
+    "ratio": 0.9993000092628742,
+    "lo": 0.9980114238855814,
+    "hi": 1.0004432926996383
+   },
+   "crps_f0": {
+    "ratio": 0.9983235141969095,
+    "lo": 0.9930288812967567,
+    "hi": 1.0032863430517949
+   },
+   "crps_fdot": {
+    "ratio": 0.9986952177302496,
+    "lo": 0.9961140841466839,
+    "hi": 1.001653357662872
+   },
+   "crps_lon": {
+    "ratio": 1.001790247900583,
+    "lo": 0.9990475831354221,
+    "hi": 1.0045781475001823
+   },
+   "crps_lat": {
+    "ratio": 0.9979095436456148,
+    "lo": 0.9953792757898338,
+    "hi": 1.0004134343281135
+   },
+   "crps_re_zp": {
+    "ratio": 1.0329578966173372,
+    "lo": 1.0149661822159153,
+    "hi": 1.052452974741517
+   },
+   "crps_im_zp": {
+    "ratio": 0.8872430054033067,
+    "lo": 0.867858872503472,
+    "hi": 0.9057923970460979
+   },
+   "crps_re_zm": {
+    "ratio": 0.8492079550602446,
+    "lo": 0.8204187423901215,
+    "hi": 0.882917966158981
+   },
+   "crps_im_zm": {
+    "ratio": 1.0770560573092407,
+    "lo": 1.0590199141813927,
+    "hi": 1.0965138134887247
+   },
+   "width_ratio": {
+    "ratio": 1.0006585646130173,
+    "lo": 0.9776251563140274,
+    "hi": 1.0257404283987728
+   }
+  },
+  "loud-floor": {
+   "energy": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "joint_energy": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_f0": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_fdot": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_lon": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_lat": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_re_zp": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_im_zp": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_re_zm": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "crps_im_zm": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "width_ratio": {
+    "ratio": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   }
+  }
+ }
+}
