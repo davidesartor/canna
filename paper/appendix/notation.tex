@@ -1,64 +1,86 @@
 % =======================================================================================
-\section{Notation and Overview of the Appendices}
+\section{Notation}
 \label{app:notation}
 % =======================================================================================
 
-The appendices hold the complete technical description of the problem, the method and the
-experiments. \Cref{tab:notation} collects the notation. The appendices are ordered from the
-physics to the results, after a survey of related work:
-\begin{itemize}
-  \item \cref{app:related}: related work, and what this paper adds to it;
-  \item \cref{app:signal}: the galactic-binary signal, the LISA response and the frequency
-        windows that define a training example;
-  \item \cref{app:noise}: the noise model, the likelihood, the signal-to-noise ratio, and how
-        the forward model was validated;
-  \item \cref{app:priors}: the prior over the sources in a window, its exact symmetries, and the
-        simulated dataset;
-  \item \cref{app:geometry}: the flow coordinates and the product manifold of an unordered set
-        of sources;
-  \item \cref{app:fm}: the conditional flow-matching objective, the warped clock, the
-        auxiliary heads and the sampler;
-  \item \cref{app:sensitivity}: why the flow-matching loss is nearly blind to the width of a
-        narrow posterior, and what the warped clock changes;
-  \item \cref{app:conditioning,app:architecture,app:training}: the conditioning input, the
-        network, and the optimisation and compute;
-  \item \cref{app:evaluation}: the evaluation protocol and the metrics;
-  \item \cref{app:xs,app:b,app:mcmc}: the experiments on the XS rung, on the whole band (B),
-        and the comparison with MCMC.
-\end{itemize}
+The appendices follow the pipeline from the data to the results. After the related work
+(\cref{app:related}) come the physics: the forward model (\cref{app:forward-model}), the noise and
+likelihood (\cref{app:noise}) and the prior (\cref{app:priors}); then the method: the flow
+coordinates (\cref{app:chart}), flow matching (\cref{app:fm}), the network (\cref{app:network})
+and training (\cref{app:training}); and last the evaluation (\cref{app:evaluation}), the reference
+\ac{mcmc} (\cref{app:mcmc}) and the results (\cref{app:results}). \Cref{tab:notation} collects
+the symbols used in more than one appendix, the others being defined where they appear, and
+\cref{tab:acronyms} the acronyms.
 
-\begin{table}[h]
-\caption{Notation.}
+\begin{table}[!htbp]
+\caption{Symbols shared across the appendices, grouped by where they enter the pipeline, and the conventions used throughout.}
 \label{tab:notation}
 \centering
 \small
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{lll}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.12}
+\newcommand{\notationgroup}[1]{\multicolumn{3}{@{}l}{\textsc{#1}}\\[1pt]}
+\begin{tabular}{@{}>{$}l<{$}>{\raggedright\arraybackslash}p{8.6cm}l@{}}
 \toprule
-symbol & meaning & value or range \\
+\multicolumn{1}{@{}l}{symbol} & meaning & defined in \\
 \midrule
-$\Tobs$ & observation time & $2\,\text{yr} = 6.31\times10^{7}$\,s \\
-bin & frequency resolution $1/\Tobs$ & $15.84$\,nHz \\
-$S$ & number of sources in a window & 4 \\
-$\theta = (f_0, \Mc, \Amp, \alpha, \delta, \psi, \iota, \phi_0)$ & one source; $(\alpha,\delta)$: RA, dec & \cref{tab:prior} \\
-$\fdot(\Mc, f_0)$ & frequency derivative, derived from $(\Mc, f_0)$ & \cref{eq:fdot} \\
-$R$ & response points: bins of one source's response & 16 (XS), 64 (S), 1024 (B) \\
-$L$ & light travel time along an arm (equal arms) & $2.5\,\text{Gm}/c = 8.34$\,s \\
-$K = 4R$ & bins in a window & 64, 256, 4096 \\
-$k_0$, $\fw$ & first bin and centre frequency of a window & \cref{app:signal-windows} \\
-$\tilde d_{k,c}$ & data in bin $k$ and TDI channel $c\in\{A,E,T\}$ & complex \\
-$S_c(f)$ & one-sided noise PSD of channel $c$ (fractional frequency) & \cref{eq:psd} \\
-$\inner{a}{b}$ & noise-weighted inner product & \cref{eq:inner} \\
-$\snr$ & optimal matched-filter SNR, $\snr^2 = \inner{h}{h}$ & 7 to 1000 (prior) \\
-$\pi_w$ & prior over the $S$ sources of window $w$ & \cref{app:priors} \\
-$\varphi_w$ & chart from physical parameters to flow coordinates & \cref{eq:chart} \\
-$\manifold$ & flow manifold of one source, embedded in $\R^{11}$ & $[-1,1]\times\R\times[-1,1]\times\Sph^2\times\Sph^2\times\Sph^1$ \\
-$X = (x_1,\dots,x_S)$ & a set of sources in flow coordinates & $\manifold^S/\mathfrak{S}_S$ \\
-$y$ & conditioning input (whitened, transformed data) & $2\times K\times 3$ \\
-$t$, $s(t)$ & flow time and path position, $s = 1-(1-t)^p$ & $p=3$ (warped), $p=1$ (uniform) \\
-$\vnet$ & the network's velocity field, weights $\eta$ & \cref{app:architecture} \\
-$\Exp_x$, $\Log_x$ & exponential and logarithm maps & \cref{app:geometry} \\
-$y_{ij}$ & response of the link received on spacecraft $i$ from $j$ & \cref{eq:link-response} \\
+\notationgroup{data}
+\Tobs & observation time; frequency bins are $1/\Tobs$ wide & \cref{tab:forward-model-bands} \\
+K,\ k_0,\ \fw & bins in a window, its first bin, its centre frequency; $\fw$ conditions the prior, the chart and the network & \cref{eq:forward-model-window-start} \\
+c\in\{A,E,T\} & \acs*{tdi} channel & \cref{eq:forward-model-aet} \\
+\tilde d_{k,c},\ \tilde h_{k,c} & data and signal in bin $k$ of channel $c$ & \cref{eq:noise-data} \\
+S_c(f),\ P_c(f) & one-sided noise \acs*{psd} of channel $c$; noise variance per bin, $S_c\Tobs/2$ & \cref{eq:noise-psd,eq:noise-data} \\
+y & whitened data, $K\times6$ real numbers: the network's conditioning input & \cref{eq:noise-whiten} \\
+\midrule
+\notationgroup{sources and prior}
+S & sources per window, exchangeable; in validation, slot $s$ holds the $s$-th loudest & \cref{tab:forward-model-bands} \\
+\theta=(f_0,\fdot,\Amp,\alpha,\delta,\psi,\iota,\phi_0) & one source: frequency, frequency derivative, amplitude, sky, polarisation, inclination, initial phase & \cref{tab:priors-source} \\
+R & response points: the bins that carry one source's signal & \cref{app:forward-model-windows} \\
+\pi(\cdot\mid\fw) & prior over the $S$ sources of a window & \cref{eq:priors-window-prior} \\
+\midrule
+\notationgroup{likelihood and \acs*{snr}}
+\inner{a}{b},\ \log p(d\mid\theta) & noise-weighted inner product; log-likelihood & \cref{eq:inner,eq:loglik} \\
+\snr_s,\ \snr_w & optimal \acs*{snr} of one source; of the whole window & \cref{eq:noise-snr} \\
+S_n(f),\ u(f) & sky-averaged sensitivity; amplitude unit $\sqrt{S_n/\Tobs}$ & \cref{eq:noise-sky,eq:chart} \\
+\midrule
+\notationgroup{flow}
+\varphi(\cdot\,;\fw) & chart from $\theta$ to flow coordinates & \cref{eq:chart} \\
+x=(x_f,x_{\fdot},x_l,x_b,z_+,z_-) & one source in flow coordinates; $z_\pm\in\mathbb C$ are helicity amplitudes & \cref{eq:chart} \\
+X\in\R^{8S} & all sources of a window in flow coordinates & \cref{app:fm-paths} \\
+X_0,\ X_1,\ X_s & prior draw, target, point on the straight path between them & \cref{eq:fm-path} \\
+s,\ t & position along the path; the same as the network's time input & \cref{eq:fm-path} \\
+\vnet,\ \hat X_1,\ \sigma & network velocity; mean and standard deviation of the endpoint & \cref{eq:fm-velocity,eq:loss} \\
+\midrule
+\notationgroup{conventions}
+w,\ w^\star & posterior width $\num{1.4826}\,\MAD$, the standard deviation for a Gaussian; ideal $f_0$ width & \cref{eq:evaluation-ideal-width} \\
+\Delta f_0 & frequency widths and separations, in bins of $1/\Tobs$ & \\
+\tilde h(f) & continuous Fourier transform, $\int_0^{\Tobs}h(t)\,e^{-2\pi\ii ft}\dd t$; \acsp*{psd} one-sided, in fractional frequency & \\
+\iota & from the line of sight: $\iota=0$ is face-on, $\cos\iota$ uniform for an isotropic orientation & \\
+(\alpha,\delta),\ (l,b) & sky in equatorial coordinates in the forward model, galactic in the prior and the flow & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\caption{Acronyms.}
+\label{tab:acronyms}
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\newcommand{\acrow}[3]{\acs*{#1} & \acl*{#1} & \acs*{#2} & \acl*{#2} & \acs*{#3} & \acl*{#3} \\}
+\newcolumntype{L}{>{\raggedright\arraybackslash}p{4.0cm}}
+\begin{tabular}{@{}lL@{\hspace{12pt}}lL@{\hspace{12pt}}lL@{}}
+\toprule
+\acrow{lisa}{gw}{gb}
+\acrow{tdi}{snr}{psd}
+\acrow{oms}{ssb}{stft}
+\midrule
+\acrow{mcmc}{rjmcmc}{npe}
+\acrow{fmpe}{nsf}{maf}
+\acrow{mle}{ess}{ecdf}
+\acrow{sbc}{tarp}{crps}
+\midrule
+\acrow{mmdit}{rope}{mlp}
 \bottomrule
 \end{tabular}
 \end{table}

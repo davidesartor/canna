@@ -2,33 +2,53 @@
 \section{Introduction}
 \label{sec:introduction}
 % =======================================================================================
-% Planned paragraphs (empty on purpose; to be written from the appendices):
-%  - diffusion models and flow matching as conditional samplers; amortised
-%    simulation-based inference (NPE, FMPE, score-based SBI)
-%  - LISA and its Galactic binaries: tens of millions of sources, ~10^4 resolvable,
-%    overlapping in frequency; the population matters for astrophysics
-%  - the global fit: trans-dimensional MCMC over all sources at once, its cost, and why
-%    an amortised, local (per-window) posterior estimator is attractive
-%  - what is hard for a generative model here: unordered sets of sources (label
-%    switching), angles and spheres, exact degeneracies, posteriors 10^3 times narrower
-%    than the prior at high SNR
-%  - related work, the short version of app:related: amortised posteriors for one or two GBs
-%    with an ordering imposed (delmond2026neural), one source in gapped data with FMPE
-%    (mao2025robust), factorised slots on sinusoids (houba2025slotflow); flows inside the global
-%    fit (korsakova2024neural, sasli2026learned); population SBI (srinivasan2025simulation,
-%    desanti2026inferring); NPE for ground-based detectors (dax2021real, dax2025real,
-%    kofler2026flexible)
-%  - contributions (revised 2026-10-11 against app:related, see its last paragraph):
-%    (i) a joint, unfactorised posterior of four overlapping binaries per window with the full
-%        response, on a product manifold, with the labels' symmetry in the coupling
-%        (app:geometry; cf. klein2023equivariant);
-%    (ii) why the flow-matching loss is blind to narrow posteriors, and a warped clock (cf. the
-%         bounded power-law time prior of dax2023flow) and a cooldown that lower the floor
-%         fourfold (app:sensitivity, app:xs);
-%    (iii) the floor that remains is set by how the network represents a source's position:
-%          the same precision in coordinate units on XS and on the whole band; Fourier
-%          position features cut it almost sixfold, to 4x ideal, with near-nominal coverage
-%          (app:b, tab:xs-ladder; B2 pending);
-%    (iv) validation against a joint 32-D MCMC on four windows (app:mcmc): 127/128 pairs inside
-%         the 95%, near-optimal for isolated sources it finds, too wide for loud ones, and
-%         misses faint sources next to loud ones (app:xs-crowding)
+
+\Ac{lisa} will observe millions of \acp{gb} in the Milky Way, quasi-monochromatic sources
+between \qtyrange{\RelatedWorkFzeroLow}{\RelatedWorkFzeroHigh}{\milli\hertz}, and resolve thousands of
+them \citep{nelemans2001gravitational,korol2017prospects,amaro2017lisa,colpi2024lisa,karnesis2021characterization}. Below a few millihertz
+their signals overlap: a source spreads over several frequency bins through the instrument's
+orbit and its own chirp, and neighbours share bins, so their parameters must be inferred jointly
+(\cref{fig:related-crowding}). The reference method is a global fit, a trans-dimensional \ac{mcmc}
+over every resolvable source \citep{littenberg2020global,littenberg2023prototype,katz2024efficient,strub2024global,deng2025modular}.
+It is the standard for what the data support, but even a joint chain over one of our windows takes
+\qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour}, and it has to run again on every new stretch
+of data. Amortised estimators learn the posterior once and
+then return it in a fraction of a second, but for \acp{gb} they have so far treated one source,
+two ordered sources in a narrow band, or a factorised set of toy signals
+\citep{korsakova2024neural,houba2025slotflow,delmond2026neural} (\cref{tab:related-closest}).
+
+We bring the amortised route to the global fit's unit of work: the joint posterior of the
+\RelatedWorkSourcesWord{} sources in a frequency window, \RelatedWorkParameters{} parameters under
+the full instrument response, for windows anywhere in the band, drawn by conditional flow
+matching \citep{lipman2023flow,liu2023flow,albergo2023building,dax2023flow} with no likelihood
+evaluation. Three difficulties stand in the way. The posterior is multimodal by symmetry: each
+source has four copies under its polarisation and phase, and the sources of a window can be
+exchanged. Its widths span orders of magnitude, from the prior for a quiet source to a small
+fraction of a bin in frequency for a loud one, and a flow sampled on a uniform grid cannot
+resolve the narrow end. And with no reference posterior for most windows, the usual calibration
+checks pass flows that are plainly wrong.
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item A flat chart of eight coordinates per source in which the signal is linear in one complex
+    amplitude per helicity, so a source's four equivalent copies become one mode and the flow
+    runs on straight paths (\cref{sec:method-chart}).
+  \item Unordered sources: a permutation-equivariant network, so the flow's draws carry no labels
+    and have no slot boundary for sources of similar \ac{snr} or frequency to swap across, trained
+    on straight paths that pair base and target sources in order of frequency
+    (\cref{sec:method-chart,sec:method-fm}).
+  \item A flow-matching recipe for posteriors that are narrow at the end of the path:
+    a Gaussian likelihood of the endpoint, whose reward for narrowing is relative to each source's
+    own width, and an analysis of what the sampler resolves there (\cref{sec:method-fm}).
+  \item A one-way transformer whose data stream depends on the observation alone, so it is encoded
+    once per window and reused by every draw and every sampler step, trained on batches simulated
+    on the device (\cref{sec:method-network}).
+  \item A validation protocol checked on known answers: a toy with an exact posterior, where ranks
+    of the parameters miss phase, sky and dependence errors that ranks of data-space quantities
+    catch, and a ladder of mock posteriors run through the whole evaluation
+    (\cref{sec:validation}).
+\end{itemize}
+We train on two bands, the narrow band below \qty{\PriorsNarrowHighMhz}{\milli\hertz} with windows
+of \PriorsNarrowW{} bins and the full band up to \qty{\PriorsFullHighMhz}{\milli\hertz} with windows
+of \PriorsFullW{} bins, and compare against joint and per-source \ac{mcmc} chains
+(\cref{sec:results}). \Cref{app:related} covers the related work.

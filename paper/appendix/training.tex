@@ -1,97 +1,316 @@
 % =======================================================================================
-\section{Optimisation, Schedules and Compute}
+\section{Optimisation, Training and Compute}
 \label{app:training}
 % =======================================================================================
 
-\subsection{Optimiser}
+This appendix covers how the flow of \cref{app:fm,app:network} is trained: the optimiser
+(\cref{app:training-sf,app:training-base}), its schedules (\cref{app:training-schedules}), the
+batch (\cref{app:training-batch}), the training loop (\cref{app:training-loop}), the arithmetic
+precision (\cref{app:training-precision}) and the measured cost (\cref{app:training-compute}).
+\Cref{tab:training-recipe} collects the recipe. Every band and size shares it; only the step
+counts depend on the band.
 
-Gradients are clipped to a global norm of 1, then the two-dimensional weight matrices are
-updated with Muon \citep{jordan2024muon,liu2025muon} and all other parameters with Adam, both
-at learning rate $\gamma = 10^{-4}$ and without weight decay (\texttt{optax.contrib.muon},
-version 0.2.8, default width scaling). Batches hold 256 windows; one epoch is 1000 steps.
-Muon orthogonalises each matrix update, so its size per element is fixed by the learning rate
-and the shape: we measured an update RMS of $(0.03$--$0.045)\,\gamma$, about five times smaller
-than AdamW at the same nominal rate. We did not tune the learning rate; with the compute
-available, every run went into a different question (\cref{app:xs}).
-
-\subsection{Schedules}
-\label{app:training-schedules}
-
-\paragraph{Auxiliary heads.}
-The weight $a(\tau)$ of \cref{eq:loss} decays as a half cosine from 1 to 0 over the first
-$f_{\rm aux}$ of training: half of the run in the original configuration, a tenth in the
-recipe.
-
-\paragraph{Learning rate.}
-The original runs kept the learning rate constant. The recipe adds a cooldown: constant, then
-a linear decay to zero over the last 20\% of the steps, the warmup-stable-decay schedule of
-\citet{hu2024minicpm} and \citet{hagele2024scaling} without warmup. It is applied as a scale
-on the update in epoch $e$ of $E$,
-\begin{equation}
-  \lambda_e = \begin{cases} 1 & e < E - E_c,\\[2pt] \dfrac{E - e - \frac12}{E_c} & e\ge E-E_c,\end{cases}
-\end{equation}
-with $E_c$ the number of cooldown epochs, so that each epoch takes the ramp's value at its
-midpoint. Without weight decay, scaling the update is exactly scaling the learning rate, and
-because the scale is a function of the epoch rather than of a step counter in the optimiser
-state, a run resumed with a fresh optimiser lands at the right point of the schedule. The
-cooldowns of \cref{app:xs} continue a finished 1M-step run for 200k more steps with
-$E_c = 200$.
-
-\paragraph{Checkpoints.}
-Every epoch saves a checkpoint, and a job longer than the cluster's 24-hour limit is a chain
-of jobs that each resume from the latest one. To fit a storage quota, the 768-wide runs and
-B save the weights without the optimiser state. A resumed job then restarts Muon's momentum
-and Adam's moments, which leaves no visible trace in the loss: on B, the epoch before and
-after the first restart logged 0.5370 and 0.5374.
-
-\subsection{Compute}
-\label{app:training-compute}
-
-Every run used a single NVIDIA A100 (80\,GB, PCIe). The simulator, the loss and the update
-are compiled into one XLA program per epoch of 1000 steps. \Cref{tab:compute} gives the
-measured costs. A fit of the step time against the network's FLOPs on XS and S gives about
-23\,ms of fixed cost per step and 105\,TFLOP/s of marginal throughput (about a third of the
-A100's bfloat16 peak), so the small XS problem is dominated by overheads and the large B
-problem by the network. The whole XS ablation ladder of \cref{tab:xs-ladder} cost about 45
-A100-hours, and B1 about 86.
-
-\begin{table}[h]
-\caption{Measured cost on one A100, batch 256. Peak memory is for training; JAX reserves 75\%
-of the card by default.}
-\label{tab:compute}
+\begin{table}[htb]
+\caption{Training recipe, shared by every band and size; only the step counts depend on the band.
+$\gamma_t$ is the Muon learning rate and $T_0$ the warm start of \cref{app:training-sf}.}
+\label{tab:training-recipe}
 \centering
 \small
-\begin{tabular}{llrrl}
+\begin{tabular}{@{}lll@{}}
 \toprule
-rung & width & per 1000 steps & peak memory & runs \\
+group & setting & value \\
 \midrule
-XS & 512 & 38.9\,s & -- & 1M steps in 10.8\,h; 200k cooldown in 2.2\,h \\
-XS & 768 & 59.6\,s & -- & 1M steps in 16.6\,h; 200k cooldown in 3.6\,h \\
-S & 512 & 80\,s & -- & 500k steps in 11.1\,h (an early run that diverged; not retrained) \\
-B & 512 & 1543\,s & 18.6\,GiB & 200k steps in 86\,h (4 chained jobs) \\
-B & 768 & 2570\,s & 29.4\,GiB & 300-step benchmark \\
+Muon with NorMuon rows & peak learning rate & \num{\TrainingMuonRate} \\
+\quad (hidden matrices) & momentum $\upsilon$ & \TrainingMomentum{}, Nesterov, stored in bfloat16 \\
+& orthogonalisation & \TrainingNewtonSchulzSteps{} quintic Newton--Schulz iterations, bfloat16 \\
+& update RMS & $\TrainingMuonRms{}\,\gamma_t$ for every matrix shape \\
+& NorMuon row moment & $\beta_2 = \TrainingNorMuonBeta{}$ \\
+& weight decay & $\varkappa = \TrainingWeightDecay{}$ on $\vartheta$, step $\gamma_t\varkappa\vartheta$, Muon matrices only \\
+\addlinespace
+AdamW (everything else) & peak learning rate & \num{\TrainingAdamRate} \\
+& moments & $\beta_1 = \TrainingBetaOne{}$ (Nesterov, float32), $\beta_2 = \TrainingBetaTwo{}$, $\epsilon = \num{\TrainingAdamEps}$ \\
+& weight decay & none \\
+\addlinespace
+Schedule-free averaging & interpolation $\varrho_t$ & \TrainingBetaStart{} to \TrainingBetaEnd{}, log-linear after $T_0$ \\
+& warm start $T_0$ & \TrainingWarmStartWord{} warmups: \num{\TrainingWarmStartNarrow} (narrow), \num{\TrainingWarmStartFull} (full) steps \\
+& averaging weights & $w_t = t^{r}\,\bar\gamma_{t-1}^2$, $r = \TrainingAveragePower{}$ \\
+\addlinespace
+Schedule & gradient clipping & global norm \TrainingClipNorm{} \\
+& warmup & linear from zero, \num{\TrainingWarmupNarrow} (narrow), \num{\TrainingWarmupFull} (full) steps \\
+& after warmup & constant; no cooldown \\
+& total steps & \num{\TrainingStepsNarrow} (narrow), \num{\TrainingStepsFull} (full) \\
+& epoch & \TrainingEpochSteps{} steps, one checkpoint each \\
+\addlinespace
+Batch & samples per step & \TrainingBatch{} $=$ \TrainingObservations{} observations $\times$ \TrainingDraws{} draws of $(x_0, t)$ \\
+& data & simulated on the device each step, never repeated \\
+\addlinespace
+Precision & backbone & bfloat16 compute, float32 weights \\
+& everything else & float32 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Sampling cost.}
-A scorecard pass on XS (210 windows, 256 draws each, 32 RK4 steps) takes about 4 minutes on
-an A100, about one second per window. On B, 256 draws of one window take about 42 seconds with
-the 512-wide network (the B1 scorecard: 60 windows in 42 minutes) and 78 with the 768.
+\subsection{Schedule-free averaging}
+\label{app:training-sf}
 
-\subsection{Numerics}
-\label{app:training-numerics}
+The optimiser is the schedule-free method of \citet{defazio2024road} with the changes of
+SF-NorMuon \citep{apte2026anytime} and ScheduleFree+ \citep{defazio2026schedulefreeplus}. It
+keeps a fast sequence $\vartheta_t$, which takes the base optimiser's updates, and a slow average
+$\bar\vartheta_t$ of it. The gradient is taken at an interpolation $\tilde\vartheta_t$ of the
+two, so the network is trained at $\tilde\vartheta_t$ and evaluated at $\bar\vartheta_t$. At step
+$t = 1, 2, \dots$, with $u_t$ the base update (\cref{app:training-base}) from the gradient at
+$\tilde\vartheta_{t-1}$,
+\begin{align}
+  \vartheta_t &= \vartheta_{t-1} + u_t - \gamma_{t-1}\varkappa\, \vartheta_{t-1}, \label{eq:training-z}\\
+  \bar\vartheta_t &= (1 - c_t)\, \bar\vartheta_{t-1} + c_t\, \vartheta_t,
+  \qquad c_t = \frac{w_t}{\sum_{s=T_0+1}^{t} w_s},
+  \qquad w_t = t^r\,\bar\gamma_{t-1}^2 \quad (t > T_0), \label{eq:training-x}\\
+  \tilde\vartheta_t &= \varrho_t\, \bar\vartheta_t + (1 - \varrho_t)\, \vartheta_t, \label{eq:training-y}\\
+  \varrho_t &= \varrho_0 + (\varrho_1 - \varrho_0)\,
+  \operatorname{clip}\!\left(\frac{\log\left(\max(t, T_0)/T_0\right)}{\log(T/T_0)},\, 0,\, 1\right),
+  \label{eq:training-beta}
+\end{align}
+with $\bar\vartheta_t = \vartheta_t$ for $t \le T_0$, $T$ the run's total steps, and $\gamma_t$,
+$\bar\gamma_t$ the Muon learning rate with and without the optional cooldown
+(\cref{app:training-schedules}).
 
-Training and evaluation run in bfloat16. Three checks, on XS-late
-(\cref{tab:numerics}), show that the numerics of evaluation do not set the results (bfloat16 in training
-is not tested): the RK4 integrator is
-converged at 32 steps; float32 evaluation on a CPU gives the same widths as bfloat16 on the
-A100 (median ratio 0.991, 95\% interval 0.978--1.000, over 93 loud sources) and finds the same
-169 sources; and float32 on the A100 reproduces the CPU once XLA's GEMM autotuning is switched
-off. With autotuning on, float32 programs were silently wrong on both GPUs we used. At the
-default level they found almost no sources. At level 3 the A100 gave posteriors 2.4 times
-narrower than the CPU's at the same distance from the truth: over-confident, with 45\% of the
-truths inside the 68\% intervals. A fixed compiled program gave different answers at different
-autotuning levels, on two JAX and two CUDA versions, so the fault is in the compilation and not
-in the model; bfloat16 is unaffected. We report it because the over-confident failure is easy to
-mistake for a sharper posterior.
+\paragraph{Why schedule-free.}
+The averaged weights $\bar\vartheta_t$ are usable at every step, and \citet{defazio2024road}
+report that they match or beat a tuned cosine or linear-decay schedule. A run can therefore be
+stopped, evaluated and extended without waiting for a schedule to end. The guarantee is weaker
+here than in the original method, because the ramp of \cref{eq:training-beta} (and the cooldown,
+if used) depends on $T$: extending a run changes $\varrho_t$ from then on, though every earlier
+update stands.
+
+\paragraph{Averaging.}
+For the first $T_0$ steps, \TrainingWarmStartWord{} warmup lengths, $\bar\vartheta$ follows
+$\vartheta$; averaging starts after this warm start, so the early iterates never enter the average
+\citep{defazio2026schedulefreeplus}. The weights are ScheduleFree+'s $t^r\bar\gamma^2$ with
+$r = \TrainingAveragePower{}$. Since $T_0$ outlasts the warmup, $\bar\gamma$ is constant while
+averaging, and $\bar\vartheta_t = \sum_{s>T_0} s^r \vartheta_s / \sum_{s>T_0} s^r$: later iterates
+count more, so the average forgets the start of a long run faster than a uniform one. A cooldown
+would not change these weights, which use the uncooled rate $\bar\gamma$.
+
+\paragraph{Interpolation.}
+$\varrho_t$ stays at $\varrho_0 = \TrainingBetaStart{}$ through the warm start and rises
+log-linearly to $\varrho_1 = \TrainingBetaEnd{}$ at the last step.
+\citet{defazio2026schedulefreeplus} report that a low $\varrho$ converges faster early and a high
+one ends lower; SF-NorMuon keeps $\varrho$ constant at $\varrho_0$ \citep{apte2026anytime}.
+
+\paragraph{Weight decay on $\vartheta$.}
+Muon's updates have a fixed size whatever the gradient's, so without decay the weights grow
+\citep{liu2025muon}; inside schedule-free the growth is in $\vartheta$. On an earlier version of
+this network trained without decay, $\vartheta$ drifted out of the basin of good networks while
+only $\tilde\vartheta$ stayed good. Decay on $\vartheta$ keeps every iterate bounded
+\citep{apte2026anytime}; it applies only to the matrices Muon updates. On the same earlier
+network, decaying the AdamW parameters shrank the head's output rows for one coordinate to a small
+fraction of the others, so AdamW runs without decay.
+
+\paragraph{What is not used.}
+ScheduleFree+'s Polyak step scales each update by $L(y) - L^\ast$ with $L^\ast = 0$
+\citep{defazio2026schedulefreeplus}. The flow-matching loss has a nonzero floor (\cref{app:fm}),
+so this step would track the whole loss rather than its excess and would not shrink near the
+optimum. Its inverse gradient-norm weighting is left out too, so the step stays the set learning
+rate.
+
+\paragraph{Strength of the evidence.}
+Schedule-free averaging \citep{defazio2024road} and Muon \citep{jordan2024muon,liu2025muon} are
+established; NorMuon's row normalisation \citep{li2025normuon} rests on one study. Inner momentum
+inside schedule-free, decay on $\vartheta$, the warm start, the $t^r\bar\gamma^2$ weights and the
+$\varrho$ ramp come from two preprints \citep{apte2026anytime,defazio2026schedulefreeplus} on
+language models. None was tested on flow matching, and none was ablated here.
+
+\subsection{Base optimisers}
+\label{app:training-base}
+
+The gradient of the loss (\cref{eq:loss}) is clipped to a global norm of \TrainingClipNorm{}. The
+parameters are then split between Muon \citep{jordan2024muon} and AdamW, and $u_t$ in
+\cref{eq:training-z} concatenates their updates.
+
+\paragraph{Muon with NorMuon rows.}
+For a weight matrix $W \in \R^{m \times n}$ (output by input) with clipped gradient $G$, Muon
+keeps a momentum $M \leftarrow \upsilon M + (1-\upsilon)\, G$, takes the Nesterov look-ahead
+$N = \upsilon M + (1-\upsilon)\, G$, and replaces it by an approximation $O$ of the nearest
+semi-orthogonal matrix $UV\T$ (from $N = U\Sigma V\T$), computed with
+\TrainingNewtonSchulzWord{} quintic Newton--Schulz iterations \citep{jordan2024muon}. The update
+$-\gamma_t\, \TrainingMuonRms{}\sqrt{\max(m, n)}\; O$ has an RMS of $\TrainingMuonRms{}\gamma_t$
+for every shape, the scale at which \citet{liu2025muon} match AdamW's update size, so one learning
+rate serves every matrix. NorMuon \citep{li2025normuon} then evens out the rows: with
+$\hat u = u / \operatorname{RMS}(u)$ and a per-row second moment
+$v_i \leftarrow \TrainingNorMuonBeta{}\, v_i + (1-\TrainingNorMuonBeta{})\, \tfrac1n \sum_j \hat u_{ij}^2$,
+\begin{equation}
+  u_{ij} \leftarrow \frac{\hat u_{ij}}{\sqrt{v_i} + \epsilon}\,
+  \frac{\lVert u \rVert_F}{\lVert \hat u / (\sqrt{v} + \epsilon) \rVert_F},
+  \label{eq:training-normuon}
+\end{equation}
+which keeps the Frobenius norm, and so Muon's RMS. $v$ needs no bias correction, since it cancels
+in the rescaling. Weight matrices stacked over the backbone's blocks are orthogonalised one block
+at a time.
+
+\paragraph{AdamW.}
+Every other parameter is updated by AdamW with Nesterov momentum. Its first moment is float32,
+because a bfloat16 one loses the small increments of a smooth gradient. Both base optimisers keep
+their momentum inside schedule-free: the original method drops it \citep{defazio2024road}, and
+SF-NorMuon and ScheduleFree+ reinstate it \citep{apte2026anytime,defazio2026schedulefreeplus}.
+
+\paragraph{Which parameters Muon takes.}
+Muon is meant for hidden-layer matrices \citep{jordan2024muon}. It takes the weight matrix of
+every linear layer in \TrainingMuonFieldCount{} modules of the network (\cref{app:network}): the
+backbone, the two conditioning \acp{mlp} (of the time and centre frequency, and of the data
+stream's frequency), the two Fourier-feature \acp{mlp} (of the source frequency and of the data
+tokens' frequency bins) and the output modulation, plus the head's hidden layer. AdamW takes the
+rest: the piecewise-linear embedding of the sources, the linear embedding of the data tokens,
+the attention-sink embeddings, the query--key gains, every bias and the head's output layer. Muon holds \qty{\TrainingMuonShareXS}{\percent} of the
+parameters of full-XS, \qty{\TrainingMuonShareB}{\percent} of full-B and \qty{\TrainingMuonShareXL}{\percent} of full-XL.
+
+\paragraph{Learning rates.}
+The peak rates, \num{\TrainingMuonRate} for Muon and \num{\TrainingAdamRate} for AdamW, were not tuned
+by a sweep on this network, and neither was the batch.
+\textcolor{red}{TODO(new runs): are these rates stable, and not too low, on narrow-B and full-B?}
+
+\subsection{Schedules}
+\label{app:training-schedules}
+
+Both learning rates rise linearly from zero over the first \qty{\TrainingWarmupPercent}{\percent} of the run
+and then stay constant (\cref{tab:training-recipe}). Schedule-free needs the warmup
+\citep{defazio2024road}; after it, the average $\bar\vartheta$ does the work of a decaying
+schedule. A linear cooldown to zero over a final fraction of the run is available but off; it
+would act on $\vartheta$'s steps and on the decay, not on the averaging weights
+(\cref{app:training-sf}).
+
+The step counts are a wall-time budget, not a convergence criterion: size B trains in about a day
+on one A100 with the bfloat16 backbone, \qty{\TrainingComputeNarrowBHours}{\hour} of steps on the narrow
+band and \qty{\TrainingComputeFullBHours}{\hour} on the full band (\cref{fig:training-compute}a).
+\textcolor{red}{TODO(new runs): narrow-B and full-B eval-catalog loss at the last epoch, and whether it still falls.}
+
+\subsection{Batch}
+\label{app:training-batch}
+
+A batch holds \TrainingBatch{} $(x_0, t)$ samples: \TrainingObservations{} simulated
+observations, each with its own centre frequency $\fw$ and sources (\cref{app:priors}), and
+\TrainingDraws{} draws of the base point and time per observation. The data stream of an
+observation is encoded once and shared by its draws (\cref{app:network}), so the draws amortise
+both the simulation and the encoding. The times are stratified over the whole batch, one per
+stratum of \TrainingBatch{} equal strata (\cref{app:fm-clock}).
+
+Every batch is simulated on the device inside the step, so no observation is seen twice. This is
+what keeps the simulator cheap (\cref{fig:training-overhead}a,b): it takes
+\qty{\TrainingComputeNarrowBDrawPercent}{\percent} of narrow-B's A100 step and
+\qty{\TrainingComputeFullBDrawPercent}{\percent} of full-B's, while on \TrainingDrawCpuCores{} CPU cores the
+full-band batch alone takes \qty{\TrainingDrawCpuFullSeconds}{\second}, \TrainingDrawCpuOverStep{} times
+full-B's whole A100 step.
+
+The gradient can be accumulated over equal micro-batches of whole observations, which holds one
+micro-batch's activations at a time and leaves the mean gradient unchanged; by default the batch
+is not split. Because the batch is simulated before it is split, splitting barely lowers the peak
+memory on the full band, where the simulated batch alone plans \qty{\TrainingDrawPlanFullGib}{\gibi\byte}
+(\cref{fig:training-compute}c).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/overhead.pdf}
+\caption{Where the training time goes, for one A100 with the bfloat16 backbone at the default
+batch. (a)~Share of each step spent in the network (forward and backward), the optimiser update
+and the simulation of the batch; the step time is on the right. The full band's simulation is a
+fixed cost that weighs most on the small sizes. (b)~Time to simulate one training batch
+(\TrainingDraws{} draws per observation, \TrainingSources{} sources) against the observations per
+batch, for the size-B bands (full solid, narrow dashed) on an A100 (\qty{40}{\giga\byte} PCIe), a GTX~1080~Ti and
+\TrainingDrawCpuCores{} CPU cores; the grey lines are the A100 (\qty{80}{\giga\byte}) step times of narrow-B and full-B,
+the vertical line the default batch. On the A100 the simulation stays well below the step; on the
+CPU it alone would exceed it many times over. (c)~Share of a \qty{\TrainingCheckpointChunkHours}{\hour}
+job not spent on saved steps (requeue margin, restart, per-epoch saves and the work lost when the
+job is cut off) against the epoch length, for size B on an A100 (narrow-B \qty{80}{\giga\byte}, full-B \qty{40}{\giga\byte} PCIe) and an L40S, modelled from measured
+step, save and restart costs; dots mark the best length. The default of \TrainingEpochSteps{}
+steps is near the minimum, and the curves are flat around it.}
+\label{fig:training-overhead}
+\end{figure}
+
+\subsection{Training loop, checkpoints and resume}
+\label{app:training-loop}
+
+\paragraph{Epochs.}
+An epoch is \TrainingEpochSteps{} steps (\TrainingEpochsNarrow{} epochs on the narrow band,
+\TrainingEpochsFull{} on the full band) compiled as one program: the simulator, the loss, the
+gradient and the optimiser update of all its steps run in one loop on the device.
+
+\paragraph{Eval-catalog loss.}
+After every epoch, the \EvaluationInjections{} eval injections with their noise
+(\cref{app:evaluation-injections}), each at the midpoints of \FlowMatchingLossBins{} equal steps
+in $s$, give the loss of \cref{eq:loss} at $\bar\vartheta$ and at $\tilde\vartheta$; the same
+injections at the midpoints of the \FlowMatchingLossBins{} bins of $\log_{10}(1-s)$ down to
+$10^{\FlowMatchingLossDecades}$ give, per bin and coordinate group, $\tilde\vartheta$'s squared
+error of $\hat X_1$, its predicted $\sigma^2$ and their ratio (\cref{app:fm-loss}). The catalog and
+its draws of $x_0$, from a random stream that training never uses, are fixed for the run, so the
+curves move only with the weights. It also records the RMS of $\bar\vartheta$'s
+backbone weights and the RMS of $\vartheta - \bar\vartheta$, which flags a fast sequence running
+away from the average (\cref{app:training-sf}). Training stops before the checkpoint if any loss
+of the epoch is not finite, so the last checkpoint is always finite.
+
+\paragraph{Checkpoints and resume.}
+Every epoch saves, in the background while the next epoch trains, the training weights
+$\tilde\vartheta$, the optimiser state (which holds $\vartheta$, $\bar\vartheta$, the base
+optimisers' moments and the averaging weight sum), the random key and the loss histories, keeping
+only the latest. Evaluation reads $\bar\vartheta$ from the optimiser state, which is why the
+checkpoint always keeps it. A checkpoint is \qty{\TrainingCheckpointNarrowBGib}{\gibi\byte} on narrow-B and \qty{\TrainingCheckpointFullBGib}{\gibi\byte} on full-B, and
+the save blocks training for \qty{\TrainingCheckpointNarrowBBlock}{\second} on narrow-B and
+\qty{\TrainingCheckpointFullBBlock}{\second} on full-B. A job runs for at most \qty{\TrainingJobHours}{\hour} and
+requeues itself \TrainingRequeueMinutes{} minutes before its limit; the next job resumes from the
+latest checkpoint after a restart of about \qty{\TrainingCheckpointNarrowBRestartMinutes}{\minute} (narrow-B)
+and \qty{\TrainingCheckpointFullBRestartMinutes}{\minute} (full-B), mostly compilation; full-B's save, restart and loss
+are measured on an A100 (\qty{40}{\giga\byte} PCIe) running nothing else, narrow-B's on an A100 (\qty{80}{\giga\byte}). Because the key
+is checkpointed, a resumed run draws the same batches as an uninterrupted one; only the epoch cut
+off by the limit is repeated. A resume runs the commit the run was started from and may change only
+the micro-batch split, the step count and evaluation settings; raising the step count extends the
+run (\cref{app:training-sf}). With the default epoch, a job loses
+\qty{\TrainingCheckpointNarrowBLostPercent}{\percent} (narrow-B) and \qty{\TrainingCheckpointFullBLostPercent}{\percent}
+(full-B) of its wall time to anything but saved steps; the best epoch lengths,
+\TrainingCheckpointNarrowBBestInterval{} and \TrainingCheckpointFullBBestInterval{} steps, would
+lose \qty{\TrainingCheckpointNarrowBBestLostPercent}{\percent} and \qty{\TrainingCheckpointFullBBestLostPercent}{\percent}
+(\cref{fig:training-overhead}c).
+\textcolor{red}{TODO(new runs): narrow-B and full-B wall time, jobs, requeues and step time on the training cluster.}
+
+\subsection{Precision}
+\label{app:training-precision}
+
+Parameters, $\vartheta$, $\bar\vartheta$ and AdamW's moments are float32. By default the backbone
+runs in bfloat16, forward and backward, from bfloat16 copies of its float32 weights, while the
+embeddings, the conditioning \acp{mlp} and the head stay in float32 (\cref{app:network}); Muon's
+momentum and orthogonalisation run in bfloat16 (\cref{app:training-base}). The bfloat16 backbone
+makes a step \numrange{\TrainingBackboneSpeedupAMin}{\TrainingBackboneSpeedupAMax} times faster than
+float32 on an A100 and \numrange{\TrainingBackboneSpeedupLMin}{\TrainingBackboneSpeedupLMax} times on an
+L40S, larger for the larger sizes; bfloat16 attention alone gains at most
+\qty{\TrainingAttentionGainPercent}{\percent} (\cref{fig:training-compute}b).
+
+A float32 backbone is available, but it needs the GPU's matrix-multiplication autotuning switched
+off and full float32 matrix products (no TF32). On an earlier version of the network, float32
+programs compiled with autotuning gave silently wrong, over-confident posteriors on an A100 and on
+a laptop GPU, while the same program without autotuning reproduced the CPU. This was not re-tested
+on the current network; the bfloat16 backbone was not affected.
+
+\subsection{Compute}
+\label{app:training-compute}
+
+\Cref{fig:training-compute} gives the measured cost of every band and size of \cref{app:network}
+at the default batch, on an A100 (\qty{80}{\giga\byte}) and an L40S. The narrow band's step is the
+network's. The full band simulates its observations at many more frequency points (\cref{app:forward-model}), a fixed cost per batch
+that weighs most on the small sizes (\cref{fig:training-overhead}a) and sets a memory floor
+(\cref{fig:training-compute}c). In the step benchmark every size fits unsplit on the A100, and
+full-XL needs two micro-batches on the L40S; with the trainer's eval-catalog pass and checkpointing
+alongside, narrow-XL on the L40S and full-XL on the A100 (\qty{80}{\giga\byte}) need a split
+too, and full-XL does not fit the L40S even split.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/compute.pdf}
+\caption{Cost of every size on an A100 (blue) and an L40S (orange); full band solid with filled
+markers, narrow band dashed with hollow markers. (a)~Training step at the default batch of
+\TrainingBatch{} samples, simulation included, with the bfloat16 backbone; the gap between
+the bands is widest at the small sizes, where the full band's fixed simulation cost weighs most. (b)~Speed-up over float32 of the bfloat16
+backbone (coloured) and of bfloat16 attention alone (violet) at \TrainingSweepBatch{} observations
+per batch, both sides of each ratio measured on the same, slightly earlier revision of the network;
+the backbone, not attention, is where bfloat16 pays. (c)~Planned device memory of the unsplit
+step against each card's usable memory (dotted); the grey dotted line is the full band's simulated
+batch alone.}
+\label{fig:training-compute}
+\end{figure}
+

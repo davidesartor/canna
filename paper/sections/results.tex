@@ -1,0 +1,26 @@
+% =======================================================================================
+\section{Results}
+\label{sec:results}
+% =======================================================================================
+
+Results for narrow-B and full-B, under the protocol of \cref{sec:validation}; full tables are in
+\cref{app:results}.
+
+\paragraph{Widths.} \textcolor{red}{TODO(new runs): flow over \acs{mcmc} width per parameter
+against \acs{snr}, narrow-B and full-B; where the flow matches the reference and where it is wider
+(loud sky, $\phi_-$).}
+
+\paragraph{Calibration.} \textcolor{red}{TODO(new runs): coordinate, \acs{tarp} and data-space
+rank $p$-values per \acs{snr} stratum, beside the Gaussian mock's on the same injections; proper
+score skill.}
+
+\paragraph{Joint posteriors.} \textcolor{red}{TODO(new runs): a corner plot of flow, joint
+\acs{mcmc} and Fisher draws on one crowded window; a close pair of similar
+\acs{snr}, whose unordered draws are relabelled to the injections only for display.}
+
+\paragraph{Cost.} \FlowMatchingCostDraws{} draws of a window take
+\qty{\FlowMatchingCostNarrow}{\second} on one GPU in the narrow band and
+\qty{\FlowMatchingCostFull}{\second} in the full band (\cref{fig:fm-cost}); a joint \ac{mcmc}
+chain of a narrow-band eval injection takes \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} on
+\McmcJointCores{} CPU cores (\cref{app:mcmc-cost}).
+\textcolor{red}{TODO(new runs): sampler steps at which the widths settle, and the cost there.}

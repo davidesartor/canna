@@ -1,83 +1,457 @@
-% =======================================================================================
+% !TEX root = ../main.tex
 \section{Evaluation Protocol and Metrics}
 \label{app:evaluation}
-% =======================================================================================
 
-\subsection{Injections}
+A trained flow is evaluated in three passes that answer different questions
+(\cref{tab:evaluation-passes}). Two of them use the truth to pair drawn and injected sources,
+and are therefore descriptive; only the validation pass, which never sees the truth, tests
+calibration. A Gaussian Fisher forecast and a reference \ac{mcmc} (\cref{app:mcmc}) give
+widths to compare against. Every test is first checked on posteriors whose errors are known: a
+toy with an exact posterior for the size and power of the validation tests
+(\cref{tab:evaluation-power}), and a ladder of mock flows run through the whole pipeline
+(\cref{app:evaluation-mocks}). Results are in \cref{app:results}.
 
-All models are scored on the same test set. With a fixed seed we draw 1024 candidate windows
-and their sources from the prior. The ten \emph{eval injections} are the candidates at the
-0.1, 0.2, \dots, 1.0 quantiles of the window SNR (121 to 1848 on XS), and 200 further
-candidates are taken at random. This gives 210 windows and 840 sources. Each window gets its
-own noise realisation, and the flow draws 256 samples per window (1024 for corner plots) with
-32 RK4 steps in bfloat16. Every model sees the same windows, noise and base draws, so
-comparisons between models are paired, source by source. These are prior-predictive
-injections: averaged over them, a calibrated posterior gives uniform ranks
-\citep{talts2018validating}.
+\begin{table}[h]
+  \centering
+  \caption{The three evaluation passes.}
+  \label{tab:evaluation-passes}
+  \small
+  \begin{tabular}{@{}l>{\raggedright\arraybackslash}p{0.27\textwidth}r>{\raggedright\arraybackslash}p{0.36\textwidth}@{}}
+    \toprule
+    Pass & Injections & Draws & Use \\
+    \midrule
+    Eval & \EvaluationInjections{} fixed windows: \EvaluationPerFrequencyWord{} at each of \EvaluationFrequenciesWord{} frequencies
+         & \EvaluationPosterior & corner plots; comparison with Fisher and \acs{mcmc} \\
+    Scorecard & the same plus \EvaluationRandom{} prior windows (\EvaluationWindows{} in all)
+         & \EvaluationDraws & widths, detection, offsets, coverage per \acs{snr} band;
+           descriptive, uses the truth \\
+    Validation & \EvaluationValidation{} prior windows from a separate key
+         & \EvaluationValidationDraws & rank tests and proper scores; never sees the truth \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\subsection{Relabelling the Draws}
+\subsection{Weights and Sampler}
+\label{app:evaluation-weights}
+
+Every pass evaluates the schedule-free average of the weights, the sequence $\bar\vartheta$ of
+\citet{defazio2024road} whose convergence the method guarantees (\cref{app:training}); the
+interpolated weights at which gradients are taken are never reported. The default flow
+predicts $x_1$ (\cref{app:fm}), and the sampler takes \EvaluationOdeSteps{} midpoint steps
+toward the predicted $x_1$, each exact if the prediction were constant along the step; a
+velocity-predicting flow takes fourth-order Runge--Kutta steps instead. On a uniform grid the last
+step cannot resolve posteriors much narrower than $s_0/2K_t$ (\cref{fig:fm-sensitivity}b), so
+widths and coverage are read only where they no longer change with the number of steps. The base draws are
+prior draws in flow coordinates (\cref{app:chart}), so a flow that ignored the data would
+return the prior. A run is evaluated in the precision it was trained in.
+
+\subsection{Eval Injections}
+\label{app:evaluation-injections}
+
+The eval injections sit at \EvaluationFrequenciesWord{} centre frequencies $\fw$, the midpoints
+of \EvaluationFrequenciesWord{} equal-probability bins of the window prior, so they cover the band
+as training sees it. Each frequency holds \EvaluationPerFrequencyWord{} prior draws of
+\EvaluationNSources{} sources (\cref{app:priors}), ordered by window \ac{snr}, that of the summed
+signal. They span window \acp{snr} \EvaluationNarrowSnrLo--\EvaluationNarrowSnrHi{} in the
+narrow band and \EvaluationFullSnrLo--\EvaluationFullSnrHi{} in the full band, and source
+\acp{snr} \EvaluationSourceSnrLo--\EvaluationSourceSnrHi. Injections and noise are fixed by the
+run's seed and band, so every checkpoint and every run on the same band sees the same data,
+and so do the reference chains. Fixing the frequencies makes the injections a conditional
+sample, for inspection and never for calibration.
+
+\subsection{Relabelling Draws to the Truth}
 \label{app:evaluation-matching}
 
-The flow's source slots are exchangeable, so the first slot of one draw can be any of the true
-sources. To score a source, each draw is relabelled by the permutation that minimises
-$\sum_i\lVert F(\hat\theta_{\sigma(i)}) - F(\theta_i)\rVert^2$, with features
-$F = \bigl(f_0/(f_{\rm hi}-f_{\rm lo}),\ \log_{10}\Amp,\ n_{\rm sky}\bigr)$. The matching weighs
-sky position and amplitude as well as frequency. When a window also holds a source the flow
-has not localised, the matching can give a well-localised source's slot to that one: in the
-window of \cref{fig:corner-median}, 18\% of the draws are relabelled this way, although 99.7\%
-of them have a slot within one bin of the source. The robust width below is less sensitive to this contamination than a standard deviation
-(18\% of contaminating draws widen it by about a quarter), while the coverage it affects is, if anything, made conservative.
+The flow's draws are unordered: the network is equivariant (\cref{app:network-slots}), so each
+draw lists its sources in any of the $S!$ labellings, the label switching of mixture models
+\citep{stephens2000dealing,jasra2005markov,buscicchio2019label}. For display and for the scorecard, each draw $\theta_{1:S}$ is relabelled to the truth
+$\theta^\star_{1:S}$ by the permutation
+\begin{gather}
+  \hat\sigma = \operatorname*{arg\,min}_{\sigma\in\mathfrak S_S}
+  \sum_{s=1}^{S}\bigl\|\mathbf m(\theta_{\sigma(s)}) - \mathbf m(\theta^\star_s)\bigr\|^2,
+  \label{eq:evaluation-matching}\\
+  \mathbf m(\theta) = \Bigl(\frac{f_0}{f_+ - f_-},\ \log_{10}\Amp,\ \hat n(\alpha,\delta)\Bigr),
+  \nonumber
+\end{gather}
+found exhaustively over the $S! = \EvaluationPermutations$ permutations, with $(f_-, f_+)$ the
+window's range of $f_0$ (\cref{eq:forward-model-window-interior}) and $\hat n$ the unit sky vector. The features tell sources apart: the
+best-measured parameter in units of the window, the amplitude that orders them, and the sky
+with no wrap in longitude. The orientation angles are left out, since their exact symmetries
+(\cref{eq:psi-phi-symmetry}) would make the cost multimodal.
 
-\subsection{Metrics}
-\label{app:evaluation-metrics}
+The relabelling uses the truth, so a posterior too wide to separate two sources is sorted back
+onto them and looks better resolved and better calibrated than it is. Everything computed after
+it is descriptive.
 
-All metrics are computed on the $f_0$ marginal of each source, in bins of $1/\Tobs$:
-\begin{itemize}
-  \item \textbf{width}: $w = 1.4826\,\MAD$ of the draws, the standard deviation of a Gaussian,
-        robust to a minority of mis-relabelled draws;
-  \item \textbf{found}: $w<1$ bin. A source the flow has not found is spread over the window,
-        several bins wide;
-  \item \textbf{ideal width}: $w^\star = \sqrt3/(\pi\snr)$, with $\snr$ the source's own SNR
-        (\cref{eq:ideal-width}). On the 40 eval sources, the full Fisher forecast below is a
-        median 10\% wider (0 to 33\%), so ``$\times$ ideal'' reads about 10\% higher than
-        ``$\times$ Fisher'';
-  \item \textbf{offset}: median of the draws minus the truth;
-  \item \textbf{rank}: the fraction of draws below the truth, uniform on $[0,1]$ for a
-        calibrated posterior; a mean away from 1/2 is a bias;
-  \item \textbf{coverage}: whether the truth lies in the central 68\% and 95\% intervals
-        (in68, in95).
-\end{itemize}
-We report them in SNR bands ($<15$, 15--40, 40--100, $\ge100$). Widths and offsets are medians
-over the found sources of a band, and coverage and ranks are averages over all its sources.
+\subsection{Scorecard}
+\label{app:evaluation-scorecard}
+
+The scorecard adds \EvaluationRandom{} plain prior draws to the eval
+injections, for \EvaluationWindows{} windows and \EvaluationWindowSources{} sources. After the
+relabelling, each source gets the quantities of \cref{tab:evaluation-scorecard}, with $f_0$ in
+frequency bins of $1/\Tobs$. Sources are grouped by their true \ac{snr} in bands
+$<\EvaluationBandOne$, \EvaluationBandOne--\EvaluationBandTwo,
+\EvaluationBandTwo--\EvaluationBandThree{} and $\ge\EvaluationBandThree$: the source \acp{snr}
+of the visible sources run from \EvaluationSnrLo{} to \EvaluationSnrHi{}, the full-band prior's
+\EvaluationSnrQuantile{}\% quantile (\cref{app:priors}), so the ideal width runs
+from \EvaluationIdealLo{} to \num{\EvaluationIdealHi} bins and is only meaningful per band.
+
+\begin{table}[h]
+  \centering
+  \caption{Scorecard quantities per source, on the relabelled draws.}
+  \label{tab:evaluation-scorecard}
+  \small
+  \begin{tabular}{@{}l>{\raggedright\arraybackslash}p{0.48\textwidth}l@{}}
+    \toprule
+    Quantity & Definition & Per band \\
+    \midrule
+    Width $w$ & $1.4826\,\MAD(f_0)$; the standard deviation for a Gaussian, robust to stray draws
+      & median over found \\
+    Width ratio & $w/w^\star$, with $w^\star$ of \cref{eq:evaluation-ideal-width} at the source's \acs{snr}
+      & median over found \\
+    Found & $w < \EvaluationFound\bins$: the frequency is pinned to the bin spacing
+      & fraction \\
+    Offset & median of $f_0$ minus the truth & median over found \\
+    Rank & fraction of draws below the true $f_0$ & mean \\
+    Coverage & truth inside the central \qty{68}{\percent} and \qty{95}{\percent} intervals & mean \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The coverage and rank columns show where the flow is wide or biased, but they are not a
+calibration test: the relabelling uses the truth, the bands are cut on the true \ac{snr}, and the
+eval injections are selected by \ac{snr}. Relabelling makes coverage optimistic: a flow that
+returns the prior and ignores the data still puts the truth inside its central
+\qty{68}{\percent} interval for a share \EvaluationMockPriorCover{} of sources in the narrow band
+and \EvaluationMockPriorCoverFull{} in the full band (\cref{tab:evaluation-mocks}). Only its width
+shows the failure. Coverage is likewise blind to a posterior that stops narrowing on loud sources,
+which reads conservative (\cref{app:evaluation-mocks}).
 
 \paragraph{The ideal width.}
-For a sinusoid $s(t) = A\cos(\omega t+\phi)$ observed for a time $T$ in white noise, and a
-time origin at the centre of the observation, the Fisher matrix in $(\omega,\phi)$ is
-diagonal, with $\Gamma_{\omega\omega} = \snr^2T^2/12$ and $\Gamma_{\phi\phi} = \snr^2$. The
-amplitude decouples. The frequency error is therefore
+For a sinusoid of \ac{snr} $\snr$ observed for $\Tobs$ in stationary noise, with the time origin
+at the centre of the observation, the Fisher matrix in angular frequency and phase is diagonal,
+$\Gamma_{\omega\omega} = \snr^2\Tobs^2/12$ and $\Gamma_{\phi\phi} = \snr^2$, and the
+amplitude decouples. The frequency width is then
 \begin{equation}
-  \sigma_{f_0} = \frac{\sqrt{12}}{2\pi\,\snr\,T} = \frac{\sqrt3}{\pi\,\snr}\ \text{bins},
-  \label{eq:ideal-width}
+  w^\star = \frac{\sqrt{12}}{2\pi\,\snr\,\Tobs}\,\Tobs = \frac{\sqrt3}{\pi\,\snr}\bins.
+  \label{eq:evaluation-ideal-width}
 \end{equation}
-0.055 bins at SNR 10 and $5.5\times10^{-4}$ bins at SNR 1000. Orbital Doppler modulation,
-the chirp and correlations with the other seven parameters can only widen it: a lower bound,
-attained by the full Fisher forecast to within the 10\% above.
+It is a yardstick, not a bound. Correlations with the chirp, the orbital Doppler shift, the sky
+and the orientation widen the real frequency width, and one correlation is large by
+construction: $f_0$ is the frequency at the start of the observation (\cref{app:forward-model}),
+so once the chirp is measured, the quadratic phase term is fitted about one end of the interval
+and the marginal width of $f_0$ grows by a factor of \EvaluationStartFactor{} over the centred
+one. \Cref{fig:evaluation-fisher-width} bears this out. Over the \EvaluationSourcesBoth{} eval
+sources of the two bands, the Fisher $f_0$ width is never below $w^\star$ and is a median
+\EvaluationFisherRatioMedian{} times it (\EvaluationFisherRatioLo--\EvaluationFisherRatioHi).
+In the narrow band, where the chirp is barely measured, the median is
+\EvaluationFisherRatioNarrow{} (at most \EvaluationFisherRatioNarrowHi); in the full band it is
+\EvaluationFisherRatioFull, and loud high-frequency sources sit near the factor
+\EvaluationStartFactor. A calibrated Gaussian mock posterior (\cref{app:evaluation-mocks}) agrees:
+on the sources with $\snr \ge \EvaluationBandThree$ its median width is \EvaluationMockFisherIdeal{}
+times $w^\star$ in the narrow band and \EvaluationMockFisherIdealFull{} times in the full band. A
+full-band width ratio well above one is therefore not by itself a failure of the flow; the Fisher
+width is the sharper reference there.
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fisher-width.pdf}
+  \caption{The ideal width is a floor, not a forecast. (a) Fisher-forecast $f_0$ width of the
+  \EvaluationSourcesBoth{} eval sources against their \ac{snr}, with the ideal width
+  $\sqrt3/(\pi\snr)$ of \cref{eq:evaluation-ideal-width} (dashed). (b) Their ratio. Narrow-band
+  sources stay within a factor \EvaluationFisherRatioNarrowHi{} of the ideal; full-band sources,
+  whose chirp is measured, reach the factor \EvaluationStartFactor{} that a start-of-observation
+  $f_0$ costs (upper dashed line). Vertical lines mark the scorecard's \ac{snr} bands.}
+  \label{fig:evaluation-fisher-width}
+\end{figure}
+
+\subsection{Calibration Without the Truth}
+\label{app:evaluation-validation}
+
+The validation pass draws \EvaluationValidation{} injections, each with its own $\fw$, sources
+and noise from the prior, and $M = \EvaluationValidationDraws$ flow draws on each. If the flow is
+the exact posterior, the truth is exchangeable with the draws, so the rank of any scalar test
+quantity $g$, the number of draws with $g(\theta_m) < g(\theta^\star)$ (ties broken at random),
+is uniform on $\{0,\dots,M\}$ \citep{talts2018validating}.
+
+The same $g$ must be applied to the truth and to every draw, without seeing the truth. Slots are
+therefore defined by each parameter set's own \ac{snr}: the truth and each draw are sorted,
+independently, by the \acp{snr} of their own sources. This is a fixed function of the
+parameters, so the ranks stay uniform under an exact posterior, unlike those after
+\cref{eq:evaluation-matching}. Strata follow the same rule: a source is binned in the
+scorecard's \ac{snr} bands by $\hat\snr$, the median own \ac{snr} of the draws in its slot, and the
+window quantities by the draws' median total \ac{snr}. Binning by the true \ac{snr} would condition on
+the truth, and the ranks need not be uniform within such a bin even for an exact posterior.
+
+\Cref{tab:evaluation-tests} lists the test quantities and scores. Ranks of the parameters alone
+cannot catch every error: the prior, taken as a posterior, passes them, and so does \ac{tarp}
+with a prior reference point. Quantities that depend on the data, the overlap and the
+log-likelihood, catch it \citep{modrak2023simulation}, as the power study below confirms
+(\cref{tab:evaluation-power}). The likelihood enters only as a test
+quantity on draws the flow has already made, never in inference.
+
+\begin{table*}[t]
+  \centering
+  \caption{Validation test quantities (rank tests, top) and scores (bottom). ``Slot'' is per
+  source slot, ``window'' is over all \EvaluationJointDim{} coordinates of a window.}
+  \label{tab:evaluation-tests}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.33\textwidth}l>{\raggedright\arraybackslash}p{0.47\textwidth}@{}}
+    \toprule
+    Quantity & Level & What it catches \\
+    \midrule
+    The eight flow coordinates (\cref{eq:chart}) & slot & bias or wrong width in one coordinate \\
+    Sum and difference of the $f_0$ and $\fdot$ coordinates & slot & errors along their correlation \\
+    Radii $|z_\pm|$ of the amplitude--phase coordinates & slot & amplitude errors, whatever the phase \\
+    Overlap $\inner{d}{h_s}/\inner{h_s}{h_s}^{1/2}$ (\cref{eq:inner}) & slot & draws that do not fit the data: a wrong phase, sky or dependence, a prior-like posterior \\
+    Own \acs{snr} of the source & slot & a bias toward loud or faint sources; broken dependence between coordinates \\
+    \acs{tarp} distance to a prior reference point \citep{lemos2023sampling} & slot, window & width errors; on the toy, not phase, sky or dependence errors \\
+    Average-rank and band-depth pre-ranks \citep{thorarinsdottir2016assessing} & slot, window & dependence errors that every marginal passes (band depth; average rank is weak) \\
+    Log-likelihood (\cref{eq:loglik}) & window & a window that does not fit the data as a whole \\
+    \midrule
+    Energy score, \cref{eq:evaluation-energy} & slot, window & calibration and sharpness together \\
+    \acs{crps} (the one-dimensional energy score) & coordinate & the same, per coordinate \\
+    Width over the ideal width at $\hat\snr$ & slot & sharpness against \cref{eq:evaluation-ideal-width} \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+\paragraph{Uniformity test.}
+For each quantity, stratum and slot, the ranks are tested with the graphical \ac{ecdf} test of
+\citet{sailynoja2022graphical}. With $N$ ranks on $k = \EvaluationRankValues$ values, the
+statistic $\gamma$ is twice the smallest binomial tail probability of the rank \ac{ecdf} at
+$z_i = i/k$, $i = 1,\dots,k-1$. Its $p$-value comes from \EvaluationGammaSims{} simulated sets of
+$N$ uniform ranks, which also give a simultaneous \qty{\EvaluationBandLevel}{\percent} band for the \ac{ecdf}
+minus $z$; a $\chi^2$ test on a histogram depends on the binning and has no such band. Each cell
+reports the $p$-value, the mean rank over $M$ minus one half (positive when the truth sits above
+the draws), and the share of ranks in the middle half: above one half the posterior is too
+wide, below it too narrow.
+
+\paragraph{Scores.}
+Uniform ranks say nothing about sharpness, since the prior is calibrated. The pass therefore
+also reports strictly proper scores \citep{gneiting2007strictly,gneiting2007probabilistic},
+which reward calibration and sharpness together, chiefly the fair energy score in flow
+coordinates,
+\begin{equation}
+  \mathrm{ES} = \frac1M\sum_{m}\|x_m - x^\star\|
+  - \frac{\sum_{m\ne m'}\|x_m - x_{m'}\|}{2M(M-1)},
+  \label{eq:evaluation-energy}
+\end{equation}
+per slot in eight dimensions, per window in \EvaluationJointDim, and per coordinate, where it
+is the \ac{crps}. Scores are medians per stratum, for comparing runs on the same injections, not
+tests by themselves. A raw score has no scale, so each is also reported as a skill against two
+mocks on the same injections (\cref{app:evaluation-mocks}): with $S_{\rm prior}$ the score of the
+prior taken as the posterior and $S_{\rm F}$ that of the calibrated Gaussian mock,
+\begin{equation}
+  \mathrm{skill} = \frac{S_{\rm prior} - S}{S_{\rm prior} - S_{\rm F}},
+  \label{eq:evaluation-skill}
+\end{equation}
+which is one at the Gaussian mock, zero for a flow that ignores the data, and negative below it.
+The scores are in flow coordinates, unweighted, so the energy score is dominated by the
+coordinates with the largest spread, the sky and the amplitudes, and barely moves with $f_0$; the
+per-coordinate \ac{crps} is read beside it.
+
+\paragraph{Size and power.}
+The tests are run on a toy whose posterior is known and drawn exactly: each slot is a
+linear-Gaussian model in its eight coordinates, and the test quantities, data-space ones
+included, are computed on its data unchanged. Of \EvaluationPowerInjections{} injections with
+\EvaluationPowerDraws{} draws each, split into chunks of \EvaluationPowerChunk, a test's rate is
+the share of chunks (and slots, for per-slot tests) in which it rejects at
+\qty{\EvaluationPowerAlpha}{\percent}. Each error is injected into the draws about their own
+mean and standard deviation, and an energy score counts as a detection when it is worse than on
+the exact draws in a one-sided paired Wilcoxon test. Under the null the rank tests hold their
+size (\cref{tab:evaluation-power}). A phase or sky taken from the prior, or coordinates shuffled
+across draws, keep every one-dimensional rank uniform and pass the coordinate ranks; the
+overlap, the log-likelihood and the energy score catch all three, and a \qty{\EvaluationPowerMixShare}{\percent}
+admixture of prior draws as well. Width errors reach the coordinate ranks only in part and the overlap
+and log-likelihood fully; an $f_0$ shift is caught by the rank of $f_0$ itself and by the
+log-likelihood. Of the rank tests over a whole window, \acs{tarp} catches the width errors
+(\EvaluationPowerTarpWidth) but none of the errors that keep the one-dimensional ranks uniform (at most
+\EvaluationPowerTarpBlind); band depth catches the shuffle (\EvaluationPowerDepthShuffle) and the
+prior admixture (\EvaluationPowerDepthMixed); average rank catches the $f_0$ shift
+(\EvaluationPowerAverageShift) but the width errors at most at \EvaluationPowerAverageWidth.
+
+\begin{table}[t]
+  \centering
+  \caption{Rejection rates of the validation tests on the exact-posterior toy, per error injected
+  into the draws. Coordinate ranks give the range over the eight flow coordinates; overlap and own
+  \acs{snr} are per slot, the log-likelihood and energy score per window. A score has no null
+  distribution of its own, so its null rate is undefined.}
+  \label{tab:evaluation-power}
+  \small
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    & & \multicolumn{3}{c}{Data-space ranks} & \\
+    \cmidrule(lr){3-5}
+    Injected error & Coordinate ranks & Overlap & Own \acs{snr} & Log-likelihood & Energy score \\
+    \midrule
+    None & \EvaluationPowerNullCoord & \EvaluationPowerNullOverlap & \EvaluationPowerNullSnr & \EvaluationPowerNullLike & \EvaluationPowerNullEnergy \\
+    $z_+$ phase from the prior & \EvaluationPowerPhaseCoord & \EvaluationPowerPhaseOverlap & \EvaluationPowerPhaseSnr & \EvaluationPowerPhaseLike & \EvaluationPowerPhaseEnergy \\
+    Sky from the prior & \EvaluationPowerSkyCoord & \EvaluationPowerSkyOverlap & \EvaluationPowerSkySnr & \EvaluationPowerSkyLike & \EvaluationPowerSkyEnergy \\
+    Coordinates shuffled across draws & \EvaluationPowerShuffleCoord & \EvaluationPowerShuffleOverlap & \EvaluationPowerShuffleSnr & \EvaluationPowerShuffleLike & \EvaluationPowerShuffleEnergy \\
+    \qty{\EvaluationPowerMixShare}{\percent} prior draws & \EvaluationPowerMixedCoord & \EvaluationPowerMixedOverlap & \EvaluationPowerMixedSnr & \EvaluationPowerMixedLike & \EvaluationPowerMixedEnergy \\
+    Width $\times0.8$ & \EvaluationPowerNarrowCoord & \EvaluationPowerNarrowOverlap & \EvaluationPowerNarrowSnr & \EvaluationPowerNarrowLike & \EvaluationPowerNarrowEnergy \\
+    Width $\times1.25$ & \EvaluationPowerWideCoord & \EvaluationPowerWideOverlap & \EvaluationPowerWideSnr & \EvaluationPowerWideLike & \EvaluationPowerWideEnergy \\
+    $f_0$ shifted by $0.5\sigma$ & \EvaluationPowerShiftCoord & \EvaluationPowerShiftOverlap & \EvaluationPowerShiftSnr & \EvaluationPowerShiftLike & \EvaluationPowerShiftEnergy \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Known-Answer Mocks}
+\label{app:evaluation-mocks}
+
+The toy tests one quantity at a time; the mocks test the whole evaluation on the real problem. Each
+mock replaces the flow's sampler by a posterior whose error is known, on the eval, scorecard and
+validation injections of the narrow-B or full-B configuration, and goes through the same scorecard, validation
+and reference comparison as a trained flow. The base mock is a linearised Gaussian in flow
+coordinates, with precision the expected Fisher matrix at the truth plus the Gaussian prior
+precision, centred on the linearised maximum a posteriori of the noisy data; it is calibrated in
+a linear-Gaussian model and approximately calibrated here. The ladder perturbs it:
+\begin{itemize}
+  \item \emph{wide} and \emph{narrow}: every width times \EvaluationMockWide{} and
+    \EvaluationMockNarrow, centre and correlations kept;
+  \item \emph{biased}: every $f_0$ shifted by one marginal width;
+  \item \emph{prior}: the flow's own base draws, a flow that ignores the data;
+  \item \emph{phases-prior}: the phases of $z_\pm$ redrawn uniform, radii kept;
+  \item \emph{loud-floor}: widths that stop shrinking above \ac{snr} \EvaluationMockFloorSnr{}, where
+    $w^\star$ reaches \EvaluationMockFloorBins{} bins, capped at the prior width: quiet sources exact,
+    loud ones too wide.
+\end{itemize}
+\Cref{tab:evaluation-mocks} gives each mock's reading on the narrow band, over
+\EvaluationMockScorecardSources{} scorecard sources, \EvaluationMockInjections{} validation
+injections and \EvaluationMockReferenceSources{} sources with per-source reference chains; the
+full band, with \EvaluationMockInjectionsFull{} validation injections, agrees.
+\textcolor{red}{TODO(new runs): the mock ladder, the Fisher forecast and the robustness probe ran on
+injections from the previous prior, whose second flow coordinate was $x_{\Mc}$; rerun them on
+catalogue-prior injections.}
+
+\begin{table*}[t]
+  \centering
+  \caption{The mock ladder on the narrow band. Width over the ideal width
+  (\cref{eq:evaluation-ideal-width}): median over sources with $\snr\ge\EvaluationBandThree$.
+  Coverage: share of sources inside the central \qty{68}{\percent} interval after relabelling.
+  Validation $p$-values: the smallest over the eight coordinate ranks, \acs{tarp}, and the overlap
+  and log-likelihood ranks. Energy score: over the Gaussian mock's. Flow over \acs{mcmc}: range over
+  the eight physical parameters of the median width ratio against the per-source chains
+  (\cref{app:mcmc}).}
+  \label{tab:evaluation-mocks}
+  \small
+  \begin{tabular}{@{}lcccccccc@{}}
+    \toprule
+    & \multicolumn{2}{c}{Scorecard} & \multicolumn{4}{c}{Validation $p$-value} & & \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-7}
+    Mock & Width$/w^\star$ & Coverage & Coordinates & \acs{tarp} & Overlap & Log-lik. & Energy score & Flow$/$\acs{mcmc} \\
+    \midrule
+    Gaussian & \EvaluationMockFisherIdeal & \EvaluationMockFisherCover & \EvaluationMockFisherCoord & \EvaluationMockFisherTarp & \EvaluationMockFisherOverlap & \EvaluationMockFisherLike & \EvaluationMockFisherEnergy & \EvaluationMockFisherMcmc \\
+    Wide & \EvaluationMockWideIdeal & \EvaluationMockWideCover & \EvaluationMockWideCoord & \EvaluationMockWideTarp & \EvaluationMockWideOverlap & \EvaluationMockWideLike & \EvaluationMockWideEnergy & \EvaluationMockWideMcmc \\
+    Narrow & \EvaluationMockNarrowIdeal & \EvaluationMockNarrowCover & \EvaluationMockNarrowCoord & \EvaluationMockNarrowTarp & \EvaluationMockNarrowOverlap & \EvaluationMockNarrowLike & \EvaluationMockNarrowEnergy & \EvaluationMockNarrowMcmc \\
+    Biased & \EvaluationMockBiasedIdeal & \EvaluationMockBiasedCover & \EvaluationMockBiasedCoord & \EvaluationMockBiasedTarp & \EvaluationMockBiasedOverlap & \EvaluationMockBiasedLike & \EvaluationMockBiasedEnergy & \EvaluationMockBiasedMcmc \\
+    Prior & \EvaluationMockPriorIdeal & \EvaluationMockPriorCover & \EvaluationMockPriorCoord & \EvaluationMockPriorTarp & \EvaluationMockPriorOverlap & \EvaluationMockPriorLike & \EvaluationMockPriorEnergy & \EvaluationMockPriorMcmc \\
+    Phases-prior & \EvaluationMockPhasesIdeal & \EvaluationMockPhasesCover & \EvaluationMockPhasesCoord & \EvaluationMockPhasesTarp & \EvaluationMockPhasesOverlap & \EvaluationMockPhasesLike & \EvaluationMockPhasesEnergy & \EvaluationMockPhasesMcmc \\
+    Loud-floor & \EvaluationMockFloorIdeal & \EvaluationMockFloorCover & \EvaluationMockFloorCoord & \EvaluationMockFloorTarp & \EvaluationMockFloorOverlap & \EvaluationMockFloorLike & \EvaluationMockFloorEnergy & \EvaluationMockFloorMcmc \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+Four readings follow, and each shapes how the results are read.
+\begin{itemize}
+  \item \emph{Marginal calibration proves nothing alone.} The prior mock passes every coordinate
+    rank and \ac{tarp}, as the toy predicts; the overlap and log-likelihood ranks reject it. Coverage
+    after relabelling reads it as conservative, not as failed.
+  \item \emph{The Gaussian mock is not a clean null.} The second coordinate ($x_{\Mc}$ in these runs), the radii $|z_\pm|$,
+    \ac{tarp}, the own \ac{snr} and the log-likelihood reject it, since these are non-Gaussian or nonlinear in
+    the flow coordinates; $f_0$, the sky, the $z_\pm$ components and the overlap pass. A flow's
+    $p$-value is compared with the Gaussian mock's on the same test, not with
+    \qty{\EvaluationPowerAlpha}{\percent}.
+  \item \emph{Proper scores are weak against small errors.} The narrow mock scores only a factor
+    \EvaluationMockNarrowEnergy{} above the Gaussian mock, and the biased one
+    \EvaluationMockBiasedEnergy{} times it: its shift is in $f_0$, which the energy score barely
+    sees. Only the width ratio separates too wide from too narrow.
+  \item \emph{Coverage hides a width floor.} The loud-floor mock covers \EvaluationMockFloorCoverQuiet{}
+    of sources below \ac{snr} \EvaluationBandTwo{} and \EvaluationMockFloorCoverLoud{} above, so it
+    reads conservative; the coordinate ranks in the strata from \ac{snr} \EvaluationBandTwo{} up
+    reject it (every coordinate but $x_{\Mc}$ at $p$ \EvaluationMockFloorLoudP), and the width ratio
+    gives its size.
+\end{itemize}
 
 \subsection{Fisher Forecast}
 \label{app:evaluation-fisher}
 
-The corner plots overlay a Gaussian forecast at the truth. Its precision is the Hessian of
-the negative log-likelihood (\cref{eq:loglik}) at the truth, averaged over 32 noise
-realisations, plus the prior precision, taken from the covariance of the 1024 candidates. A
-single realisation's Hessian can be indefinite along poorly constrained directions; the
-average cancels the data-dependent term. In physical units the precision matrix spans about 45
-orders of magnitude on its diagonal, so we diagonalise it after a Jacobi rescaling to unit
-diagonal, floor each eigenvalue at the prior precision along its eigenvector, and draw from the
-resulting Gaussian. The forecast is a reference width, not a posterior
-\citep{cutler1994gravitational,vallisneri2008use}. It is unimodal, so it cannot show the
-exact symmetries of \cref{eq:psi-phi-symmetry}, and Gaussian, so it cannot follow the curved
-amplitude--inclination degeneracy. For a parameter the data barely constrain, such as the
-chirp mass at low frequency, where the chirp drift over the mission is a small fraction of a
-bin (0.08 bins at 2\,mHz for $\Mc = 0.45\,\Msun$, against a resolution of about
-$\sqrt{180}/(\pi\snr)\approx4.3/\snr$ bins), it shows little more than the prior's width
-centred on the truth.
+Each eval injection gets a Gaussian forecast centred at the truth $\theta^\star$, in the
+\EvaluationJointDim{} physical parameters of its sources, with precision
+\begin{equation}
+  \Gamma = \frac1{N_{\rm F}}\sum_{r=1}^{N_{\rm F}}\nabla^2_\theta\bigl[-\log L(\theta; d_r)\bigr]_{\theta^\star}
+  + \Lambda,
+  \qquad N_{\rm F} = \EvaluationFisherDraws,
+  \label{eq:evaluation-fisher}
+\end{equation}
+with $\log L$ from \cref{eq:loglik} and $d_r$ independent noise realisations around the
+injection's signal. The noise average of the Hessian at the truth is the Fisher matrix
+\citep{cutler1994gravitational,vallisneri2008use}. The prior term $\Lambda$, the inverse
+covariance of the candidates' parameters, is a Gaussian stand-in for the prior that keeps poorly
+measured directions at the prior's width rather than infinite.
+
+The forecast is drawn in $q$, the parameters with $\log\fdot$ in place of $\fdot$, so the drift
+stays positive ($\Gamma$ and $\Lambda$ pick up the Jacobian
+$J = \mathrm{diag}(1, \fdot^\star, 1,\dots)$ on both sides). In physical units the diagonal of
+$\Gamma$ spans a median of \EvaluationFisherDecades{} decades
+(\EvaluationFisherDecadesLo--\EvaluationFisherDecadesHi{} per injection), so both matrices are
+rescaled to unit diagonal, $\tilde\Gamma = D^{-1}\Gamma D^{-1}$ with
+$D = \mathrm{diag}\sqrt{|\Gamma_{ii}|}$. With $\tilde\Gamma = \sum_k w_k v_k v_k^{\T}$, each
+eigenvalue is floored at the prior precision along its eigenvector:
+\begin{equation}
+  q = q^\star + D^{-1}\sum_k \frac{\xi_k\,v_k}{\sqrt{\max(w_k,\,v_k^{\T}\tilde\Lambda v_k)}},
+  \quad \xi_k \sim \Normal(0,1).
+  \label{eq:evaluation-fisher-draws}
+\end{equation}
+
+The floor is needed because a finite noise average leaves part of the data-dependent term of the
+Hessian, which along a barely constrained direction can outweigh the signal term. The averaged
+diagonal of the second parameter ($\log\Mc$ in these runs) is not positive for \EvaluationMcNegative{} of the \EvaluationSourcesBoth{}
+eval sources, in \EvaluationMcNegativeInjections{} of the \EvaluationFisherInjections{}
+injections. The floor binds only where the averaged Hessian is negative along an eigenvector,
+for at most \EvaluationFlooredMax{} eigenvalues, in \EvaluationFlooredInjections{} injections.
+
+The forecast is a reference width, not a posterior: it is unimodal, so it misses the exact
+symmetries of \cref{eq:psi-phi-symmetry}; it is Gaussian, so it cannot follow the curved
+amplitude--inclination degeneracy; and along a parameter the data barely constrain it shows the
+prior's width centred on the truth. That is $\fdot$ in the narrow band: at its top
+frequency, \qty{\EvaluationNarrowFzeroTop}{\milli\hertz}, a source
+\EvaluationFdotSigmas{} standard deviations above its mean $\fdot$ drifts by \EvaluationChirpDrift{} bins over the mission, while with
+$f_0$ free a drift is resolved only to about $\EvaluationDriftResolution/\snr$ bins.
+\Cref{app:mcmc-fisher} tests the forecast against the joint chains.
+
+\subsection{Comparison With the Reference \acs{mcmc}}
+\label{app:evaluation-mcmc}
+
+The reference \ac{mcmc} (\cref{app:mcmc}) runs on the same eval injections with the same noise;
+corner plots overlay its draws and the Fisher draws on the relabelled flow draws, with
+$(\psi,\phi_0)$ folded onto the copy nearest the truth. Orientation widths are compared through
+the phases $\phi_0 \pm 2\psi$ of the two amplitude--phase coordinates: the data pin the one whose
+amplitude dominates, while $\phi_0$ alone inherits the spread of $\psi$. Widths are compared as
+$1.4826\,\MAD$ per parameter, flow over chain, against the joint chains of every eval injection. On the mocks the comparison returns the widths
+built in (\cref{tab:evaluation-mocks}): \EvaluationMockFisherMcmc{} for the Gaussian mock,
+\EvaluationMockWideMcmc{} and \EvaluationMockNarrowMcmc{} for the wide and narrow ones. The
+\ac{mcmc} is an evaluation reference only; no likelihood or chain output enters training or the
+flow's draws.
+
+\subsection{Sampler Steps and Robustness}
+\label{app:evaluation-sampler}
+
+The sampler's grid can collapse narrow posteriors late in the path (\cref{fig:fm-sensitivity}b),
+and a collapse only narrows, so widths are read at a step count past which they no longer change.
+Each trained flow is resampled on its eval injections at 4 to 256 steps on uniform, power and
+log-spaced grids in $1-s$, with the midpoint rule and with Euler, and its per-source widths,
+offsets and \ac{crps} are compared with the finest log-spaced grid.
+\textcolor{red}{TODO(new runs): the step count at which narrow-B and full-B widths settle, and
+whether \EvaluationOdeSteps{} steps are past it.}
+
+The flow is trained on one noise \ac{psd}, a fixed prior and exactly \EvaluationNSources{} sources
+per window. Each robustness case changes one of these on the eval injections, keeping the
+window, truth and noise: the \ac{psd} halved and doubled; the loudest source's $f_0$, $\fdot$ or
+amplitude past the prior's bulk; the quietest source's amplitude below it; one source removed or
+added; and an empty window. Each source is compared with itself in distribution.
+\textcolor{red}{TODO(new runs): whether narrow-B and full-B widen or return confident wrong
+answers out of distribution.}
+
+\textcolor{red}{TODO(new runs): scorecard and validation tables for narrow-B and full-B, in \cref{app:results}.}

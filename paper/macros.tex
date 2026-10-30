@@ -1,20 +1,14 @@
-% ---------------------------------------------------------------------------------------
 % notation
-% ---------------------------------------------------------------------------------------
 \newcommand{\Mc}{\mathcal{M}}               % chirp mass
 \newcommand{\Amp}{\mathcal{A}}              % strain amplitude
 \newcommand{\Tobs}{T_{\rm obs}}             % observation time
 \newcommand{\fw}{f_{w}}                     % centre frequency of a window
 \newcommand{\fdot}{\dot f}
 \newcommand{\snr}{\rho}
-\newcommand{\Msun}{M_\odot}
 \newcommand{\R}{\mathbb{R}}
-\newcommand{\Sph}{\mathbb{S}}
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\Var}{\operatorname{Var}}
 \newcommand{\MAD}{\operatorname{MAD}}
-\newcommand{\Exp}{\operatorname{Exp}}
-\newcommand{\Log}{\operatorname{Log}}
 \newcommand{\Unif}{\mathcal{U}}
 \newcommand{\Normal}{\mathcal{N}}
 \newcommand{\CN}{\mathcal{CN}}
@@ -23,18 +17,43 @@
 \newcommand{\T}{^{\top}}
 \newcommand{\inner}[2]{\langle #1 \,|\, #2 \rangle}
 \newcommand{\bins}{\,\text{bins}}
-\newcommand{\manifold}{\mathcal{X}}         % one source's flow manifold
 \newcommand{\vnet}{\hat v_{\eta}}           % the network's velocity
 
-% ---------------------------------------------------------------------------------------
-% drafting aids: remove before submission
-% ---------------------------------------------------------------------------------------
-\definecolor{tbdcolor}{HTML}{C4351F}
-% a value that B1 (or another pending run) will fill in
-\newcommand{\tbd}[1][]{\textcolor{tbdcolor}{\textbf{[TBD#1]}}}
-% a figure slot that a pending run will fill
-\newcommand{\placeholderfig}[2][0.32\textwidth]{%
-  \fbox{\parbox[c][#1][c]{0.95\linewidth}{\centering\small\color{tbdcolor}
-  \textbf{placeholder}\\[2pt] #2}}}
-% notes to the authors, rendered in the margin while drafting
-\newcommand{\draftnote}[1]{\todo[color=yellow!25, size=\tiny]{#1}}
+% units
+\DeclareSIUnit\solarmass{\ensuremath{M_\odot}}
+\DeclareSIUnit\year{yr}
+\DeclareSIUnit\parsec{pc}
+
+% acronyms: \ac{snr} spells it out on first use, \acp plural, \acs short, \acl long
+% no links: the acronym table is hand-made (tab:acronyms), not \printacronyms, so there are no targets
+\acsetup{make-links = false, first-style = long-short}
+
+% physics
+\DeclareAcronym{lisa}{short = LISA, long = Laser Interferometer Space Antenna}
+\DeclareAcronym{gw}{short = GW, long = gravitational wave}
+\DeclareAcronym{gb}{short = GB, long = galactic binary, long-plural-form = galactic binaries}
+\DeclareAcronym{tdi}{short = TDI, long = time-delay interferometry}
+\DeclareAcronym{snr}{short = SNR, long = signal-to-noise ratio}
+\DeclareAcronym{psd}{short = PSD, long = power spectral density, long-plural-form = power spectral densities}
+\DeclareAcronym{oms}{short = OMS, long = optical metrology system}
+\DeclareAcronym{ssb}{short = SSB, long = solar-system barycentre}
+\DeclareAcronym{stft}{short = STFT, long = short-time Fourier transform}
+
+% inference and evaluation
+\DeclareAcronym{mcmc}{short = MCMC, long = Markov chain Monte Carlo}
+\DeclareAcronym{rjmcmc}{short = RJMCMC, long = reversible-jump Markov chain Monte Carlo}
+\DeclareAcronym{fmpe}{short = FMPE, long = flow-matching posterior estimation}
+\DeclareAcronym{npe}{short = NPE, long = neural posterior estimation}
+\DeclareAcronym{nsf}{short = NSF, long = neural spline flow}
+\DeclareAcronym{maf}{short = MAF, long = masked autoregressive flow}
+\DeclareAcronym{mle}{short = MLE, long = maximum-likelihood estimate}
+\DeclareAcronym{ess}{short = ESS, long = effective sample size}
+\DeclareAcronym{ecdf}{short = ECDF, long = empirical cumulative distribution function}
+\DeclareAcronym{sbc}{short = SBC, long = simulation-based calibration}
+\DeclareAcronym{tarp}{short = TARP, long = tests of accuracy with random points}
+\DeclareAcronym{crps}{short = CRPS, long = continuous ranked probability score}
+
+% network and training
+\DeclareAcronym{mmdit}{short = MMDiT, long = multimodal diffusion transformer}
+\DeclareAcronym{rope}{short = RoPE, long = rotary position embedding}
+\DeclareAcronym{mlp}{short = MLP, long = multilayer perceptron}
