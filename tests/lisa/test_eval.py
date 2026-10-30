@@ -64,9 +64,9 @@ def test_an_unconstrained_direction_is_held_at_the_prior():
 
 def test_chunking_the_draws_changes_nothing(small_flow):
     """sample_posterior pushes the draws through in chunks; each draw's path is its own."""
-    _, flow, u0, y, f = small_flow
-    whole = sample_posterior(flow, u0, y, f, 3, 3.0, chunk=len(u0))
-    chunked = sample_posterior(flow, u0, y, f, 3, 3.0, chunk=2)
+    problem, flow, z0, y, f = small_flow
+    whole = sample_posterior(problem, flow, z0, y, f, 3, chunk=len(z0))
+    chunked = sample_posterior(problem, flow, z0, y, f, 3, chunk=2)
     # the network computes in float32, the batch size changes its summation order, and the sub-bin f0 embedding amplifies it
     np.testing.assert_allclose(whole, chunked, atol=5e-2)
 
@@ -81,8 +81,8 @@ def perturbed(module, seed=7, scale=0.05):
 
 def test_the_default_flow_samples_float64_draws(small_flow):
     """From float64 base draws."""
-    problem, _, u0, y, f = small_flow
+    problem, _, z0, y, f = small_flow
     flow = perturbed(LisaFlow(problem, 32, 2, 1, key=jr.key(1)))
-    post = sample_posterior(flow, u0, y, f, 3)
-    assert post.shape == u0.shape and post.dtype == u0.dtype
-    assert jnp.all(jnp.isfinite(post)) and not jnp.allclose(post, u0)
+    post = sample_posterior(problem, flow, z0, y, f, 3)
+    assert post.shape == z0.shape and post.dtype == z0.dtype
+    assert jnp.all(jnp.isfinite(post)) and not jnp.allclose(post, z0)

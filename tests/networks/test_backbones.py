@@ -126,7 +126,8 @@ def test_mmdit_x_stream_is_permutation_equivariant():
 
 @pytest.mark.parametrize("blocks", [1, 3])
 def test_mmdit_cache_holds_every_blocks_y_keys_and_values(blocks):
-    k, v = mmdit(blocks, one_way=True).encode(rand((M, D), 2), rand((D,), 3))
+    (k, v), r = mmdit(blocks, one_way=True).encode(rand((M, D), 2), rand((D,), 3))
+    assert r is None
     assert k.shape == v.shape == (blocks, M, HEADS, D // HEADS)
 
 
@@ -152,7 +153,7 @@ def test_one_block_one_way_x_is_the_joint_x():
     """in the first block y is still its input, so x reads the same keys and values either way"""
     block, c = perturbed(MMDiTBlock(D, HEADS, 2, key=key())), rand((D,), 3)
     x, y = rand((N, D), 1), rand((M, D), 2)
-    close(block.decode(x, c, block.encode(y, c)[1])[0], block(x, y, c)[0])
+    close(block.decode(x, c, block.encode(y, c)[2])[0], block(x, y, c)[0])
 
 
 def test_one_way_y_never_reads_x_but_x_reads_y_once_perturbed():
@@ -168,8 +169,8 @@ def test_one_way_y_never_reads_x_but_x_reads_y_once_perturbed():
     net = eqx.tree_at(
         lambda n: (n.blocks, n.last), joint, (first, last), is_leaf=lambda a: a is None
     )
-    cache = net.encode(y, c)
-    differs(net.decode(x, c, cache), net.decode(x, c, net.encode(rand((M, D), 8), c)))
+    cache, _ = net.encode(y, c)
+    differs(net.decode(x, c, cache), net.decode(x, c, net.encode(rand((M, D), 8), c)[0]))
     # past the first block the joint y has read x, the one-way y has not
     differs(net.decode(x, c, cache), joint(x, y, c)[0])
 
@@ -180,14 +181,14 @@ def test_one_way_with_rope_matches_the_joint_rope_in_one_block():
     angles = rand((N + M, D // HEADS // 2), 4)
     rope = (jnp.cos(angles), jnp.sin(angles))
     rope_x, rope_y = (tuple(a[:N] for a in rope), tuple(a[N:] for a in rope))
-    kv = block.encode(y, c, rope_y)[1]
+    kv = block.encode(y, c, rope_y)[2]
     close(block.decode(x, c, kv, rope_x)[0], block(x, y, c, rope)[0])
 
 
 def test_sinks_are_not_cached_and_change_x_once_perturbed():
     net = perturbed(MMDiT(D, HEADS, 3, sinks=True, one_way=True, key=key()))
     x, y, c, s = rand((N, D), 1), rand((M, D), 2), rand((D,), 3), rand((3, D), 4)
-    cache = net.encode(y, c)
+    cache, _ = net.encode(y, c)
     assert cache[0].shape == (3, M, HEADS, D // HEADS)
     out = net.decode(x, c, cache, s=s)
     assert out.shape == (N, D)
@@ -207,7 +208,7 @@ def test_rope_keeps_decode_relative():
     run = lambda shift: net.decode(
         x,
         c,
-        net.encode(y, c, rope(jnp.arange(M) * 1.7 + shift)),
+        net.encode(y, c, rope(jnp.arange(M) * 1.7 + shift))[0],
         rope(jnp.arange(N) * 0.9 + shift),
     )
     close(run(5.3), run(0.0), atol=1e-4)
@@ -220,11 +221,11 @@ def test_bf16_attention_keeps_the_stream_dtype_and_caches_bf16():
     )
     plain, half = build(True), build(True, attention_dtype=jnp.bfloat16)
     x, y, c, s = rand((N, D), 1), rand((M, D), 2), rand((D,), 3), rand((3, D), 4)
-    cache = half.encode(y, c)
+    cache, _ = half.encode(y, c)
     assert all(a.dtype == jnp.bfloat16 for a in cache)
     out = half.decode(x, c, cache, s=s)
     assert out.dtype == x.dtype
-    close(out, plain.decode(x, c, plain.encode(y, c), s=s), atol=5e-2)
+    close(out, plain.decode(x, c, plain.encode(y, c)[0], s=s), atol=5e-2)
     plain, half = build(False), build(False, attention_dtype=jnp.bfloat16)
     joint = half(x, y, c)[0]
     assert joint.dtype == x.dtype
@@ -233,7 +234,7 @@ def test_bf16_attention_keeps_the_stream_dtype_and_caches_bf16():
 
 def test_sinks_need_a_sink_stream():
     net, c = mmdit(one_way=True), rand((D,), 3)
-    cache = net.encode(rand((M, D), 2), c)
+    cache, _ = net.encode(rand((M, D), 2), c)
     with pytest.raises(AssertionError, match="sink stream"):
         net.decode(rand((N, D), 1), c, cache, s=rand((3, D), 4))
 
@@ -241,3 +242,13 @@ def test_sinks_need_a_sink_stream():
 def test_mmdit_rejects_head_counts_that_do_not_divide_the_dim():
     with pytest.raises(AssertionError, match="divisible by num_heads"):
         MMDiT(9, 2, 1, key=key())
+
+
+def test_registers_are_cached_with_y_and_read_by_x_once_perturbed():
+    """The registers run jointly with y, unrotated: their keys and values follow y's in the cache."""
+    net = perturbed(MMDiT(D, HEADS, 2, registers=3, one_way=True, key=key()))
+    x, y, c, r = rand((N, D), 1), rand((M, D), 2), rand((D,), 3), rand((3, D), 4)
+    cache, r_out = net.encode(y, c, r=r)
+    assert cache[0].shape == (2, M + 3, HEADS, D // HEADS) and r_out.shape == (3, D)
+    moved, _ = net.encode(y, c, r=rand((3, D), 5))
+    differs(net.decode(x, c, cache), net.decode(x, c, moved))

@@ -128,7 +128,7 @@ def fisher_samples(
     """
     p0 = latent.reshape(-1)
     nll = lambda p, o: -log_likelihood(problem, p.reshape(latent.shape), o, f)
-    # past split(key_n, N_POSTERIOR), the flow draws' keys in eval
+    # a stream of its own beside eval's noise (key_n) and base draws (fold_in(key_n, 1))
     key_replicas, key_draws = jr.split(jr.fold_in(key_n, N_POSTERIOR), 2)
     replicas = jax.vmap(partial(sample_observation, problem), in_axes=(0, None, None))(
         jr.split(key_replicas, N_FISHER_DRAWS), latent, f

@@ -143,10 +143,13 @@ def test_weight_decay_shrinks_the_muon_matrices_only():
     muon = {name(path): is_muon(path, leaf) for path, leaf in leaves}
     assert muon["backbone.blocks.mlp_y.linear2.weight"]
     assert muon["x_unembed.linear1.weight"]
+    assert muon["frame_modulation.linear.weight"]
     # the 2-D AdamW leaves are what a bare ndim >= 2 rule would wrongly decay
     adamw = (
         "backbone.blocks.attention.qk_gain",
-        "x_embed.linear.weight",
+        "x_embed.weight",
+        "frame_slot",
+        "frame_unembed.weight",
         "x_unembed.linear2.weight",
         "x_unembed.linear2.bias",
     )
@@ -281,8 +284,8 @@ def test_micro_batches_take_the_full_batch_step():
     batch = eqx.filter_jit(jax.vmap(partial(train_sample, problem)))(
         keys, jr.uniform(jr.key(1), (4, 2))
     )
-    whole, whole_losses = train_step(tx, state, batch)
-    split, split_losses = train_step(tx, state, batch, micro_batches=2)
+    whole, whole_losses = train_step(problem, tx, state, batch)
+    split, split_losses = train_step(problem, tx, state, batch, micro_batches=2)
     np.testing.assert_allclose(split_losses, whole_losses, rtol=1e-6)
     leaves = lambda s: jax.tree.leaves(eqx.filter(s.flow, eqx.is_inexact_array))
     for a, b in zip(leaves(split), leaves(whole)):

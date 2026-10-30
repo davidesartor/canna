@@ -10,7 +10,7 @@ import numpy as np
 
 from . import config as run_config
 from . import validate
-from .chart import flow_to_physical, physical_to_flow, sample_flow
+from .chart import flow_to_physical, physical_to_flow
 from .injections import N_POSTERIOR, eval_injections, match_sources
 from .network import LisaFlow
 from .problem import LisaGB, f0_window
@@ -66,10 +66,8 @@ def score_injection(
 ) -> dict:
     """Simulate one observation, draw from the flow, and score every source; keys as in eval."""
     y = preprocess(problem, sample_observation(problem, key_n, latent, f), f)
-    u0 = jax.vmap(partial(sample_flow, problem), in_axes=(0, None))(
-        jr.split(key_n, N_POSTERIOR)[:n_draws], f
-    )
-    post = sample_posterior(flow, u0, y, f, ode_steps)
+    z0 = jr.normal(jr.fold_in(key_n, 1), (N_POSTERIOR, *latent.shape))[:n_draws]
+    post = sample_posterior(problem, flow, z0, y, f, ode_steps)
     draws = np.asarray(
         jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)
     )

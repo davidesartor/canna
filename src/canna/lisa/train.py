@@ -1,6 +1,7 @@
 """Training: the flow-matching draw, the losses, the scanned train epoch and the checkpoint."""
 
 import dataclasses
+import math
 import os
 import subprocess
 import time
@@ -21,37 +22,38 @@ from jaxtyping import Array, Float, Key
 from tqdm import tqdm
 
 from . import config as run_config
-from .chart import physical_to_flow, sample_flow
+from .chart import physical_to_flow
 from .config import Config
 from .injections import eval_injections
 from .network import (
     LOSS_GROUPS,
+    LOSS_LOG10_SNR,
+    LOSS_SNR_BINS,
     LOSS_TIME_BINS,
     LOSS_TIME_DECADES,
     LisaFlow,
+    reference_frame,
 )
 from .optim import eval_flow, optimizer, routing_report, schedule_free_state
-from .problem import LisaGB
+from .problem import LisaGB, f0_window
 from .simulator import (
     preprocess,
     sample_observation,
     sample_physical,
     sample_window,
+    source_snrs,
 )
+
+# the frame loss's ridge on (delta_mu, delta_s), in prior units
+FRAME_DECAY = 0.01
 
 
 class TrainSample(NamedTuple):
-    xt: Float[Array, "K S 8"]
-    dx: Float[Array, "K S 8"]
+    z0: Float[Array, "K S 8"]
     t: Float[Array, " K"]
     y: Float[Array, "F 6"]
-    x_target: Float[Array, "S 8"]
+    x1: Float[Array, "S 8"]
     f: Float[Array, ""]
-
-
-def match_f0(x0: Float[Array, "S 8"], x1: Float[Array, "S 8"]) -> Float[Array, "S 8"]:
-    """x0's sources relabelled onto x1's by f0 rank: the k-th lowest f0 heads for the k-th lowest, so no paths cross in f0."""
-    return x0[jnp.argsort(x0[:, 0])][jnp.argsort(jnp.argsort(x1[:, 0]))]
 
 
 def train_sample(
@@ -59,16 +61,16 @@ def train_sample(
     key: Key[Array, ""],
     t: Float[Array, " K"] | None = None,
 ) -> TrainSample:
-    """One observation (a window and its noisy data) and K points on straight paths to it, with their velocities x1 - x0.
+    """One observation (a window and its noisy data), its sources x1 in f0 order, and K base draws at times t.
 
     t: the K draws' times (stratified by the caller); one uniform draw when None.
     """
-    key_c, key_p, key_o, key_x0, key_t = jr.split(key, 5)
+    key_c, key_p, key_o, key_z0, key_t = jr.split(key, 5)
     f = sample_window(problem, key_c)
     p = sample_physical(problem, key_p, f)
     y = preprocess(problem, sample_observation(problem, key_o, p, f), f)
     t = jr.uniform(key_t, (1,)) if t is None else t
-    return paths(problem, key_x0, p, f, y, t)
+    return paths(problem, key_z0, p, f, y, t)
 
 
 def paths(
@@ -79,64 +81,117 @@ def paths(
     y: Float[Array, "F 6"],
     t: Float[Array, " K"],
 ) -> TrainSample:
-    """K points at times t on straight paths from prior draws to the sources p of the observation y."""
-    x0 = jax.vmap(sample_flow, in_axes=(None, 0, None))(
-        problem, jr.split(key, t.shape[0]), f
-    )
-    x1 = physical_to_flow(problem, p, f)
-    # the sources are exchangeable: each draw's sources head for x1's in f0 order
-    x0 = jax.vmap(match_f0, in_axes=(0, None))(x0, x1)
+    """The sources p of the observation y as x1, in f0 order, and K standard normal base draws z0 at times t."""
+    p = p[jnp.argsort(p[:, 0])]
     return TrainSample(
-        xt=x0 + t[:, None, None] * (x1 - x0),
-        dx=x1 - x0,
+        z0=jr.normal(key, (t.shape[0], *p.shape)),
         t=t,
         y=y,
-        x_target=x1,
+        x1=physical_to_flow(problem, p, f),
         f=f,
     )
 
 
+class Binned(NamedTuple):
+    """The diagnostics per bin: the frame per (snr bin, group), the flow per (time bin, group)."""
+
+    # mean log10(sigma_A / sigma_prior) and mean k_A²
+    frame: Float[Array, "2 N G"]
+    # mean log10 of f0's sigma_A over the monochromatic Fisher width sqrt(3) / (pi snr), in bins
+    f0_fisher: Float[Array, " N"]
+    # mean log10 sigma_z and mean k_z²
+    flow: Float[Array, "2 T G"]
+
+
 def losses(
     flow: LisaFlow,
+    problem: LisaGB,
     batch: TrainSample,
-    by_bin: bool = False,
-) -> Float[Array, "2"] | tuple[Float[Array, "2"], Float[Array, "3 T G"]]:
-    """The flow's Gaussian NLL of x1, ((x1 - m) / e^s)² + 2 s, trained on as is, and the error of its mean m.
+    snr: Float[Array, "B S"] | None = None,
+) -> Float[Array, "3"] | tuple[Float[Array, "3"], Binned]:
+    """The objective, the frame's NLL of x1 and the flow's NLL of z1, all trained on but the frame NLL as is.
 
-    by_bin: also, per (time bin, coordinate group), x1's squared error, the flow's σ² and their ratio.
+    The frame (mu_A, sigma_A) = (mu_p + sigma_p delta_mu, sigma_p e^{delta_s}) is fit by the NLL of x1 weighted by
+    sg(e^{delta_s}) with a ridge on delta; the flow by the Gaussian NLL of z1 = sg((x1 - mu_A) / sigma_A) on paths
+    from z0. snr: each source's own, for the diagnostics per bin.
     """
     # the data stream is encoded once per observation and shared by its K draws
-    cache = jax.vmap(flow.encode)(batch.y, batch.f)
-    per_draw = lambda f: jax.vmap(f, in_axes=(0, 0, None, None, None))
-    m, s = jnp.split(
-        jax.vmap(per_draw(flow))(batch.xt, batch.t, batch.y, batch.f, cache), 2, axis=-1
+    delta, cache = jax.vmap(flow.encode)(batch.y, batch.f)
+    frame = jax.vmap(partial(reference_frame, problem))(delta, batch.f)
+    mu, log_sigma = frame
+    delta_mu, delta_s = jnp.split(delta, 2, axis=-1)
+    k = (batch.x1 - mu) * jnp.exp(-log_sigma)
+    frame_nll = jnp.square(k) + 2 * delta_s
+    frame_loss = jnp.mean(
+        jax.lax.stop_gradient(jnp.exp(delta_s))
+        * (frame_nll + FRAME_DECAY * (jnp.square(delta_mu) + jnp.square(delta_s)))
     )
 
-    error = m - batch.x_target[:, None]
-    flow_loss = jnp.mean(jnp.square(error * jnp.exp(-s)) + 2 * s)
-    parts = jnp.stack([flow_loss, jnp.mean(jnp.square(error))])
-    if not by_bin:
+    z1 = jax.lax.stop_gradient(k)[:, None]
+    t = batch.t[..., None, None]
+    zt = (1 - t) * batch.z0 + t * z1
+    per_draw = lambda f: jax.vmap(f, in_axes=(0, 0, None, None, None))
+    m, s = jnp.split(
+        jax.vmap(per_draw(flow))(zt, batch.t, frame, batch.f, cache), 2, axis=-1
+    )
+    k_z = (z1 - m) * jnp.exp(-s)
+    flow_nll = jnp.mean(jnp.square(k_z) + 2 * s)
+    parts = jnp.stack([frame_loss + flow_nll, jnp.mean(frame_nll), flow_nll])
+    if snr is None:
         return parts
 
     by_group = lambda a: jnp.stack(
-        [jnp.mean(a[..., g], axis=(-2, -1)) for g in LOSS_GROUPS], axis=-1
+        [jnp.mean(a[..., g], axis=-1) for g in LOSS_GROUPS], axis=-1
     )
+
+    def binned_mean(pattern: str, bins: Array, n_bins: int, a: Array) -> Array:
+        """a's mean per bin, the bin axis last; an empty bin has nothing to report."""
+        one_hot = jax.nn.one_hot(bins, n_bins)
+        count = jnp.sum(one_hot, axis=(0, 1))
+        return jnp.einsum(pattern, one_hot, a) / jnp.where(count > 0, count, jnp.nan)
+
+    # the frame per source, by its own true snr
+    snr_bins = jnp.clip(
+        (jnp.log10(snr) - LOSS_LOG10_SNR[0])
+        / (LOSS_LOG10_SNR[1] - LOSS_LOG10_SNR[0])
+        * LOSS_SNR_BINS,
+        0,
+        LOSS_SNR_BINS - 1,
+    ).astype(int)
+    frame_bins = binned_mean(
+        "bsn,ibsg->ign",
+        snr_bins,
+        LOSS_SNR_BINS,
+        jnp.stack([by_group(delta_s / math.log(10)), by_group(jnp.square(k))]),
+    )
+    # f0's sigma_A in bins: x_f maps log f0 onto [-1, 1] over the window's f0 range
+    lo, hi = jax.vmap(partial(f0_window, problem))(batch.f)
+    half_log_span = 0.5 * jnp.log(hi / lo)[:, None]
+    f0 = jnp.sqrt(lo * hi)[:, None] * jnp.exp(batch.x1[..., 0] * half_log_span)
+    sigma_bins = jnp.exp(log_sigma[..., 0]) * half_log_span * f0 * problem.t_obs
+    fisher = jnp.log10(sigma_bins * jnp.pi * snr / math.sqrt(3))
+
+    # the flow per draw, by its log10(1 - t)
     decades = jnp.log10(jnp.maximum(1 - batch.t, 1e-30))
-    bins = jnp.clip(
+    time_bins = jnp.clip(
         (decades / LOSS_TIME_DECADES + 1) * LOSS_TIME_BINS, 0, LOSS_TIME_BINS - 1
     ).astype(int)
-    per_draw_bins = jnp.stack(
-        [
-            by_group(jnp.square(error)),
-            by_group(jnp.exp(2 * s)),
-            by_group(jnp.square(error * jnp.exp(-s))),
-        ]
+    flow_bins = binned_mean(
+        "bkt,ibkg->igt",
+        time_bins,
+        LOSS_TIME_BINS,
+        jnp.stack(
+            [
+                jnp.mean(by_group(s / math.log(10)), axis=-2),
+                jnp.mean(by_group(jnp.square(k_z)), axis=-2),
+            ]
+        ),
     )
-    one_hot = jax.nn.one_hot(bins, LOSS_TIME_BINS)
-    binned = jnp.einsum("bkt,nbkg->ntg", one_hot, per_draw_bins)
-    count = jnp.sum(one_hot, axis=(0, 1))[:, None]
-    # an empty bin has no error to report
-    return parts, jnp.where(count > 0, binned / jnp.maximum(count, 1), jnp.nan)
+    return parts, Binned(
+        frame=rearrange(frame_bins, "i g n -> i n g"),
+        f0_fisher=binned_mean("bsn,bs->n", snr_bins, LOSS_SNR_BINS, fisher),
+        flow=rearrange(flow_bins, "i g t -> i t g"),
+    )
 
 
 class TrainState(NamedTuple):
@@ -166,15 +221,16 @@ def setup(
 
 @eqx.filter_jit
 def train_step(
+    problem: LisaGB,
     tx: optax.GradientTransformation,
     state: TrainState,
     batch: TrainSample,
     micro_batches: int = 1,
 ) -> tuple[TrainState, Float[Array, "3"]]:
-    """One optimizer step on the flow loss; the flow loss, the x1 error and the grad norm."""
+    """One optimizer step on the objective; the frame NLL, the flow NLL and the grad norm."""
 
     def total(flow, chunk):
-        parts = losses(flow, chunk)
+        parts = losses(flow, problem, chunk)
         return parts[0], parts
 
     # the batch's gradient as the mean over equal chunks, one chunk's activations live at a time
@@ -201,7 +257,7 @@ def train_step(
     state = state._replace(
         flow=eqx.apply_updates(state.flow, updates), opt_state=opt_state
     )
-    return state, jnp.concat([parts, optax.global_norm(grads)[None]])
+    return state, jnp.concat([parts[1:], optax.global_norm(grads)[None]])
 
 
 @eqx.filter_jit
@@ -216,7 +272,7 @@ def train_epoch(
 ) -> tuple[TrainState, Float[Array, "S 3"]]:
     """Fuse n_steps (batch draw + train_step) pairs into one XLA dispatch via lax.scan.
 
-    A batch is batch_size (x0, t) samples, `draws` per observation, t stratified over all of them.
+    A batch is batch_size (z0, t) samples, `draws` per observation, t stratified over all of them.
     """
     observations = batch_size // draws
     dynamic, static = eqx.partition(state, eqx.is_array)
@@ -232,7 +288,9 @@ def train_epoch(
         batch = jax.vmap(sample)(
             jr.split(key_batch, observations), rearrange(u, "(b k) -> b k", k=draws)
         )
-        state, parts = train_step(tx, state._replace(key=key), batch, micro_batches)
+        state, parts = train_step(
+            problem, tx, state._replace(key=key), batch, micro_batches
+        )
         return eqx.filter(state, eqx.is_array), parts
 
     dynamic, history = jax.lax.scan(scan_step, dynamic, length=n_steps)
@@ -240,11 +298,12 @@ def train_epoch(
 
 
 class Catalog(NamedTuple):
-    """The eval's injections and their observations, fixed for the run's diagnostics."""
+    """The eval's injections in f0 order, their observations and each source's own snr, fixed for the run's diagnostics."""
 
     p: Float[Array, "J S 8"]
     f: Float[Array, " J"]
     y: Float[Array, "J F 6"]
+    snr: Float[Array, "J S"]
 
 
 def eval_catalog(problem: LisaGB, seed: int) -> Catalog:
@@ -252,7 +311,15 @@ def eval_catalog(problem: LisaGB, seed: int) -> Catalog:
     observe = lambda key, p, f: preprocess(
         problem, sample_observation(problem, key, p, f), f
     )
-    return Catalog(latents, windows, jax.vmap(observe)(noise_keys, latents, windows))
+    latents = jnp.take_along_axis(
+        latents, jnp.argsort(latents[..., 0], axis=-1)[..., None], axis=-2
+    )
+    return Catalog(
+        latents,
+        windows,
+        jax.vmap(observe)(noise_keys, latents, windows),
+        jax.vmap(partial(source_snrs, problem))(latents, windows),
+    )
 
 
 @eqx.filter_jit
@@ -261,20 +328,24 @@ def diagnostics(
     state: TrainState,
     key: Key[Array, ""],
     catalog: Catalog,
-) -> tuple[Float[Array, "4"], Float[Array, "3 T G"]]:
-    """Flow loss of x and of y on the eval catalog, backbone weight RMS of x, and RMS of z - x.
+) -> tuple[Float[Array, "6"], Binned]:
+    """Frame and flow NLL of x and of y on the eval catalog, backbone weight RMS of x, and RMS of z - x.
 
-    Also y's x1 error, expected error and their ratio per (time bin, coordinate group) on the catalog, one draw per
-    injection in each bin.
+    Also y's frame per (snr bin, group) and flow per (time bin, group) on the catalog, one draw per injection in each
+    time bin.
     """
     key_batch, key_binned = jr.split(key)
     along = jax.vmap(partial(paths, problem), in_axes=(0, 0, 0, 0, None))
     n = catalog.f.shape[0]
     # LOSS_TIME_BINS times per injection: midpoints of equal steps in t, then of the log10(1 - t) bins
     u = (jnp.arange(LOSS_TIME_BINS) + 0.5) / LOSS_TIME_BINS
-    batch = along(jr.split(key_batch, n), *catalog, u)
+    batch = along(jr.split(key_batch, n), catalog.p, catalog.f, catalog.y, u)
     binned = along(
-        jr.split(key_binned, n), *catalog, 1 - 10.0 ** (-LOSS_TIME_DECADES * u)
+        jr.split(key_binned, n),
+        catalog.p,
+        catalog.f,
+        catalog.y,
+        1 - 10.0 ** (-LOSS_TIME_DECADES * u),
     )
     x = eval_flow(state.flow, state.opt_state)
     rms = lambda tree: jnp.sqrt(
@@ -286,9 +357,9 @@ def diagnostics(
     spread = rms(
         jax.tree.map(lambda zi, xi: zi - xi, z, eqx.filter(x, eqx.is_inexact_array))
     )
-    flow_loss = lambda flow: losses(flow, batch)[0]
-    _, by_bin = losses(state.flow, binned, by_bin=True)
-    return jnp.stack([flow_loss(x), flow_loss(state.flow), w_rms, spread]), by_bin
+    nll = lambda flow: losses(flow, problem, batch)[1:]
+    _, by_bin = losses(state.flow, problem, binned, catalog.snr)
+    return jnp.concat([nll(x), nll(state.flow), jnp.stack([w_rms, spread])]), by_bin
 
 
 def checkpoint_manager(run_dir: Path, read_only: bool = False) -> ocp.CheckpointManager:
@@ -454,8 +525,10 @@ def main() -> None:
     epochs = config.total_steps // config.log_interval
     histories = dict(
         loss_history=np.full((epochs, config.log_interval, 3), np.nan),
-        catalog_history=np.full((epochs, 4), np.nan),
-        bin_history=np.full((epochs, 3, LOSS_TIME_BINS, len(LOSS_GROUPS)), np.nan),
+        catalog_history=np.full((epochs, 6), np.nan),
+        frame_history=np.full((epochs, 2, LOSS_SNR_BINS, len(LOSS_GROUPS)), np.nan),
+        fisher_history=np.full((epochs, LOSS_SNR_BINS), np.nan),
+        flow_history=np.full((epochs, 2, LOSS_TIME_BINS, len(LOSS_GROUPS)), np.nan),
     )
     checkpoints = checkpoint_manager(run_dir)
     state, start_epoch, restored = restore_checkpoint(
@@ -473,7 +546,11 @@ def main() -> None:
         histories["loss_history"],
         histories["catalog_history"],
     )
-    bin_history = histories["bin_history"]
+    frame_history, fisher_history, flow_history = (
+        histories["frame_history"],
+        histories["fisher_history"],
+        histories["flow_history"],
+    )
     # the diagnostics' fixed draws: the eval's injections and noise, prior draws from a key the seed's setup leaves unused
     catalog = eval_catalog(problem, config.seed)
     key_catalog = jr.split(jr.key(config.seed), 3)[0]
@@ -491,14 +568,10 @@ def main() -> None:
             config.micro_batches,
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
-        catalog_history[epoch], bin_history[epoch] = jax.device_get(
-            diagnostics(
-                problem,
-                state,
-                key_catalog,
-                catalog,
-            )
+        catalog_history[epoch], binned = jax.device_get(
+            diagnostics(problem, state, key_catalog, catalog)
         )
+        frame_history[epoch], fisher_history[epoch], flow_history[epoch] = binned
         seconds = time.perf_counter() - started  # the first epoch includes the compile
 
         # a non-finite loss has poisoned the weights: stop before saving over the last checkpoint
@@ -514,12 +587,13 @@ def main() -> None:
 
         # orbax writes the checkpoint while the next epoch trains; log the median of the epoch's losses
         save_checkpoint(checkpoints, state, epoch + 1, histories)
-        flow_l, x_l, grad_norm = np.median(loss_history[epoch], axis=0)
-        catalog_x, catalog_y, w_rms, spread = catalog_history[epoch]
-        pbar.set_postfix(flow=f"{flow_l:.5f}", catalog=f"{catalog_x:.5f}")
+        frame_l, flow_l, grad_norm = np.median(loss_history[epoch], axis=0)
+        frame_x, flow_x, frame_y, flow_y, w_rms, spread = catalog_history[epoch]
+        pbar.set_postfix(frame=f"{frame_x:.4f}", flow=f"{flow_x:.4f}")
         print(
-            f"[epoch {epoch + 1}/{epochs}] flow={flow_l:.5f} x={x_l:.5f}"
-            f" catalog={catalog_x:.5f} catalog_y={catalog_y:.5f} grad_norm={grad_norm:.3f}"
+            f"[epoch {epoch + 1}/{epochs}] frame={frame_l:.4f} flow={flow_l:.4f}"
+            f" catalog frame={frame_x:.4f} flow={flow_x:.4f}"
+            f" (y {frame_y:.4f} {flow_y:.4f}) grad_norm={grad_norm:.3f}"
             f" w_rms={w_rms:.4f} z_x={spread:.4f} time={seconds:.0f}s",
             flush=True,
         )
@@ -534,13 +608,18 @@ def main() -> None:
             steps=np.arange(1, done + 1) * config.log_interval,
             # float32: the plots take percentiles of them, and float64 doubles a long run's file
             losses=loss_history[:done].astype(np.float32),
-            loss_names=np.array(["flow", "x", "grad_norm"]),
+            loss_names=np.array(["frame", "flow", "grad_norm"]),
             catalog=catalog_history[:done],
-            catalog_names=np.array(["catalog_x", "catalog_y", "w_rms", "z_x"]),
-            bin_x_error=bin_history[:done, 0],
-            bin_expected=bin_history[:done, 1],
-            bin_ratio=bin_history[:done, 2],
+            catalog_names=np.array(
+                ["frame_x", "flow_x", "frame_y", "flow_y", "w_rms", "z_x"]
+            ),
+            frame_zoom=frame_history[:done, 0],
+            frame_calibration=frame_history[:done, 1],
+            f0_fisher=fisher_history[:done],
+            flow_zoom=flow_history[:done, 0],
+            flow_calibration=flow_history[:done, 1],
             groups=np.array(["f0", "fdot", "sky", "z+", "z-"]),
+            snr_edges=np.linspace(*LOSS_LOG10_SNR, LOSS_SNR_BINS + 1),
             time_edges=LOSS_TIME_DECADES
             * (np.arange(LOSS_TIME_BINS + 1) / LOSS_TIME_BINS - 1),
         )

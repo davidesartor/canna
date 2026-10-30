@@ -885,9 +885,8 @@ window.onerror = (message, source, line) => {
 <p class="sub" id="sub"></p>
 <div class="layout">
 <aside class="card side">
-  <div class="stack"><span class="k">Per flow time, show</span><div class="seg" id="mode" style="--cols: 1"></div></div>
   <div class="stack"><span class="k">Evals</span><ul class="links" id="evals"></ul></div>
-  <p class="note">Hover a chart for values; in the flow-time charts, click to pick the epoch or the time bin. The view lives in the URL.</p>
+  <p class="note">Hover a chart for values; in the binned charts, click to pick the epoch or the bin. The view lives in the URL.</p>
 </aside>
 <div class="content">
   <div class="tiles" id="tiles"></div>
@@ -898,23 +897,34 @@ window.onerror = (message, source, line) => {
   </div>
   <div class="card">
     <h2>Eval catalog</h2>
-    <p class="note">Once per epoch, on the eval's injections and noise, the same every epoch: each injection at the midpoints of 16 equal steps of flow time. The flow loss of the schedule-free average x (what eval samples from) against the raw iterate y; the backbone's weight RMS; the RMS of z − x, the schedule-free spread.</p>
+    <p class="note">Once per epoch, on the eval's injections and noise, the same every epoch: each injection at the midpoints of 16 equal steps of flow time. The frame and flow NLLs of the schedule-free average x (what eval samples from) against the raw iterate y; the backbone's weight RMS; the RMS of z − x, the schedule-free spread.</p>
     <div class="grid" id="catalog"></div>
   </div>
   <div class="card">
-    <h2>Per flow time</h2>
-    <p class="note" id="time-note"></p>
-    <div class="legend" id="time-legend"></div>
-    <div class="slider"><label for="epoch">epoch</label><input type="range" id="epoch" min="0" step="1"><output id="epoch-out"></output></div>
-    <div class="slider"><label for="bin">time bin</label><input type="range" id="bin" min="0" step="1"><output id="bin-out"></output></div>
-    <div class="grid" id="time"></div>
+    <h2>Frame per SNR</h2>
+    <div class="stack" style="max-width: 360px"><div class="seg" id="frame-mode" style="--cols: 3"></div></div>
+    <p class="note" id="frame-note"></p>
+    <div class="legend" id="frame-legend"></div>
+    <div class="slider"><label for="frame-epoch">epoch</label><input type="range" id="frame-epoch" min="0" step="1"><output id="frame-epoch-out"></output></div>
+    <div class="slider"><label for="frame-bin">SNR bin</label><input type="range" id="frame-bin" min="0" step="1"><output id="frame-bin-out"></output></div>
+    <div class="grid" id="frame"></div>
+  </div>
+  <div class="card">
+    <h2>Flow per flow time</h2>
+    <div class="stack" style="max-width: 360px"><div class="seg" id="flow-mode" style="--cols: 2"></div></div>
+    <p class="note" id="flow-note"></p>
+    <div class="legend" id="flow-legend"></div>
+    <div class="slider"><label for="flow-epoch">epoch</label><input type="range" id="flow-epoch" min="0" step="1"><output id="flow-epoch-out"></output></div>
+    <div class="slider"><label for="flow-bin">time bin</label><input type="range" id="flow-bin" min="0" step="1"><output id="flow-bin-out"></output></div>
+    <div class="grid" id="flow"></div>
   </div>
   <div class="card">
     <details>
       <summary>What the curves are</summary>
       <ul>
-        <li><b>flow</b>: the training loss, x₁'s Gaussian NLL. The flow predicts x₁'s mean and log σ per coordinate; the sampler steps along (mean − x<sub>t</sub>) / (1 − s). Negative once σ &lt; 1. <b>x</b>: the mean squared error of the predicted x₁. <b>grad norm</b>: before clipping.</li>
-        <li><b>Per flow time</b>: the x₁ error per coordinate group (f₀, ḟ, sky, z₊, z₋) on the eval catalog, each injection once in each time bin, binned in log₁₀(1 − s), 1 − s the flow time left. Dashed, the x₁ error the flow expects: its own σ², the resolution it claims. Error ÷ σ² is the mean squared z error and is 1 where σ is calibrated.</li>
+        <li><b>frame</b>: the frame's Gaussian NLL of x₁, k² + 2 log(σ/σ<sub>prior</sub>) with k = (x₁ − μ)/σ. Once per observation, the data stream sets a frame (μ, σ) per source coordinate, a zoom on the prior's mean and width; the training loss weights it by sg(σ/σ<sub>prior</sub>) and adds a 0.01 ridge on the zoom. <b>flow</b>: the flow's Gaussian NLL of z₁ = k, the truth in the frame; the sampler steps along (m − z<sub>t</sub>) / (1 − t) and returns μ + σ z₁. Both negative once σ &lt; 1. <b>grad norm</b>: before clipping.</li>
+        <li><b>Frame per SNR</b>: each eval-catalog source in the bin of its own true SNR, per coordinate group (f₀, ḟ, sky, z₊, z₋). Zoom: mean log₁₀ σ/σ<sub>prior</sub>. k²: the mean squared k, 1 where the frame's σ is calibrated, above it where too narrow. f₀ ÷ Fisher: mean log₁₀ of f₀'s σ over the monochromatic Fisher width √3/(π SNR T); 0 at the Fisher width.</li>
+        <li><b>Flow per flow time</b>: each injection once in each bin of log₁₀(1 − t), 1 − t the flow time left. Zoom: mean log₁₀ σ<sub>z</sub>, the flow's predicted width of z₁; k²: the mean squared z error, 1 where σ<sub>z</sub> is calibrated.</li>
       </ul>
     </details>
   </div>
@@ -924,15 +934,10 @@ window.onerror = (message, source, line) => {
 <script>const DATA = __DATA__;</script>
 <script>
 "use strict";
-const META = DATA.meta, E = META.epochs, G = META.groups, NT = META.time_edges.length - 1;
-const LOSSES = {flow: "flow loss", x: "x₁ error", grad_norm: "grad norm"};
+const META = DATA.meta, E = META.epochs, G = META.groups;
+const LOSSES = {frame: "frame loss", flow: "flow loss", grad_norm: "grad norm"};
 const CATALOG = {w_rms: "backbone weight RMS", z_x: "RMS of z − x"};
-const EXPECTED = "σ²";
-const MODES = [
-  {v: "x", html: "x₁ error"},
-  ...(META.has_expected ? [{v: "ratio", html: `error ÷ ${EXPECTED}`}] : []),
-];
-const S = {mode: "x", epoch: E - 1, bin: 0};
+const S = {epoch: E - 1, frame: {mode: "zoom", bin: 0}, flow: {mode: "zoom", bin: 0}};
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 function rgba(name, alpha) {
@@ -1101,7 +1106,7 @@ function chartIn(parent, id, title) {
 }
 
 // losses that go negative are drawn as their gap above a floor just under the lowest value seen
-const SHIFTED = new Set(["flow"]);
+const SHIFTED = new Set(["frame", "flow"]);
 function aboveFloor(arrays) {
   const all = arrays.flat().filter(Number.isFinite).sort((a, b) => a - b), min = all[0];
   const floor = min - 1e-2 * (all[all.length >> 1] - min);
@@ -1123,13 +1128,16 @@ function training() {
 }
 function catalog() {
   const h = DATA.catalog, step = DATA.epoch_step, parent = document.getElementById("catalog"), x = STEP_AXIS;
-  const pairs = [["catalog_x", "--s1", "x (average)"], ["catalog_y", "--s2", "y (iterate)"]].filter(([k]) => h[k]);
-  const gap = aboveFloor(pairs.map(([k]) => h[k]));
-  plot(chartIn(parent, "catalog-loss", "eval-catalog flow loss"), {
-    x, y: {log: true, label: gap.label("flow loss")}, sync: "step",
-    layers: pairs.map(([k, colour]) => ({type: "line", x: step, y: gap.shift(h[k]), colour})),
-    hover: {x: step, html: k => `epoch ${k + 1}, step ${kilo(step[k])}<table>${pairs.map(([n, c, label]) => row(c, label, sig(h[n][k]))).join("")}</table>`},
-  });
+  for (const name of ["frame", "flow"]) {
+    const pairs = [[`${name}_x`, "--s1", "x (average)"], [`${name}_y`, "--s2", "y (iterate)"]].filter(([k]) => h[k]);
+    if (!pairs.length) continue;
+    const gap = aboveFloor(pairs.map(([k]) => h[k]));
+    plot(chartIn(parent, `catalog-${name}`, `eval-catalog ${LOSSES[name]}`), {
+      x, y: {log: true, label: gap.label(LOSSES[name])}, sync: "step",
+      layers: pairs.map(([k, colour]) => ({type: "line", x: step, y: gap.shift(h[k]), colour})),
+      hover: {x: step, html: k => `epoch ${k + 1}, step ${kilo(step[k])}<table>${pairs.map(([n, c, label]) => row(c, label, sig(h[n][k]))).join("")}</table>`},
+    });
+  }
   for (const [name, label] of Object.entries(CATALOG)) {
     if (!h[name]) continue;
     plot(chartIn(parent, `catalog-${name}`, label), {
@@ -1140,54 +1148,68 @@ function catalog() {
   }
 }
 
-// the flow-time view: [measured, expected] per [epoch][bin][group] in the chosen mode (expected NaN in the ratio mode)
-const CENTRES = META.time_edges.slice(0, -1).map((e, k) => 10 ** ((e + META.time_edges[k + 1]) / 2));
-function shown(e, b, grp) {
-  const T = DATA.time;
-  return S.mode === "ratio" ? [T.ratio[e][b][grp], NaN] : [T.x_error[e][b][grp], META.has_expected ? T.expected[e][b][grp] : NaN];
-}
+// the binned views: per [epoch][bin][group] (or [epoch][bin] for a single series) in the card's chosen mode
 const COLOURS = ["--s1", "--s2", "--s3", "--s4", "--s5"];
 const GROUP_TEXT = {f0: "f₀", fdot: "ḟ", sky: "sky", "z+": "z₊", "z-": "z₋"};
-function flowTime() {
-  const parent = document.getElementById("time"), lam = META.has_expected && S.mode !== "ratio";
-  const expectedText = EXPECTED.replace(/<\/?sup>/g, "");
-  const yLabel = S.mode === "ratio" ? `error ÷ ${expectedText}` : "x₁ error";
-  const bins = [...CENTRES.keys()], epochs = [...Array(E).keys()], step = DATA.epoch_step;
-  const layers = (index, xsOf, pick) => G.flatMap((grp, gi) => {
-    const v = index.map(i => pick(i, gi));
-    return [
-      {type: "line", x: xsOf, y: v.map(p => p[0]), colour: COLOURS[gi]},
-      ...(lam ? [{type: "line", x: xsOf, y: v.map(p => p[1]), colour: COLOURS[gi], dash: [5, 3], width: 1.5}] : []),
-    ];
+const centres = edges => edges.slice(0, -1).map((e, k) => 10 ** ((e + edges[k + 1]) / 2));
+const span = (edges, b) => `[${sig(10 ** edges[b])}, ${sig(10 ** edges[b + 1])}]`;
+const CALIBRATED = "1 where σ is calibrated, above it where σ is too narrow.";
+const CARDS = {
+  frame: {
+    edges: META.snr_edges, x: "SNR", over: "SNR", bin: b => `SNR ∈ ${span(META.snr_edges, b)}`,
+    modes: [
+      {v: "zoom", html: "zoom", y: "log₁₀ σ ÷ σ_prior", data: DATA.frame.zoom,
+       note: "Mean log₁₀ of the frame's σ over the prior's, per coordinate group and bin of the source's true SNR: how far the data stream zooms in."},
+      {v: "calibration", html: "k²", y: "mean k²", log: true, ref: 1, data: DATA.frame.calibration,
+       note: `Mean squared k = (x₁ − μ)/σ of the truth in the frame, per coordinate group and bin of the source's true SNR; ${CALIBRATED}`},
+      {v: "fisher", html: "f₀ ÷ Fisher", y: "log₁₀ σ_f₀ ÷ Fisher width", ref: 0, data: DATA.frame.f0_fisher, single: true,
+       note: "Mean log₁₀ of f₀'s frame σ over the monochromatic Fisher width √3/(π SNR T), per bin of the source's true SNR; 0 at the Fisher width."},
+    ],
+  },
+  flow: {
+    edges: META.time_edges, x: "1 − t (flow time left)", over: "flow time", bin: b => `1 − t ∈ ${span(META.time_edges, b)}`,
+    modes: [
+      {v: "zoom", html: "zoom", y: "log₁₀ σ_z", data: DATA.flow.zoom,
+       note: "Mean log₁₀ σ_z, the flow's predicted width of z₁ in the frame, per coordinate group and log-spaced bin of flow time: below 0 where the flow resolves beyond the frame."},
+      {v: "calibration", html: "k²", y: "mean z error²", log: true, ref: 1, data: DATA.flow.calibration,
+       note: `Mean squared z error (z₁ − m)/σ_z, per coordinate group and log-spaced bin of flow time; ${CALIBRATED}`},
+    ],
+  },
+};
+const modeOf = id => CARDS[id].modes.find(m => m.v === S[id].mode);
+function binned(id) {
+  const card = CARDS[id], m = modeOf(id), st = S[id], parent = document.getElementById(id);
+  const xs = centres(card.edges), bins = [...xs.keys()], epochs = [...Array(E).keys()], step = DATA.epoch_step;
+  const names = m.single ? ["f0"] : G, colour = gi => COLOURS[G.indexOf(names[gi])];
+  const value = (e, b, gi) => m.single ? m.data[e][b] : m.data[e][b][gi];
+  const layers = (index, at, pick) => names.map((_, gi) => ({type: "line", x: at, y: index.map(i => pick(i, gi)), colour: colour(gi)}));
+  const ref = m.ref === undefined ? [] : [{type: "hline", at: m.ref}];
+  const table = (e, b) => `<table>${names.map((grp, gi) => row(colour(gi), GROUP_TEXT[grp] || grp, sig(value(e, b, gi)))).join("")}</table>`;
+  const y = {log: !!m.log, label: m.y};
+  plot(chartIn(parent, `${id}-at-epoch`, `over ${card.over}, at the picked epoch`), {
+    x: {log: true, label: card.x}, y,
+    layers: [...ref, ...layers(bins, xs, (b, gi) => value(S.epoch, b, gi)), {type: "vline", at: xs[st.bin]}],
+    hover: {x: xs, html: b => `epoch ${S.epoch + 1}, ${card.bin(b)}${table(S.epoch, b)}`},
+    click: b => { st.bin = b; writeHash(); render(); },
   });
-  const table = vals => `<table>${G.map((grp, gi) => row(COLOURS[gi], GROUP_TEXT[grp] || grp, lam ? `${sig(vals[gi][0])} <span style="color:var(--muted)">${EXPECTED} ${sig(vals[gi][1])}</span>` : sig(vals[gi][0]))).join("")}</table>`;
-  const ratio = S.mode === "ratio" ? [{type: "hline", at: 1}] : [];
-  const binText = b => `1 − s ∈ [${decade(META.time_edges[b])}, ${decade(META.time_edges[b + 1])}]`;
-  plot(chartIn(parent, "time-at-epoch", "over flow time, at the picked epoch"), {
-    x: {log: true, label: "1 − s (flow time left)"}, y: {log: true, label: yLabel},
-    layers: [...ratio, ...layers(bins, CENTRES, (b, gi) => shown(S.epoch, b, gi)), {type: "vline", at: CENTRES[S.bin]}],
-    hover: {x: CENTRES, html: b => `epoch ${S.epoch + 1}, ${binText(b)}${table(G.map((_, gi) => shown(S.epoch, b, gi)))}`},
-    click: b => { S.bin = b; writeHash(); render(); },
-  });
-  plot(chartIn(parent, "time-over-steps", "over training, in the picked time bin"), {
-    x: STEP_AXIS, y: {log: true, label: yLabel},
-    layers: [...ratio, ...layers(epochs, step, (e, gi) => shown(e, S.bin, gi)), {type: "vline", at: step[S.epoch]}],
-    hover: {x: step, html: e => `epoch ${e + 1}, step ${kilo(step[e])}, ${binText(S.bin)}${table(G.map((_, gi) => shown(e, S.bin, gi)))}`},
+  plot(chartIn(parent, `${id}-over-steps`, "over training, in the picked bin"), {
+    x: STEP_AXIS, y,
+    layers: [...ref, ...layers(epochs, step, (e, gi) => value(e, st.bin, gi)), {type: "vline", at: step[S.epoch]}],
+    hover: {x: step, html: e => `epoch ${e + 1}, step ${kilo(step[e])}, ${card.bin(st.bin)}${table(e, st.bin)}`},
     click: e => { S.epoch = e; writeHash(); render(); },
   });
-  const claim = "the flow's own σ², the resolution it claims";
-  document.getElementById("time-note").innerHTML = `Eval-catalog x₁ error per coordinate group and log-spaced bin of flow time; ` +
-    (S.mode === "ratio" ? "the ratio is 1 where σ is calibrated, above it where σ is overconfident." : lam ? `solid: measured, dashed: ${EXPECTED}, ${claim}.` : "this run predicts no expected error.") +
-    " Click the left chart to pick the time bin, the right one to pick the epoch.";
-  document.getElementById("time-legend").innerHTML = G.map((grp, gi) => `<span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(${COLOURS[gi]})" stroke-width="2"/></svg>${GROUP_TEXT[grp] || grp}</span>`).join("") +
-    (lam ? `<span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="5 3"/></svg>${EXPECTED}</span>` : "");
-  const ep = document.getElementById("epoch"), bin = document.getElementById("bin");
-  ep.max = E - 1; ep.value = S.epoch; bin.max = NT - 1; bin.value = S.bin;
-  document.getElementById("epoch-out").textContent = `${S.epoch + 1} of ${E}, step ${kilo(step[S.epoch])}`;
-  document.getElementById("bin-out").textContent = binText(S.bin);
+  seg(`${id}-mode`, card.modes, it => it.v === st.mode, it => { st.mode = it.v; });
+  document.getElementById(`${id}-note`).textContent = `${m.note} Click the left chart to pick the bin, the right one to pick the epoch.`;
+  document.getElementById(`${id}-legend`).innerHTML = names.map((grp, gi) => `<span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(${colour(gi)})" stroke-width="2"/></svg>${GROUP_TEXT[grp] || grp}</span>`).join("");
+  const ep = document.getElementById(`${id}-epoch`), bin = document.getElementById(`${id}-bin`);
+  ep.max = E - 1; ep.value = S.epoch; bin.max = xs.length - 1; bin.value = st.bin;
+  document.getElementById(`${id}-epoch-out`).textContent = `${S.epoch + 1} of ${E}, step ${kilo(step[S.epoch])}`;
+  document.getElementById(`${id}-bin-out`).textContent = card.bin(st.bin);
 }
-document.getElementById("epoch").oninput = ev => { S.epoch = +ev.target.value; writeHash(); schedule(); };
-document.getElementById("bin").oninput = ev => { S.bin = +ev.target.value; writeHash(); schedule(); };
+for (const id of Object.keys(CARDS)) {
+  document.getElementById(`${id}-epoch`).oninput = ev => { S.epoch = +ev.target.value; writeHash(); schedule(); };
+  document.getElementById(`${id}-bin`).oninput = ev => { S[id].bin = +ev.target.value; writeHash(); schedule(); };
+}
 
 function seg(id, items, active, onPick) {
   const host = document.getElementById(id);
@@ -1197,32 +1219,35 @@ function seg(id, items, active, onPick) {
 function tiles() {
   const q = DATA.train.losses, h = DATA.catalog, last = a => a[a.length - 1], step = DATA.epoch_step, t = [];
   t.push(["trained", `${E} epochs`, `${kilo(last(step))} steps`]);
-  if (q.flow) t.push(["flow loss, last chunk", sig(last(q.flow.median)), `10–90%: ${sig(last(q.flow.lo))} – ${sig(last(q.flow.hi))}`]);
-  if (h.catalog_x) {
-    const best = h.catalog_x.reduce((b, v, k) => v < h.catalog_x[b] ? k : b, 0);
-    t.push(["eval-catalog flow loss (x)", sig(last(h.catalog_x)), `best ${sig(h.catalog_x[best])} at epoch ${best + 1}`]);
+  for (const name of ["frame", "flow"]) {
+    if (q[name]) t.push([`${LOSSES[name]}, last chunk`, sig(last(q[name].median)), `10–90%: ${sig(last(q[name].lo))} – ${sig(last(q[name].hi))}`]);
+    const c = h[`${name}_x`];
+    if (c) {
+      const best = c.reduce((b, v, k) => v < c[b] ? k : b, 0);
+      t.push([`eval-catalog ${LOSSES[name]} (x)`, sig(last(c)), `best ${sig(c[best])} at epoch ${best + 1}`]);
+    }
   }
-  if (q.x) t.push(["x₁ error, last chunk", sig(last(q.x.median)), "median"]);
   if (q.grad_norm) t.push(["grad norm, last chunk", sig(last(q.grad_norm.median)), `90%: ${sig(last(q.grad_norm.hi))}`]);
   document.getElementById("tiles").innerHTML = t.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join("");
 }
 function render() {
   SYNC = {};
-  seg("mode", MODES, it => it.v === S.mode, it => { S.mode = it.v; });
   tiles();
   training();
   catalog();
-  flowTime();
+  for (const id of Object.keys(CARDS)) binned(id);
 }
 
 function readHash() {
   const h = new URLSearchParams(location.hash.slice(1));
-  if (h.has("mode") && MODES.some(m => m.v === h.get("mode"))) S.mode = h.get("mode");
   if (h.has("epoch")) S.epoch = clamp(+h.get("epoch") - 1 || 0, 0, E - 1);
-  if (h.has("bin")) S.bin = clamp(+h.get("bin") || 0, 0, NT - 1);
+  for (const [id, card] of Object.entries(CARDS)) {
+    if (card.modes.some(m => m.v === h.get(id))) S[id].mode = h.get(id);
+    if (h.has(`${id}_bin`)) S[id].bin = clamp(+h.get(`${id}_bin`) || 0, 0, card.edges.length - 2);
+  }
 }
 function writeHash() {
-  const h = new URLSearchParams({mode: S.mode, epoch: S.epoch + 1, bin: S.bin});
+  const h = new URLSearchParams({epoch: S.epoch + 1, frame: S.frame.mode, frame_bin: S.frame.bin, flow: S.flow.mode, flow_bin: S.flow.bin});
   history.replaceState(null, "", `#${h}`);
 }
 
@@ -1230,8 +1255,8 @@ document.getElementById("title").textContent = `${META.run}: training`;
 document.getElementById("sub").textContent = `${META.config} at ${META.commit}, ${E} epochs of ${kilo(META.steps_per_epoch)} steps. Layout ${META.layout}.`;
 document.getElementById("evals").innerHTML = META.evals.length ? META.evals.map(e => `<li>${e.name}: ` +
   [e.validation ? `<a href="eval/${e.name}/validation.html">validation</a>` : "", e.corner ? `<a href="eval/${e.name}/corner.html">corners</a>` : ""].filter(Boolean).join(" · ") + "</li>").join("") : "<li>none yet</li>";
-// the last bin with data at the picked epoch, by default
-S.bin = Math.max(0, DATA.time.x_error[E - 1].findIndex(r => r.some(Number.isFinite)));
+// the first bin with data at the last epoch, by default
+for (const id of Object.keys(CARDS)) S[id].bin = Math.max(0, CARDS[id].modes[0].data[E - 1].findIndex(r => r.some(Number.isFinite)));
 readHash();
 let pending = false;
 const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; render(); }); } };
@@ -1246,7 +1271,7 @@ render();
 
 
 def run_report(run_dir: Path) -> Path:
-    """run_dir/run.html: one interactive page of history.npz's training and eval-catalog losses and per-time-bin error and σ²."""
+    """run_dir/run.html: one interactive page of history.npz's losses, the frame per SNR bin and the flow per time bin."""
     import yaml
 
     h = dict(np.load(run_dir / "history.npz"))
@@ -1281,8 +1306,8 @@ def run_report(run_dir: Path) -> Path:
             "epochs": int(n_epochs),
             "steps_per_epoch": int(epoch_steps[-1]),
             "groups": [str(g) for g in h["groups"]],
+            "snr_edges": significant(h["snr_edges"]),
             "time_edges": significant(h["time_edges"]),
-            "has_expected": bool(np.isfinite(h["bin_expected"]).any()),
             "loss_names": loss_names,
             "evals": evals,
         },
@@ -1302,10 +1327,14 @@ def run_report(run_dir: Path) -> Path:
             for c, name in enumerate(h["catalog_names"])
         },
         "epoch_step": steps.astype(int).tolist(),
-        "time": {
-            "x_error": significant(h["bin_x_error"]),
-            "expected": significant(h["bin_expected"]),
-            "ratio": significant(h["bin_ratio"]),
+        "frame": {
+            "zoom": significant(h["frame_zoom"]),
+            "calibration": significant(h["frame_calibration"]),
+            "f0_fisher": significant(h["f0_fisher"]),
+        },
+        "flow": {
+            "zoom": significant(h["flow_zoom"]),
+            "calibration": significant(h["flow_calibration"]),
         },
     }
     page = RUN_PAGE

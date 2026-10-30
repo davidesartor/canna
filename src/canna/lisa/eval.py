@@ -7,7 +7,7 @@ import jax.random as jr
 import numpy as np
 
 from . import config as run_config
-from .chart import flow_to_physical, sample_flow
+from .chart import flow_to_physical
 from .injections import (
     N_POSTERIOR,
     eval_injections,
@@ -34,10 +34,9 @@ def main() -> None:
 
         # inject, sample the flow, and map back to physical units: [draw, source, param]
         y = preprocess(problem, sample_observation(problem, key_n, latent, f), f)
-        u0 = jax.vmap(partial(sample_flow, problem), in_axes=(0, None))(
-            jr.split(key_n, N_POSTERIOR), f
-        )
-        post = sample_posterior(flow, u0, y, f, config.ode_steps)
+        # the base draws: their own stream beside the noise's key_n
+        z0 = jr.normal(jr.fold_in(key_n, 1), (N_POSTERIOR, *latent.shape))
+        post = sample_posterior(problem, flow, z0, y, f, config.ode_steps)
         draws.append(
             np.asarray(
                 jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)

@@ -1,13 +1,18 @@
 """The flow's coordinates: 8 per source, all flat."""
 
+import math
+
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Array, Float, Key
 
 from .physics import (
+    AMP_STD,
     FDOT_STD,
     equatorial_to_galactic,
     galactic_scales,
     galactic_to_equatorial,
+    log10_amplitude_mean,
     log10_fdot_mean,
 )
 from .problem import LisaGB, amplitude_unit, f0_window
@@ -16,6 +21,8 @@ from .simulator import sample_physical
 # per source: [f, fdot, galactic l, galactic b, z+ (2), z- (2)]
 SKY = slice(2, 4)
 GALACTIC_SCALE = galactic_scales()
+# Gauss-Hermite nodes over log10 A, Gauss-Legendre over sin iota: E r² of the helicity radius
+AMP_NODES, INCLINATION_NODES = 32, 64
 
 
 def physical_to_flow(
@@ -94,3 +101,39 @@ def sample_flow(
     """A prior draw in flow coordinates: the flow's base distribution, its sources in no particular order."""
     return physical_to_flow(problem, sample_physical(problem, key, f), f)
 
+
+
+def prior_moments(
+    problem: LisaGB, f: Float[Array, ""]
+) -> tuple[Float[Array, "S 8"], Float[Array, "S 8"]]:
+    """The catalogue prior's mean and std of each coordinate, the sources in f0 order; the window prior moves only the window, so they stay the anchor.
+
+    f0: the uniform order statistics on [-1, 1] (the window is flat in log f0 to a few %); fdot and sky: (0, 1);
+    z±: mean 0 and std sqrt(E r² / 2), E r² by quadrature over log10 A at the window's centre and sin iota.
+    """
+    n = problem.n_sources
+    k = jnp.arange(1, n + 1)
+    f0_mean = 2 * k / (n + 1) - 1
+    f0_std = 2 * jnp.sqrt(k * (n + 1 - k) / ((n + 1) ** 2 * (n + 2)))
+
+    # hermegauss weights sum to sqrt(2 pi), leggauss's to 2
+    xi, w_xi = np.polynomial.hermite_e.hermegauss(AMP_NODES)
+    sin_iota, w_iota = np.polynomial.legendre.leggauss(INCLINATION_NODES)
+    lo, hi = f0_window(problem, f)
+    log10_amp = log10_amplitude_mean(jnp.sqrt(lo * hi)) + AMP_STD * xi
+    radius = jnp.arcsinh(
+        10.0 ** log10_amp[:, None]
+        / amplitude_unit(problem, f)
+        * jnp.square(1 - sin_iota)
+        / 4
+    )
+    mean_square = jnp.einsum(
+        "i,j,ij->", w_xi / math.sqrt(2 * math.pi), w_iota / 2, jnp.square(radius)
+    )
+    z_std = jnp.sqrt(mean_square / 2)
+
+    mean = jnp.concat([f0_mean[:, None], jnp.zeros((n, 7))], axis=-1)
+    std = jnp.concat(
+        [f0_std[:, None], jnp.ones((n, 3)), jnp.full((n, 4), z_std)], axis=-1
+    )
+    return mean, std

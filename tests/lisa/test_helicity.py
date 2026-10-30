@@ -9,7 +9,6 @@ import jax.random as jr
 import numpy as np
 
 from canna.lisa.chart import flow_to_physical, physical_to_flow, sample_flow
-from canna.lisa.network import Z_REACH
 from canna.lisa.problem import LisaGB, sample_f
 from canna.lisa.simulator import clean_signal, sample_physical
 from canna.lisa.train import train_sample
@@ -103,27 +102,24 @@ def test_prior_sin_iota_is_uniform():
     assert abs(float(sin_iota.var()) - 1 / 3) < 4 * np.sqrt(4 / 45 / n)
 
 
-def test_prior_helicity_is_phase_uniform_and_within_reach():
+def test_prior_helicity_is_phase_uniform():
     problem = LisaGB(**NARROW)
     f = sample_f(problem, jr.key(9))
     draw = eqx.filter_jit(jax.vmap(partial(sample_flow, problem), in_axes=(0, None)))
     x = draw(jr.split(jr.key(10), 2000), f).reshape(-1, 8)
     z = x[:, 4::2] + 1j * x[:, 5::2]
-    assert bool(jnp.all(jnp.abs(z) <= Z_REACH))
     assert float(jnp.max(jnp.abs(jnp.mean(z / jnp.abs(z), axis=0)))) < 0.04
     # the two phases are independent under the prior
     pp, pm = jnp.angle(z[:, 0]), jnp.angle(z[:, 1])
     assert abs(complex(jnp.mean(jnp.exp(1j * (pp - pm))))) < 0.06
 
 
-def test_training_sample_is_finite_and_walks_a_straight_line():
+def test_training_sample_is_finite():
     problem = LisaGB(**NARROW)
     sample = eqx.filter_jit(partial(train_sample, problem))(jr.key(11))
-    assert sample.xt.shape == (1, 4, 8) and all(
+    assert sample.x1.shape == (4, 8) and all(
         bool(jnp.all(jnp.isfinite(a))) for a in sample
     )
-    remaining = (1 - sample.t)[:, None, None]
-    assert jnp.allclose(sample.xt + remaining * sample.dx, sample.x_target, atol=1e-6)
 
 
 def test_pages_fold_every_copy_onto_the_truths():

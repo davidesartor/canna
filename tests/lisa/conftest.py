@@ -9,7 +9,6 @@ import jax.random as jr
 import pytest
 
 from canna.lisa import config
-from canna.lisa.chart import sample_flow
 from canna.lisa.network import LisaFlow
 from canna.lisa.problem import LisaGB
 from canna.lisa.train import train_sample
@@ -41,6 +40,5 @@ def small_flow():
         for p, k in zip(params, keys)
     ]
     flow = jax.tree_util.tree_unflatten(static, params)
-    draw = eqx.filter_jit(jax.vmap(partial(sample_flow, problem), in_axes=(0, None)))
-    u0 = draw(jr.split(jr.key(3), 8), sample.f)
-    return problem, flow, u0, sample.y, sample.f
+    z0 = jr.normal(jr.key(3), (8, *sample.x1.shape))
+    return problem, flow, z0, sample.y, sample.f

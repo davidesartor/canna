@@ -1,4 +1,4 @@
-"""Reordering sources must not change the physics; training pairs sources in f0 order."""
+"""Reordering sources must not change the physics; training puts the sources in f0 order."""
 
 import jax.numpy as jnp
 import jax.random as jr
@@ -13,7 +13,7 @@ from canna.lisa.simulator import (
     snr,
     source_snrs,
 )
-from canna.lisa.train import match_f0, train_sample
+from canna.lisa.train import train_sample
 
 from ._helpers import window
 
@@ -89,17 +89,9 @@ def test_sort_by_snr_reorders_whole_rows_loudest_first():
     assert jnp.all(jnp.diff(source_snrs(problem, shown, f)) <= 0)
 
 
-def test_match_f0_relabels_by_f0_rank():
-    x0, x1 = jr.normal(jr.key(40), (4, 8)), jr.normal(jr.key(41), (4, 8))
-    paired = match_f0(x0, x1)
-    assert jnp.array_equal(jnp.argsort(paired[:, 0]), jnp.argsort(x1[:, 0]))
-    assert sorted(map(tuple, paired.tolist())) == sorted(map(tuple, x0.tolist()))
-
-
-def test_train_sample_pairs_each_draw_in_f0_order():
+def test_train_sample_puts_the_sources_in_f0_order():
+    """The frame's slots are f0-ordered, so x1's rows must be too."""
     problem = LisaGB(n_sources=4)
-    # u = 0 puts every point at the base draw
-    batch = train_sample(problem, jr.key(42), jnp.zeros(16))
-    order = jnp.argsort(batch.x_target[:, 0])
-    for x0 in batch.xt:
-        assert jnp.array_equal(jnp.argsort(x0[:, 0]), order)
+    for seed in range(4):
+        batch = train_sample(problem, jr.key(42 + seed))
+        assert jnp.all(jnp.diff(batch.x1[:, 0]) >= 0)

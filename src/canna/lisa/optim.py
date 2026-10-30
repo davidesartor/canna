@@ -103,7 +103,15 @@ def schedule_free(
 
 
 # Muon takes the matrices of these fields (and the head's first layer), AdamW the rest
-MUON_FIELDS = ("backbone", "c_mlp", "f_mlp", "f0_mlp", "y_mlp", "x_modulation")
+MUON_FIELDS = (
+    "backbone",
+    "c_mlp",
+    "f_mlp",
+    "f0_mlp",
+    "y_mlp",
+    "x_modulation",
+    "frame_modulation",
+)
 
 
 def is_muon(path, leaf) -> bool:

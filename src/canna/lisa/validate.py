@@ -81,10 +81,8 @@ def validate_injection(
     truth = sample_physical(problem, key_p, f)
     o = sample_observation(problem, key_n, truth, f)
     y = preprocess(problem, o, f)
-    u0 = jax.vmap(partial(sample_flow, problem), in_axes=(0, None))(
-        jr.split(key_u, n_draws), f
-    )
-    post = sample_posterior(flow, u0, y, f, ode_steps)
+    z0 = jr.normal(key_u, (n_draws, *truth.shape))
+    post = sample_posterior(problem, flow, z0, y, f, ode_steps)
     draws = jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)
     # TARP's reference point (Lemos+23): a prior draw independent of the truth, its own stream
     tarp_ref = sample_flow(problem, key_tarp, f)
