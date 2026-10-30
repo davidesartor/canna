@@ -1,118 +1,143 @@
-% The LisaFlow network (src/canna/lisa/network.py, networks/mmdit.py), as a standalone
-% figure. Build: pdflatex architecture.tex, then copy the pdf to ../architecture.pdf
-\documentclass[tikz,border=2pt]{standalone}
-\usepackage[T1]{fontenc}
-\usepackage{tgheros}
-\renewcommand{\familydefault}{\sfdefault}
+% The network as a standalone figure, in the type and palette of scripts/style.py.
+% Build with XeLaTeX (Inter is vendored in ../../fonts): xelatex architecture.tex
+\documentclass[border=1pt]{standalone}
+\usepackage{amsmath}
+\usepackage{fontspec}
+\setmainfont{Inter}[Path=../../fonts/, Extension=.ttf, UprightFont=*-Regular,
+  ItalicFont=*-Italic, BoldFont=*-SemiBold]
 \usepackage[italic]{mathastext}
-\usepackage{amssymb}
+\usepackage{tikz}
 \usetikzlibrary{positioning,fit,arrows.meta,calc,backgrounds}
 
-% the figures' palette: blue for the parameter stream, a warm grey for the data stream
-\definecolor{ink}{HTML}{0B0B0B}
-\definecolor{ink2}{HTML}{52514E}
-\definecolor{muted}{HTML}{898781}
-\definecolor{xfill}{HTML}{CDE2FB}
-\definecolor{xline}{HTML}{2A78D6}
-\definecolor{yfill}{HTML}{F0EFEC}
-\definecolor{yline}{HTML}{898781}
-\definecolor{cfill}{HTML}{FFFFFF}
+% style.py: ink, chrome and the categorical slots
+\definecolor{ink}{HTML}{16161A}
+\definecolor{ink2}{HTML}{55555C}
+\definecolor{muted}{HTML}{909098}
+\definecolor{axis}{HTML}{B8B8BF}
+\definecolor{wash}{HTML}{F2F2F4}
+\definecolor{blue}{HTML}{2A78D6}
+\definecolor{orange}{HTML}{EB6834}
+\definecolor{violet}{HTML}{6250D6}
+% the source stream blue, the data stream neutral, sinks violet, conditioning orange
+\colorlet{xfill}{blue!12}
+\colorlet{xchip}{blue!6}
+\colorlet{yfill}{wash}
+\colorlet{sfill}{violet!11}
+\colorlet{cfill}{orange!9}
 
+\newcommand{\sm}{\fontsize{6.3}{7.2}\selectfont}
 \begin{document}
+\fontsize{7}{8.4}\selectfont
+\hyphenpenalty=10000
 \begin{tikzpicture}[
-    font=\scriptsize, text=ink, >={Stealth[length=3pt,width=2.4pt]},
-    box/.style={draw=#1, rounded corners=1.5pt, line width=0.5pt, align=center,
-                inner sep=2.5pt, minimum height=5.2mm},
-    xbox/.style={box=xline, fill=xfill},
-    ybox/.style={box=yline, fill=yfill},
-    cbox/.style={box=ink2, fill=cfill},
-    lbl/.style={font=\tiny, text=ink2, align=center},
-    arr/.style={->, line width=0.5pt, draw=ink2},
-    carr/.style={->, line width=0.45pt, draw=ink2, dashed, dash pattern=on 1.5pt off 1pt},
+    x=1mm, y=1mm, text=ink,
+    >={Stealth[length=2.4pt,width=2.2pt]},
+    box/.style={draw=#1, rounded corners=2pt, line width=0.55pt, align=center,
+                inner sep=1.8pt, text width=33mm},
+    xbox/.style={box=blue, fill=xfill},
+    ybox/.style={box=muted, fill=yfill},
+    sbox/.style={box=violet, fill=sfill},
+    cbox/.style={box=orange, fill=cfill},
+    chip/.style={draw=#1, rounded corners=1.5pt, line width=0.45pt, align=center,
+                 inner sep=0.8pt, minimum height=7.5mm},
+    xchip/.style={chip=blue, fill=xchip},
+    ychip/.style={chip=muted, fill=white},
+    add/.style={circle, draw=#1, line width=0.45pt, fill=white, inner sep=0pt,
+                minimum size=3.4mm},
+    small/.style={font=\fontsize{6.3}{7.4}\selectfont},
+    note/.style={small, text=ink2, align=center},
+    title/.style={font=\fontsize{7}{8.4}\selectfont\bfseries, text=ink},
+    arr/.style={->, line width=0.55pt, draw=ink2},
+    res/.style={->, line width=0.45pt, draw=#1, rounded corners=2pt},
+    cond/.style={->, line width=0.5pt, draw=orange, dash pattern=on 2pt off 1.2pt},
+    kv/.style={->, line width=1pt, draw=ink2},
   ]
+  \def\ys{40}
+  \def\yd{0}
 
-  % ---- inputs
-  \node[xbox, minimum width=24mm] (xin) at (0, 1.55) {$x_t$: 4 sources\\ $\times$ 11 coordinates};
-  \node[cbox, minimum width=24mm] (tin) at (0, 0.45) {$t$: flow time\\ $f$: window centre};
-  \node[ybox, minimum width=24mm] (yin) at (0, -0.85) {$y$: whitened WDM\\ $2\times 4R\times 3$ (A, E, T)};
-  \node[lbl, above=0.5mm of xin] {inputs};
-
-  % ---- embeddings
-  \node[xbox, minimum width=27mm, right=4mm of xin] (xemb) {SwiGLU MLP per source\\ \textit{no positional embedding}};
-  \node[cbox, minimum width=27mm, right=4mm of tin] (temb) {sinusoidal + MLP\\ $c = c_t + c_f$};
-  \node[ybox, minimum width=27mm, right=4mm of yin] (yemb) {$2\times2$ patches, linear\\ + 2D sinusoidal position};
-  \node[lbl, above=0.5mm of xemb] {embed};
+  % ----------------------------------------------------------------- inputs and embeddings
+  \node[xbox, anchor=west] (xemb) at (12, \ys)
+    {\textbf{source tokens}\\ PLE of coordinates\\ + Fourier($f_0$ bin)\\
+     + PLE($\hat X_1$), self-conditioning};
+  \node[sbox, anchor=west] (semb) at (12, 28.4) {\textbf{sink tokens}: $\nu$ + learned};
+  \node[cbox, anchor=west] (cemb) at (12, 18.4)
+    {\textbf{conditioning}\\ $\nu$ from $t$, $\log_{10}(1-t)$, $\ln f_w$\\ $\nu_f$ from $\ln f_w$};
+  \node[ybox, anchor=west] (yemb) at (12, \yd)
+    {\textbf{data tokens}\\ spectra of $Q$ bins per token\\ PLE of amplitude and phase\\
+     + Fourier(centre bin)};
+  \node[note, anchor=east, align=right] (xin) at (9, \ys) {$X_t$\\ $S\times 8$};
+  \node[note, anchor=east, align=right] (cin) at (9, 18.4) {$t$, $f_w$};
+  \node[note, anchor=east, align=right] (yin) at (9, \yd) {$y$\\ $K\times 6$};
   \draw[arr] (xin) -- (xemb);
-  \draw[arr] (tin) -- (temb);
+  \draw[arr] (cin) -- (cemb);
   \draw[arr] (yin) -- (yemb);
+  \node[title, anchor=south] at (xemb.north) {embeddings};
 
-  % ---- backbone: one block drawn in full, repeated N times
-  \coordinate (b0) at ($(xemb.east)+(6mm,0)$);
-  \node[xbox, minimum width=12mm, right=6mm of xemb] (xmod1) {adaLN};
-  \node[ybox, minimum width=12mm, right=6mm of yemb] (ymod1) {adaLN};
-  \node[box=ink2, fill=white, minimum width=17mm, minimum height=26.5mm, align=center,
-        right=3.5mm of xmod1.east, anchor=north west, yshift=2.6mm] (att)
-        {joint\\ attention\\ over\\ $4+2R$\\ tokens\\[1pt] {\tiny QK-RMS norm}};
-  \node[xbox, minimum width=10mm, right=3.5mm of att.east |- xmod1] (xg1) {gate};
-  \node[ybox, minimum width=10mm, right=3.5mm of att.east |- ymod1] (yg1) {gate};
-  \node[xbox, minimum width=12mm, right=3mm of xg1] (xmod2) {adaLN};
-  \node[ybox, minimum width=12mm, right=3mm of yg1] (ymod2) {adaLN};
-  \node[xbox, minimum width=13mm, right=3mm of xmod2] (xmlp) {SwiGLU};
-  \node[ybox, minimum width=13mm, right=3mm of ymod2] (ymlp) {SwiGLU};
-  \node[xbox, minimum width=10mm, right=3mm of xmlp] (xg2) {gate};
-  \node[ybox, minimum width=10mm, right=3mm of ymlp] (yg2) {gate};
+  % ----------------------------------------------------------------- one block, two streams
+  \foreach \s/\y/\c/\what in {x/\ys/blue/{sources, sinks, data}, y/\yd/muted/{data only}} {
+    \node[\s chip, minimum width=9mm] (\s a1) at (66, \y) {adaLN};
+    \node[\s chip, text width=22mm, right=2.4mm of \s a1] (\s att)
+      {attention\\[-0.6pt] {\sm\color{ink2}\what}};
+    \node[add=\c, right=2.2mm of \s att] (\s p1) {$+$};
+    \node[\s chip, minimum width=9mm, right=2.2mm of \s p1] (\s a2) {adaLN};
+    \node[\s chip, minimum width=11mm, right=2.4mm of \s a2] (\s ff) {SwiGLU};
+    \node[add=\c, right=2.2mm of \s ff] (\s p2) {$+$};
+    \foreach \a/\b in {a1/att, att/p1, p1/a2, a2/ff, ff/p2} \draw[arr] (\s\a) -- (\s\b);
+  }
 
-  \draw[arr] (xemb) -- (xmod1);
-  \draw[arr] (yemb) -- (ymod1);
-  \draw[arr] (xmod1) -- (xmod1 -| att.west);
-  \draw[arr] (ymod1) -- (ymod1 -| att.west);
-  \draw[arr] (xg1 -| att.east) -- (xg1);
-  \draw[arr] (yg1 -| att.east) -- (yg1);
-  \draw[arr] (xg1) -- (xmod2);
-  \draw[arr] (yg1) -- (ymod2);
-  \draw[arr] (xmod2) -- (xmlp);
-  \draw[arr] (ymod2) -- (ymlp);
-  \draw[arr] (xmlp) -- (xg2);
-  \draw[arr] (ymlp) -- (yg2);
+  % residual paths: above the source stream, below the data stream
+  \coordinate (xin1) at ($(xa1.west)+(-3,0)$);
+  \coordinate (yin1) at ($(ya1.west)+(-3,0)$);
+  \draw[res=blue] (xin1) |- ($(xatt.north)+(0,2.6)$) -| (xp1.north);
+  \draw[res=blue] ($(xp1.east)+(1,0)$) |- ($(xff.north)+(0,2.6)$) -| (xp2.north);
+  \draw[res=muted] (yin1) |- ($(yatt.south)+(0,-2.6)$) -| (yp1.south);
+  \draw[res=muted] ($(yp1.east)+(1,0)$) |- ($(yff.south)+(0,-2.6)$) -| (yp2.south);
 
-  % residual connections, above the x lane and below the y lane
-  \draw[arr, draw=muted] ($(xemb.east)+(2.5mm,0)$) -- ++(0,5.2mm) -| ($(xg1.north)$);
-  \draw[arr, draw=muted] ($(xg1.east)+(1.5mm,0)$) -- ++(0,5.2mm) -| ($(xg2.north)$);
-  \draw[arr, draw=muted] ($(yemb.east)+(2.5mm,0)$) -- ++(0,-5.2mm) -| ($(yg1.south)$);
-  \draw[arr, draw=muted] ($(yg1.east)+(1.5mm,0)$) -- ++(0,-5.2mm) -| ($(yg2.south)$);
-  \node[lbl, text=muted] at ($(xg1.north)+(-12mm,6.6mm)$) {residual};
+  % one-way attention: data keys and values reach the sources, never the reverse
+  \draw[kv] (yatt.north) -- node[note, fill=white, inner sep=1pt, pos=0.5]
+    {keys, values\\ of the data} (yatt.north |- xatt.south);
 
-  % the conditioning vector modulates every adaLN and gate
-  \coordinate (cbus) at ($(temb.east)+(1mm,0)$);
-  \draw[carr] (temb.east) -- ($(xmod1.south)+(0,-3.2mm)$) -- (xmod1.south);
-  \draw[carr] ($(temb.east)+(1.2mm,0)$) |- ($(ymod1.north)+(0,3.2mm)$) -- (ymod1.north);
-  \node[lbl] at ($(xg1.south)!0.5!(yg1.north)$) {$c$ sets shift,\\ scale, gate};
+  % conditioning: nu modulates the source stream, sinks and head; nu_f the data stream
+  \def\bx{33.4}
+  \def\by{6.6}
+  \draw[cond, -] ($(cemb.east)+(0,1.6)$) -| (55.5, \bx) -- (xp2.east |- 0,\bx);
+  \draw[cond, -] ($(cemb.east)+(0,-1.6)$) -| (57.5, \by) -- (yp2.east |- 0,\by);
+  \draw[cond] (55.5, \bx) |- ($(semb.east)+(0,0)$);
+  \foreach \n in {xa1, xa2, xp1, xp2} \draw[cond] (\n.center |- 0,\bx) -- (\n.south);
+  \foreach \n in {ya1, ya2, yp1, yp2} \draw[cond] (\n.center |- 0,\by) -- (\n.north);
+  \node[small, text=orange, anchor=south west, inner sep=0.6pt] at (58.5, \bx) {$\nu$};
+  \node[small, text=orange, anchor=north west, inner sep=0.6pt] at (60.5, \by) {$\nu_f$};
 
-  % the block frame
+  % RoPE on one frequency axis, in both attentions
+  \node[note, anchor=west, align=left] at ($(xp1.west |- 0,20)+(1,0)$)
+    {rotary positions on one\\ frequency axis: a source at\\ its $f_0$ bin, a data token\\ at its centre bin};
+
+  % embeddings into the block; the sinks join the source stream
+  \draw[arr] (xemb.east) -- (xa1.west);
+  \draw[arr] ($(semb.east)+(0,1.2)$) -| ($(xin1)+(-1.4,0)$);
+  \draw[arr] (yemb.east) -- (ya1.west);
+
+  % block frame, behind everything
   \begin{scope}[on background layer]
-    \node[draw=ink2, rounded corners=3pt, line width=0.6pt, fill=white,
-          fit=(xmod1)(ymod1)(att)(xg2)(yg2), inner xsep=2.5mm, inner ysep=7.5mm] (block) {};
+    \node[draw=axis, line width=0.5pt, rounded corners=3pt, fill=white,
+          fit={(52,-12.5) ($(xp2.east)+(0,11)$)}, inner sep=1mm] (frame) {};
   \end{scope}
-  \node[font=\scriptsize\bfseries, anchor=south east] at (block.north east)
-        {MMDiT block $\times N$ \normalfont(8; scanned, rematerialised)};
+  \node[title, anchor=north west] at ($(frame.north west)+(1.2,-0.8)$)
+    {source stream \textcolor{ink2}{\normalfont per draw and step}};
+  \node[title, anchor=south west] at ($(frame.south west)+(1.2,0.8)$)
+    {data stream \textcolor{ink2}{\normalfont once per observation}};
+  \node[title, anchor=north east] at ($(frame.north east)+(-1.2,-0.8)$) {block $\times N$};
 
-  % ---- heads
-  \node[xbox, minimum width=17mm, right=5mm of xg2] (xhead) {adaLN + MLP\\ $\to 2\times 11$};
-  \node[ybox, minimum width=17mm, right=5mm of yg2] (yhead) {unpatchify};
-  \draw[arr] (xg2) -- (xhead);
-  \draw[arr] (yg2) -- (yhead);
-  \node[xbox, minimum width=22mm, right=4mm of xhead, yshift=4.2mm] (vout) {$\hat v$: velocity\\ \textit{used to sample}};
-  \node[xbox, minimum width=22mm, right=4mm of xhead, yshift=-4.4mm, fill=white] (x1out) {$\hat x_1$: endpoint (aux)};
-  \node[ybox, minimum width=22mm, right=4mm of yhead, fill=white] (yout) {$\hat y$: noiseless\\ image (aux)};
-  \draw[arr] (xhead.east) -- (vout.west);
-  \draw[arr] (xhead.east) -- (x1out.west);
-  \draw[arr] (yhead) -- (yout);
-  \node[lbl, above=0.5mm of vout] {outputs};
-
-  % legend of the two streams
-  \node[lbl, anchor=north west] at ($(yin.west |- block.south)+(0,-1.2mm)$)
-        {\textcolor{xline}{$\blacksquare$} parameter stream (equivariant over sources)\quad
-         \textcolor{yline}{$\blacksquare$} data stream\quad
-         dashed: conditioning on $c$};
+  % ----------------------------------------------------------------- head and cache
+  \node[xchip, text width=18mm, anchor=west] (head) at ($(frame.east |- 0,\ys)+(3.5,0)$)
+    {head\\[-0.6pt] {\sm\color{ink2}adaLN, SwiGLU}};
+  \draw[arr] (xp2) -- (head);
+  \node[anchor=west, inner sep=1pt, align=center] (out) at ($(head.east)+(2.4,0)$)
+    {$\hat X_1$\\ {\sm\color{ink2}$S\times 8$}};
+  \draw[arr] (head) -- (out);
+  \draw[cond] (xp2.east |- 0,\bx) -| (head.south);
+  \node[ychip, text width=18mm, anchor=west] (cache) at ($(frame.east |- 0,\yd)+(3.5,0)$)
+    {cache\\[-0.6pt] {\sm\color{ink2}keys and values\\[-1pt] of all blocks}};
+  \draw[arr] (yp2) -- (cache);
 \end{tikzpicture}
 \end{document}
