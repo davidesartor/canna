@@ -1,0 +1,355 @@
+"""Write batch-draw.html from data/ and the step check: whether drawing a training batch slows training.
+
+Stdlib only; run from the repo root:
+    uv run --frozen python reports/benchmarks/batch-draw/scripts/build_page.py
+"""
+
+import json
+from pathlib import Path
+
+HERE = Path(__file__).parents[1]
+STEP = HERE.parent / "step-time-memory/data"
+CARDS = {"NVIDIA A100-SXM4-80GB": "A100 80 GB", "NVIDIA L40S": "L40S"}
+DEVICES = {"a100": "A100 40 GB", "1080ti": "GTX 1080 Ti", "cpu": "CPU, 8 cores"}
+CONFIGS = [f"{b}-{s}" for b in ("narrow", "full") for s in ("XS", "S", "B", "L", "XL")]
+
+
+def jsonl(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def sig(v, n: int = 4):
+    return None if v is None else float(f"{v:.{n}g}")
+
+
+def simulator() -> list[dict]:
+    """The standalone simulator per device: one record per band, kind, sources and batch."""
+    out = []
+    for key, name in DEVICES.items():
+        d = json.loads((HERE / f"data/{key}.json").read_text())
+        records = [
+            dict(
+                band=r["band"].split("-")[0],
+                kind=r["kind"],
+                sources=r["sources"],
+                n=r["n"],
+                ms=sig(r["ms"]),
+            )
+            for r in d["records"]
+            if r["kind"] != "get_tdi"
+        ]
+        out.append(dict(key=key, name=name, job=d["job"], records=records))
+    return out
+
+
+def in_step() -> list[dict]:
+    """The draw timed inside the trainer's step at batch 256, the 10-22 network, fewest micro-batches that ran."""
+    rows = {}
+    for path in sorted(STEP.glob("*-bf16backbone-b256.jsonl")):
+        for r in jsonl(path):
+            if r.get("oom") or not r.get("draw_s"):
+                continue
+            key = (CARDS[r["chip"]], r["config"])
+            if key not in rows or r["micro_batches"] < rows[key]["mb"]:
+                rows[key] = dict(
+                    card=key[0],
+                    config=r["config"],
+                    mb=r["micro_batches"],
+                    step=sig(r["step_s"]),
+                    draw=sig(r["draw_s"]),
+                )
+    return list(rows.values())
+
+
+def report(data: dict) -> None:
+    """Print the numbers the README quotes."""
+    for r in sorted(
+        data["in_step"], key=lambda r: (r["card"], CONFIGS.index(r["config"]))
+    ):
+        print(
+            f"step  {r['card']:10} {r['config']:9} mb {r['mb']} draw {1e3 * r['draw']:.1f} ms of {r['step']:.3g} s = {100 * r['draw'] / r['step']:.1f}%"
+        )
+    for d in data["simulator"]:
+        at = {
+            (r["band"], r["kind"], r["sources"], r["n"]): r["ms"] for r in d["records"]
+        }
+        for band in ("narrow", "full"):
+            for src in (1, 4, 16):
+                train, bare = at.get((band, "train_sample", src, 256)), at.get(
+                    (band, "observation", src, 256)
+                )
+                ratio = f" = {train / bare:.2f}× bare" if train and bare else ""
+                print(
+                    f"sim   {d['name']:12} {band}-B src {src:2} batch 256: train {train} ms, bare {bare} ms{ratio}"
+                )
+    step = {(r["card"], r["config"]): r["step"] for r in data["in_step"]}
+    cpu = next(d for d in data["simulator"] if d["key"] == "cpu")
+    for band in ("narrow", "full"):
+        ms = next(
+            r["ms"]
+            for r in cpu["records"]
+            if (r["band"], r["kind"], r["sources"], r["n"])
+            == (band, "train_sample", 4, 256)
+        )
+        print(
+            f"cpu   {band}-B batch 256: {ms / 1e3:.3g} s = {ms / 1e3 / step['A100 80 GB', f'{band}-B']:.2f}× the A100 80 GB step"
+        )
+
+
+PAGE = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LISA batch draw</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --ref: #52514e;
+  --a80: #2a78d6; --a40: #7a5bd6; --l40s: #eb6834; --gtx: #1f9e6e; --cpu: #c98500;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --ref: #c3c2b7;
+    --a80: #3987e5; --a40: #9a80ee; --l40s: #d95926; --gtx: #2fb884; --cpu: #eda100;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.92em; }
+h1 { font-size: 24px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+.sub { color: var(--ink-2); margin: 0 0 20px; max-width: 72ch; }
+.note { color: var(--ink-2); font-size: 13px; margin: 4px 0 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; position: relative; }
+.card + .card { margin-top: 16px; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; margin: 0 0 16px; }
+.bar .k { color: var(--ink-2); font-size: 13px; margin-right: 8px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.tile .k { color: var(--ink-2); font-size: 13px; }
+.tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tile .d { color: var(--muted); font-size: 12px; }
+.tile .v.na { color: var(--muted); font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink-2); margin: 0 0 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend svg { width: auto; display: inline-block; flex: none; overflow: visible; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { font: inherit; font-size: 13px; padding: 5px 10px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--page); }
+svg { width: 100%; height: auto; display: block; overflow: visible; }
+svg text { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+svg .lbl { fill: var(--ink-2); }
+svg [data-act] { cursor: pointer; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 9px; font-size: 12px; color: var(--ink-2); box-shadow: 0 2px 8px rgba(0,0,0,0.12); display: none; z-index: 5; max-width: 300px; }
+.tip b { color: var(--ink); font-weight: 600; }
+.means ul { margin: 6px 0; padding-left: 20px; max-width: 80ch; }
+.means li { margin: 4px 0; }
+#err { display: none; background: #c2362b; color: #fff; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<div id="err"></div>
+<h1>Is drawing the training batch a bottleneck?</h1>
+<p class="note"><b>Timed on the 10-22 network.</b> The numbers were measured on 2026-10-24 before the catalogue prior, unordered sources, the x1 head and the per-source frame; the scripts follow HEAD and were not rerun. At HEAD a training batch makes its base draws with a standard normal and x1 by the chart, so it costs about one jaxgb pass per observation (the observation's own), plus 64 single-source candidate passes per observation to place its window (sample_window). The 18-pass accounting below is the 10-22 one.</p>
+<p class="sub">Each training step draws a fresh batch from the simulator (jaxgb in float64) on the same device as the network. The draw is timed alone, per device and batch, and inside the trainer's step at batch 256.</p>
+<div class="bar">
+  <div><span class="k">Band</span><span class="seg" id="band"></span></div>
+  <div><span class="k">What</span><span class="seg" id="kind"></span></div>
+  <div><span class="k">Sources</span><span class="seg" id="src"></span></div>
+  <div><span class="k">Trainer card</span><span class="seg" id="card"></span></div>
+</div>
+<div class="tiles" id="tiles"></div>
+<div class="card">
+  <h2>How long does a draw take, against the batch?</h2>
+  <p class="note">The simulator alone at the band's size B, one jitted vmapped call per batch, best of 5. As measured on the 10-22 network, a training batch ran 18 jaxgb passes per observation (16 base draws, each rescaled to its SNR, plus the observation's 2); a bare observation ran 2. With a training batch of 4 sources, the diamond is the same draw inside the trainer card's step and the horizontal line is that step.</p>
+  <div class="legend" id="lg-sim"></div>
+  <div id="p-sim"></div><div class="tip"></div>
+</div>
+<div class="card">
+  <h2>How much of the trainer's step is the draw?</h2>
+  <p class="note">The draw's share of each config's step at batch 256 observations (the 10-22 default), bf16 backbone, the 10-22 network. The draw depends only on the band; the step grows with the size. Click a bar to pick its band and card.</p>
+  <div class="legend" id="lg-share"></div>
+  <div id="p-share"></div><div class="tip"></div>
+</div>
+<div class="card means">
+  <h2>What this means</h2>
+  __MEANS__
+</div>
+</main>
+<script>
+window.onerror = (msg, src, line) => { const e = document.getElementById("err"); e.style.display = "block"; e.textContent = `Script error: ${msg} (line ${line})`; };
+const D = __DATA__;
+const COLOR = {"A100 80 GB": "var(--a80)", "A100 40 GB": "var(--a40)", "L40S": "var(--l40s)", "GTX 1080 Ti": "var(--gtx)", "CPU, 8 cores": "var(--cpu)"};
+const CARD_ID = {"A100 80 GB": "a80", "L40S": "l40s"};
+const KINDS = [["train_sample", "training batch"], ["observation", "bare observations"]];
+const KIND_NAME = Object.fromEntries(KINDS);
+const S = {band: "full", kind: "train_sample", src: "4", card: "A100 80 GB"};
+const marks = {};
+
+const fmtS = v => v >= 60 ? (v / 60).toFixed(1) + " min" : v >= 10 ? v.toFixed(1) + " s" : v >= 1 ? v.toFixed(2) + " s" : v >= 0.01 ? (1e3 * v).toFixed(0) + " ms" : (1e3 * v).toFixed(1) + " ms";
+const fmtP = v => (100 * v).toFixed(100 * v >= 10 ? 0 : 1) + "%";
+const fmtN = v => v >= 1e3 ? (v / 1e3).toFixed(v % 1e3 ? 1 : 0) + "k" : String(v);
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+const act = o => esc(JSON.stringify(o));
+const sim = (dev, band, kind, src, n) => (D.simulator.find(d => d.key === dev).records.find(r => r.band === band && r.kind === kind && r.sources === src && r.n === n) || {}).ms;
+const stepOf = (card, config) => D.in_step.find(r => r.card === card && r.config === config);
+
+// controls
+function seg(id, items, key) {
+  const host = document.getElementById(id);
+  host.innerHTML = items.map(([v, text]) => `<button type="button" data-v="${v}">${text}</button>`).join("");
+  marks[key] = () => host.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === String(S[key]))));
+  host.querySelectorAll("button").forEach(b => b.addEventListener("click", () => { S[key] = b.dataset.v; schedule(); }));
+}
+seg("band", [["narrow", "narrow"], ["full", "full"]], "band");
+seg("kind", KINDS, "kind");
+seg("src", [["1", "1"], ["4", "4"], ["16", "16"]], "src");
+seg("card", Object.keys(CARD_ID).map(c => [c, c]), "card");
+
+function writeHash() {
+  history.replaceState(null, "", "#" + new URLSearchParams({band: S.band, kind: S.kind, src: S.src, card: CARD_ID[S.card]}).toString());
+}
+function readHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (["narrow", "full"].includes(h.get("band"))) S.band = h.get("band");
+  if (KIND_NAME[h.get("kind")]) S.kind = h.get("kind");
+  if (["1", "4", "16"].includes(h.get("src"))) S.src = h.get("src");
+  const card = Object.keys(CARD_ID).find(c => CARD_ID[c] === h.get("card")); if (card) S.card = card;
+}
+
+// clicks and hover on anything carrying data-act / data-tip
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-act]");
+  if (!t) return;
+  Object.assign(S, JSON.parse(t.dataset.act));
+  schedule();
+});
+document.addEventListener("mousemove", e => {
+  document.querySelectorAll(".tip").forEach(t => { t.style.display = "none"; });
+  const t = e.target.closest("[data-tip]"), card = t && t.closest(".card");
+  if (!t || !card) return;
+  const tip = card.querySelector(".tip"), box = card.getBoundingClientRect();
+  tip.innerHTML = t.dataset.tip;
+  tip.style.display = "block";
+  tip.style.left = Math.min(e.clientX - box.left + 14, box.width - tip.offsetWidth - 8) + "px";
+  tip.style.top = e.clientY - box.top + 14 + "px";
+});
+
+function tiles() {
+  const tile = (k, v, d, cls = "") => `<div class="tile"><div class="k">${k}</div><div class="v ${cls}">${v}</div><div class="d">${d}</div></div>`;
+  const cfgB = `${S.band}-B`, r = stepOf(S.card, cfgB), src = Number(S.src), out = [];
+  out.push(r ? tile("Draw inside the step", fmtS(r.draw), `${cfgB}, ${S.card}, batch 256, 4 sources`) : tile("Draw inside the step", "Not measured", "", "na"));
+  out.push(r ? tile("Share of the step", fmtP(r.draw / r.step), `of ${fmtS(r.step)} for ${cfgB}`) : tile("Share of the step", "Not measured", "", "na"));
+  const train = sim("a100", S.band, "train_sample", src, 256), bare = sim("a100", S.band, "observation", src, 256);
+  out.push(train && bare ? tile("Training batch over bare", (train / bare).toFixed(1) + "×", `${S.band}-B, ${src} source${src > 1 ? "s" : ""}, 256 observations, A100 40 GB`) : tile("Training batch over bare", "Not measured", `${S.band}-B, ${src} sources at 256 on the A100 40 GB`, "na"));
+  const cpu = sim("cpu", S.band, "train_sample", 4, 256);
+  out.push(cpu && r ? tile("On 8 CPU cores", fmtS(cpu / 1e3), `a training batch of 256, ${(cpu / 1e3 / r.step).toFixed(1)}× the ${S.card}'s whole ${cfgB} step`) : tile("On 8 CPU cores", "Not measured", "", "na"));
+  document.getElementById("tiles").innerHTML = out.join("");
+}
+
+// log-log chart of time per call against observations per call
+const M = {l: 60, r: 16, t: 10, b: 40};
+function simPanel() {
+  const host = document.getElementById("p-sim"), src = Number(S.src), cfgB = `${S.band}-B`;
+  const lines = D.simulator.map(d => ({d, pts: d.records.filter(r => r.band === S.band && r.kind === S.kind && r.sources === src).sort((a, b) => a.n - b.n)})).filter(l => l.pts.length);
+  const r = stepOf(S.card, cfgB), overlay = S.kind === "train_sample" && src === 4 && r;
+  const vals = lines.flatMap(l => l.pts.map(p => p.ms)).concat(overlay ? [1e3 * r.draw, 1e3 * r.step] : []);
+  const lo = 10 ** Math.floor(Math.log10(Math.min(...vals))), hi = 10 ** Math.ceil(Math.log10(Math.max(...vals)));
+  const W = Math.max(300, host.clientWidth), H = 300, x0 = 10, x1 = 1e5;
+  const X = v => M.l + (Math.log10(v) - Math.log10(x0)) / (Math.log10(x1) - Math.log10(x0)) * (W - M.l - M.r);
+  const Y = v => M.t + (Math.log10(hi) - Math.log10(v)) / (Math.log10(hi) - Math.log10(lo)) * (H - M.t - M.b);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="simulator time against batch">`;
+  for (let e = Math.log10(lo); e <= Math.log10(hi); e++) s += `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(10 ** e)}" y2="${Y(10 ** e)}" stroke="var(--grid)"/><text x="${M.l - 6}" y="${Y(10 ** e) + 4}" text-anchor="end">${fmtS(10 ** e / 1e3)}</text>`;
+  for (let e = 1; e <= 5; e++) s += `<line x1="${X(10 ** e)}" x2="${X(10 ** e)}" y1="${H - M.b}" y2="${H - M.b + 4}" stroke="var(--axis)"/><text x="${X(10 ** e)}" y="${H - M.b + 16}" text-anchor="middle">${fmtN(10 ** e)}</text>`;
+  s += `<line x1="${M.l}" x2="${W - M.r}" y1="${H - M.b}" y2="${H - M.b}" stroke="var(--axis)"/>`;
+  s += `<text x="${(M.l + W - M.r) / 2}" y="${H - 6}" text-anchor="middle">observations per call</text>`;
+  s += `<text transform="translate(12 ${(M.t + H - M.b) / 2}) rotate(-90)" text-anchor="middle">time per call</text>`;
+  s += `<line x1="${X(256)}" x2="${X(256)}" y1="${M.t}" y2="${H - M.b}" stroke="var(--ref)" stroke-dasharray="3 3"/>`;
+  if (overlay) s += `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(1e3 * r.step)}" y2="${Y(1e3 * r.step)}" stroke="var(--ref)"/><text class="lbl" x="${W - M.r - 4}" y="${Y(1e3 * r.step) - 4}" text-anchor="end">${cfgB} step, ${S.card}, batch 256</text>`;
+  for (const {d, pts} of lines) {
+    s += `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${X(p.n).toFixed(1)},${Y(p.ms).toFixed(1)}`).join("")}" fill="none" stroke="${COLOR[d.name]}" stroke-width="2"/>`;
+    for (const p of pts) s += `<circle cx="${X(p.n)}" cy="${Y(p.ms)}" r="3.5" fill="${COLOR[d.name]}" data-tip="${esc(`<b>${d.name}</b><br>${cfgB}, ${KIND_NAME[S.kind]}, ${src} source${src > 1 ? "s" : ""}<br>${p.n.toLocaleString("en")} observations: ${fmtS(p.ms / 1e3)}`)}"/>`;
+  }
+  if (overlay) {
+    const cx = X(256), cy = Y(1e3 * r.draw), q = 6;
+    s += `<path d="M${cx},${cy - q}L${cx + q},${cy}L${cx},${cy + q}L${cx - q},${cy}Z" fill="${COLOR[S.card]}" stroke="var(--surface)" data-tip="${esc(`<b>inside the ${S.card} step</b><br>${cfgB}, batch 256<br>draw ${fmtS(r.draw)}, ${fmtP(r.draw / r.step)} of the step`)}"/>`;
+  }
+  host.innerHTML = s + "</svg>" + (lines.length ? "" : `<p class="note">No simulator record for ${cfgB} at ${src} sources.</p>`);
+  const sw = c => `<svg width="24" height="10"><line x1="1" x2="23" y1="5" y2="5" stroke="${c}" stroke-width="2"/></svg>`;
+  document.getElementById("lg-sim").innerHTML = lines.map(l => `<span>${sw(COLOR[l.d.name])}${l.d.name}</span>`).join("") + (overlay ? `<span><svg width="12" height="12"><path d="M6,0L12,6L6,12L0,6Z" fill="${COLOR[S.card]}"/></svg>inside the ${S.card} step</span>` : "");
+}
+
+// horizontal bars: draw share per config, one bar per trainer card
+function sharePanel() {
+  const host = document.getElementById("p-share"), cards = Object.keys(CARD_ID);
+  const W = Math.max(300, host.clientWidth), barH = 9, rowH = cards.length * barH + 8, L0 = 80, H = D.configs.length * rowH + 40;
+  const top = Math.min(1, 1.15 * Math.max(...D.in_step.map(r => r.draw / r.step)));
+  const X = v => L0 + v / top * (W - L0 - 50);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="draw share of the step">`;
+  for (let k = 0; k <= 4; k++) { const v = k * top / 4; s += `<line x1="${X(v)}" x2="${X(v)}" y1="4" y2="${H - 30}" stroke="var(--grid)"/><text x="${X(v)}" y="${H - 14}" text-anchor="middle">${fmtP(v)}</text>`; }
+  D.configs.forEach((c, i) => {
+    const y = 6 + i * rowH, band = c.split("-")[0];
+    s += `<text class="lbl" x="${L0 - 8}" y="${y + rowH / 2}" text-anchor="end" font-weight="${band === S.band && c.endsWith("-B") ? 700 : 400}">${c}</text>`;
+    cards.forEach((card, j) => {
+      const r = stepOf(card, c), yy = y + j * barH;
+      if (!r) return;
+      const tip = `<b>${c}, ${card}</b><br>draw ${fmtS(r.draw)} of a ${fmtS(r.step)} step: ${fmtP(r.draw / r.step)}${r.mb > 1 ? `<br>${r.mb} micro-batches` : ""}`;
+      s += `<rect x="${L0}" y="${yy}" width="${Math.max(X(r.draw / r.step) - L0, 0.5)}" height="${barH - 1}" fill="${COLOR[card]}" opacity="${band === S.band && card === S.card ? 1 : 0.5}" data-tip="${esc(tip)}" data-act="${act({band, card})}"/>`;
+      s += `<text x="${X(r.draw / r.step) + 4}" y="${yy + barH - 1}">${fmtP(r.draw / r.step)}</text>`;
+    });
+  });
+  host.innerHTML = s + "</svg>";
+  document.getElementById("lg-share").innerHTML = cards.map(c => `<span><svg width="14" height="12"><rect width="14" height="12" fill="${COLOR[c]}"/></svg>${c}</span>`).join("");
+}
+
+function render() {
+  for (const key of Object.keys(marks)) marks[key]();
+  tiles(); simPanel(); sharePanel();
+  writeHash();
+}
+let pending = false;
+function schedule() {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => { pending = false; render(); });
+}
+addEventListener("resize", schedule);
+addEventListener("hashchange", () => { readHash(); schedule(); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", schedule);
+readHash();
+render();
+</script>
+</body>
+</html>
+"""
+
+MEANS = """
+<ul>
+<li><b>The draw matters only for small full-band networks.</b> On the A100 80 GB the full-band draw takes 41 ms: 11% of full-B's step and 31% of full-XS's (41% on the L40S). In the narrow band it is under 5% from size S up.</li>
+<li><b>The base draws carried the cost (10-22 network only).</b> 16 of a training observation's 18 jaxgb passes rescaled the base draws to their SNR, so a training batch of 256 cost 6.8× its bare observations for full-B on an A100. At HEAD the base draws are standard normal and carry no jaxgb pass, so this ratio no longer holds.</li>
+<li><b>Keep the draw on the GPU.</b> 8 CPU cores take 0.28 s for a narrow-B batch, 2.1× the A100 80 GB's whole narrow-B step, and 6.5 s for full-B, 17× its step.</li>
+</ul>
+"""
+
+
+def main() -> None:
+    data = dict(configs=CONFIGS, simulator=simulator(), in_step=in_step())
+    report(data)
+    page = PAGE.replace("__MEANS__", MEANS).replace(
+        "__DATA__", json.dumps(data, separators=(",", ":"))
+    )
+    out = HERE / "batch-draw.html"
+    out.write_text(page)
+    print(f"wrote {out} ({len(page) / 1024:.0f} KiB)")
+
+
+if __name__ == "__main__":
+    main()
