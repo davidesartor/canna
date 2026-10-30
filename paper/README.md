@@ -1,110 +1,52 @@
 # Paper draft (ICML 2026 template)
 
-The main-text sections are an empty skeleton on purpose. Everything drafted so far is in
-the appendices, mathematical details included, to be moved into the main text section by
-section. Each skeleton section lists in comments the appendix labels it draws on.
+`main.tex` inputs the main text from `sections/*.tex` (Results still red TODOs) and the appendices from `appendix/*.tex`.
 
-## Working on it
+## Numbers and figures
 
-The figures are in git, as light vector PDFs, so after a pull you only compile:
+Never type a number by hand. `scripts/numbers_<appendix>.py` writes `numbers/<appendix>.tex`,
+one macro per number (`\ChartMcMedian`-style, prefixed by the appendix), all of which
+`main.tex` inputs in its preamble, so the abstract and any appendix can use them; `scripts/fig_<name>.py` writes `figures/<name>.pdf`. The
+scripts read only `reports/*/data` and the lisa configs (`canna.lisa.config.load`).
 
-```bash
-git pull
-cd paper
-latexmk -pdf main.tex
-```
-
-Edit the `.tex` files and commit them:
+`scripts/make_figures.sh [--pdf] [script ...]` runs every script (or the named ones) and
+recompiles `figures/src/architecture.tex` (xelatex, Inter from `fonts/`) when it changed. The
+scripts import JAX, so run it in a CPU job, from the repo root:
 
 ```bash
-git add paper/            # .gitignore keeps data/, main.pdf and LaTeX logs out
-git commit -m "..."
-git push
+sbatch --partition=cpu,cpu-preempt --account=pi_mehuber_umass_edu --qos=normal \
+    paper/scripts/make_figures.sbatch
 ```
 
-What git tracks: the `.tex` sources, `references.bib`, the style files, the figure scripts
-(`scripts/`), the TikZ source of the diagram (`figures/src/`), the figures they make
-(`figures/*.pdf`, under 1 MB in all) and the generated tables (`tables/`, text). What it
-ignores (see `.gitignore`): the input data (`data/`), the png previews, `main.pdf` and the
-LaTeX build products.
+Commit a script together with the figures and numbers it changed.
 
-**Rebuilding a figure.** The whole pipeline is committed, but its inputs (`data/`: the flow,
-Fisher and MCMC draws, the scorecards, the training logs) are not: they live with the run
-outputs on the maintainer's PC. There, after changing a script or importing a run:
+Six report data folders the scripts read are gitignored because they regenerate in minutes, so
+on a fresh clone run their CPU jobs first (from the repo root, `source slurm/unity.env`):
 
 ```bash
-./make_figures.sh          # figures/*.pdf and tables/*.tex, a few minutes on the CPU
-./make_figures.sh fig_mcmc # or only the named scripts
+for name in frequency chirp-mass amplitude sky polarization; do                        # reports/prior/<name>/data/<name>.json
+    sbatch $CANNA_SBATCH_CPU reports/prior/$name/scripts/$name.sbatch
+done
+sbatch $CANNA_SBATCH_CPU reports/diagnostics/forward-model/scripts/forward-model.sbatch  # reports/diagnostics/forward-model/data/forward-model.json
 ```
 
-and commit the script with the PDFs (or tables) it changed. Keep the figures light: vector
-only, and posteriors as contour levels (`plot_datapoints=False`), never a scatter of the
-draws or a rasterized panel. A figure should stay well under 200 kB.
+The other `reports/*/data` the scripts read (benchmarks, mcmc, strub-source, test-power) are
+committed.
 
-**Requirements** (for `make_figures.sh`). The repository's Python environment and a TeX
-distribution with `pdflatex` and `latexmk` (the diagram also uses `tgheros` and
-`mathastext`, both in TeX Live). The script uses the repository's `.venv` if there is one,
-and leaves it as it is; if a pull changed `uv.lock`, update it with `uv sync` first. With
-no `.venv`, it runs [uv](https://docs.astral.sh/uv/) (`uv run --frozen`), which creates the
-environment from `uv.lock` on the first run. Any other environment where the repository is
-installed (`pip install -e .`) works through `PYTHON=/path/to/python ./make_figures.sh`.
-The figure scripts run JAX on the CPU, so no GPU is needed.
+## Building
+
+`figures/` and `numbers/` are committed, so `cd paper && latexmk` needs only TeX; `.latexmkrc`
+puts `main.pdf` and every build product in `build/` (ignored).
 
 ## Layout
 
 | path | what |
 |---|---|
-| `main.tex` | the ICML 2026 example paper, adapted: working title, authors (blind), draft abstract, `\input`s |
-| `macros.tex` | notation, plus drafting aids: `\tbd`, `\placeholderfig`, `\draftnote` |
-| `sections/` | main text: introduction, problem, method, experiments, conclusions (headings only) |
-| `appendix/` | the drafted material, A (notation), B (related work) to O (comparison with MCMC) |
-| `references.bib` | checked against the arXiv API (and INSPIRE-HEP for the related-work entries) |
-| `make_figures.sh` | rebuilds `figures/` (and `tables/`) from `data/`; `--pdf` also compiles the paper |
-| `figures/*.pdf` | the figures, committed (vector, contours only) |
-| `scripts/fig_*.py` | one script per figure; `style.py` (palette, sizes), `data.py` (inputs), `tables.py` |
-| `scripts/import_data.py` | maintainer tool: new run outputs into `data/` (see below) |
-| `figures/src/architecture.tex` | the TikZ network diagram |
-| `tables/*.tex` | generated by `scripts/tables.py` from the scorecards; do not edit by hand |
-| `data/` | everything the scripts read: per-epoch training logs, scorecards, eval draws (local, not in git) |
-| `icml2026.sty`, `.bst`, `algorithm*.sty`, `fancyhdr.sty` | the official style files |
-
-## Data
-
-`data/` holds compact copies of the run outputs (`outputs/`, and the cluster). Like them it
-stays on the maintainer's PC, out of git (until 2026-10-12 it was committed, so older
-commits still carry it):
-
-- `data/logs/<job>.csv`: the per-epoch losses of each training job, nothing else from the
-  slurm logs. `scripts/data.py` (`LOGS`) says which jobs make up each run.
-- `data/scorecards/*.npz`: the per-source scorecards; `coord.npy` is each scored XS source's
-  f0 flow coordinate, and `coord_B.npz` the same for B, with the bins per unit of the
-  coordinate and its bfloat16 cell (`outputs/scorecards/positions_B.py`).
-- `data/eval/`: the final model's flow draws and the Fisher draws of the eval injections
-  the figures show (1, 5 and 9).
-- `data/mcmc/`: the flow-against-MCMC summaries of eval windows 9 and 5
-  (`lisa_checks/compare_mcmc.py`): per-source width ratios, coverage, seed agreement, and
-  4000 MCMC draws of each window's loudest source.
-
-To bring in a new run, from `paper/scripts`:
-
-```bash
-python import_data.py logs path/to/canna-lisa-<job>.out          # -> data/logs/<job>.csv
-cp ../../outputs/scorecards/<run>.npz ../data/scorecards/
-python import_data.py eval <eval_draws.npz> <fisher.npz> --injections 1 5 9
-python import_data.py mcmc ../../outputs/mcmc/compare_window9.npz ../../outputs/mcmc/compare_window5.npz
-```
-
-then reference it in the figure scripts, run `./make_figures.sh`, and commit the scripts with
-the figures and tables they changed (`data/` stays local). `scripts/data.py` rebuilds the ten
-eval injections with `eval.py`'s keys on first use and checks them against the stored truths
-(cache: `data/eval/xs_eval_injections.npz`).
-
-## Placeholders
-
-- `\tbd` (red) marks a value a pending run fills in. B1 and the flow-vs-MCMC comparison are
-  filled (2026-10-10); what is left is the outcome of the XS test of position features, R1
-  (end of `appendix/results-b.tex`, the last sentence of the abstract, and the last item of
-  `appendix/related-work.tex`).
-- `\placeholderfig` is an empty framed figure slot.
-- `\draftnote` puts a yellow margin note for the authors. Switch all of them off with the
-  `disable` option of `todonotes` in `main.tex`.
+| `main.tex` | the template, packages and `\input`s |
+| `macros.tex` | notation, units, acronyms |
+| `sections/` | the main text |
+| `appendix/` | the appendices |
+| `scripts/` | `fig_*.py`, `numbers_*.py`, `style.py` (paths, palette, `save`, `save_numbers`), `make_figures.sh`/`.sbatch` |
+| `numbers/`, `figures/` | generated; `figures/src/` holds the TikZ source |
+| `references.bib` | checked against arXiv and INSPIRE-HEP |
+| `icml2026.*`, `algorithm*.sty`, `fancyhdr.sty`, `siunitx*` | style files: ICML's, and siunitx 3.3.10 vendored |
