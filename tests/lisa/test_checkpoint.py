@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from canna.lisa import config
-from canna.lisa.optim import eval_flow, routing_report
+from canna.lisa.optim import routing_report
 from canna.lisa.train import (
     checkpoint_manager,
     load_trained,
@@ -64,29 +64,27 @@ def test_restore_brings_back_the_weights_the_optimizer_state_and_the_histories(
     assert same(restored.flow, state.flow)
     opt = lambda s: [a for a in jax.tree.leaves(s.opt_state) if eqx.is_inexact_array(a)]
     assert all(jnp.array_equal(a, b) for a, b in zip(opt(restored), opt(state)))
-    # and so the averaged weights the eval uses come back too
-    assert same(
-        eval_flow(restored.flow, restored.opt_state),
-        eval_flow(state.flow, state.opt_state),
-    )
 
 
-def test_load_trained_picks_the_training_or_the_averaged_weights(tmp_path):
+def test_load_trained_picks_the_last_or_the_best_checkpoint(tmp_path):
     cfg = small_config(output_dir=tmp_path, run="test-run")
-    state = moved_state(cfg)
+    best_state = moved_state(cfg)
+    last_state = best_state._replace(
+        flow=jax.tree.map(
+            lambda p: p + 0.5 if eqx.is_inexact_array(p) else p, best_state.flow
+        )
+    )
+    with checkpoint_manager(cfg.run_dir, folder="best") as best:
+        save_checkpoint(best, best_state, 2, {})
     with checkpoint_manager(cfg.run_dir) as checkpoints:
-        save_checkpoint(checkpoints, state, 3, HISTORIES)
+        save_checkpoint(checkpoints, last_state, 3, HISTORIES)
 
-    _, training, epoch = load_trained(
-        small_config(output_dir=tmp_path, run="test-run", weights="training")
+    _, last, last_epoch = load_trained(cfg)
+    _, best, best_epoch = load_trained(
+        small_config(output_dir=tmp_path, run="test-run", weights="best")
     )
-    _, average, _ = load_trained(
-        small_config(output_dir=tmp_path, run="test-run", weights="average")
-    )
-    assert epoch == 3
-    assert same(training, state.flow)
-    assert same(average, eval_flow(state.flow, state.opt_state))
-    assert not same(training, average)
+    assert (last_epoch, best_epoch) == (3, 2)
+    assert same(last, last_state.flow) and same(best, best_state.flow)
 
 
 def test_a_resumed_run_takes_the_same_steps_as_an_unbroken_one(tmp_path):
@@ -117,17 +115,7 @@ def test_every_backbone_parameter_is_on_muon():
     assert routing_report(state.flow).startswith("[optimizer] Muon")
 
 
-def test_the_averaged_weights_start_at_the_initial_ones():
-    _, _, state = setup(small_config())
-    assert all(
-        jnp.allclose(a, b)
-        for a, b in zip(
-            params(eval_flow(state.flow, state.opt_state)), params(state.flow)
-        )
-    )
-
-
-def test_warm_start_copies_the_averaged_weights(tmp_path):
+def test_warm_start_copies_the_latest_weights(tmp_path):
     from canna.lisa.train import warm_start
 
     load = lambda **kw: config.load("narrow-B", bf16="none", output_dir=tmp_path, network=NETWORK, **kw)
@@ -137,8 +125,7 @@ def test_warm_start_copies_the_averaged_weights(tmp_path):
     state = moved_state(source)
     with checkpoint_manager(source.run_dir) as checkpoints:
         save_checkpoint(checkpoints, state, 2, {})
-    averaged = eval_flow(state.flow, state.opt_state)
 
     target = load(init_from="source")
     started = warm_start(target, setup(target)[2].flow)
-    assert same(started, averaged)
+    assert same(started, state.flow)

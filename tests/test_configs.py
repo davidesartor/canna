@@ -134,17 +134,22 @@ def test_config_builds_the_problem_and_the_network(package, path):
 def test_config_problem_and_network_agree_on_the_conditioning_shape(package, path):
     # the network is shaped from one problem sample, so a mismatch shows up as a
     # shape error the first time the flow is actually called
-    _, flow, sample = build(package, path)
+    problem, flow, sample = build(package, path)
 
-    # point has no reconstruction head and lisa's one output is z and log σ² per coordinate: both return one array
+    # point has no reconstruction head and lisa's one output is z1's mean and log std per coordinate: both return one array
     if package == "point":
         assert flow(sample.xt, sample.t, sample.y).shape == sample.dx.shape
     elif package == "lisa":
-        out = eqx.filter_eval_shape(
-            lambda net, s: net(s.xt[0], s.t[0], s.y, s.f), flow, sample
-        )
-        assert sample.x_target.shape == sample.dx.shape[1:]
-        assert out.shape == (*sample.x_target.shape[:-1], 2 * sample.x_target.shape[-1])
+        from canna.lisa.network import reference_frame
+
+        def call(net, s):
+            delta, cache = net.encode(s.y, s.f)
+            frame = reference_frame(problem, delta, s.f)
+            return net(s.z0[0], s.t[0], frame, s.f, cache)
+
+        out = eqx.filter_eval_shape(call, flow, sample)
+        assert sample.z0.shape[1:] == sample.x1.shape
+        assert out.shape == (*sample.x1.shape[:-1], 2 * sample.x1.shape[-1])
     else:
         outs = flow(*(sample.xt, sample.t, sample.y, *sample[6:]))
         dx, x_target, y_target = outs

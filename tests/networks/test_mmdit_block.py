@@ -102,7 +102,7 @@ def test_mmdit_decode_with_rope_depends_on_relative_position_only():
             jnp.cos(2 * jnp.pi * p[:, None] / periods),
             jnp.sin(2 * jnp.pi * p[:, None] / periods),
         )
-        return net.decode(x, c, net.encode(y, c, rope(py)), rope(px))
+        return net.decode(x, c, net.encode(y, c, rope(py))[0], rope(px))
 
     px, py = jnp.array([0.4, 3.0, 5.5, 8.0]), jnp.arange(6.0) * 1.7
     out = run(px, py)

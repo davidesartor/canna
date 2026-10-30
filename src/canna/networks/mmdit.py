@@ -1,4 +1,5 @@
 from functools import partial
+from itertools import accumulate
 from jaxtyping import Array, Float, Key
 import jax
 import jax.numpy as jnp
@@ -23,6 +24,39 @@ def rotate(
     return jnp.concat([a * cos - b * sin, a * sin + b * cos], axis=-1).astype(z.dtype)
 
 
+def gta_attention(
+    q: Float[Array, "N H K"],
+    positioned: list[tuple[Float[Array, "_ H K"], Float[Array, "_ H K"]]],
+    free: list[tuple[Float[Array, "_ H K"], Float[Array, "_ H K"]]],
+    rope=None,
+) -> Float[Array, "N H K"]:
+    """One softmax of q over every (k, v) group, never concatenated: under a vmap over draws a shared
+    cache would otherwise be copied once per draw. GTA: the positioned values arrive rotated, so the
+    first queries (as many as rope has rows) turn their sum back by their own angle; the free values
+    (sinks, registers) carry no position and are read as they are."""
+    groups = positioned + free
+    logits = jnp.concat(
+        [
+            jnp.einsum("nhk,mhk->hnm", q, k, preferred_element_type=jnp.float32)
+            for k, _ in groups
+        ],
+        axis=-1,
+    )
+    weights = jax.nn.softmax(logits * q.shape[-1] ** -0.5, axis=-1).astype(q.dtype)
+    weights = jnp.split(
+        weights, list(accumulate(k.shape[0] for k, _ in groups))[:-1], axis=-1
+    )
+    read = lambda ws, vs: sum(
+        jnp.einsum("hnm,mhk->nhk", w, v) for w, (_, v) in zip(ws, vs)
+    )
+    h = read(weights[: len(positioned)], positioned)
+    if rope is not None:
+        cos, sin = rope
+        n = cos.shape[0]
+        h = h.at[:n].set(rotate(h[:n], cos, -sin))
+    return h + read(weights[len(positioned) :], free)
+
+
 class MultiStreamAttention(eqx.Module):
     num_heads: int = eqx.field(static=True)
     attention_dtype: jnp.dtype | None = eqx.field(static=True)
@@ -33,6 +67,8 @@ class MultiStreamAttention(eqx.Module):
     qk_gain: Float[Array, " H"] | None
     qkv_proj_s: eqx.nn.Linear | None
     out_proj_s: eqx.nn.Linear | None
+    qkv_proj_r: eqx.nn.Linear | None
+    out_proj_r: eqx.nn.Linear | None
 
     def __init__(
         self,
@@ -41,6 +77,7 @@ class MultiStreamAttention(eqx.Module):
         use_bias: bool = False,
         qk_gain: bool = False,
         sinks: bool = False,
+        registers: bool = False,
         attention_dtype: jnp.dtype | None = None,
         last: bool = False,
         *,
@@ -79,7 +116,18 @@ class MultiStreamAttention(eqx.Module):
             if sinks
             else (None, None)
         )
-        # the one-way stack's last block: nothing reads its y or sink outputs
+        register_keys = jr.split(jr.fold_in(key, 2), 2)
+        self.qkv_proj_r, self.out_proj_r = (
+            (
+                stacked_linear(
+                    3, dim, dim, use_bias=use_bias, key=register_keys[0], **kwargs
+                ),
+                eqx.nn.Linear(dim, dim, use_bias, key=register_keys[1], **kwargs),
+            )
+            if registers
+            else (None, None)
+        )
+        # the one-way stack's last block: nothing reads its y or sink outputs (its registers' it does)
         if last:
             self.out_proj_y = self.out_proj_s = None
 
@@ -147,6 +195,7 @@ class MultiStreamAttention(eqx.Module):
 
 
 class MMDiTBlock(eqx.Module):
+    registers: int = eqx.field(static=True)
     mod_x_attn: Modulation
     mod_y_attn: Modulation
     mod_x_mlp: Modulation
@@ -157,6 +206,9 @@ class MMDiTBlock(eqx.Module):
     mod_s_attn: Modulation | None
     mod_s_mlp: Modulation | None
     mlp_s: FeedForward | None
+    mod_r_attn: Modulation | None
+    mod_r_mlp: Modulation | None
+    mlp_r: FeedForward | None
 
     def __init__(
         self,
@@ -165,6 +217,7 @@ class MMDiTBlock(eqx.Module):
         expand: int,
         qk_gain: bool = False,
         sinks: bool = False,
+        registers: int = 0,
         attention_dtype: jnp.dtype | None = None,
         last: bool = False,
         *,
@@ -172,6 +225,7 @@ class MMDiTBlock(eqx.Module):
         **kwargs,
     ):
         keys = iter(jr.split(key, 7))
+        self.registers = registers
         self.mod_x_attn = Modulation(dim, key=next(keys), **kwargs)
         self.mod_y_attn = Modulation(dim, key=next(keys), **kwargs)
         self.mod_x_mlp = Modulation(dim, key=next(keys), **kwargs)
@@ -181,6 +235,7 @@ class MMDiTBlock(eqx.Module):
             num_heads,
             qk_gain=qk_gain,
             sinks=sinks,
+            registers=registers > 0,
             attention_dtype=attention_dtype,
             last=last,
             key=next(keys),
@@ -198,7 +253,17 @@ class MMDiTBlock(eqx.Module):
             if sinks
             else (None, None, None)
         )
-        # the one-way stack's last block: its y and sink updates would reach nothing
+        register_keys = iter(jr.split(jr.fold_in(key, 2), 3))
+        self.mod_r_attn, self.mod_r_mlp, self.mlp_r = (
+            (
+                Modulation(dim, key=next(register_keys), **kwargs),
+                Modulation(dim, key=next(register_keys), **kwargs),
+                FeedForward(dim, expand * dim, dim, key=next(register_keys), **kwargs),
+            )
+            if registers
+            else (None, None, None)
+        )
+        # the one-way stack's last block: its y and sink updates would reach nothing (its registers' do)
         if last:
             self.mod_y_mlp = self.mlp_y = self.mod_s_mlp = self.mlp_s = None
 
@@ -222,65 +287,74 @@ class MMDiTBlock(eqx.Module):
         return x, y
 
     def encode(
-        self, y: Float[Array, "M D"], c: Float[Array, " D"], rope=None
+        self,
+        y: Float[Array, "M D"],
+        c: Float[Array, " D"],
+        rope=None,
+        r: Float[Array, "R D"] | None = None,
     ) -> tuple[
-        Float[Array, "M D"], tuple[Float[Array, "M H K"], Float[Array, "M H K"]]
+        Float[Array, "M D"],
+        Float[Array, "R D"] | None,
+        tuple[Float[Array, "M+R H K"], Float[Array, "M+R H K"]],
     ]:
-        """The y stream alone, attending to itself only: its updated tokens (as is in a last block) and this block's y keys and values."""
+        """The y stream and the registers r, attending to each other only: their updated tokens (y as is in a
+        last block) and this block's keys and values, y's then r's."""
         attention = self.attention
+        m = y.shape[-2]
         hy, gate = self.mod_y_attn(y, c)
         q, k, v = attention.heads(attention.qkv_proj_y, hy, rope)
-        dtype = attention.attention_dtype or v.dtype
-        kv = (k.astype(dtype), v.astype(dtype))
+        out_dtype = v.dtype
+        cast = lambda *a: tuple(
+            b.astype(attention.attention_dtype or out_dtype) for b in a
+        )
+        if r is None:
+            kv = cast(k, v)
+            h = attention.attend(q, k, v, rope)
+        else:
+            # the registers carry no position: they join y's tokens unrotated
+            hr, gate_r = self.mod_r_attn(r, c)
+            q_r, k_r, v_r = attention.heads(attention.qkv_proj_r, hr)
+            q, k, v, q_r, k_r, v_r = cast(q, k, v, q_r, k_r, v_r)
+            kv = (jnp.concat([k, k_r]), jnp.concat([v, v_r]))
+            h = gta_attention(jnp.concat([q, q_r]), [(k, v)], [(k_r, v_r)], rope)
+            h, h_r = jnp.split(rearrange(h.astype(out_dtype), "n h d -> n (h d)"), [m])
+            r = r + jax.vmap(attention.out_proj_r)(h_r) * gate_r
+            hr, gate_r = self.mod_r_mlp(r, c)
+            r = r + jax.vmap(self.mlp_r)(hr) * gate_r
         if self.mlp_y is None:
-            return y, kv
-        y = y + jax.vmap(attention.out_proj_y)(attention.attend(q, k, v, rope)) * gate
+            return y, r, kv
+        y = y + jax.vmap(attention.out_proj_y)(h) * gate
         hy, gate = self.mod_y_mlp(y, c)
-        return y + jax.vmap(self.mlp_y)(hy) * gate, kv
+        return y + jax.vmap(self.mlp_y)(hy) * gate, r, kv
 
     def decode(
         self,
         x: Float[Array, "N D"],
         c: Float[Array, " D"],
-        kv: tuple[Float[Array, "M H K"], Float[Array, "M H K"]],
+        kv: tuple[Float[Array, "M+R H K"], Float[Array, "M+R H K"]],
         rope=None,
         s: Float[Array, "S D"] | None = None,
     ) -> tuple[Float[Array, "N D"], Float[Array, "S D"] | None]:
-        """The x stream and the sinks s, attending jointly to both and to the y keys and values `encode` left."""
+        """The x stream and the sinks s, attending jointly to both and to the y and register keys and values `encode` left."""
         attention = self.attention
         n = x.shape[-2]
         hx, gate = self.mod_x_attn(x, c)
         q, k, v = attention.heads(attention.qkv_proj_x, hx, rope)
+        out_dtype = v.dtype
+        cast = lambda *a: tuple(
+            b.astype(attention.attention_dtype or out_dtype) for b in a
+        )
+        q, k, v = cast(q, k, v)
+        m = kv[0].shape[0] - self.registers
+        positioned = [(k, v), (kv[0][:m], kv[1][:m])]
+        free = [(kv[0][m:], kv[1][m:])]
         if s is not None:
             # the sinks carry no position: they join x's tokens unrotated
             hs, gate_s = self.mod_s_attn(s, c)
-            qkv_s = attention.heads(attention.qkv_proj_s, hs)
-            q, k, v = (jnp.concat([a, b]) for a, b in zip((q, k, v), qkv_s))
-        # one softmax over own and cached keys, never concatenated: under a vmap over draws
-        # the shared cache would otherwise be copied once per draw
-        out_dtype = v.dtype
-        q, k, v = (a.astype(attention.attention_dtype or out_dtype) for a in (q, k, v))
-        scale = q.shape[-1] ** -0.5
-        logits = jnp.concat(
-            [
-                jnp.einsum("nhk,mhk->hnm", q, k, preferred_element_type=jnp.float32),
-                jnp.einsum(
-                    "nhk,mhk->hnm", q, kv[0], preferred_element_type=jnp.float32
-                ),
-            ],
-            axis=-1,
-        )
-        weights = jax.nn.softmax(logits * scale, axis=-1).astype(v.dtype)
-        own = k.shape[0]
-        positioned = jnp.einsum("hnm,mhk->nhk", weights[..., :n], v[:n]) + jnp.einsum(
-            "hnm,mhk->nhk", weights[..., own:], kv[1]
-        )
-        # GTA: x's and the cached y's values arrive rotated, so each x query turns their sum back
-        # by its own angle; the sinks' values carry no position and are read as they are
-        if rope is not None:
-            cos, sin = rope
-            positioned = positioned.at[:n].set(rotate(positioned[:n], cos, -sin))
-        h = positioned + jnp.einsum("hnm,mhk->nhk", weights[..., n:own], v[n:])
+            q_s, k_s, v_s = cast(*attention.heads(attention.qkv_proj_s, hs))
+            q = jnp.concat([q, q_s])
+            free.append((k_s, v_s))
+        h = gta_attention(q, positioned, free, rope)
         h, h_s = jnp.split(rearrange(h.astype(out_dtype), "n h d -> n (h d)"), [n])
         x = x + jax.vmap(attention.out_proj_x)(h) * gate
         if s is not None and self.mlp_s is not None:
@@ -296,6 +370,8 @@ class MMDiT(eqx.Module):
 
     With one_way, encode/decode run them instead, y never attending to x, so y's keys and values can be cached.
     With sinks, decode also runs a third stream of sink tokens s, attending jointly with x to x, s and the cached y.
+    With registers, encode also runs that many register tokens r jointly with y, unrotated; decode reads their cached
+    keys and values beside y's.
     """
 
     blocks: MMDiTBlock
@@ -309,6 +385,7 @@ class MMDiT(eqx.Module):
         expand: int = 2,
         qk_gain: bool = False,
         sinks: bool = False,
+        registers: int = 0,
         attention_dtype: jnp.dtype | None = None,
         one_way: bool = False,
         *,
@@ -321,6 +398,7 @@ class MMDiT(eqx.Module):
             expand,
             qk_gain,
             sinks,
+            registers,
             attention_dtype,
             last,
             key=key,
@@ -344,6 +422,7 @@ class MMDiT(eqx.Module):
         rope=None,
     ) -> tuple[Float[Array, "N D"], Float[Array, "M D"]]:
         assert self.last is None, "built one-way: run encode and decode"
+        assert self.blocks.registers == 0, "registers live in encode: build one-way"
         # one compiled block body, scanned over the stacked block params
         params, static = eqx.partition(self.blocks, eqx.is_array)
 
@@ -359,31 +438,45 @@ class MMDiT(eqx.Module):
         return x, y
 
     def encode(
-        self, y: Float[Array, "M D"], c: Float[Array, " D"], rope=None
-    ) -> tuple[Float[Array, "L M H K"], Float[Array, "L M H K"]]:
-        """Every block's y keys and values, for `decode`."""
+        self,
+        y: Float[Array, "M D"],
+        c: Float[Array, " D"],
+        rope=None,
+        r: Float[Array, "R D"] | None = None,
+    ) -> tuple[
+        tuple[Float[Array, "L M+R H K"], Float[Array, "L M+R H K"]],
+        Float[Array, "R D"] | None,
+    ]:
+        """Every block's y and register keys and values, for `decode`, and the registers r after the last block."""
         assert self.last is not None, "built joint: one_way=True to encode and decode"
+        assert (
+            r is None if self.last.registers == 0 else r.shape[0] == self.last.registers
+        ), f"built with {self.last.registers} registers"
         params, static = eqx.partition(self.blocks, eqx.is_array)
 
         @jax.checkpoint
-        def scan_blocks(y: Float[Array, "M D"], block: MMDiTBlock):
-            return eqx.combine(block, static).encode(y, c, rope)
+        def scan_blocks(carry, block: MMDiTBlock):
+            y, r = carry
+            y, r, kv = eqx.combine(block, static).encode(y, c, rope, r)
+            return (y, r), kv
 
-        y, (k, v) = jax.lax.scan(scan_blocks, y, params)
-        _, (k_last, v_last) = self.last.encode(y, c, rope)
-        return jnp.concat([k, k_last[None]]), jnp.concat([v, v_last[None]])
+        (y, r), (k, v) = jax.lax.scan(scan_blocks, (y, r), params)
+        _, r, (k_last, v_last) = self.last.encode(y, c, rope, r)
+        return (jnp.concat([k, k_last[None]]), jnp.concat([v, v_last[None]])), r
 
     def decode(
         self,
         x: Float[Array, "N D"],
         c: Float[Array, " D"],
-        cache: tuple[Float[Array, "L M H K"], Float[Array, "L M H K"]],
+        cache: tuple[Float[Array, "L M+R H K"], Float[Array, "L M+R H K"]],
         rope=None,
         s: Float[Array, "S D"] | None = None,
     ) -> Float[Array, "N D"]:
-        """The x stream (and the sinks s) through every block, against the y keys and values from `encode`."""
+        """The x stream (and the sinks s) through every block, against the y and register keys and values from `encode`."""
         assert self.last is not None, "built joint: one_way=True to encode and decode"
-        assert s is None or self.last.mod_s_attn is not None, "built without a sink stream"
+        assert (
+            s is None or self.last.mod_s_attn is not None
+        ), "built without a sink stream"
         params, static = eqx.partition(self.blocks, eqx.is_array)
         last, last_static = eqx.partition(self.last, eqx.is_array)
 

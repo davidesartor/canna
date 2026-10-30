@@ -26,10 +26,10 @@ def test_a_synthetic_eval_round_trips_through_the_page(tmp_path):
     name = "narrow-B"
     problem_args = config.load(name).problem
     problem = LisaGB(**problem_args)
-    run_dir, eval_dir = tmp_path / "run", tmp_path / "run" / "eval" / "1-average-32"
+    run_dir, eval_dir = tmp_path / "run", tmp_path / "run" / "eval" / "1-last-32"
     eval_dir.mkdir(parents=True)
     (run_dir / "config.yaml").write_text(yaml.safe_dump({"name": name, "commit": "abc1234", "seed": 0, "problem": problem_args}))
-    (eval_dir / "eval.yaml").write_text(yaml.safe_dump({"ode_steps": 32, "weights": "average"}))
+    (eval_dir / "eval.yaml").write_text(yaml.safe_dump({"ode_steps": 32, "weights": "last"}))
 
     n_injections, n_draws, rng = 2, 64, np.random.default_rng(0)
     f = np.array([float(sample_f(problem, jr.key(j))) for j in range(n_injections)])

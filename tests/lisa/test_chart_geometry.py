@@ -1,4 +1,4 @@
-"""Whitening round trip and the flat per-source chart: the sky as galactic (l, b) whitened by the prior, straight paths."""
+"""Whitening round trip and the flat per-source chart: the sky as galactic (l, b) whitened by the prior, its moments."""
 
 from functools import partial
 
@@ -11,6 +11,7 @@ from canna.lisa.chart import (
     SKY,
     flow_to_physical,
     physical_to_flow,
+    prior_moments,
     sample_flow,
 )
 from canna.lisa.problem import LisaGB
@@ -62,12 +63,26 @@ def test_flow_draws_whiten_the_sky():
     assert jnp.allclose(jnp.std(x, axis=0), 1.0, atol=0.1)
 
 
-def test_train_sample_walks_a_straight_line_and_is_finite():
+def test_train_sample_is_finite():
     problem = LisaGB(n_sources=2)
     sample = eqx.filter_jit(partial(train_sample, problem))(jr.key(0))
     assert all(bool(jnp.all(jnp.isfinite(a))) for a in sample)
-    remaining = (1 - sample.t)[:, None, None]
-    assert jnp.allclose(sample.xt + remaining * sample.dx, sample.x_target, atol=1e-6)
+
+
+def test_prior_moments_match_f0_sorted_prior_draws():
+    """The frame starts at these: each f0-ordered slot's mean and std, against 8192 draws."""
+    problem = LisaGB(n_sources=3)
+    f = window(problem)
+    x = jax.lax.map(
+        lambda key: sample_flow(problem, key, f),
+        jr.split(jr.key(1), 8192),
+        batch_size=512,
+    )
+    x = jnp.take_along_axis(x, jnp.argsort(x[..., :1], axis=1), axis=1)
+    mean, std = prior_moments(problem, f)
+    # within 0.1 std and 10%: f0 is only near flat in x_f, z± from quadrature at the window centre
+    assert jnp.allclose(jnp.mean(x, axis=0), mean, atol=0.1 * std)
+    assert jnp.allclose(jnp.std(x, axis=0), std, rtol=0.1)
 
 
 def test_sample_flow_is_the_charted_prior_draw_of_the_same_key():

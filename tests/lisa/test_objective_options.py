@@ -1,4 +1,6 @@
-"""The flow options and objective: mid-time phase chart, x1 under the NLL."""
+"""The flow options and objective: mid-time phase chart, the frame and flow NLLs, the sampler in the frame."""
+
+from functools import partial
 
 import equinox as eqx
 import jax
@@ -6,7 +8,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 
-from canna.lisa.chart import flow_to_physical, physical_to_flow, sample_flow
+from canna.lisa.chart import flow_to_physical, physical_to_flow, prior_moments
 from canna.lisa.problem import LisaGB
 from canna.lisa.sample import sample_posterior
 from canna.lisa.simulator import clean_signal, sample_physical
@@ -64,32 +66,40 @@ def test_mid_time_phase_holds_the_signal_when_f0_moves():
 
 
 class Oracle(eqx.Module):
-    """A stand-in flow whose mean x1 is its conditioning, with a fixed log std."""
+    """A stand-in flow: its conditioning is the frame's delta, and z1's mean is 0 with a fixed log std."""
 
     s: float
 
     def encode(self, y, f):
-        return None
+        return y, None
 
-    def __call__(self, x, t, y, f, cache=None):
-        return jnp.concatenate(
-            [jnp.broadcast_to(y, x.shape), jnp.full_like(x, self.s)], axis=-1
-        )
+    def __call__(self, z, t, frame, f, cache):
+        return jnp.concatenate([jnp.zeros_like(z), jnp.full_like(z, self.s)], axis=-1)
 
 
-def test_sampler_lands_on_the_mean_x1(small_flow):
-    problem, _, u0, _, f = small_flow
-    x1 = sample_flow(problem, jr.key(9), f)
-    out = sample_posterior(Oracle(np.log(1e-2)), u0, x1, f, 8)
+def centred_on(problem, x1, f, delta_s):
+    """The delta whose frame has mean x1 and log std the prior's plus delta_s."""
+    mean, std = prior_moments(problem, f)
+    return jnp.concat([(x1 - mean) / std, jnp.full_like(x1, delta_s)], axis=-1)
+
+
+def test_sampler_lands_on_the_frame_mean(small_flow):
+    problem, _, z0, y, f = small_flow
+    x1 = sample_physical(problem, jr.key(9), f)
+    x1 = physical_to_flow(problem, x1[jnp.argsort(x1[:, 0])], f)
+    out = sample_posterior(problem, Oracle(np.log(1e-2)), z0, centred_on(problem, x1, f, -1.0), f, 8)
     np.testing.assert_allclose(out, jnp.broadcast_to(x1, out.shape), atol=1e-6)
 
 
-def test_loss_is_the_nll_of_x1(small_flow):
+def test_losses_are_the_frame_and_flow_nlls(small_flow):
     problem, _, _, _, _ = small_flow
     batch = eqx.filter_jit(jax.vmap(lambda k: train_sample(problem, k)))(
         jr.split(jr.key(4), 8)
     )
-    s = np.log(1e-2)
-    flow_loss, x_error = losses(Oracle(s), batch._replace(y=batch.x_target))
-    np.testing.assert_allclose(flow_loss, 2 * s, atol=1e-6)
-    assert x_error < 1e-10
+    s, delta_s = np.log(1e-2), -1.0
+    delta = jax.vmap(partial(centred_on, problem, delta_s=delta_s))(batch.x1, batch.f)
+    total, frame_nll, flow_nll = losses(Oracle(s), problem, batch._replace(y=delta))
+    # k = 0 in a frame centred on x1, so z1 = 0 = m
+    np.testing.assert_allclose(frame_nll, 2 * delta_s, atol=1e-6)
+    np.testing.assert_allclose(flow_nll, 2 * s, atol=1e-6)
+    assert total > flow_nll + 2 * delta_s * np.exp(delta_s)

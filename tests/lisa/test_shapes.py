@@ -124,11 +124,10 @@ def test_train_sample_shapes_line_up():
     problem = LisaGB(n_sources=3)
     width = 8
     sample = train_sample(problem, jr.key(50))
-    assert sample.xt.shape == (1, 3, width)
-    assert sample.dx.shape == (1, 3, width)
+    assert sample.z0.shape == (1, 3, width)
     assert sample.t.shape == (1,)
     assert sample.y.shape == (problem.window_bins, 6)
-    assert sample.x_target.shape == (3, width)
+    assert sample.x1.shape == (3, width)
     assert sample.f.shape == ()
 
 
@@ -136,27 +135,23 @@ def test_train_sample_draws_k_points_for_one_observation():
     problem = LisaGB(n_sources=3)
     u = jnp.linspace(0.05, 0.95, 5)
     sample = train_sample(problem, jr.key(50), u)
-    assert sample.xt.shape == (5, 3, 8) and sample.dx.shape == (5, 3, 8)
+    assert sample.z0.shape == (5, 3, 8)
     assert jnp.array_equal(sample.t, u)
     # every draw walks toward the same x1 from its own base point
-    assert not jnp.allclose(sample.xt[0], sample.xt[1])
+    assert not jnp.allclose(sample.z0[0], sample.z0[1])
 
 
 def test_train_sample_is_finite():
     problem = LisaGB(n_sources=2)
     sample = eqx.filter_jit(partial(train_sample, problem))(jr.key(51))
-    assert jnp.all(jnp.isfinite(sample.xt))
-    assert jnp.all(jnp.isfinite(sample.dx))
-    assert jnp.all(jnp.isfinite(sample.t))
+    assert all(bool(jnp.all(jnp.isfinite(a))) for a in sample)
 
 
 def test_train_sample_same_key_gives_same_sample():
     problem = LisaGB(n_sources=2)
     a = train_sample(problem, jr.key(52))
     b = train_sample(problem, jr.key(52))
-    assert jnp.allclose(a.xt, b.xt)
-    assert jnp.allclose(a.dx, b.dx)
-    assert jnp.allclose(a.t, b.t)
+    assert all(jnp.array_equal(u, v) for u, v in zip(a, b))
 
 
 def test_preprocess_frequency_axis_is_the_window():

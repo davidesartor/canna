@@ -54,7 +54,8 @@ Jobs write only data; `canna.lisa.plots` draws the figures.
 outputs/runs/<run>/
   config.yaml
   history.npz                                # losses, eval-catalog losses, λ and error per time bin
-  checkpoints/<epoch>/
+  checkpoints/<epoch>/                       # the latest epoch
+  best/<epoch>/                              # the lowest eval-catalog frame + flow NLL
   run.html                                   # plots: losses, eval-catalog losses, error and λ per time bin
   eval/<epoch>-<weights>-<ode_steps>/
     eval.yaml                                # the settings it was evaluated with
@@ -82,7 +83,7 @@ and the two circular-mode phases φ₀ ± 2ψ. Why the code is the way it is liv
 | `simulator.py` | sources, signal, noise, SNR, likelihood, whitening |
 | `chart.py` | the 8 flat flow coordinates per source |
 | `network.py` | `LisaFlow` and its STFT tokens |
-| `optim.py` | schedule-free Muon/AdamW and the averaged weights |
+| `optim.py` | Muon/AdamW and the warmup–constant–1−√ cooldown schedule |
 | `train.py` | training draw, loss, step, orbax checkpoints, `main` |
 | `sample.py` | the posterior sampler: midpoint steps for x-prediction, RK4 for velocity |
 | `injections.py` | eval injections, Fisher draws, source matching |
@@ -138,11 +139,12 @@ Every run so far used `B`. The research log calls the bands `XS` and `B`: its `X
   1 − s floored at 1e-6, and a learned loss weight per (log₁₀(1 − s) bin, coordinate group).
   Self-conditioned on its stopped x₁ half the steps. t is stratified over the batch; half the
   draws have 1 − s log-uniform down to 1e-4.
-- **Optimiser.** Schedule-free (decay 0.05 on z, averaging weights t·lr² after twice the
-  warmup, β 0.9 → 0.965) around Muon (lr 1e-2, NorMuon rows, momentum 0.8) for the
-  backbone, conditioning MLPs, output modulation and head's hidden layer, and AdamW (lr 1e-3,
-  b2 0.95, no decay) for the rest. Checkpoints keep the optimiser state, since the averaged
-  weights x that eval uses live there (`LISA_WEIGHTS=training` for y).
+- **Optimiser.** Muon (lr 1e-3, momentum 0.95 Nesterov, update RMS 0.2·lr, decoupled decay
+  0.1) for the backbone, conditioning MLPs, output modulation and head's hidden layer, and
+  AdamW (lr 1e-3, b2 0.95, no decay) for the rest, on gradients clipped to norm 1. Both lrs
+  warm up linearly over 10k steps, hold, then cool to 0 as 1 − √ over the last 20% (Hägele+24).
+  Besides the latest checkpoint, `best/` keeps the epoch with the lowest eval-catalog
+  frame + flow NLL (`LISA_WEIGHTS=best`).
 - **Precision.** The backbone runs in bf16 by default (`bf16: backbone`, embeddings and head
   in float32); `attention` keeps it float32 with bf16 attention, `none` is float32
   throughout. A float32 backbone on a GPU needs

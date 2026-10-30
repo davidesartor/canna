@@ -12,7 +12,7 @@ import yaml
 CONFIG_ROOT = Path(__file__).parent / "configs"
 CHOICES = dict(
     momentum_dtype=("bfloat16", "float32"),
-    weights=("average", "training"),
+    weights=("last", "best"),
     bf16=("none", "attention", "backbone"),
 )
 # what a finished run's config.yaml lets eval, scorecard and validation change; a resume, also the chunking
@@ -51,21 +51,18 @@ class Config:
     run: str = ""
     commit: str = ""
     seed: int = 0
-    # optimizer: Muon's lr and decay (on its z, per unit lr), AdamW's lr, schedule-free's beta ramp
+    # optimizer: Muon's lr and decoupled decay (per unit lr), AdamW's lr, the warmup and the 1 - sqrt cooldown
     batch_size: int = 1024
     # the batch's gradient accumulated over this many equal chunks, to fit a smaller GPU
     micro_batches: int = 1
-    learning_rate: float = 1e-2
+    learning_rate: float = 1e-3
     adam_learning_rate: float = 1e-3
-    weight_decay: float = 0.05
+    weight_decay: float = 0.1
     warmup_steps: int = 10_000
-    cooldown_frac: float = 0.0
-    muon_momentum: float = 0.8
-    nesterov: bool = True
+    cooldown_frac: float = 0.2
+    muon_momentum: float = 0.95
     momentum_dtype: str = "bfloat16"
     adam_b1: float = 0.9
-    sf_beta: float = 0.9
-    sf_beta_end: float = 0.965
     # objective: batch_size (x0, t) samples, `draws` per observation, t uniform
     draws: int = 16
     total_steps: int = 500_000
@@ -74,10 +71,11 @@ class Config:
     ode_steps: int = 32
     n_random: int = 200
     n_validation: int = 1000
-    weights: str = "average"
+    # the latest checkpoint, or the one with the lowest catalog frame + flow NLL
+    weights: str = "last"
     # what runs in bfloat16: nothing, the attention scores and weighted sums, or the whole backbone
     bf16: str = "backbone"
-    # a new run's starting weights: this run's averaged x at its latest checkpoint (train.warm_start)
+    # a new run's starting weights: this run's at its latest checkpoint (train.warm_start)
     init_from: str = ""
 
     def __post_init__(self):

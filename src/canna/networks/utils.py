@@ -66,54 +66,6 @@ class Modulation(eqx.Module):
         return jax.nn.standardize(x, axis=-1) * (1 + scale) + shift, gate
 
 
-class PiecewiseLinear(eqx.Module):
-    """Piecewise linear encoding of each input scalar, then one linear map to the model dim.
-
-    Gorishniy, Rubachev & Babenko 2022 (arXiv:2203.05556). A scalar x with bin edges
-    b_0 < ... < b_T becomes T components, (x - b_{t-1}) / (b_t - b_{t-1}) clipped to [0, 1];
-    the first is not clipped below and the last not above, so values past the outer edges
-    still extrapolate linearly. Each component ramps over its own bin only, so the code
-    resolves x to a fraction of the local bin width whatever the input's dynamic range.
-
-    `edges` holds one tuple of edges per input scalar, and the tuples may differ in length.
-    They are static: the encoding has no trainable part, only the linear map after it.
-    """
-
-    edges: tuple[tuple[float, ...], ...] = eqx.field(static=True)
-    linear: eqx.nn.Linear
-
-    def __init__(
-        self,
-        edges: tuple[tuple[float, ...], ...],
-        out_dim: int,
-        *,
-        key: Key[Array, ""],
-        **kwargs,
-    ):
-        assert all(len(e) >= 3 for e in edges), "each scalar needs at least two bins"
-        assert all(
-            b > a for e in edges for a, b in zip(e, e[1:])
-        ), "bin edges must increase"
-        self.edges = tuple(tuple(float(b) for b in e) for e in edges)
-        n_features = sum(len(e) - 1 for e in self.edges)
-        self.linear = eqx.nn.Linear(n_features, out_dim, key=key, **kwargs)
-
-    def encode(self, x: Float[Array, " C"]) -> Float[Array, " F"]:
-        features = []
-        for i, e in enumerate(self.edges):
-            e = jnp.asarray(e, x.dtype)
-            ramp = (x[i] - e[:-1]) / (e[1:] - e[:-1])
-            n = ramp.shape[0]
-            low = jnp.full((n,), -jnp.inf).at[1:].set(0.0)
-            high = jnp.full((n,), jnp.inf).at[:-1].set(1.0)
-            features.append(jnp.clip(ramp, low, high))
-        return jnp.concat(features)
-
-    def __call__(self, x: Float[Array, " C"]) -> Float[Array, " D"]:
-        assert x.shape == (len(self.edges),), f"expected {len(self.edges)} scalars"
-        return self.linear(self.encode(x))
-
-
 class SinusoidalEmbed(eqx.Module):
     dim: int = eqx.field(static=True)
     period: float = eqx.field(static=True)

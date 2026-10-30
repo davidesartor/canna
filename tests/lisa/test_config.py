@@ -44,9 +44,9 @@ def test_config_yaml_round_trips(tmp_path):
 def test_only_eval_fields_may_change(tmp_path):
     cfg = saved_run(tmp_path)
     changed = config.load_run(
-        cfg.run, output_dir=tmp_path, ode_steps=8, weights="training"
+        cfg.run, output_dir=tmp_path, ode_steps=8, weights="best"
     )
-    assert (changed.ode_steps, changed.weights) == (8, "training")
+    assert (changed.ode_steps, changed.weights) == (8, "best")
     with pytest.raises(AssertionError, match="learning_rate"):
         config.load_run(cfg.run, output_dir=tmp_path, learning_rate=1.0)
     with pytest.raises(AssertionError, match="micro_batches"):
@@ -64,7 +64,7 @@ def test_only_eval_fields_may_change(tmp_path):
 def test_an_eval_dir_records_its_settings_and_refuses_a_clash(tmp_path):
     cfg = saved_run(tmp_path)
     path = config.eval_dir(cfg, 7, backend="gpu")
-    assert path == cfg.run_dir / "eval" / f"7-average-{cfg.ode_steps}"
+    assert path == cfg.run_dir / "eval" / f"7-last-{cfg.ode_steps}"
     config.eval_dir(cfg, 7, n_random=3)
     record = yaml.safe_load((path / "eval.yaml").read_text())
     assert record["backend"] == "gpu" and record["n_random"] == 3

@@ -1,4 +1,4 @@
-"""canna.lisa.optim.schedule_free: optax's schedule-free when the fixes are off, each fix (F37), and the optimizer."""
+"""canna.lisa.optim: the warmup-constant-cooldown schedule, the Muon/AdamW split and the optimizer."""
 
 from functools import partial
 
@@ -10,17 +10,8 @@ import numpy as np
 import optax
 
 from canna.lisa import config
-from canna.lisa.optim import (
-    interpolation,
-    is_muon,
-    normuon_rows,
-    routing_report,
-    schedule_free,
-    schedule_free_state,
-)
+from canna.lisa.optim import is_muon, routing_report, schedule
 from canna.lisa.train import setup, train_epoch, train_sample, train_step
-
-TARGET = jnp.array([[1.0, -2.0], [0.5, 3.0]])
 
 
 def small_config(**overrides):
@@ -28,105 +19,19 @@ def small_config(**overrides):
     return config.load("narrow-B", bf16="none", network=network, **overrides)
 
 
-def grad(p):
-    return jax.grad(lambda q: 0.5 * jnp.sum(jnp.square(q["w"] - TARGET)))(p)
-
-
-def run(tx, steps, params=None):
-    params = params or {"w": jnp.zeros((2, 2))}
-    state = tx.init(params)
-    for _ in range(steps):
-        u, state = tx.update(grad(params), state, params)
-        params = optax.apply_updates(params, u)
-    return params, state
-
-
-def test_matches_optax_schedule_free_with_the_fixes_off():
-    lr = 0.1
-    ours = schedule_free(
-        optax.sgd(lr), lambda s: lr, beta_start=0.9, beta_end=0.9, warm_start=0, r=0.0
-    )
-    reference = optax.contrib.schedule_free(optax.sgd(lr), lr, b1=0.9)
-    y1, s1 = run(ours, 60)
-    y2, s2 = run(reference, 60)
-    np.testing.assert_allclose(y1["w"], y2["w"], rtol=1e-5, atol=1e-6)
-    x2 = optax.contrib.schedule_free_eval_params(s2, y2)
-    np.testing.assert_allclose(s1.x["w"], x2["w"], rtol=1e-5, atol=1e-6)
-
-
-def test_decay_on_z_holds_a_constantly_pushed_z_at_its_fixed_point():
-    push = optax.GradientTransformation(
-        lambda p: optax.EmptyState(),
-        lambda g, s, p=None: (jax.tree.map(lambda a: 0.01 + 0 * a, g), s),
-    )
-    lr, lam = 0.1, 0.5
-    free = schedule_free(push, lambda s: lr, weight_decay=0.0)
-    held = schedule_free(push, lambda s: lr, weight_decay=lam)
-    _, s_free = run(free, 2000)
-    _, s_held = run(held, 2000)
-    # without decay z walks off linearly; with it, z -> u / (lr lambda)
-    assert np.allclose(s_free.z["w"], 20.0, rtol=1e-3)
-    np.testing.assert_allclose(s_held.z["w"], 0.01 / (lr * lam), rtol=1e-3)
-
-
-def test_x_follows_z_until_the_warm_start():
-    tx = schedule_free(optax.sgd(0.1), lambda s: 0.1, warm_start=10)
-    for steps in (1, 5, 10):
-        _, s = run(tx, steps)
-        np.testing.assert_allclose(s.x["w"], s.z["w"])
-    _, s = run(tx, 20)
-    assert not np.allclose(s.x["w"], s.z["w"])
-
-
-def test_late_iterates_weigh_more_with_r_one():
-    # on a target reached early, r=1 pulls x towards the late iterates faster than r=0
-    uniform = schedule_free(optax.sgd(0.05), lambda s: 0.05, r=0.0)
-    late = schedule_free(optax.sgd(0.05), lambda s: 0.05, r=1.0)
-    _, s0 = run(uniform, 200)
-    _, s1 = run(late, 200)
-    err = lambda s: float(jnp.linalg.norm(s.x["w"] - TARGET))
-    assert err(s1) < err(s0)
-
-
-def test_interpolation_runs_from_start_to_end():
-    b = lambda t: float(interpolation(jnp.asarray(t), 0.9, 0.965, 100, 10_000))
-    assert b(1) == b(100) == np.float32(0.9)
-    assert np.isclose(b(10_000), 0.965) and np.isclose(b(50_000), 0.965)
-    values = [b(t) for t in (100, 300, 1000, 3000, 10_000)]
-    assert all(a < c for a, c in zip(values, values[1:]))
-
-
-def test_normuon_rows_keeps_each_matrix_norm_and_evens_out_its_rows():
-
-    _, _, state = setup(small_config())
-    flow = state.flow
-    params = eqx.filter(flow, eqx.is_inexact_array)
-    # rows of very different sizes in every Muon matrix
-    updates = jax.tree.map(
-        lambda p: (
-            p * 0 + jnp.arange(1.0, 1.0 + p.shape[-2])[:, None]
-            if p.ndim >= 2
-            else p * 0 + 1.0
-        ),
-        params,
-    )
-    tx = normuon_rows()
-    out, _ = tx.update(updates, tx.init(params), params)
-    u = updates.backbone.blocks.mlp_y.linear2.weight
-    o = out.backbone.blocks.mlp_y.linear2.weight
-    np.testing.assert_allclose(jnp.linalg.norm(o[0]), jnp.linalg.norm(u[0]), rtol=1e-4)
-    rows_u, rows_o = jnp.linalg.norm(u[0], axis=-1), jnp.linalg.norm(o[0], axis=-1)
-    assert (
-        float(rows_o.max() / rows_o.min()) < 1.01 < float(rows_u.max() / rows_u.min())
-    )
-    # AdamW's leaves are left alone
-    np.testing.assert_allclose(
-        out.x_unembed.linear2.weight, updates.x_unembed.linear2.weight
-    )
+def test_the_schedule_warms_up_holds_and_cools_to_zero():
+    lr = schedule(small_config(warmup_steps=10, total_steps=100, cooldown_frac=0.2), 2.0)
+    at = lambda step: float(lr(jnp.asarray(step)))
+    assert at(0) == 0.0 and np.isclose(at(5), 1.0)
+    assert at(10) == at(50) == at(80) == 2.0
+    assert np.isclose(at(90), 2.0 * (1 - np.sqrt(0.5)))
+    assert at(100) == at(200) == 0.0
+    held = schedule(small_config(warmup_steps=10, total_steps=100, cooldown_frac=0.0), 2.0)
+    assert float(held(jnp.asarray(200))) == 2.0
 
 
 def test_weight_decay_shrinks_the_muon_matrices_only():
-    """F48: decay on z reaches Muon's matrices, never an AdamW leaf, matrix or not."""
+    """F48: decay reaches Muon's matrices, never an AdamW leaf, matrix or not."""
     _, tx, state = setup(small_config(warmup_steps=1, weight_decay=50.0))
     params = eqx.filter(state.flow, eqx.is_inexact_array)
     zeros = jax.tree.map(jnp.zeros_like, params)
@@ -134,7 +39,6 @@ def test_weight_decay_shrinks_the_muon_matrices_only():
     for _ in range(3):
         u, opt_state = update(zeros, opt_state, p)
         p = optax.apply_updates(p, u)
-    z = schedule_free_state(opt_state).z
 
     leaves = jax.tree_util.tree_leaves_with_path(params)
     name = lambda path: ".".join(
@@ -143,15 +47,18 @@ def test_weight_decay_shrinks_the_muon_matrices_only():
     muon = {name(path): is_muon(path, leaf) for path, leaf in leaves}
     assert muon["backbone.blocks.mlp_y.linear2.weight"]
     assert muon["x_unembed.linear1.weight"]
+    assert muon["frame_modulation.linear.weight"]
     # the 2-D AdamW leaves are what a bare ndim >= 2 rule would wrongly decay
     adamw = (
         "backbone.blocks.attention.qk_gain",
-        "x_embed.linear.weight",
+        "x_embed.weight",
+        "frame_slot",
+        "frame_unembed.weight",
         "x_unembed.linear2.weight",
         "x_unembed.linear2.bias",
     )
     assert not any(muon[n] for n in adamw)
-    for (path, before), after in zip(leaves, jax.tree.leaves(z)):
+    for (path, before), after in zip(leaves, jax.tree.leaves(p)):
         norm = lambda a: float(jnp.linalg.norm(a))
         if not is_muon(path, before):
             np.testing.assert_array_equal(after, before, err_msg=name(path))
@@ -160,7 +67,7 @@ def test_weight_decay_shrinks_the_muon_matrices_only():
 
 
 def muon_decay_by_step(cfg, steps):
-    """How much decay on z shrinks a Muon matrix at each of `steps` zero-gradient steps."""
+    """How much decay shrinks a Muon matrix at each of `steps` zero-gradient steps."""
     _, tx, state = setup(cfg)
     p = eqx.filter(state.flow, eqx.is_inexact_array)
     zeros = jax.tree.map(jnp.zeros_like, p)
@@ -168,8 +75,7 @@ def muon_decay_by_step(cfg, steps):
     for _ in range(steps):
         u, opt_state = update(zeros, opt_state, p)
         p = optax.apply_updates(p, u)
-        z = schedule_free_state(opt_state).z
-        norms.append(float(jnp.linalg.norm(z.backbone.blocks.mlp_y.linear2.weight)))
+        norms.append(float(jnp.linalg.norm(p.backbone.blocks.mlp_y.linear2.weight)))
     return np.diff(norms)
 
 
@@ -281,8 +187,8 @@ def test_micro_batches_take_the_full_batch_step():
     batch = eqx.filter_jit(jax.vmap(partial(train_sample, problem)))(
         keys, jr.uniform(jr.key(1), (4, 2))
     )
-    whole, whole_losses = train_step(tx, state, batch)
-    split, split_losses = train_step(tx, state, batch, micro_batches=2)
+    whole, whole_losses = train_step(problem, tx, state, batch)
+    split, split_losses = train_step(problem, tx, state, batch, micro_batches=2)
     np.testing.assert_allclose(split_losses, whole_losses, rtol=1e-6)
     leaves = lambda s: jax.tree.leaves(eqx.filter(s.flow, eqx.is_inexact_array))
     for a, b in zip(leaves(split), leaves(whole)):
