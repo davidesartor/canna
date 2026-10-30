@@ -13,13 +13,22 @@ from .samples import robust_width
 
 # the obliquity of the ecliptic at J2000 [rad]: LisaGB's sky is equatorial (lisaorbits v3), papers quote ecliptic
 OBLIQUITY = np.deg2rad(23.4392911)
-# draws per source the corner report keeps of each reference set; the flow keeps all of its own
-REFERENCE_DRAWS = {"fisher": 512, "mcmc": 1024}
+# draws per source the corner report keeps of each set: 64 injections at full draws make a ~30 MB page
+PAGE_DRAWS = {"flow": 512, "mcmc": 512, "fisher": 256}
 # float16 holds offsets from the truth in robust flow widths; past this they are only "off the page"
 HALF_LIMIT = 6.0e4
 COORDINATES = {
     "physical": ["f₀", "log₁₀ ḟ", "log₁₀ A", "λ", "β", "ψ", "ι", "φ₀"],
-    "flow": ["x<sub>f</sub>", "x<sub>ḟ</sub>", "l / σ<sub>l</sub>", "b / σ<sub>b</sub>", "Re z<sub>+</sub>", "Im z<sub>+</sub>", "Re z<sub>−</sub>", "Im z<sub>−</sub>"],
+    "flow": [
+        "x<sub>f</sub>",
+        "x<sub>ḟ</sub>",
+        "l / σ<sub>l</sub>",
+        "b / σ<sub>b</sub>",
+        "Re z<sub>+</sub>",
+        "Im z<sub>+</sub>",
+        "Re z<sub>−</sub>",
+        "Im z<sub>−</sub>",
+    ],
 }
 UNITS = {
     "physical": ["bins", "Hz/s", "", "rad", "rad", "rad", "rad", "rad"],
@@ -53,7 +62,9 @@ def fold_orientation(p: np.ndarray, truth: np.ndarray) -> np.ndarray:
     return p
 
 
-def equatorial_to_ecliptic(ra: np.ndarray, dec: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def equatorial_to_ecliptic(
+    ra: np.ndarray, dec: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """Equatorial (RA, Dec) to ecliptic (λ in [0, 2π), β) [rad], a rotation about the equinox by the obliquity."""
     x, y, z = np.cos(dec) * np.cos(ra), np.cos(dec) * np.sin(ra), np.sin(dec)
     c, s = np.cos(OBLIQUITY), np.sin(OBLIQUITY)
@@ -61,83 +72,96 @@ def equatorial_to_ecliptic(ra: np.ndarray, dec: np.ndarray) -> tuple[np.ndarray,
     return np.arctan2(y, x) % (2 * np.pi), np.arcsin(np.clip(z, -1.0, 1.0))
 
 
-def physical_columns(p: np.ndarray, truth: np.ndarray, start_bin: float, t_obs: float) -> np.ndarray:
+def physical_columns(
+    p: np.ndarray, truth: np.ndarray, start_bin: float, t_obs: float
+) -> np.ndarray:
     """The report's physical columns of draws [..., S, 8] folded onto truth [S, 8]: f0 in bins from the window's
-    first, log10 fdot, log10 A, ecliptic λ (unwrapped around the truth's) and β, ψ, ι, φ0."""
+    first, log10 fdot, log10 A, ecliptic λ (unwrapped around the truth's) and β, ψ, ι, φ0.
+    """
     lam, beta = equatorial_to_ecliptic(p[..., 3], p[..., 4])
     lam_true, _ = equatorial_to_ecliptic(truth[..., 3], truth[..., 4])
     lam = lam_true + (lam - lam_true + np.pi) % (2 * np.pi) - np.pi
     with np.errstate(invalid="ignore", divide="ignore"):
         log_fdot, log_a = np.log10(p[..., 1]), np.log10(p[..., 2])
     return np.stack(
-        [p[..., 0] * t_obs - start_bin, log_fdot, log_a, lam, beta, p[..., 5], p[..., 6], p[..., 7]],
+        [
+            p[..., 0] * t_obs - start_bin,
+            log_fdot,
+            log_a,
+            lam,
+            beta,
+            p[..., 5],
+            p[..., 6],
+            p[..., 7],
+        ],
         axis=-1,
     )
 
 
-def corner_data(eval_dir: Path) -> tuple[dict, bytes]:
-    """The corner report's index and its draws: every eval injection's flow, Fisher and MCMC draws per source, in
-    physical and flow coordinates, as float16 offsets from the truth in units of the flow's robust width."""
+def corner_index(
+    problem, d: dict, sets: list[dict[str, np.ndarray]], lead: str
+) -> tuple[dict, bytes]:
+    """A corner page's index and draws: per injection of d (truth, f, snr, source_snr, grid) its sets' draws
+    [N, S, 8] in physical and flow coordinates, as float16 offsets from the truth in robust widths of the lead set.
+    """
     import jax.numpy as jnp
-    import yaml
 
     from .chart import physical_to_flow
-    from .problem import LisaGB, window_start
-    from .samples import load as load_samples
+    from .problem import window_start
 
-    run_dir = eval_dir.parents[1]
-    config = yaml.safe_load((run_dir / "config.yaml").read_text())
-    stage = yaml.safe_load((eval_dir / "eval.yaml").read_text()) if (eval_dir / "eval.yaml").exists() else {}
-    problem = LisaGB(**config["problem"])
-    d = load_samples(eval_dir / "draws.npz")
-    mcmc = load_samples(eval_dir / "mcmc.npz") if (eval_dir / "mcmc.npz").exists() else {}
     rng = np.random.default_rng(0)
     n_injections, n_sources = d["source_snr"].shape
-
-    blob, injections = [], []
+    blob, injections, draws = [], [], {}
     offset = 0
     for j in range(n_injections):
         truth, f = d["truth"][j], d["f"][j]
-        chains = [mcmc.get(f"{j}_{s}") for s in range(n_sources)]
-        sets = {"flow": d["matched"][j], "fisher": d["fisher"][j]}
-        if all(c is not None for c in chains):
-            sets["mcmc"] = np.stack(chains, axis=1)
-        for name, keep in REFERENCE_DRAWS.items():
-            if name in sets and len(sets[name]) > keep:
-                sets[name] = sets[name][np.sort(rng.choice(len(sets[name]), keep, replace=False))]
+        thinned = {}
+        for name, p in sets[j].items():
+            keep = PAGE_DRAWS[name]
+            thinned[name] = p[np.sort(rng.choice(len(p), keep, replace=False))] if len(p) > keep else p
+            draws[name] = len(thinned[name])
         start_bin = float(window_start(problem, f))
         views = {}
-        for name, p in [("truth", truth[None]), *sets.items()]:
+        for name, p in [("truth", truth[None]), *thinned.items()]:
             p = fold_orientation(p, truth)
             views[name] = {
                 "physical": physical_columns(p, truth, start_bin, problem.t_obs),
                 # the chart takes the folded draws whole: its z± are the same for every (ψ, φ0) copy
                 "flow": np.asarray(physical_to_flow(problem, jnp.asarray(p), f)),
             }
+        # the lead's width, falling back to the other sets' (a set collapsed onto one value), then to 1
+        order = [lead, *(name for name in ("mcmc", "fisher", "flow") if name != lead and name in thinned)]
         sources = []
         for s in range(n_sources):
-            source = {"snr": float(d["source_snr"][j, s]), "truth": {}, "scale": {}, "sets": {}}
+            source = {
+                "snr": float(d["source_snr"][j, s]),
+                "truth": {},
+                "scale": {},
+                "sets": {},
+            }
             for view in COORDINATES:
                 centre = views["truth"][view][0, s]
-                scale = robust_width(views["flow"][view][:, s], 0)
-                # a flow collapsed onto one value in a column falls back to a reference's width, then to 1
-                for name in ("mcmc", "fisher"):
+                scale = np.full(8, np.nan)
+                for name in order:
                     if name in views:
                         fallback = robust_width(views[name][view][:, s], 0)
                         scale = np.where(np.isfinite(scale) & (scale > 0), scale, fallback)
                 scale = np.where(np.isfinite(scale) & (scale > 0), scale, 1.0)
                 source["truth"][view] = centre.tolist()
                 source["scale"][view] = scale.tolist()
-                for name in sets:
+                for name in thinned:
                     v = (views[name][view][:, s] - centre) / scale
-                    v = np.where(np.isfinite(v), np.clip(v, -HALF_LIMIT, HALF_LIMIT), np.nan)
+                    v = np.where(
+                        np.isfinite(v), np.clip(v, -HALF_LIMIT, HALF_LIMIT), np.nan
+                    )
                     blob.append(v.astype("<f2").tobytes())
                     source["sets"].setdefault(name, {})[view] = [offset, len(v)]
                     offset += v.size
             sources.append(source)
         injections.append(
             {
-                "quantile": float(d["quantiles"][j]),
+                "window": int(d["grid"][j, 0]),
+                "rank": int(d["grid"][j, 1]),
                 "snr": float(d["snr"][j]),
                 "f_mhz": float(f * 1e3),
                 "start_bin": start_bin,
@@ -146,20 +170,52 @@ def corner_data(eval_dir: Path) -> tuple[dict, bytes]:
             }
         )
     meta = {
-        "run": run_dir.name,
-        "config": config.get("name", ""),
-        "commit": str(config.get("commit", ""))[:7],
-        "eval": eval_dir.name,
-        "epoch": int(d["epoch"]),
-        "ode_steps": stage.get("ode_steps", config.get("ode_steps")),
-        "weights": stage.get("weights", config.get("weights")),
+        "lead": lead,
         "t_obs": float(problem.t_obs),
-        "draws": {name: int(len(p)) for name, p in sets.items()},
+        "draws": draws,
         "coordinates": COORDINATES,
         "units": UNITS,
         "picks": {k: list(map(int, v)) for k, v in gb_picks(d["source_snr"]).items()},
+        "grid": (d["grid"].max(0) + 1).tolist(),
     }
     return {"meta": meta, "injections": injections}, b"".join(blob)
+
+
+def corner_data(eval_dir: Path) -> tuple[dict, bytes]:
+    """The eval corner page's index and draws: the flow's matched draws, the Fisher's and, once `mcmc pack` has
+    run on the problem, the eval catalog's MCMC reference."""
+    import yaml
+
+    from .mcmc import load_reference
+    from .problem import LisaGB
+    from .samples import load as load_samples
+
+    run_dir = eval_dir.parents[1]
+    config = yaml.safe_load((run_dir / "config.yaml").read_text())
+    stage = (
+        yaml.safe_load((eval_dir / "eval.yaml").read_text())
+        if (eval_dir / "eval.yaml").exists()
+        else {}
+    )
+    problem = LisaGB(**config["problem"])
+    d = load_samples(eval_dir / "draws.npz")
+    reference = load_reference(problem, config["seed"])
+    if reference is not None and not np.allclose(reference["truth"], d["truth"]):
+        print(f"[plots] {eval_dir}: the MCMC reference's truths differ, left out", file=sys.stderr)
+        reference = None
+    sets = []
+    for j in range(len(d["truth"])):
+        sets.append({"flow": d["matched"][j], "fisher": d["fisher"][j]})
+        if reference is not None and np.isfinite(reference["mcmc"][j]).all():
+            sets[j]["mcmc"] = reference["mcmc"][j]
+    index, blob = corner_index(problem, d, sets, lead="flow")
+    index["meta"] |= {
+        "title": f"{run_dir.name}: corners",
+        "subtitle": f"{config.get('name', '')} at {str(config.get('commit', ''))[:7]}, eval {eval_dir.name}"
+        f" (epoch {int(d['epoch'])}, {stage.get('ode_steps', config.get('ode_steps'))} ODE steps,"
+        f" {stage.get('weights', config.get('weights'))} weights).",
+    }
+    return index, blob
 
 
 CORNER_PAGE = r"""<!doctype html>
@@ -202,6 +258,8 @@ h2 { font-size: 16px; margin: 0 0 4px; }
 .tile .d { color: var(--muted); font-size: 12px; }
 .stack { margin-bottom: 14px; }
 .stack > .k { display: block; color: var(--ink-2); font-size: 13px; margin-bottom: 6px; }
+.stack > input[type="range"] { width: 100%; margin: 0; }
+.stack output { color: var(--ink); font-variant-numeric: tabular-nums; }
 .seg { display: grid; width: 100%; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .seg button { font: inherit; font-size: 13px; padding: 5px 6px; border: 0; background: var(--surface); color: var(--ink-2); cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--page); }
@@ -243,10 +301,11 @@ window.onerror = (message, source, line) => {
 <div class="layout">
 <aside class="card side">
   <div class="stack"><span class="k">Coordinates</span><div class="seg" id="view" style="--cols: 2"></div></div>
-  <div class="stack"><span class="k">Injection (eval SNR quantile, window SNR)</span><div class="seg" id="inj" style="--cols: 5"></div></div>
+  <div class="stack"><label class="k" for="win">Window, lowest f first: <output id="win-out"></output></label><input type="range" id="win" min="0" step="1"></div>
+  <div class="stack"><label class="k" for="rank">Injection, faintest first: <output id="rank-out"></output></label><input type="range" id="rank" min="0" step="1"></div>
   <div class="stack"><span class="k">Source (SNR, loudest first)</span><div class="seg" id="src" style="--cols: 5"></div></div>
   <div class="stack"><span class="k">Eval sources by SNR</span><div class="seg" id="picks" style="--cols: 3"></div></div>
-  <p class="note">Click a corner cell to enlarge it, a legend entry to cycle it through hidden, shown and shown with points. The view lives in the URL, so a link reopens it.</p>
+  <p class="note">Click a corner cell to enlarge it, a legend entry to cycle it through points and contours, contours only and hidden. The view lives in the URL, so a link reopens it.</p>
 </aside>
 <div class="content">
   <div class="tiles" id="tiles"></div>
@@ -267,7 +326,7 @@ window.onerror = (message, source, line) => {
       <ul>
         <li><b>Physical:</b> f₀ in frequency bins from the window's first bin (per source: offset from the truth), log₁₀ of the chirp ḟ in Hz/s and of the strain amplitude A, the <b>ecliptic</b> longitude λ and latitude β (rotated from the simulator's equatorial RA and Dec by the J2000 obliquity, 23.4393°; λ unwrapped around the truth), the polarisation ψ, the inclination ι (sin ι uniform in [−1, 1]) and the initial phase φ₀. ψ and φ₀ are folded onto the copy nearest the truth by the likelihood's exact symmetries ψ → ψ + π and (ψ, φ₀) → (ψ + π/2, φ₀ + π).</li>
         <li><b>Flow:</b> the 8 coordinates the network learns (<code>chart.physical_to_flow</code>): x<sub>f</sub> = (2 ln f₀ − ln f<sub>lo</sub> − ln f<sub>hi</sub>) / (ln f<sub>hi</sub> − ln f<sub>lo</sub>) over the window's drawable f₀ range (one unit is half of it); x<sub>ḟ</sub> = (log₁₀ ḟ − μ(f₀)) / σ, standardised by the (f₀, ḟ, A) prior's conditional mean and std at f₀; galactic l and b over the galactic sky prior's stds; and the helicity amplitudes z± = asinh(A / A₁ · (1 ∓ sin ι)² / 4) · e<sup>i(φ₀′ ± 2ψ)</sup>, A₁ the amplitude of SNR ≈ 1 and φ₀′ the phase at mid-observation. They need no folding: every (ψ, φ₀) copy has the same z±.</li>
-        <li><b>Sets:</b> the flow's draws matched onto the injected sources, the Fisher forecast (Hessian averaged over noise, plus the prior) and the narrowband MCMC (one source free, the others at their truth), each thinned as the header says. Contours hold 39% and 86% of each set (1σ and 2σ of a 2-D Gaussian); widths are 1.4826 × MAD.</li>
+        <li><b>Sets:</b> the flow's draws matched onto the injected sources, the joint MCMC (all the window's sources free, its draws relabelled onto the injected sources) and the Fisher forecast (Hessian averaged over noise, plus the prior), whichever the page has, each thinned as the header says. The first in the legend leads: it sets the axes and the widths, and its density is shaded. Contours hold 39% and 86% of each set (1σ and 2σ of a 2-D Gaussian); widths are 1.4826 × MAD.</li>
       </ul>
     </details>
   </div>
@@ -278,14 +337,17 @@ window.onerror = (message, source, line) => {
 <script type="application/octet-stream" id="blob">__BLOB__</script>
 <script>
 "use strict";
-const META = DATA.meta, INJ = DATA.injections;
+const META = DATA.meta, INJ = DATA.injections, [NW, NK] = META.grid, LEAD = META.lead;
 const SETS = [
   {key: "flow", text: "flow", colour: "--flow"},
-  {key: "fisher", text: "Fisher", colour: "--fisher", dash: [5, 3]},
   {key: "mcmc", text: "MCMC", colour: "--mcmc"},
+  {key: "fisher", text: "Fisher", colour: "--fisher", dash: [5, 3]},
 ];
+const TEXT = Object.fromEntries(SETS.map(x => [x.key, x.text]));
+// the reference the lead is held against: the MCMC where the injection has it, else the Fisher
+const refOf = j => ["mcmc", "fisher"].find(k => k !== LEAD && INJ[j].sources[0].sets[k]);
 const EXTRAS = [{key: "truth", text: "truth"}];
-const S = {view: "physical", inj: 0, src: 0, sets: ["flow", "fisher", "mcmc", "truth"], points: [], cell: [3, 4]};
+const S = {view: "physical", inj: 0, src: 0, sets: ["flow", "mcmc", "fisher", "truth"], points: ["flow", "mcmc", "fisher"], cell: [3, 4]};
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 function rgba(name, alpha) {
@@ -360,18 +422,17 @@ function context() {
     sets.push({...set, cols});
   }
   const truths = sources.map(s => truthOf(j, s, S.view, pooled));
-  // per column: the flow's central 99% (one source: held to its median ± 8 widths, so a few strays cannot squash
-  // it), the MCMC's (else the Fisher's) and the truths, padded 5%
-  const range = [];
+  // per column: the lead's central 99% (one source: held to its median ± 8 widths, so a few strays cannot squash
+  // it), the reference's and the truths, padded 5%
+  const range = [], lead = sets.find(x => x.key === LEAD), ref = sets.find(x => x.key === refOf(j));
   for (let c = 0; c < 8; c++) {
     let lo = Infinity, hi = -Infinity;
     const take = (a, b) => { if (isFinite(a) && isFinite(b)) { lo = Math.min(lo, a); hi = Math.max(hi, b); } };
-    const flow = sets.find(x => x.key === "flow"), ref = sets.find(x => x.key === "mcmc") || sets.find(x => x.key === "fisher");
-    for (const set of [flow, ref]) {
+    for (const set of [lead, ref]) {
       if (!set) continue;
       const sorted = sortedFinite(set.cols[c]);
       let a = quantile(sorted, 0.005), b = quantile(sorted, 0.995);
-      if (set.key === "flow" && !pooled) {
+      if (set.key === LEAD && !pooled) {
         const med = quantile(sorted, 0.5), w = width(set.cols[c]);
         if (w > 0) { a = Math.max(a, med - 8 * w); b = Math.min(b, med + 8 * w); }
       }
@@ -383,11 +444,10 @@ function context() {
     const pad = 0.05 * (hi - lo);
     range.push([lo - pad, hi + pad]);
   }
-  const flow = sets.find(x => x.key === "flow");
   let off = 0;
-  if (flow) {
-    const n = flow.cols[0].length;
-    for (let k = 0; k < n; k++) if (flow.cols.some((col, c) => !(col[k] >= range[c][0] && col[k] <= range[c][1]))) off++;
+  if (lead) {
+    const n = lead.cols[0].length;
+    for (let k = 0; k < n; k++) if (lead.cols.some((col, c) => !(col[k] >= range[c][0] && col[k] <= range[c][1]))) off++;
     off /= n;
   }
   return {j, pooled, sources, sets, truths, range, off, bins: pooled ? 48 : 30, bins2: pooled ? 44 : 28};
@@ -452,7 +512,7 @@ function drawCell(g, ctx, cx, cy, x0, y0, size, pad) {
     const peak = Math.max(...curves.map(([, h]) => Math.max(...h)), 1e-300);
     const hy = v => y0 + size - pad - v / peak * inner * 0.92;
     for (const [set, h] of curves) {
-      g.strokeStyle = css(set.colour); g.lineWidth = set.key === "flow" ? 1.6 : 1.2; g.setLineDash(set.dash || []);
+      g.strokeStyle = css(set.colour); g.lineWidth = set.key === LEAD ? 1.6 : 1.2; g.setLineDash(set.dash || []);
       g.beginPath();
       h.forEach((v, b) => {
         const xa = X(rx[0] + b * (rx[1] - rx[0]) / ctx.bins), xb = X(rx[0] + (b + 1) * (rx[1] - rx[0]) / ctx.bins);
@@ -467,7 +527,7 @@ function drawCell(g, ctx, cx, cy, x0, y0, size, pad) {
   } else {
     for (const set of ctx.sets) {
       const {grid, levels, max} = density(set.cols[cx], set.cols[cy], rx, ry, ctx.bins2), cellW = inner / ctx.bins2;
-      if (set.key === "flow") {
+      if (set.key === LEAD) {
         for (let j = 0; j < ctx.bins2; j++) for (let i = 0; i < ctx.bins2; i++) {
           const v = grid[j * ctx.bins2 + i] / max;
           if (v > 0.02) { g.fillStyle = rgba(set.colour, 0.45 * v); g.fillRect(x0 + pad + i * cellW, y0 + pad + inner - (j + 1) * cellW, cellW + 0.5, cellW + 0.5); }
@@ -478,7 +538,7 @@ function drawCell(g, ctx, cx, cy, x0, y0, size, pad) {
         const xs = set.cols[cx], ys = set.cols[cy];
         for (let k = 0; k < xs.length; k++) g.fillRect(X(xs[k]) - 0.7, Y(ys[k]) - 0.7, 1.4, 1.4);
       }
-      g.strokeStyle = css(set.colour); g.lineWidth = set.key === "flow" ? 1.4 : 1.1; g.setLineDash(set.dash || []);
+      g.strokeStyle = css(set.colour); g.lineWidth = set.key === LEAD ? 1.4 : 1.1; g.setLineDash(set.dash || []);
       const BX = b => x0 + pad + (b + 0.5) * cellW, BY = b => y0 + pad + inner - (b + 0.5) * cellW;
       g.beginPath();
       for (const level of levels) for (const [[ax, ay], [bx, by]] of contour(grid, ctx.bins2, level)) { g.moveTo(BX(ax), BY(ay)); g.lineTo(BX(bx), BY(by)); }
@@ -588,11 +648,11 @@ function drawZoomAt(g, ctx, x0, y0, size) {
 
 function table(ctx) {
   const j = S.inj, n = INJ[j].sources.length, have = name => INJ[j].sources[0].sets[name];
-  const ref = have("mcmc") ? "mcmc" : "fisher", refText = ref === "mcmc" ? "MCMC" : "Fisher";
+  const ref = refOf(j), leadText = TEXT[LEAD], refText = TEXT[ref];
   const names = META.coordinates[S.view];
   let h = `<table><tr><th>source (SNR)</th>${names.map(t => `<th>${t}</th>`).join("")}</tr>`;
   for (let s = 0; s < n; s++) {
-    const f = columns(j, s, "flow", S.view, false), r = columns(j, s, ref, S.view, false);
+    const f = columns(j, s, LEAD, S.view, false), r = columns(j, s, ref, S.view, false);
     const cls = S.src === s ? ' class="sel"' : "";
     h += `<tr${cls}><td>${s + 1} (${fmt(INJ[j].sources[s].snr, 1)})</td>${names.map((_, c) => { const v = width(f[c]) / width(r[c]); return `<td${v > 3 ? ' class="hi"' : ""}>${fmt(v)}</td>`; }).join("")}</tr>`;
   }
@@ -600,16 +660,15 @@ function table(ctx) {
   let detail = "";
   if (!ctx.pooled) {
     const s = S.src, truth = truthOf(j, s, S.view, false), rows = [["truth", c => sig(truth[c])]];
-    const f = columns(j, s, "flow", S.view, false);
-    rows.push(["flow median − truth, in flow widths", c => { const sorted = sortedFinite(f[c]); return fmt((quantile(sorted, 0.5) - truth[c]) / width(f[c])); }]);
-    rows.push(["truth's rank in the flow draws", c => fmt(f[c].filter(v => v < truth[c]).length / f[c].length)]);
+    const f = columns(j, s, LEAD, S.view, false);
+    rows.push([`${leadText} median − truth, in ${leadText} widths`, c => { const sorted = sortedFinite(f[c]); return fmt((quantile(sorted, 0.5) - truth[c]) / width(f[c])); }]);
+    rows.push([`truth's rank in the ${leadText} draws`, c => fmt(f[c].filter(v => v < truth[c]).length / f[c].length)]);
     for (const set of SETS) if (have(set.key)) { const cols = columns(j, s, set.key, S.view, false); rows.push([`${set.text} width`, c => sig(width(cols[c]))]); }
-    if (have("mcmc")) { const m = columns(j, s, "mcmc", S.view, false); rows.push(["flow ÷ MCMC width", c => fmt(width(f[c]) / width(m[c]))]); }
-    const fi = columns(j, s, "fisher", S.view, false); rows.push(["flow ÷ Fisher width", c => fmt(width(f[c]) / width(fi[c]))]);
+    for (const set of SETS) if (set.key !== LEAD && have(set.key)) { const o = columns(j, s, set.key, S.view, false); rows.push([`${leadText} ÷ ${set.text} width`, c => fmt(width(f[c]) / width(o[c]))]); }
     detail = `<h2 style="margin-top:16px">Source ${s + 1}</h2><table><tr><th></th>${names.map(t => `<th>${t}</th>`).join("")}</tr>` +
       rows.map(([k, fn]) => `<tr><td>${k}</td>${names.map((_, c) => `<td>${fn(c)}</td>`).join("")}</tr>`).join("") + "</table>";
   }
-  document.getElementById("table-note").textContent = `Flow width over the ${refText} width per source and coordinate, in the ${S.view} coordinates (above 3 in colour).` + (ctx.pooled ? "" : " Below, the selected source in detail.");
+  document.getElementById("table-note").textContent = `${leadText[0].toUpperCase() + leadText.slice(1)} width over the ${refText} width per source and coordinate, in the ${S.view} coordinates (above 3 in colour).` + (ctx.pooled ? "" : " Below, the selected source in detail.");
   document.getElementById("table").innerHTML = h + detail;
 }
 
@@ -620,13 +679,17 @@ function seg(id, items, active, onPick) {
 }
 function pickers() {
   seg("view", [{v: "physical", html: "physical (λ, β)"}, {v: "flow", html: "flow"}], it => it.v === S.view, it => { S.view = it.v; });
-  seg("inj", INJ.map((w, k) => ({v: k, html: `q${w.quantile.toFixed(2)}<span class="sn">${fmt(w.snr, 0)}</span>`})), it => it.v === S.inj, it => { S.inj = it.v; });
+  const w = INJ[S.inj];
+  for (const [id, v, text] of [["win", w.window, `${w.window + 1} of ${NW} · ${fmt(w.f_mhz, 3)} mHz`], ["rank", w.rank, `${w.rank + 1} of ${NK} · SNR ${fmt(w.snr, 1)}`]]) {
+    document.getElementById(id).value = v;
+    document.getElementById(`${id}-out`).textContent = text;
+  }
   const src = INJ[S.inj].sources.map((x, k) => ({v: k, html: `${k + 1}<span class="sn">${fmt(x.snr, 0)}</span>`}));
   seg("src", [...src, {v: "all", html: `all<span class="sn">pooled</span>`}], it => it.v === S.src, it => { S.src = it.v; });
   seg("picks", Object.entries(META.picks).map(([k, [j, s]]) => ({j, s, html: `${k}<span class="sn">${fmt(INJ[j].sources[s].snr, 0)}</span>`})),
     it => it.j === S.inj && it.s === S.src, it => { S.inj = it.j; S.src = it.s; });
 }
-// the legend doubles as the toggles: a set cycles hidden → shown → shown with its draws as points; the truth toggles
+// the legend doubles as the toggles: a set cycles points and contours → contours → hidden; the truth toggles
 function legend() {
   const sets = SETS.filter(x => INJ[S.inj].sources[0].sets[x.key]);
   const line = x => `<line x1="1" x2="21" y1="5" y2="5" stroke="var(${x.colour})" stroke-width="2"${x.dash ? ' stroke-dasharray="5 3"' : ""}/>`;
@@ -634,32 +697,32 @@ function legend() {
   const host = document.getElementById("legend");
   host.innerHTML = sets.map(x => {
     const points = S.sets.includes(x.key) && S.points.includes(x.key);
-    return `<button type="button" data-k="${x.key}" aria-pressed="${S.sets.includes(x.key)}" title="hide → show → show with points">` +
+    return `<button type="button" data-k="${x.key}" aria-pressed="${S.sets.includes(x.key)}" title="points and contours → contours → hidden">` +
       `<svg width="22" height="10">${line(x)}${points ? dots(x) : ""}</svg>${x.text}${points ? " + points" : ""}</button>`;
   }).join("") + EXTRAS.map(x => `<button type="button" data-k="${x.key}" aria-pressed="${S.sets.includes(x.key)}">` +
     `<svg width="12" height="12"><rect x="3" y="3" width="6" height="6" fill="var(--truth)"/></svg>${x.text}</button>`).join("");
   host.querySelectorAll("button").forEach(b => b.onclick = () => {
     const k = b.dataset.k, shown = S.sets.includes(k), points = S.points.includes(k);
     if (k === "truth") S.sets = shown ? S.sets.filter(v => v !== k) : [...S.sets, k];
-    else if (!shown) { S.sets = [...S.sets, k]; S.points = S.points.filter(v => v !== k); }
-    else if (!points) S.points = [...S.points, k];
-    else { S.sets = S.sets.filter(v => v !== k); S.points = S.points.filter(v => v !== k); }
+    else if (!shown) { S.sets = [...S.sets, k]; S.points = [...S.points.filter(v => v !== k), k]; }
+    else if (points) S.points = S.points.filter(v => v !== k);
+    else S.sets = S.sets.filter(v => v !== k);
     writeHash(); render();
   });
 }
 function tiles(ctx) {
   const w = INJ[S.inj], t = [
-    ["window", `q${w.quantile.toFixed(2)}`, `SNR ${fmt(w.snr, 1)} · ${fmt(w.f_mhz, 3)} mHz`],
+    ["window", `${fmt(w.f_mhz, 3)} mHz`, `window ${w.window + 1} of ${NW}, injection ${w.rank + 1} of ${NK} · SNR ${fmt(w.snr, 1)}`],
     ["window bins", `${w.start_bin}–${w.start_bin + w.window_bins}`, `${w.window_bins} bins`],
   ];
   if (!ctx.pooled) {
     const src = w.sources[S.src], phys = src.truth.physical;
     t.push(["source", `${S.src + 1} of ${w.sources.length}`, `SNR ${fmt(src.snr, 1)}`]);
     t.push(["f₀ (truth)", `${fmt(phys[0], 2)} bins`, `from the window start; f₀ = ${fmt((w.start_bin + phys[0]) / META.t_obs * 1e3, 6)} mHz`]);
-    const f = columns(S.inj, S.src, "flow", "physical", false), m = columns(S.inj, S.src, "mcmc", "physical", false);
-    t.push(["f₀ width, flow", `${sig(width(f[0]))} bins`, m ? `MCMC ${sig(width(m[0]))} bins` : "no MCMC"]);
+    const ref = refOf(S.inj), f = columns(S.inj, S.src, LEAD, "physical", false), r = ref && columns(S.inj, S.src, ref, "physical", false);
+    t.push([`f₀ width, ${TEXT[LEAD]}`, `${sig(width(f[0]))} bins`, r ? `${TEXT[ref]} ${sig(width(r[0]))} bins` : "no reference"]);
   } else t.push(["sources", `${w.sources.length} pooled`, w.sources.map(x => fmt(x.snr, 0)).join(" · ")]);
-  t.push(["flow draws off the axes", `${fmt(100 * ctx.off, 1)}%`, "any coordinate outside"]);
+  t.push([`${TEXT[LEAD]} draws off the axes`, `${fmt(100 * ctx.off, 1)}%`, "any coordinate outside"]);
   document.getElementById("tiles").innerHTML = t.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join("");
 }
 function render() {
@@ -668,11 +731,11 @@ function render() {
   const ctx = context();
   tiles(ctx);
   const src = ctx.pooled ? `all ${ctx.sources.length} sources pooled` : `source ${S.src + 1} (SNR ${fmt(INJ[S.inj].sources[S.src].snr, 1)})`;
-  document.getElementById("corner-title").textContent = `q${INJ[S.inj].quantile.toFixed(2)}, ${src}, ${S.view} coordinates`;
+  document.getElementById("corner-title").textContent = `${fmt(INJ[S.inj].f_mhz, 3)} mHz, injection ${INJ[S.inj].rank + 1} of ${NK}, ${src}, ${S.view} coordinates`;
   document.getElementById("corner-note").textContent = (ctx.pooled
     ? "Every source of the window in the same axes; squares are the truths."
-    : "Axes hold the flow's central 99% (within 8 robust widths of its median), the reference's and the truth.") +
-    ` Contours: 39% and 86% of each set; the flow's density is shaded.`;
+    : `Axes hold the ${TEXT[LEAD]}'s central 99% (within 8 robust widths of its median), the reference's and the truth.`) +
+    ` Contours: 39% and 86% of each set; the ${TEXT[LEAD]}'s density is shaded.`;
   legend();
   drawCorner(ctx);
   table(ctx);
@@ -692,9 +755,12 @@ function writeHash() {
   history.replaceState(null, "", `#${h}`);
 }
 
-document.getElementById("title").textContent = `${META.run}: corners`;
-document.getElementById("sub").textContent = `${META.config} at ${META.commit}, eval ${META.eval} (epoch ${META.epoch}, ${META.ode_steps} ODE steps, ${META.weights} weights). Draws per source: ` +
-  Object.entries(META.draws).map(([k, v]) => `${k === "mcmc" ? "MCMC" : k === "fisher" ? "Fisher" : k} ${v}`).join(", ") + `. Layout ${META.layout}.`;
+document.getElementById("title").textContent = META.title;
+document.getElementById("sub").textContent = `${META.subtitle} Draws per source: ` +
+  SETS.filter(x => META.draws[x.key]).map(x => `${x.text} ${META.draws[x.key]}`).join(", ") + `. Layout ${META.layout}.`;
+for (const [id, max] of [["win", NW - 1], ["rank", NK - 1]]) document.getElementById(id).max = max;
+document.getElementById("win").oninput = ev => { S.inj = +ev.target.value * NK + INJ[S.inj].rank; writeHash(); schedule(); };
+document.getElementById("rank").oninput = ev => { S.inj = INJ[S.inj].window * NK + +ev.target.value; writeHash(); schedule(); };
 readHash();
 let pending = false;
 const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; render(); }); } };
@@ -707,18 +773,22 @@ render();
 </html>
 """
 
-def corner_report(eval_dir: Path) -> Path:
-    """eval_dir/corner.html: one interactive page of every eval injection's corners, physical and flow coordinates."""
-    index, blob = corner_data(eval_dir)
+
+def write_corner(path: Path, index: dict, blob: bytes) -> Path:
+    """One interactive corner page of an index and its draws."""
     page = CORNER_PAGE
     # the layout's version on the page, so a stale build is told from the current page at a glance
     index["meta"]["layout"] = hashlib.sha1(page.encode()).hexdigest()[:8]
-    page = page.replace("__TITLE__", f"{index['meta']['run']} corners")
+    page = page.replace("__TITLE__", index["meta"]["title"].replace(": ", " "))
     page = page.replace("__DATA__", json.dumps(index, separators=(",", ":")))
     page = page.replace("__BLOB__", base64.b64encode(blob).decode())
-    path = eval_dir / "corner.html"
     path.write_text(page)
     return path
+
+
+def corner_report(eval_dir: Path) -> Path:
+    """eval_dir/corner.html: one interactive page of every eval injection's corners, physical and flow coordinates."""
+    return write_corner(eval_dir / "corner.html", *corner_data(eval_dir))
 
 
 def significant(values, digits: int = 4) -> list:
@@ -815,7 +885,6 @@ window.onerror = (message, source, line) => {
 <p class="sub" id="sub"></p>
 <div class="layout">
 <aside class="card side">
-  <div class="stack"><span class="k">Step axis</span><div class="seg" id="xscale" style="--cols: 2"></div></div>
   <div class="stack"><span class="k">Per flow time, show</span><div class="seg" id="mode" style="--cols: 1"></div></div>
   <div class="stack"><span class="k">Evals</span><ul class="links" id="evals"></ul></div>
   <p class="note">Hover a chart for values; in the flow-time charts, click to pick the epoch or the time bin. The view lives in the URL.</p>
@@ -828,9 +897,9 @@ window.onerror = (message, source, line) => {
     <div class="grid" id="train"></div>
   </div>
   <div class="card">
-    <h2>Held out</h2>
-    <p class="note">Once per epoch, on a fresh batch. The flow loss of the schedule-free average x (what eval samples from) against the raw iterate y; the backbone's weight RMS; the RMS of z − x, the schedule-free spread.</p>
-    <div class="grid" id="heldout"></div>
+    <h2>Eval catalog</h2>
+    <p class="note">Once per epoch, on the eval's injections and noise, the same every epoch: each injection at the midpoints of 16 equal steps of flow time. The flow loss of the schedule-free average x (what eval samples from) against the raw iterate y; the backbone's weight RMS; the RMS of z − x, the schedule-free spread.</p>
+    <div class="grid" id="catalog"></div>
   </div>
   <div class="card">
     <h2>Per flow time</h2>
@@ -844,8 +913,8 @@ window.onerror = (message, source, line) => {
     <details>
       <summary>What the curves are</summary>
       <ul>
-        <li><b>flow</b>: the training loss. For a velocity or x flow, the mean squared velocity error e over the batch; for a residual flow, which predicts z = (x₁ − x<sub>t</sub>)/σ and log σ² per coordinate, the Gaussian NLL (z − z<sub>true</sub>)² + log σ², negative once σ &lt; 1. <b>x</b>: the mean squared error of the predicted x₁. <b>objective</b>: what the optimizer descends: Σ e·e<sup>−λ</sup> + λ over (time bin, group) with learned λ; β-NLL, each coordinate's NLL weighed by its stopped σ<sup>2β</sup>, for a residual flow; else the flow loss. <b>grad norm</b>: before clipping.</li>
-        <li><b>Per flow time</b>: the held-out x₁ error per coordinate group (f₀, ḟ, sky, z₊, z₋) on a batch spread evenly over the time bins, binned in log₁₀(1 − s), 1 − s the flow time left. Dashed, the x₁ error the flow expects: a residual flow's own σ², the resolution it claims; with learned weights e<sup>λ</sup>(1 − s)², the error each bin's weight expects. Error ÷ expected is a residual flow's mean squared z error and is 1 where its σ is calibrated, for λ where the weight has caught up.</li>
+        <li><b>flow</b>: the training loss, x₁'s Gaussian NLL. The flow predicts x₁'s mean and log σ per coordinate; the sampler steps along (mean − x<sub>t</sub>) / (1 − s). Negative once σ &lt; 1. <b>x</b>: the mean squared error of the predicted x₁. <b>grad norm</b>: before clipping.</li>
+        <li><b>Per flow time</b>: the x₁ error per coordinate group (f₀, ḟ, sky, z₊, z₋) on the eval catalog, each injection once in each time bin, binned in log₁₀(1 − s), 1 − s the flow time left. Dashed, the x₁ error the flow expects: its own σ², the resolution it claims. Error ÷ σ² is the mean squared z error and is 1 where σ is calibrated.</li>
       </ul>
     </details>
   </div>
@@ -856,14 +925,14 @@ window.onerror = (message, source, line) => {
 <script>
 "use strict";
 const META = DATA.meta, E = META.epochs, G = META.groups, NT = META.time_edges.length - 1;
-const LOSSES = {flow: "flow loss", x: "x₁ error", objective: "objective", grad_norm: "grad norm"};
-const HELDOUT = {w_rms: "backbone weight RMS", z_x: "RMS of z − x"};
-const EXPECTED = META.prediction === "residual" ? "σ²" : "e<sup>λ</sup>(1 − s)²";
+const LOSSES = {flow: "flow loss", x: "x₁ error", grad_norm: "grad norm"};
+const CATALOG = {w_rms: "backbone weight RMS", z_x: "RMS of z − x"};
+const EXPECTED = "σ²";
 const MODES = [
   {v: "x", html: "x₁ error"},
   ...(META.has_expected ? [{v: "ratio", html: `error ÷ ${EXPECTED}`}] : []),
 ];
-const S = {xlog: false, mode: "x", epoch: E - 1, bin: 0};
+const S = {mode: "x", epoch: E - 1, bin: 0};
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 function rgba(name, alpha) {
@@ -1031,28 +1100,39 @@ function chartIn(parent, id, title) {
   return box;
 }
 
+// losses that go negative are drawn as their gap above a floor just under the lowest value seen
+const SHIFTED = new Set(["flow"]);
+function aboveFloor(arrays) {
+  const all = arrays.flat().filter(Number.isFinite).sort((a, b) => a - b), min = all[0];
+  const floor = min - 1e-2 * (all[all.length >> 1] - min);
+  return {shift: a => a.map(v => v === null ? null : v - floor), label: label => `${label} − (${sig(floor)})`};
+}
+const STEP_AXIS = {log: true, label: "step"};
+
 function training() {
-  const t = DATA.train, parent = document.getElementById("train"), x = {log: S.xlog, label: "step"};
+  const t = DATA.train, parent = document.getElementById("train"), x = STEP_AXIS;
   for (const name of META.loss_names) {
     const q = t.losses[name], label = LOSSES[name] || name;
+    const gap = SHIFTED.has(name) ? aboveFloor([q.lo, q.median, q.hi]) : {shift: a => a, label: label => label};
     plot(chartIn(parent, `train-${name}`, label), {
-      x, y: {log: q.lo.every(v => !(v <= 0)), label}, sync: "step",
-      layers: [{type: "band", x: t.step, lo: q.lo, hi: q.hi, colour: "--s1"}, {type: "line", x: t.step, y: q.median, colour: "--s1", width: 1.5}],
+      x, y: {log: true, label: gap.label(label)}, sync: "step",
+      layers: [{type: "band", x: t.step, lo: gap.shift(q.lo), hi: gap.shift(q.hi), colour: "--s1"}, {type: "line", x: t.step, y: gap.shift(q.median), colour: "--s1", width: 1.5}],
       hover: {x: t.step, html: k => `step ${kilo(t.step[k])}<table>${row("", "90%", sig(q.hi[k]))}${row("--s1", "median", sig(q.median[k]))}${row("", "10%", sig(q.lo[k]))}</table>`},
     });
   }
 }
-function heldout() {
-  const h = DATA.heldout, step = DATA.epoch_step, parent = document.getElementById("heldout"), x = {log: S.xlog, label: "step"};
-  const pairs = [["heldout_x", "--s1", "x (average)"], ["heldout_y", "--s2", "y (iterate)"]].filter(([k]) => h[k]);
-  plot(chartIn(parent, "heldout-loss", "held-out flow loss"), {
-    x, y: {log: pairs.every(([k]) => h[k].every(v => !(v <= 0))), label: "flow loss"}, sync: "step",
-    layers: pairs.map(([k, colour]) => ({type: "line", x: step, y: h[k], colour})),
+function catalog() {
+  const h = DATA.catalog, step = DATA.epoch_step, parent = document.getElementById("catalog"), x = STEP_AXIS;
+  const pairs = [["catalog_x", "--s1", "x (average)"], ["catalog_y", "--s2", "y (iterate)"]].filter(([k]) => h[k]);
+  const gap = aboveFloor(pairs.map(([k]) => h[k]));
+  plot(chartIn(parent, "catalog-loss", "eval-catalog flow loss"), {
+    x, y: {log: true, label: gap.label("flow loss")}, sync: "step",
+    layers: pairs.map(([k, colour]) => ({type: "line", x: step, y: gap.shift(h[k]), colour})),
     hover: {x: step, html: k => `epoch ${k + 1}, step ${kilo(step[k])}<table>${pairs.map(([n, c, label]) => row(c, label, sig(h[n][k]))).join("")}</table>`},
   });
-  for (const [name, label] of Object.entries(HELDOUT)) {
+  for (const [name, label] of Object.entries(CATALOG)) {
     if (!h[name]) continue;
-    plot(chartIn(parent, `heldout-${name}`, label), {
+    plot(chartIn(parent, `catalog-${name}`, label), {
       x, y: {log: h[name].every(v => !(v <= 0)), label}, sync: "step",
       layers: [{type: "line", x: step, y: h[name], colour: "--s1"}],
       hover: {x: step, html: k => `epoch ${k + 1}, step ${kilo(step[k])}<table>${row("--s1", label, sig(h[name][k]))}</table>`},
@@ -1090,14 +1170,14 @@ function flowTime() {
     click: b => { S.bin = b; writeHash(); render(); },
   });
   plot(chartIn(parent, "time-over-steps", "over training, in the picked time bin"), {
-    x: {log: S.xlog, label: "step"}, y: {log: true, label: yLabel},
+    x: STEP_AXIS, y: {log: true, label: yLabel},
     layers: [...ratio, ...layers(epochs, step, (e, gi) => shown(e, S.bin, gi)), {type: "vline", at: step[S.epoch]}],
     hover: {x: step, html: e => `epoch ${e + 1}, step ${kilo(step[e])}, ${binText(S.bin)}${table(G.map((_, gi) => shown(e, S.bin, gi)))}`},
     click: e => { S.epoch = e; writeHash(); render(); },
   });
-  const claim = META.prediction === "residual" ? "the flow's own σ², the resolution it claims" : "the error the learned weight expects";
-  document.getElementById("time-note").innerHTML = `Held-out x₁ error per coordinate group and log-spaced bin of flow time; ` +
-    (S.mode === "ratio" ? (META.prediction === "residual" ? "the ratio is 1 where σ is calibrated, above it where σ is overconfident." : "the ratio is 1 where a bin's learned weight has caught up with its error.") : lam ? `solid: measured, dashed: ${EXPECTED}, ${claim}.` : "this run predicts no expected error.") +
+  const claim = "the flow's own σ², the resolution it claims";
+  document.getElementById("time-note").innerHTML = `Eval-catalog x₁ error per coordinate group and log-spaced bin of flow time; ` +
+    (S.mode === "ratio" ? "the ratio is 1 where σ is calibrated, above it where σ is overconfident." : lam ? `solid: measured, dashed: ${EXPECTED}, ${claim}.` : "this run predicts no expected error.") +
     " Click the left chart to pick the time bin, the right one to pick the epoch.";
   document.getElementById("time-legend").innerHTML = G.map((grp, gi) => `<span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(${COLOURS[gi]})" stroke-width="2"/></svg>${GROUP_TEXT[grp] || grp}</span>`).join("") +
     (lam ? `<span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="5 3"/></svg>${EXPECTED}</span>` : "");
@@ -1115,12 +1195,12 @@ function seg(id, items, active, onPick) {
   host.querySelectorAll("button").forEach(b => b.onclick = () => { onPick(items[+b.dataset.k]); writeHash(); render(); });
 }
 function tiles() {
-  const q = DATA.train.losses, h = DATA.heldout, last = a => a[a.length - 1], step = DATA.epoch_step, t = [];
+  const q = DATA.train.losses, h = DATA.catalog, last = a => a[a.length - 1], step = DATA.epoch_step, t = [];
   t.push(["trained", `${E} epochs`, `${kilo(last(step))} steps`]);
   if (q.flow) t.push(["flow loss, last chunk", sig(last(q.flow.median)), `10–90%: ${sig(last(q.flow.lo))} – ${sig(last(q.flow.hi))}`]);
-  if (h.heldout_x) {
-    const best = h.heldout_x.reduce((b, v, k) => v < h.heldout_x[b] ? k : b, 0);
-    t.push(["held-out flow loss (x)", sig(last(h.heldout_x)), `best ${sig(h.heldout_x[best])} at epoch ${best + 1}`]);
+  if (h.catalog_x) {
+    const best = h.catalog_x.reduce((b, v, k) => v < h.catalog_x[b] ? k : b, 0);
+    t.push(["eval-catalog flow loss (x)", sig(last(h.catalog_x)), `best ${sig(h.catalog_x[best])} at epoch ${best + 1}`]);
   }
   if (q.x) t.push(["x₁ error, last chunk", sig(last(q.x.median)), "median"]);
   if (q.grad_norm) t.push(["grad norm, last chunk", sig(last(q.grad_norm.median)), `90%: ${sig(last(q.grad_norm.hi))}`]);
@@ -1128,23 +1208,21 @@ function tiles() {
 }
 function render() {
   SYNC = {};
-  seg("xscale", [{v: false, html: "linear"}, {v: true, html: "log"}], it => it.v === S.xlog, it => { S.xlog = it.v; });
   seg("mode", MODES, it => it.v === S.mode, it => { S.mode = it.v; });
   tiles();
   training();
-  heldout();
+  catalog();
   flowTime();
 }
 
 function readHash() {
   const h = new URLSearchParams(location.hash.slice(1));
-  if (h.has("x")) S.xlog = h.get("x") === "log";
   if (h.has("mode") && MODES.some(m => m.v === h.get("mode"))) S.mode = h.get("mode");
   if (h.has("epoch")) S.epoch = clamp(+h.get("epoch") - 1 || 0, 0, E - 1);
   if (h.has("bin")) S.bin = clamp(+h.get("bin") || 0, 0, NT - 1);
 }
 function writeHash() {
-  const h = new URLSearchParams({x: S.xlog ? "log" : "linear", mode: S.mode, epoch: S.epoch + 1, bin: S.bin});
+  const h = new URLSearchParams({mode: S.mode, epoch: S.epoch + 1, bin: S.bin});
   history.replaceState(null, "", `#${h}`);
 }
 
@@ -1153,7 +1231,7 @@ document.getElementById("sub").textContent = `${META.config} at ${META.commit}, 
 document.getElementById("evals").innerHTML = META.evals.length ? META.evals.map(e => `<li>${e.name}: ` +
   [e.validation ? `<a href="eval/${e.name}/validation.html">validation</a>` : "", e.corner ? `<a href="eval/${e.name}/corner.html">corners</a>` : ""].filter(Boolean).join(" · ") + "</li>").join("") : "<li>none yet</li>";
 // the last bin with data at the picked epoch, by default
-S.bin = Math.max(0, DATA.time.error[E - 1].findIndex(r => r.some(Number.isFinite)));
+S.bin = Math.max(0, DATA.time.x_error[E - 1].findIndex(r => r.some(Number.isFinite)));
 readHash();
 let pending = false;
 const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; render(); }); } };
@@ -1166,8 +1244,9 @@ render();
 </html>
 """
 
+
 def run_report(run_dir: Path) -> Path:
-    """run_dir/run.html: one interactive page of history.npz's training and held-out losses and per-time-bin error and λ."""
+    """run_dir/run.html: one interactive page of history.npz's training and eval-catalog losses and per-time-bin error and σ²."""
     import yaml
 
     h = dict(np.load(run_dir / "history.npz"))
@@ -1189,14 +1268,7 @@ def run_report(run_dir: Path) -> Path:
         {
             "name": path.parent.name,
             "corner": (path.parent / "draws.npz").exists(),
-            "validation": any(
-                (path.parent / name).exists()
-                for name in (
-                    "validation_scores.npz",
-                    "scorecard.npz",
-                    "mcmc_compare.npz",
-                )
-            ),
+            "validation": (path.parent / "scorecard.npz").exists(),
         }
         for path in sorted((run_dir / "eval").glob("*/eval.yaml"))
     ]
@@ -1210,7 +1282,6 @@ def run_report(run_dir: Path) -> Path:
             "steps_per_epoch": int(epoch_steps[-1]),
             "groups": [str(g) for g in h["groups"]],
             "time_edges": significant(h["time_edges"]),
-            "prediction": config.get("network", {}).get("prediction", "x"),
             "has_expected": bool(np.isfinite(h["bin_expected"]).any()),
             "loss_names": loss_names,
             "evals": evals,
@@ -1226,9 +1297,9 @@ def run_report(run_dir: Path) -> Path:
                 for c, name in enumerate(loss_names)
             },
         },
-        "heldout": {
-            str(name): significant(h["heldout"][:, c])
-            for c, name in enumerate(h["heldout_names"])
+        "catalog": {
+            str(name): significant(h["catalog"][:, c])
+            for c, name in enumerate(h["catalog_names"])
         },
         "epoch_step": steps.astype(int).tolist(),
         "time": {
@@ -1342,7 +1413,7 @@ window.onerror = (message, source, line) => {
   <div class="stack"><span class="k">SNR band (draws' median SNR)</span><div class="seg" id="band" style="--cols: 3"></div></div>
   <div class="stack" id="mcmc-pick"><span class="k">Against the MCMC, show</span><div class="seg" id="mcmc-mode" style="--cols: 1"></div></div>
   <div class="stack"><span class="k">Pages</span><ul class="links" id="links"></ul></div>
-  <div class="stack"><span class="k">Eval</span><ul class="facts" id="facts"></ul></div>
+  <div class="stack"><span class="k">Details</span><ul class="facts" id="facts"></ul></div>
   <p class="note">Click a cell of the γ table to plot its quantity and column below. Hover a chart for values. The view lives in the URL.</p>
 </aside>
 <div class="content">
@@ -1391,7 +1462,7 @@ window.onerror = (message, source, line) => {
         <li><b>ECDF − z</b>: the ranks' empirical CDF minus the uniform's at fractional rank z, with the simultaneous band the γ test accepts; a curve above zero at small z has too many low ranks (the truth below the draws).</li>
         <li><b>SNR bands</b> are of the draws' median SNR, a function of the data alone, so stratifying by them keeps each stratum's ranks uniform under calibration.</li>
         <li><b>Proper scores</b>: the energy score of the draws against the truth, per source and for the joint draw, and the CRPS per coordinate; lower is better, and only comparable between evals of the same injections.</li>
-        <li><b>Scorecard</b>: random and eval injections scored on f₀ alone by true SNR, the eval job's quick look; <b>against the MCMC</b>: the eval injections' narrowband MCMC, one source free and the others at their truth.</li>
+        <li><b>Scorecard</b>: random and eval injections scored on f₀ alone by true SNR, the eval job's quick look; <b>against the MCMC</b>: the eval injections' joint MCMC, all sources free.</li>
       </ul>
     </details>
   </div>
@@ -1745,7 +1816,7 @@ function scorecard() {
 
 function mcmc() {
   const parent = document.getElementById("mcmc"), mode = MCMC_MODES.find(m => m.v === S.mcmc);
-  document.getElementById("mcmc-note").innerHTML = `The ${MC.sources.length} eval sources with a narrowband MCMC (one source free, the others at their truth): per coordinate the flow's robust width over the MCMC's, ` +
+  document.getElementById("mcmc-note").innerHTML = `The ${MC.sources.length} eval sources with a joint MCMC: per coordinate the flow's robust width over the MCMC's, ` +
     "the 1-Wasserstein distance between them over the MCMC's sd, or the MCMC's width; angles folded, dotted lines at 1. The sidebar picks the quantity.";
   const snr = MC.sources.map(s => s.snr);
   MC.columns.forEach((column, c) => {
@@ -1773,7 +1844,7 @@ function tiles() {
   const t = [];
   if (C) {
     const cells = C.p[S.band].flat().filter(v => v !== null), failed = cells.filter(v => v < META.alpha).length;
-    t.push(["prior injections", String(C.n_injections), `${C.k - 1} draws each, epoch ${C.epoch}`]);
+    t.push([C.what, String(C.n_injections), `${C.k - 1} draws each` + (C.epoch === null ? "" : `, epoch ${C.epoch}`)]);
     t.push([`γ tests failed, SNR ${META.bands[S.band]}`, `${failed} of ${cells.length}`, `p < ${META.alpha}; ${Math.round(META.alpha * cells.length * 10) / 10} expected by chance`]);
     const ratio = C.width_ratio.flatMap((r, n) => r.filter((_, s) => inBand(C.snr_hat[n][s], S.band)));
     t.push([`f₀ width / Fisher bound, SNR ${META.bands[S.band]}`, sig(median(ratio)), `median of ${ratio.length} sources`]);
@@ -1808,10 +1879,10 @@ function writeHash() {
   history.replaceState(null, "", `#${h}`);
 }
 
-document.getElementById("title").textContent = `${META.run}: validation`;
-document.getElementById("sub").textContent = [META.config && `${META.config} at ${META.commit}`, `eval ${META.eval}`, `layout ${META.layout}`].filter(Boolean).join(" · ");
-document.getElementById("links").innerHTML = [META.links.corner ? `<li><a href="corner.html">corners</a></li>` : "", META.links.run ? `<li><a href="../../run.html">training</a></li>` : ""].join("") || "<li>none</li>";
-document.getElementById("facts").innerHTML = Object.entries(META.stage).map(([k, v]) => `<li>${k.replaceAll("_", " ")}: ${v}</li>`).join("") || "<li>no eval.yaml</li>";
+document.getElementById("title").textContent = META.title;
+document.getElementById("sub").textContent = `${META.subtitle} · layout ${META.layout}`;
+document.getElementById("links").innerHTML = META.links.map(([href, text]) => `<li><a href="${href}">${text}</a></li>`).join("") || "<li>none</li>";
+document.getElementById("facts").innerHTML = Object.entries(META.facts).map(([k, v]) => `<li>${k.replaceAll("_", " ")}: ${v}</li>`).join("") || "<li>none</li>";
 for (const [id, present] of [["calibration-card", C], ["ecdf-card", C], ["sharpness-card", C], ["scores-card", C], ["scorecard-card", SC], ["mcmc-card", MC], ["mcmc-pick", MC]])
   document.getElementById(id).hidden = !present;
 readHash();
@@ -1826,12 +1897,268 @@ render();
 </html>
 """
 
+
+BANDS = ["0–15", "15–40", "40–100", "≥ 100", "all"]
+
+
+def in_band(snr: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    return (snr >= lo) & (snr < hi)
+
+
+def snr_bands() -> list[tuple[float, float]]:
+    from .validate import SNR_BANDS
+
+    return [*SNR_BANDS, (0, np.inf)]
+
+
+def calibration_data(scores: dict, what: str) -> dict:
+    """The validation page's calibration, sharpness and proper scores of validate.summarise's scores."""
+    from .validate import COORDS, gamma_test
+
+    bands = snr_bands()
+    rank = {
+        k.removeprefix("rank_"): v
+        for k, v in scores.items()
+        if k.startswith("rank_")
+    }
+    joint_rank = {
+        k.removeprefix("joint_rank_"): v
+        for k, v in scores.items()
+        if k.startswith("joint_rank_")
+    }
+    k = int(scores["draws"]) + 1
+    snr_hat, joint_snr_hat = scores["snr_hat"], scores["joint_snr_hat"]
+    n_injections, n_sources = snr_hat.shape
+    names = list(rank) + [name for name in joint_rank if name not in rank]
+    # per band and column (the slots, then the joint draw): which injections, and the γ test of every quantity
+    masks = [
+        [
+            *(in_band(snr_hat[:, s], lo, hi) for s in range(n_sources)),
+            in_band(joint_snr_hat, lo, hi),
+        ]
+        for lo, hi in bands
+    ]
+    p, bias, middle, envelope = [], [], [], []
+    for band in masks:
+        cells = [[None] * (n_sources + 1) for _ in names]
+        band_bias = [[None] * (n_sources + 1) for _ in names]
+        band_middle = [[None] * (n_sources + 1) for _ in names]
+        band_envelope = [None] * (n_sources + 1)
+        for q, name in enumerate(names):
+            for c, mask in enumerate(band):
+                if c < n_sources:
+                    ranks = rank[name][mask, c] if name in rank else None
+                else:
+                    ranks = joint_rank[name][mask] if name in joint_rank else None
+                if ranks is None or len(ranks) < 10:
+                    continue
+                p_value, limits = gamma_test(ranks, k)
+                cells[q][c] = round(float(p_value), 4)
+                band_bias[q][c] = round(float(ranks.mean() / (k - 1) - 0.5), 4)
+                band_middle[q][c] = round(
+                    float(np.mean((ranks >= k / 4) & (ranks < 3 * k / 4))), 4
+                )
+                band_envelope[c] = significant(limits, 3)
+        p.append(cells)
+        bias.append(band_bias)
+        middle.append(band_middle)
+        envelope.append(band_envelope)
+
+    # the f0 width ratio's running median per slot, over log-spaced bins of the draws' median SNR
+    running = []
+    for s in range(n_sources):
+        x, y = snr_hat[:, s], scores["width_ratio"][:, s]
+        keep = (x > 0) & (y > 0) & np.isfinite(y)
+        if not keep.any():
+            running.append([])
+            continue
+        edges = np.geomspace(x[keep].min(), x[keep].max() * (1 + 1e-9), 13)
+        which = np.digitize(x[keep], edges)
+        running.append(
+            [
+                significant(
+                    [np.median(x[keep][which == b]), np.median(y[keep][which == b])]
+                )
+                for b in range(1, len(edges))
+                if (which == b).sum() >= 5
+            ]
+        )
+
+    # per band, the proper scores' medians per column: energy per slot and joint, CRPS per coordinate, f0 width
+    median_in = lambda v, mask: float(np.median(v[mask])) if mask.any() else None
+    proper = []
+    for band in masks:
+        slots, joint = band[:n_sources], band[n_sources]
+        rows = [
+            ["sources", *(int(m.sum()) for m in band)],
+            [
+                "energy score",
+                *(
+                    median_in(scores["energy"][:, s], m)
+                    for s, m in enumerate(slots)
+                ),
+                median_in(scores["joint_energy"], joint),
+            ],
+            *(
+                [
+                    f"CRPS {name}",
+                    *(
+                        median_in(scores["crps"][:, s, c], m)
+                        for s, m in enumerate(slots)
+                    ),
+                    None,
+                ]
+                for c, name in enumerate(COORDS)
+            ),
+            [
+                "f₀ width / Fisher bound",
+                *(
+                    median_in(scores["width_ratio"][:, s], m)
+                    for s, m in enumerate(slots)
+                ),
+                None,
+            ],
+        ]
+        proper.append(
+            [
+                [
+                    row[0],
+                    *(
+                        v if v is None or isinstance(v, int) else significant(v)
+                        for v in row[1:]
+                    ),
+                ]
+                for row in rows
+            ]
+        )
+
+    return {
+        "what": what,
+        "k": k,
+        "epoch": int(scores["epoch"]) if "epoch" in scores else None,
+        "n_injections": int(n_injections),
+        "n_sources": int(n_sources),
+        "names": names,
+        "columns": [f"slot {s + 1}" for s in range(n_sources)] + ["joint"],
+        "p": p,
+        "n": [[int(m.sum()) for m in band] for band in masks],
+        "bias": bias,
+        "middle": middle,
+        "envelope": envelope,
+        "rank": {name: v.tolist() for name, v in rank.items()},
+        "joint_rank": {name: v.tolist() for name, v in joint_rank.items()},
+        "snr_hat": significant(snr_hat, 3),
+        "joint_snr_hat": significant(joint_snr_hat, 3),
+        "width_ratio": significant(scores["width_ratio"], 3),
+        "running": running,
+        "proper": proper,
+    }
+
+
+def scorecard_data(sc: dict) -> dict:
+    """The validation page's f0 scorecard of scorecard.py's rows (card_ prefix stripped) and stage."""
+    from .scorecard import FOUND_BINS
+
+    bands = snr_bands()
+    # per set and true-SNR band, as scorecard.summary prints it: widths and offsets over found sources only
+    table = []
+    for set_name, which in [
+        ("all", np.ones_like(sc["is_eval"])),
+        ("eval", sc["is_eval"]),
+        ("random", ~sc["is_eval"]),
+    ]:
+        for (lo, hi), label in zip(
+            bands, BANDS
+        ):
+            m = which & in_band(sc["snr"], lo, hi)
+            if not m.any():
+                continue
+            found = m & (sc["width"] < FOUND_BINS)
+            med = lambda v: (
+                float(np.median(v[found])) if found.any() else float("nan")
+            )
+            values = [
+                found.sum() / m.sum(),
+                med(sc["width"]),
+                med(sc["width"] / sc["ideal"]),
+                med(sc["offset"]),
+                sc["in68"][m].mean(),
+                sc["in95"][m].mean(),
+                sc["rank"][m].mean(),
+            ]
+            table.append([set_name, label, int(m.sum()), *significant(values, 3)])
+    return {
+        "found_bins": FOUND_BINS,
+        "epoch": int(sc["epoch"]),
+        "ode_steps": int(sc["ode_steps"]),
+        "n_random": int(sc["n_random"]),
+        "snr": significant(sc["snr"]),
+        "width": significant(sc["width"]),
+        "offset": significant(sc["offset"]),
+        "rank": significant(sc["rank"], 3),
+        "injection": sc["injection"].astype(int).tolist(),
+        "is_eval": sc["is_eval"].astype(bool).tolist(),
+        "table": table,
+    }
+
+
+def mcmc_data(problem, d: dict, reference: dict) -> dict:
+    """Per eval source with a reference MCMC: per COLUMNS coordinate its width, the flow's over it, and the
+    flow's W1 distance to it over its standard deviation."""
+    from scipy.stats import wasserstein_distance
+
+    from .mcmc import COLUMNS, fold
+
+    sources = []
+    for j, s in zip(*np.nonzero(np.isfinite(reference["mcmc"]).all(axis=(1, 3)))):
+        truth = d["truth"][j, s]
+        m = fold(reference["mcmc"][j, :, s], truth, problem.t_obs)
+        f = fold(d["matched"][j, :, s], truth, problem.t_obs)
+        f = f[np.isfinite(f).all(axis=1)]
+        width = robust_width(m, 0)
+        values = np.stack(
+            [
+                width,
+                robust_width(f, 0) / width,
+                [wasserstein_distance(f[:, c], m[:, c]) / m[:, c].std() for c in range(len(COLUMNS))],
+            ]
+        )
+        sources.append(
+            {
+                "label": f"injection {j}, source {s + 1}",
+                "snr": round(float(d["source_snr"][j, s]), 2),
+                "values": significant(values),
+            }
+        )
+    return {"columns": COLUMNS, "sources": sorted(sources, key=lambda source: -source["snr"])}
+
+
+def write_validation(path: Path, index: dict) -> Path:
+    """One validation page of an index: meta (title, subtitle, links, facts), calibration, scorecard, mcmc."""
+    from .validate import ALPHA
+
+    page = VALIDATION_PAGE
+    index["meta"] |= {
+        "alpha": ALPHA,
+        "bands": BANDS,
+        "band_edges": [[lo, hi if np.isfinite(hi) else None] for lo, hi in snr_bands()],
+        # the layout's version on the page, so a stale build is told from the current page at a glance
+        "layout": hashlib.sha1(page.encode()).hexdigest()[:8],
+    }
+    page = page.replace("__TITLE__", index["meta"]["title"].replace(": ", " "))
+    page = page.replace("__DATA__", json.dumps(index, separators=(",", ":")))
+    path.write_text(page)
+    return path
+
+
 def validation_report(eval_dir: Path) -> Path:
-    """eval_dir/validation.html: one interactive page of the eval's rank calibration, sharpness, proper scores,
-    f0 scorecard and MCMC comparison, from whichever of their files exist."""
+    """eval_dir/validation.html: the eval's rank calibration, sharpness and proper scores, f0 scorecard and, once
+    `mcmc pack` has run on the problem, the flow against the eval catalog's MCMC reference."""
     import yaml
 
-    from .validate import ALPHA, COORDS, SNR_BANDS, gamma_test
+    from .mcmc import load_reference
+    from .problem import LisaGB
+    from .samples import load as load_samples
 
     run_dir = eval_dir.parents[1]
     config = (
@@ -1844,266 +2171,109 @@ def validation_report(eval_dir: Path) -> Path:
         if (eval_dir / "eval.yaml").exists()
         else {}
     )
-    bands = [*SNR_BANDS, (0, np.inf)]
-    in_band = lambda snr, lo, hi: (snr >= lo) & (snr < hi)
-
-    calibration = None
-    if (eval_dir / "validation_scores.npz").exists():
-        scores = dict(np.load(eval_dir / "validation_scores.npz"))
-        rank = {
-            k.removeprefix("rank_"): v
-            for k, v in scores.items()
-            if k.startswith("rank_")
-        }
-        joint_rank = {
-            k.removeprefix("joint_rank_"): v
-            for k, v in scores.items()
-            if k.startswith("joint_rank_")
-        }
-        k = int(scores["draws"]) + 1
-        snr_hat, joint_snr_hat = scores["snr_hat"], scores["joint_snr_hat"]
-        n_injections, n_sources = snr_hat.shape
-        names = list(rank) + [name for name in joint_rank if name not in rank]
-        # per band and column (the slots, then the joint draw): which injections, and the γ test of every quantity
-        masks = [
-            [
-                *(in_band(snr_hat[:, s], lo, hi) for s in range(n_sources)),
-                in_band(joint_snr_hat, lo, hi),
-            ]
-            for lo, hi in bands
-        ]
-        p, bias, middle, envelope = [], [], [], []
-        for band in masks:
-            cells = [[None] * (n_sources + 1) for _ in names]
-            band_bias = [[None] * (n_sources + 1) for _ in names]
-            band_middle = [[None] * (n_sources + 1) for _ in names]
-            band_envelope = [None] * (n_sources + 1)
-            for q, name in enumerate(names):
-                for c, mask in enumerate(band):
-                    if c < n_sources:
-                        ranks = rank[name][mask, c] if name in rank else None
-                    else:
-                        ranks = joint_rank[name][mask] if name in joint_rank else None
-                    if ranks is None or len(ranks) < 10:
-                        continue
-                    p_value, limits = gamma_test(ranks, k)
-                    cells[q][c] = round(float(p_value), 4)
-                    band_bias[q][c] = round(float(ranks.mean() / (k - 1) - 0.5), 4)
-                    band_middle[q][c] = round(
-                        float(np.mean((ranks >= k / 4) & (ranks < 3 * k / 4))), 4
-                    )
-                    band_envelope[c] = significant(limits, 3)
-            p.append(cells)
-            bias.append(band_bias)
-            middle.append(band_middle)
-            envelope.append(band_envelope)
-
-        # the f0 width ratio's running median per slot, over log-spaced bins of the draws' median SNR
-        running = []
-        for s in range(n_sources):
-            x, y = snr_hat[:, s], scores["width_ratio"][:, s]
-            keep = (x > 0) & (y > 0) & np.isfinite(y)
-            if not keep.any():
-                running.append([])
-                continue
-            edges = np.geomspace(x[keep].min(), x[keep].max() * (1 + 1e-9), 13)
-            which = np.digitize(x[keep], edges)
-            running.append(
-                [
-                    significant(
-                        [np.median(x[keep][which == b]), np.median(y[keep][which == b])]
-                    )
-                    for b in range(1, len(edges))
-                    if (which == b).sum() >= 5
-                ]
-            )
-
-        # per band, the proper scores' medians per column: energy per slot and joint, CRPS per coordinate, f0 width
-        median_in = lambda v, mask: float(np.median(v[mask])) if mask.any() else None
-        proper = []
-        for band in masks:
-            slots, joint = band[:n_sources], band[n_sources]
-            rows = [
-                ["sources", *(int(m.sum()) for m in band)],
-                [
-                    "energy score",
-                    *(
-                        median_in(scores["energy"][:, s], m)
-                        for s, m in enumerate(slots)
-                    ),
-                    median_in(scores["joint_energy"], joint),
-                ],
-                *(
-                    [
-                        f"CRPS {name}",
-                        *(
-                            median_in(scores["crps"][:, s, c], m)
-                            for s, m in enumerate(slots)
-                        ),
-                        None,
-                    ]
-                    for c, name in enumerate(COORDS)
-                ),
-                [
-                    "f₀ width / Fisher bound",
-                    *(
-                        median_in(scores["width_ratio"][:, s], m)
-                        for s, m in enumerate(slots)
-                    ),
-                    None,
-                ],
-            ]
-            proper.append(
-                [
-                    [
-                        row[0],
-                        *(
-                            v if v is None or isinstance(v, int) else significant(v)
-                            for v in row[1:]
-                        ),
-                    ]
-                    for row in rows
-                ]
-            )
-
-        calibration = {
-            "k": k,
-            "epoch": int(scores["epoch"]) if "epoch" in scores else None,
-            "n_injections": int(n_injections),
-            "n_sources": int(n_sources),
-            "names": names,
-            "columns": [f"slot {s + 1}" for s in range(n_sources)] + ["joint"],
-            "p": p,
-            "n": [[int(m.sum()) for m in band] for band in masks],
-            "bias": bias,
-            "middle": middle,
-            "envelope": envelope,
-            "rank": {name: v.tolist() for name, v in rank.items()},
-            "joint_rank": {name: v.tolist() for name, v in joint_rank.items()},
-            "snr_hat": significant(snr_hat, 3),
-            "joint_snr_hat": significant(joint_snr_hat, 3),
-            "width_ratio": significant(scores["width_ratio"], 3),
-            "running": running,
-            "proper": proper,
-        }
-
+    card = load_samples(eval_dir / "scorecard.npz")
+    calibration = (
+        calibration_data(card, "prior injections") if "draws" in card else None
+    )
     scorecard = None
-    if (eval_dir / "scorecard.npz").exists():
-        from .scorecard import FOUND_BINS
-
-        sc = dict(np.load(eval_dir / "scorecard.npz"))
-        # per set and true-SNR band, as scorecard.summary prints it: widths and offsets over found sources only
-        table = []
-        for set_name, which in [
-            ("all", np.ones_like(sc["is_eval"])),
-            ("eval", sc["is_eval"]),
-            ("random", ~sc["is_eval"]),
-        ]:
-            for (lo, hi), label in zip(
-                bands, ["0–15", "15–40", "40–100", "≥ 100", "all"]
-            ):
-                m = which & in_band(sc["snr"], lo, hi)
-                if not m.any():
-                    continue
-                found = m & (sc["width"] < FOUND_BINS)
-                med = lambda v: (
-                    float(np.median(v[found])) if found.any() else float("nan")
-                )
-                values = [
-                    found.sum() / m.sum(),
-                    med(sc["width"]),
-                    med(sc["width"] / sc["ideal"]),
-                    med(sc["offset"]),
-                    sc["in68"][m].mean(),
-                    sc["in95"][m].mean(),
-                    sc["rank"][m].mean(),
-                ]
-                table.append([set_name, label, int(m.sum()), *significant(values, 3)])
-        scorecard = {
-            "found_bins": FOUND_BINS,
-            "epoch": int(sc["epoch"]),
-            "ode_steps": int(sc["ode_steps"]),
-            "n_random": int(sc["n_random"]),
-            "snr": significant(sc["snr"]),
-            "width": significant(sc["width"]),
-            "offset": significant(sc["offset"]),
-            "rank": significant(sc["rank"], 3),
-            "injection": sc["injection"].astype(int).tolist(),
-            "is_eval": sc["is_eval"].astype(bool).tolist(),
-            "table": table,
-        }
-
-    mcmc = None
-    if (eval_dir / "mcmc_compare.npz").exists():
-        from .mcmc import COLUMNS
-
-        compare = dict(np.load(eval_dir / "mcmc_compare.npz"))
-        source_snr = (
-            np.load(eval_dir / "draws.npz")["source_snr"]
-            if (eval_dir / "draws.npz").exists()
-            else None
+    if "card_snr" in card:
+        scorecard = scorecard_data(
+            {k.removeprefix("card_"): v for k, v in card.items() if k.startswith("card_")}
+            | {k: card[k] for k in ("epoch", "ode_steps", "n_random")}
         )
-        sources = []
-        for key, values in compare.items():
-            j, s = map(int, key.split("_"))
-            snr = float(source_snr[j, s]) if source_snr is not None else float("nan")
-            sources.append(
-                {
-                    "label": f"injection {j}, source {s + 1}",
-                    "snr": round(snr, 2),
-                    "values": significant(values),
-                }
-            )
-        mcmc = {
-            "columns": COLUMNS,
-            "sources": sorted(sources, key=lambda source: -source["snr"]),
-        }
-
+    mcmc = None
+    if config and (eval_dir / "draws.npz").exists():
+        problem = LisaGB(**config["problem"])
+        reference = load_reference(problem, config["seed"])
+        d = load_samples(eval_dir / "draws.npz")
+        if reference is not None and np.allclose(reference["truth"], d["truth"]):
+            mcmc = mcmc_data(problem, d, reference)
+    links = [[href, text] for href, text, there in [
+        ("corner.html", "corners", (eval_dir / "draws.npz").exists()),
+        ("../../run.html", "training", (run_dir / "history.npz").exists()),
+    ] if there]
     index = {
         "meta": {
-            "run": run_dir.name,
-            "config": config.get("name", ""),
-            "commit": str(config.get("commit", ""))[:7],
-            "eval": eval_dir.name,
-            "alpha": ALPHA,
-            "bands": ["0–15", "15–40", "40–100", "≥ 100", "all"],
-            "band_edges": [[lo, hi if np.isfinite(hi) else None] for lo, hi in bands],
-            "stage": {str(key): str(value) for key, value in stage.items()},
-            "links": {
-                "corner": (eval_dir / "draws.npz").exists(),
-                "run": (run_dir / "history.npz").exists(),
-            },
+            "title": f"{run_dir.name}: validation",
+            "subtitle": f"{config.get('name', '')} at {str(config.get('commit', ''))[:7]} · eval {eval_dir.name}",
+            "links": links,
+            "facts": {str(key): str(value) for key, value in stage.items()},
         },
         "calibration": calibration,
         "scorecard": scorecard,
         "mcmc": mcmc,
     }
-    page = VALIDATION_PAGE
-    # the layout's version on the page, so a stale build is told from the current page at a glance
-    index["meta"]["layout"] = hashlib.sha1(page.encode()).hexdigest()[:8]
-    page = page.replace("__TITLE__", f"{run_dir.name} validation")
-    page = page.replace("__DATA__", json.dumps(index, separators=(",", ":")))
-    path = eval_dir / "validation.html"
-    path.write_text(page)
-    return path
+    return write_validation(eval_dir / "validation.html", index)
 
 
 def eval_pages(eval_dir: Path) -> list[Path]:
-    """corner.html from draws.npz (with mcmc.npz's chains when `mcmc report` has run), and validation.html from the
-    validation, scorecard and MCMC comparison files."""
+    """corner.html from draws.npz and validation.html from scorecard.npz, both with the problem's MCMC reference
+    once `mcmc pack` has written it."""
     pages = []
     if (eval_dir / "draws.npz").exists():
         pages.append(corner_report(eval_dir))
-    if any(
-        (eval_dir / name).exists()
-        for name in ("validation_scores.npz", "scorecard.npz", "mcmc_compare.npz")
-    ):
+    if (eval_dir / "scorecard.npz").exists():
         pages.append(validation_report(eval_dir))
     return pages
 
 
+def mcmc_pages(path: Path, problem=None) -> list[Path]:
+    """The MCMC reference's pages beside reports/mcmc/data: its corners against the Fisher, and the SBC and scores
+    of the MCMC on the eval catalog."""
+    from . import config as run_config
+    from .mcmc import FDOT_SIGMAS, problem_id
+    from .problem import LisaGB
+    from .samples import load as load_samples
+
+    d = load_samples(path)
+    name, seed, pid = str(d["config"]), int(d["seed"]), str(d["problem_id"])
+    problem = problem or LisaGB(**run_config.load(name).problem)
+    assert problem_id(problem, seed) == pid, f"{path}: config {name} is no longer problem {pid}"
+    stem = path.parent.parent / path.stem
+    corner, validation = stem.with_name(f"{stem.name}-corner.html"), stem.with_name(f"{stem.name}-validation.html")
+    complete = np.isfinite(d["mcmc"]).all(axis=(1, 2, 3))
+    n_sources = int(np.isfinite(d["mcmc"][:, 0, :, 0]).sum())
+    subtitle = (
+        f"{name}, seed {seed}, problem {pid}: joint MCMC (all sources free on the window's likelihood,"
+        f" ḟ prior cut at {FDOT_SIGMAS:g}σ) on {n_sources} of {d['truth'].shape[0] * d['truth'].shape[1]} eval sources."
+    )
+
+    # corners of the injections with every source run, the MCMC leading and the Fisher as reference
+    pages, links = [], []
+    keep = np.flatnonzero(complete)
+    if len(keep):
+        sub = {k: d[k][keep] for k in ("truth", "f", "snr", "source_snr", "grid")}
+        sets = [{"mcmc": d["mcmc"][j], "fisher": d["fisher"][j]} for j in keep]
+        index, blob = corner_index(problem, sub, sets, lead="mcmc")
+        index["meta"] |= {"title": f"MCMC reference {pid}: corners", "subtitle": subtitle}
+        pages.append(write_corner(corner, index, blob))
+        links.append([corner.name, "corners"])
+
+    facts = {
+        "config": name,
+        "seed": seed,
+        "problem": pid,
+        "injections run": f"{int(complete.sum())} of {len(complete)}",
+        "worst R-hat": f"{np.nanmax(d['rhat']):.3f}",
+        "least ESS": f"{np.min(d['ess'][np.isfinite(d['mcmc'][:, 0, :, 0])]):.0f}",
+    }
+    index = {
+        "meta": {
+            "title": f"MCMC reference {pid}: validation",
+            "subtitle": subtitle,
+            "links": links,
+            "facts": facts,
+        },
+        "calibration": calibration_data(d, "eval injections") if "draws" in d else None,
+        "scorecard": None,
+        "mcmc": None,
+    }
+    pages.append(write_validation(validation, index))
+    return pages
+
+
 def main() -> int:
-    """Write every page of the given run dirs (their evals too) or eval dirs, on the CPU."""
+    """Write every page of the given run dirs (their evals too), eval dirs or MCMC reference npz files, on the CPU."""
     import jax
 
     # the only JAX here is the corner report's chart conversion: no accelerator needed
@@ -2111,14 +2281,16 @@ def main() -> int:
 
     pages = []
     for target in map(Path, sys.argv[1:]):
-        if (target / "config.yaml").exists():
+        if target.suffix == ".npz":
+            pages += mcmc_pages(target)
+        elif (target / "config.yaml").exists():
             pages += [run_report(target)] if (target / "history.npz").exists() else []
             for eval_dir in sorted((target / "eval").glob("*/eval.yaml")):
                 pages += eval_pages(eval_dir.parent)
         elif (target / "eval.yaml").exists():
             pages += eval_pages(target)
     if not pages:
-        print("nothing to draw: give a run dir or an eval dir", file=sys.stderr)
+        print("nothing to draw: give a run dir, an eval dir or an MCMC reference", file=sys.stderr)
         return 1
     for page in pages:
         print(page, flush=True)

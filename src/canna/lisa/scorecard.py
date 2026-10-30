@@ -1,4 +1,4 @@
-"""The eval job's scores: the per-source f0 scorecard, then the likelihood-free validation, into one eval dir."""
+"""The eval job's scores: the per-source f0 scorecard and the likelihood-free validation, into one scorecard.npz."""
 
 import time
 from functools import partial
@@ -11,10 +11,11 @@ import numpy as np
 from . import config as run_config
 from . import validate
 from .chart import flow_to_physical, physical_to_flow, sample_flow
-from .injections import N_CANDIDATES, N_POSTERIOR, N_QUANTILES, match_sources
+from .injections import N_POSTERIOR, eval_injections, match_sources
 from .network import LisaFlow
 from .problem import LisaGB, f0_window, sample_f
 from .sample import ODE_STEPS, sample_posterior
+from .samples import pack_validation, unpack
 from .simulator import preprocess, sample_observation, sample_physical, snr
 from .train import load_trained, print_peak_memory
 
@@ -54,7 +55,6 @@ def score_injection(
     latent,
     f,
     key_n,
-    time_power: float = 1.0,
     n_draws: int = N_DRAWS,
     ode_steps: int = ODE_STEPS,
 ) -> dict:
@@ -63,7 +63,7 @@ def score_injection(
     u0 = jax.vmap(partial(sample_flow, problem), in_axes=(0, None))(
         jr.split(key_n, N_POSTERIOR)[:n_draws], f
     )
-    post = sample_posterior(flow, u0, y, f, ode_steps, time_power)
+    post = sample_posterior(flow, u0, y, f, ode_steps)
     draws = np.asarray(
         jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)
     )
@@ -104,42 +104,38 @@ def main() -> None:
         backend=jax.default_backend(),
     )
     print(
-        f"run {config.run}, epoch {epoch}, time_power {config.time_power},"
+        f"run {config.run}, epoch {epoch},"
         f" ode_steps {ode_steps}, bf16 {config.bf16}, n_random {n_random},"
         f" backend {jax.default_backend()} -> {out_dir}",
         flush=True,
     )
 
-    # the eval's candidates and keys first, then n_random plain prior draws
-    key_pick, key_window, key_noise = jr.split(jr.key(config.seed), 3)
-    windows = jax.vmap(partial(sample_f, problem))(jr.split(key_window, N_CANDIDATES))
-    latents = jax.vmap(partial(sample_physical, problem))(
-        jr.split(key_pick, N_CANDIDATES), windows
+    # the eval grid's injections first, then n_random plain prior draws on the seed's stream 4
+    latents, windows, _, grid, noise_keys, _ = eval_injections(problem, config.seed)
+    key_window, key_pick, key_noise = jr.split(jr.fold_in(jr.key(config.seed), 4), 3)
+    random_windows = jax.vmap(partial(sample_f, problem))(jr.split(key_window, n_random))
+    random_latents = jax.vmap(partial(sample_physical, problem))(
+        jr.split(key_pick, n_random), random_windows
     )
-    snrs = np.asarray(jax.lax.map(lambda pc: snr(problem, *pc), (latents, windows)))
-    quantiles = np.linspace(1.0 / N_QUANTILES, 1.0, N_QUANTILES)
-    chosen = np.argsort(snrs)[np.round(quantiles * (N_CANDIDATES - 1)).astype(int)]
-    others = np.setdiff1d(np.arange(N_CANDIDATES), chosen)[:n_random]
-    noise_keys = list(jr.split(key_noise, N_QUANTILES)) + [
-        jr.fold_in(key_noise, 10_000 + int(i)) for i in others
-    ]
+    latents = jnp.concatenate([latents, random_latents])
+    windows = jnp.concatenate([windows, random_windows])
+    noise_keys = jnp.concatenate([noise_keys, jr.split(key_noise, n_random)])
 
     rows, injection, is_eval = [], [], []
     start = time.perf_counter()
-    for n, (i, key_n) in enumerate(zip(np.concatenate([chosen, others]), noise_keys)):
+    for n, key_n in enumerate(noise_keys):
         rows.append(
             score_injection(
                 problem,
                 flow,
-                latents[i],
-                windows[i],
+                latents[n],
+                windows[n],
                 key_n,
-                config.time_power,
                 ode_steps=ode_steps,
             )
         )
         injection += [n] * problem.n_sources
-        is_eval += [n < N_QUANTILES] * problem.n_sources
+        is_eval += [n < len(grid)] * problem.n_sources
         if (n + 1) % 5 == 0:
             print(
                 f"[{n + 1}/{len(noise_keys)}] injections scored, {time.perf_counter() - start:.0f} s",
@@ -149,7 +145,7 @@ def main() -> None:
     rows = {k: np.concatenate([r[k] for r in rows]) for k in rows[0]}
     rows["injection"], rows["is_eval"] = np.array(injection), np.array(is_eval)
 
-    print("\nthe ten eval injections, per source")
+    print("\nthe eval injections, per source")
     print(f"{'inj':>4} {'SNR':>7} {'width':>7} {'x ideal':>8} {'offset':>8}")
     for j in np.flatnonzero(rows["is_eval"]):
         print(
@@ -159,7 +155,7 @@ def main() -> None:
     summary(
         rows,
         rows["is_eval"],
-        f"the ten eval injections (epoch {epoch}, {ode_steps} ODE steps)",
+        f"{len(grid)} eval injections (epoch {epoch}, {ode_steps} ODE steps)",
     )
     summary(
         rows,
@@ -168,6 +164,17 @@ def main() -> None:
     )
     summary(rows, np.ones_like(rows["is_eval"]), "all")
 
+    # the f0 rows as card_<name>; with n_validation, the validation samples (packed) and their scores beside them
+    card = {f"card_{k}": v for k, v in rows.items()}
+    validation = {}
+    if config.n_validation:
+        samples = validate.sample(config, problem, flow)
+        validation = pack_validation(samples)
+        validation |= validate.summarise(
+            unpack(validation),
+            config.seed,
+            f"{config.n_validation} prior injections (epoch {epoch}, {ode_steps} ODE steps)",
+        )
     path = out_dir / "scorecard.npz"
     np.savez(
         path,
@@ -175,14 +182,11 @@ def main() -> None:
         ode_steps=ode_steps,
         n_random=n_random,
         t_obs=problem.t_obs,
-        **rows,
+        **card,
+        **validation,
     )
     print(f"\nsaved {path}", flush=True)
     print_peak_memory()
-
-    if config.n_validation:
-        validate.sample(config, problem, flow, epoch, out_dir)
-        validate.summarise(out_dir, config.seed)
 
 
 if __name__ == "__main__":

@@ -64,7 +64,7 @@ def test_the_network_runs_and_its_velocity_depends_on_where_the_source_sits():
     xt, t = sample.xt[0], sample.t[0]
     forward = eqx.filter_jit(net)
     dx = forward(xt, t, sample.y, sample.f)
-    assert dx.shape == xt.shape and bool(jnp.all(jnp.isfinite(dx)))
+    assert dx.shape == (*xt.shape[:-1], 2 * xt.shape[-1]) and bool(jnp.all(jnp.isfinite(dx)))
     moved = xt.at[0, 0].add(0.05)
     assert not np.allclose(forward(moved, t, sample.y, sample.f)[1], dx[1], atol=1e-6)
-    assert len(net.rope_periods) == 32 // 2 // 2 and net.rope_periods[0] == 2.0
+    assert len(net.rope_periods) == 32 // 2 // 2 and net.rope_periods[0] == 2.0 / gb.t_obs

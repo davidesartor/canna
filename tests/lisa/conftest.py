@@ -17,7 +17,7 @@ from canna.lisa.train import train_sample
 
 @pytest.fixture(scope="session")
 def small_flow():
-    """The narrow-band problem with a deliberately tiny velocity network: the RK4 integrator is under test."""
+    """The narrow-band problem with a deliberately tiny network: the sampler is under test."""
     problem = LisaGB(**config.load("narrow-B").problem)
     sample = eqx.filter_jit(partial(train_sample, problem))(jr.key(0))
     flow = LisaFlow(
@@ -26,14 +26,12 @@ def small_flow():
         num_heads=2,
         num_blocks=1,
         patch=16,
-        prediction="velocity",
-        self_condition=False,
         dtype=jnp.float32,
         param_dtype=jnp.float32,
         key=jr.key(1),
     )
     # a fresh MMDiT is zero-initialised into the identity transport; perturb it so the
-    # velocity field actually depends on x, t and y
+    # flow actually depends on x, t and y
     params, static = jax.tree_util.tree_flatten(flow)
     keys = jr.split(jr.key(2), len(params))
     params = [

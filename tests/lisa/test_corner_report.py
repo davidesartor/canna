@@ -28,7 +28,7 @@ def test_a_synthetic_eval_round_trips_through_the_page(tmp_path):
     problem = LisaGB(**problem_args)
     run_dir, eval_dir = tmp_path / "run", tmp_path / "run" / "eval" / "1-average-32"
     eval_dir.mkdir(parents=True)
-    (run_dir / "config.yaml").write_text(yaml.safe_dump({"name": name, "commit": "abc1234", "problem": problem_args}))
+    (run_dir / "config.yaml").write_text(yaml.safe_dump({"name": name, "commit": "abc1234", "seed": 0, "problem": problem_args}))
     (eval_dir / "eval.yaml").write_text(yaml.safe_dump({"ode_steps": 32, "weights": "average"}))
 
     n_injections, n_draws, rng = 2, 64, np.random.default_rng(0)
@@ -47,7 +47,7 @@ def test_a_synthetic_eval_round_trips_through_the_page(tmp_path):
         f=f,
         snr=np.full(n_injections, 50.0),
         source_snr=np.tile(np.linspace(30.0, 10.0, problem.n_sources), (n_injections, 1)),
-        quantiles=np.linspace(0.1, 1.0, n_injections),
+        grid=np.stack(np.divmod(np.arange(n_injections), n_injections), axis=1),
         epoch=1,
     )
 

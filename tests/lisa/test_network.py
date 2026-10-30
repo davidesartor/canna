@@ -77,7 +77,7 @@ def inputs(seed=1):
 
 
 def test_output_shapes():
-    assert flow()(*inputs()).shape == (S, X)
+    assert flow()(*inputs()).shape == (S, 2 * X)
 
 
 def test_takes_one_example_and_vmaps():
@@ -87,7 +87,7 @@ def test_takes_one_example_and_vmaps():
         rand((3, BINS, C), 2),
         rand((3,), 4) * 1e-4 + F,
     )
-    assert out.shape == (3, S, X)
+    assert out.shape == (3, S, 2 * X)
 
 
 def test_batch_rows_are_independent():
@@ -101,7 +101,7 @@ def test_batch_rows_are_independent():
 
 def test_takes_any_number_of_sources():
     _, t, y, f = inputs()
-    assert flow()(rand((S - 1, X), 1), t, y, f).shape == (S - 1, X)
+    assert flow()(rand((S - 1, X), 1), t, y, f).shape == (S - 1, 2 * X)
 
 
 @pytest.mark.parametrize("t", [0.0, 1.0])
@@ -128,7 +128,7 @@ def test_sinks_run_per_draw_and_change_the_flow_once_perturbed():
     # the sinks are not part of the data stream's cache
     assert sunk.encode(y, f)[0].shape == plain.encode(y, f)[0].shape
     out = sunk(x, t, y, f)
-    assert out.shape == (S, X) and bool(jnp.all(jnp.isfinite(out)))
+    assert out.shape == (S, 2 * X) and bool(jnp.all(jnp.isfinite(out)))
     close(sunk(x, t, y, f, cache=sunk.encode(y, f)), out, atol=0.0)
     differs(out, plain(x, t, y, f))
 
@@ -164,7 +164,7 @@ def test_velocity_depends_on_where_the_signal_sits_once_perturbed():
     differs(net(x, t, y, f), net(x, t, jnp.roll(y, 20, axis=0), f))
 
 
-def test_data_tokens_know_their_centre_frequency():
+def test_data_tokens_know_their_frequency():
     """Identical tokens at different frequencies enter the data stream as different values."""
     net = flow()
     values = net.encode(jnp.zeros((BINS, C)), jnp.asarray(F))[1][0]
@@ -184,17 +184,17 @@ def test_permutation_equivariant_once_perturbed():
     net = perturbed(flow())
     x, t, y, f = inputs()
     perm = jnp.array([2, 0, 3, 1])
-    close(net(x[perm], t, y, f, x[perm]), net(x, t, y, f, x)[perm], atol=2e-3)
+    close(net(x[perm], t, y, f), net(x, t, y, f)[perm], atol=2e-3)
 
 
 def test_velocity_is_differentiable_in_x():
     net, (x, t, y, f) = perturbed(flow()), inputs()
     g = jax.jacobian(lambda z: net(z, t, y, f))(x)
-    assert g.shape == (S, X, S, X) and bool(jnp.all(jnp.isfinite(g)))
+    assert g.shape == (S, 2 * X, S, X) and bool(jnp.all(jnp.isfinite(g)))
 
 
 def test_one_block_is_the_least_a_one_way_backbone_takes():
-    assert flow(blocks=1)(*inputs()).shape == (S, X)
+    assert flow(blocks=1)(*inputs()).shape == (S, 2 * X)
     with pytest.raises(AssertionError, match="needs a block"):
         flow(blocks=0)
 

@@ -146,6 +146,7 @@ def test_the_overlaps_add_up_to_the_snr_on_noiseless_data(narrow):
 def test_a_whole_validation_runs_end_to_end(small_flow, tmp_path, capsys):
     """The eval job's path on the tiny test network: draws, then ranks, report, scores and pages."""
     from canna.lisa.plots import eval_pages
+    from canna.lisa.samples import pack_validation
     from canna.lisa.validate import summarise, validate_injection
 
     problem, flow, _, _, _ = small_flow
@@ -156,15 +157,14 @@ def test_a_whole_validation_runs_end_to_end(small_flow, tmp_path, capsys):
     samples = {k: np.stack([np.asarray(r[k]) for r in rows]) for k in rows[0]}
     assert samples["x"].shape == (12, 9, problem.n_sources, 8)
     assert all(np.all(np.isfinite(samples[k])) for k in ("x", "source_snr", "overlap"))
-    np.savez(tmp_path / "validation.npz", epoch=1, ode_steps=2, **samples)
-    summarise(tmp_path, 0)
-    with np.load(tmp_path / "validation_scores.npz") as scores:
-        assert {
-            "rank_f0",
-            "rank_tarp",
-            "joint_rank_log_likelihood",
-            "joint_rank_tarp",
-        } <= set(scores)
+    scores = summarise(samples, 0, "test")
+    assert {
+        "rank_f0",
+        "rank_tarp",
+        "joint_rank_log_likelihood",
+        "joint_rank_tarp",
+    } <= set(scores)
+    np.savez(tmp_path / "scorecard.npz", epoch=1, ode_steps=2, **pack_validation(samples), **scores)
     assert eval_pages(tmp_path) == [tmp_path / "validation.html"]
     assert (
         "slot 0" in capsys.readouterr().out and (tmp_path / "validation.html").exists()

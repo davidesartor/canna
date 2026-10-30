@@ -118,11 +118,11 @@ def test_prior_helicity_is_phase_uniform_and_within_reach():
 
 def test_training_sample_is_finite_and_walks_a_straight_line():
     problem = LisaGB(**NARROW)
-    sample = eqx.filter_jit(partial(train_sample, problem, time_power=3.0))(jr.key(11))
+    sample = eqx.filter_jit(partial(train_sample, problem))(jr.key(11))
     assert sample.xt.shape == (1, 4, 8) and all(
         bool(jnp.all(jnp.isfinite(a))) for a in sample
     )
-    remaining = ((1 - sample.t) ** 3.0)[:, None, None]
+    remaining = (1 - sample.t)[:, None, None]
     assert jnp.allclose(sample.xt + remaining * sample.dx, sample.x_target, atol=1e-6)
 
 

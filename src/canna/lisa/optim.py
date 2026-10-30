@@ -102,7 +102,7 @@ def schedule_free(
     return optax.GradientTransformation(init, update)
 
 
-# Muon takes the matrices of these fields (and the velocity head's first layer), AdamW the rest
+# Muon takes the matrices of these fields (and the head's first layer), AdamW the rest
 MUON_FIELDS = ("backbone", "c_mlp", "f_mlp", "f0_mlp", "y_mlp", "x_modulation")
 
 

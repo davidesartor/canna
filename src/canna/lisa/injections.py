@@ -1,4 +1,4 @@
-"""The eval's ten injections at the SNR deciles of prior draws, and their Fisher forecasts."""
+"""The eval's grid of injections, windows by frequency and injections by SNR, and their Fisher forecasts."""
 
 import itertools
 from functools import partial
@@ -20,8 +20,9 @@ from .simulator import (
 )
 
 N_POSTERIOR = 1024
-N_CANDIDATES = 1024
-N_QUANTILES = 10
+N_WINDOWS = 8
+N_PER_WINDOW = 8
+N_PRIOR_DRAWS = 1024
 N_FISHER_DRAWS = 32
 
 
@@ -77,28 +78,42 @@ def match_sources(
 
 
 def eval_injections(problem: LisaGB, seed: int):
-    """The ten eval injections at the SNR deciles of N_CANDIDATES prior draws, each one's sources loudest first.
+    """N_WINDOWS windows at the window prior's quantiles, lowest f first, each with N_PER_WINDOW prior injections,
+    faintest first; each injection's sources loudest first.
 
-    Returns (latents [10, S, 8], windows, window SNRs, quantiles, noise keys, prior precision).
+    Returns (latents [W K, S, 8], windows, window SNRs, grid [W K, 2] of (window, SNR rank), noise keys, prior precision).
     """
-    key_pick, key_window, key_noise = jr.split(jr.key(seed), 3)
-    windows = jax.vmap(partial(sample_f, problem))(jr.split(key_window, N_CANDIDATES))
-    latents = jax.vmap(partial(sample_physical, problem))(
-        jr.split(key_pick, N_CANDIDATES), windows
+    # the seed's stream 3: training splits it in three, and fold_in(key, i) is split(key, n)[i]
+    key_pick, key_window, key_noise, key_prior = jr.split(jr.fold_in(jr.key(seed), 3), 4)
+    sample_windows = lambda key: jax.vmap(partial(sample_f, problem))(
+        jr.split(key, N_PRIOR_DRAWS)
     )
-    # Gaussian-approx prior precision, in physical units
-    prior_prec_p = scaled_inverse(jnp.cov(rearrange(latents, "n s p -> (s p) n")))
-    snrs = np.asarray(jax.lax.map(lambda pc: snr(problem, *pc), (latents, windows)))
-    quantiles = np.linspace(1.0 / N_QUANTILES, 1.0, N_QUANTILES)
-    chosen = np.argsort(snrs)[np.round(quantiles * (N_CANDIDATES - 1)).astype(int)]
-    picked = jax.vmap(partial(sort_by_snr, problem))(latents[chosen], windows[chosen])
+    # the midpoints of the window prior's N_WINDOWS quantile bins: the band as training sees it
+    pool = np.sort(np.asarray(sample_windows(key_window)))
+    levels = (np.arange(N_WINDOWS) + 0.5) / N_WINDOWS
+    windows = np.repeat(pool[np.round(levels * (N_PRIOR_DRAWS - 1)).astype(int)], N_PER_WINDOW)
+    latents = jax.vmap(partial(sample_physical, problem))(
+        jr.split(key_pick, windows.size), jnp.asarray(windows)
+    )
+    snrs = np.asarray(jax.lax.map(lambda pc: snr(problem, *pc), (latents, jnp.asarray(windows))))
+    ranks = np.argsort(rearrange(snrs, "(w k) -> w k", k=N_PER_WINDOW), axis=1)
+    order = (ranks + N_PER_WINDOW * np.arange(N_WINDOWS)[:, None]).ravel()
+    picked = jax.vmap(partial(sort_by_snr, problem))(latents[order], jnp.asarray(windows))
+    grid = np.stack(np.divmod(np.arange(windows.size), N_PER_WINDOW), axis=1)
+
+    # Gaussian-approx prior precision, in physical units, from plain prior draws
+    key_prior_window, key_prior_pick = jr.split(key_prior)
+    prior_latents = jax.vmap(partial(sample_physical, problem))(
+        jr.split(key_prior_pick, N_PRIOR_DRAWS), sample_windows(key_prior_window)
+    )
+    prior_prec_p = scaled_inverse(jnp.cov(rearrange(prior_latents, "n s p -> (s p) n")))
     # latents stay on device: clean_signal writes the chirp in with .at[].set()
     return (
         picked,
-        windows[chosen],
-        snrs[chosen],
-        quantiles,
-        jr.split(key_noise, N_QUANTILES),
+        jnp.asarray(windows),
+        snrs[order],
+        grid,
+        jr.split(key_noise, windows.size),
         prior_prec_p,
     )
 

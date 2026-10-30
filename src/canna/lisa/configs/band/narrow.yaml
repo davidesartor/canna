@@ -8,5 +8,3 @@ problem:
   f0_range: [1.0e-4, 1.2637070256260989e-3]
 warmup_steps: 13000
 total_steps: 650000
-network:
-  loss_weights: true

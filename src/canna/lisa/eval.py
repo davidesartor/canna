@@ -1,4 +1,4 @@
-"""The flow's draws on the ten eval injections, matched to the truth, beside their Fisher forecasts, as draws.npz (packed, see samples)."""
+"""The flow's draws on the eval grid's injections, matched to the truth, beside their Fisher forecasts, as draws.npz (packed, see samples)."""
 
 from functools import partial
 
@@ -10,7 +10,6 @@ from . import config as run_config
 from .chart import flow_to_physical, sample_flow
 from .injections import (
     N_POSTERIOR,
-    N_QUANTILES,
     eval_injections,
     fisher_samples,
     match_sources,
@@ -25,7 +24,7 @@ def main() -> None:
     config = run_config.load_run()
     problem, flow, epoch = load_trained(config)
     out_dir = run_config.eval_dir(config, epoch, backend=jax.default_backend())
-    latents, windows, snrs, quantiles, noise_keys, prior_prec_p = eval_injections(
+    latents, windows, snrs, grid, noise_keys, prior_prec_p = eval_injections(
         problem, config.seed
     )
 
@@ -38,7 +37,7 @@ def main() -> None:
         u0 = jax.vmap(partial(sample_flow, problem), in_axes=(0, None))(
             jr.split(key_n, N_POSTERIOR), f
         )
-        post = sample_posterior(flow, u0, y, f, config.ode_steps, config.time_power)
+        post = sample_posterior(flow, u0, y, f, config.ode_steps)
         draws.append(
             np.asarray(
                 jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)
@@ -47,7 +46,10 @@ def main() -> None:
         matched.append(match_sources(problem, draws[-1], np.asarray(latent), f))
         fisher.append(fisher_samples(problem, latent, f, key_n, prior_prec_p))
         source_snr.append(np.asarray(snr(problem, latent[:, None, :], f)))
-        print(f"[{j + 1}/{N_QUANTILES}] q{quantiles[j]:.2f} sampled", flush=True)
+        print(
+            f"[{j + 1}/{len(grid)}] window {grid[j, 0]}, SNR rank {grid[j, 1]} sampled",
+            flush=True,
+        )
 
     path = out_dir / "draws.npz"
     np.savez(
@@ -61,7 +63,7 @@ def main() -> None:
                 f=np.asarray(windows),
                 snr=snrs,
                 source_snr=np.stack(source_snr),
-                quantiles=quantiles,
+                grid=grid,
                 epoch=epoch,
             )
         ),

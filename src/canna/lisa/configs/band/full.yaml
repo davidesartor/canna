@@ -9,6 +9,3 @@ problem:
 
 warmup_steps: 4800
 total_steps: 240000
-
-network:
-  loss_weights: true

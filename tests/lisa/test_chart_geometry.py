@@ -64,9 +64,9 @@ def test_flow_draws_whiten_the_sky():
 
 def test_train_sample_walks_a_straight_line_and_is_finite():
     problem = LisaGB(n_sources=2)
-    sample = eqx.filter_jit(partial(train_sample, problem, time_power=3.0))(jr.key(0))
+    sample = eqx.filter_jit(partial(train_sample, problem))(jr.key(0))
     assert all(bool(jnp.all(jnp.isfinite(a))) for a in sample)
-    remaining = ((1 - sample.t) ** 3.0)[:, None, None]
+    remaining = (1 - sample.t)[:, None, None]
     assert jnp.allclose(sample.xt + remaining * sample.dx, sample.x_target, atol=1e-6)
 
 
