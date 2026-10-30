@@ -1,64 +1,65 @@
-"""Figure: the loudest eval source (SNR 1366), flow against a joint MCMC and the Fisher forecast.
+"""Figure: Fisher widths against the joint reference MCMC, per source of every injection with chains."""
 
-As fig_corner.py's loudest page, with the MCMC added: 4000 draws of jexplore's cold chains
-over the window's four sources (lisa_checks/mcmc_xs.py, two seeds), relabelled onto the
-source. The MCMC samples one (psi, phi0) copy; each draw is moved to one of the four exact
-copies, (psi + k pi/2, phi0 + k pi), at random, so that it is shown on the flow's footing.
-"""
+import json
 
 import numpy as np
 
-import data
 import style
 from style import plt
-import corner
-from fig_corner import LABELS, features
+
+DRAWS = style.REPO / "reports/mcmc/data/draws.json"
+FISHER_BAND = (0.8, 1.25)
+
+# the joint width is the mean over its seeds; the ratio is free of draws.json's scale
+draws = json.loads(DRAWS.read_text())
+drift = draws["columns"][1]
+snr, fisher = [], []
+for w in draws["windows"]:
+    if not w["joint_width"]:
+        continue
+    for s, snr_s in enumerate(w["snr"]):
+        joint_width = np.mean([seed[s] for seed in w["joint_width"]], axis=0)
+        snr.append(snr_s)
+        fisher.append(np.array(w["fisher_width"][s]) / joint_width)
+snr, fisher = np.array(snr), np.array(fisher)
 
 style.setup()
-problem, _ = data.xs_problem()
-inj = data.eval_injections()
-j = 9
-z = data.mcmc(j)
-s = int(z["loudest"])
-f, truth = float(inj["window"][j]), inj["truth"][j]
-assert np.allclose(z["truth"], truth), "MCMC summary is for another injection"
-
-mcmc = np.array(z["mcmc_loudest"])
-k = np.random.default_rng(0).integers(0, 4, len(mcmc))
-mcmc[:, 5] += k * np.pi / 2
-mcmc[:, 7] += k * np.pi
-mcmc = features(mcmc, truth[s, 0])
-flow = features(data.matched_draws(problem, data.final_draws(j), truth, f)[:, s], truth[s, 0])
-fish = features(data.fisher_draws(j)[:, s], truth[s, 0])
-true = features(truth[s][None], truth[s, 0])[0]
-
-main = np.abs(flow[:, 0]) < 1.0
-ranges = []
-for c in range(8):
-    if c in (5, 7):
-        ranges.append((0, 2 * np.pi))
-        continue
-    lo = min(np.percentile(flow[main, c], 0.5), np.percentile(mcmc[:, c], 0.5))
-    hi = max(np.percentile(flow[main, c], 99.5), np.percentile(mcmc[:, c], 99.5))
-    pad = 0.08 * (hi - lo)
-    ranges.append((lo - pad, hi + pad))
-fig = plt.figure(figsize=(style.FULL, style.FULL))
-kw = dict(range=ranges, bins=32, smooth=0.9, levels=(0.393, 0.865), plot_datapoints=False,
-          label_kwargs=dict(fontsize=7.5), max_n_ticks=3, labelpad=0.08)
-corner.corner(flow, fig=fig, labels=LABELS, color=style.BLUE, fill_contours=True,
-              hist_kwargs=dict(density=True, lw=1.0), **kw)
-corner.corner(fish, fig=fig, color=style.MUTED, plot_density=False, no_fill_contours=True,
-              contour_kwargs=dict(linewidths=0.7, linestyles="dashed"),
-              hist_kwargs=dict(density=True, lw=0.7, ls="dashed"), **kw)
-corner.corner(mcmc, fig=fig, color=style.INK, plot_density=False, no_fill_contours=True,
-              contour_kwargs=dict(linewidths=0.9), hist_kwargs=dict(density=True, lw=0.9), **kw)
-corner.overplot_lines(fig, true, color=style.RED, lw=0.6)
-for ax in fig.axes:
-    ax.tick_params(labelsize=5.5, length=1.8)
-    ax.grid(False)
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(True)
-fig.text(0.62, 0.86, f"loudest eval source: SNR {z['snr'][s]:.1f}\nwindow at {f * 1e3:.4f} mHz\n"
-         "blue: flow (final model)\nblack: MCMC, all four sources jointly\n"
-         "grey, dashed: Fisher forecast\nred: truth", fontsize=8, color=style.INK, va="top")
+fig, ax = plt.subplots(figsize=(style.COLUMN, 2.2), constrained_layout=True)
+others = [c for c in range(fisher.shape[1]) if c != 1]
+ax.axhspan(*FISHER_BAND, color=style.FILL, lw=0, zorder=0)
+ax.axhline(1.0, **style.GUIDE)
+ax.vlines(
+    snr,
+    fisher[:, others].min(axis=1),
+    fisher[:, others].max(axis=1),
+    color=style.INK2,
+    lw=0.8,
+    zorder=2,
+)
+ax.scatter(
+    snr,
+    np.median(fisher[:, others], axis=1),
+    s=9,
+    color=style.BLUE,
+    zorder=3,
+    label="median of the other seven",
+)
+ax.scatter(
+    snr,
+    fisher[:, 1],
+    s=11,
+    marker="D",
+    facecolor="none",
+    edgecolor=style.ORANGE,
+    lw=0.8,
+    zorder=3,
+    label={"log Mc": r"$\ln\mathcal{M}_c$", "log fdot": r"$\ln\dot f$"}[drift],
+)
+ax.set_xscale("log")
+ax.set_yscale("log")
+ax.set_yticks([0.3, 0.5, 1.0, 2.0, 3.0], ["0.3", "0.5", "1", "2", "3"])
+ax.set_yticks([], minor=True)
+ax.set_ylabel("Fisher / MCMC width")
+ax.set_xlabel("source SNR")
+ax.legend(loc="lower right", frameon=False, handletextpad=0.3)
 style.save(fig, "mcmc")
