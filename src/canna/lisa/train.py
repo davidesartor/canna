@@ -31,8 +31,13 @@ from .network import (
     LisaFlow,
 )
 from .optim import eval_flow, optimizer, routing_report, schedule_free_state
-from .problem import LisaGB, sample_f
-from .simulator import preprocess, sample_observation, sample_physical
+from .problem import LisaGB
+from .simulator import (
+    preprocess,
+    sample_observation,
+    sample_physical,
+    sample_window,
+)
 
 
 class TrainSample(NamedTuple):
@@ -59,7 +64,7 @@ def train_sample(
     t: the K draws' times (stratified by the caller); one uniform draw when None.
     """
     key_c, key_p, key_o, key_x0, key_t = jr.split(key, 5)
-    f = sample_f(problem, key_c)
+    f = sample_window(problem, key_c)
     p = sample_physical(problem, key_p, f)
     y = preprocess(problem, sample_observation(problem, key_o, p, f), f)
     t = jr.uniform(key_t, (1,)) if t is None else t

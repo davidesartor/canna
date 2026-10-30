@@ -10,11 +10,12 @@ import numpy as np
 from einops import rearrange
 from jaxtyping import Array
 
-from .problem import LisaGB, f0_window, sample_f
+from .problem import LisaGB, f0_window
 from .simulator import (
     log_likelihood,
     sample_observation,
     sample_physical,
+    sample_window,
     snr,
     source_snrs,
 )
@@ -85,7 +86,7 @@ def eval_injections(problem: LisaGB, seed: int):
     """
     # the seed's stream 3: training splits it in three, and fold_in(key, i) is split(key, n)[i]
     key_pick, key_window, key_noise, key_prior = jr.split(jr.fold_in(jr.key(seed), 3), 4)
-    sample_windows = lambda key: jax.vmap(partial(sample_f, problem))(
+    sample_windows = lambda key: jax.vmap(partial(sample_window, problem))(
         jr.split(key, N_PRIOR_DRAWS)
     )
     # the midpoints of the window prior's N_WINDOWS quantile bins: the band as training sees it

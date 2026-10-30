@@ -30,8 +30,11 @@ SOURCE_COVARIANCE = np.array(
 # (log10 fdot, log10 A) given log10 f0: a linear mean, SOURCE_SLOPE per dex, and a fixed residual covariance
 SOURCE_SLOPE = SOURCE_COVARIANCE[0, 1:] / SOURCE_COVARIANCE[0, 0]
 SOURCE_INTERCEPT = SOURCE_MEAN[1:] - SOURCE_SLOPE * SOURCE_MEAN[0]
-SOURCE_RESIDUAL = SOURCE_COVARIANCE[1:, 1:] - np.outer(SOURCE_SLOPE, SOURCE_COVARIANCE[0, 1:])
+SOURCE_RESIDUAL = SOURCE_COVARIANCE[1:, 1:] - np.outer(
+    SOURCE_SLOPE, SOURCE_COVARIANCE[0, 1:]
+)
 FDOT_STD = float(np.sqrt(SOURCE_RESIDUAL[0, 0]))
+AMP_STD = float(np.sqrt(SOURCE_RESIDUAL[1, 1]))
 
 # galactic-binary sky, fitted to the sky of a WD-WD catalogue of this many sources: bulge, thick disk, thin disk, isotropic floor
 SKY_CATALOGUE_SOURCES = 9_000_000
@@ -53,6 +56,11 @@ EQUATORIAL_TO_GALACTIC = np.array(
 def log10_fdot_mean(f0: Float[Array, "..."]) -> Float[Array, "..."]:
     """The prior's mean log10 fdot [Hz/s] at f0 [Hz]."""
     return SOURCE_INTERCEPT[0] + SOURCE_SLOPE[0] * jnp.log10(f0)
+
+
+def log10_amplitude_mean(f0: Float[Array, "..."]) -> Float[Array, "..."]:
+    """The prior's mean log10 A at f0 [Hz]."""
+    return SOURCE_INTERCEPT[1] + SOURCE_SLOPE[1] * jnp.log10(f0)
 
 
 def response_span(f0: float, fdot: float, t_obs: float) -> int:
@@ -85,14 +93,18 @@ def sample_sources(
 def source_log_density(log10_source: Float[Array, "... 3"]) -> Float[Array, "..."]:
     """log p(log10 f0, log10 fdot, log10 A) up to a constant: the parent Gaussian, which f0's truncation only rescales."""
     x = log10_source - SOURCE_MEAN
-    return -0.5 * jnp.einsum("...i,ij,...j->...", x, np.linalg.inv(SOURCE_COVARIANCE), x)
+    return -0.5 * jnp.einsum(
+        "...i,ij,...j->...", x, np.linalg.inv(SOURCE_COVARIANCE), x
+    )
 
 
 def equatorial_to_galactic(
     lon: Float[Array, "..."], lat: Float[Array, "..."]
 ) -> tuple[Float[Array, "..."], Float[Array, "..."]]:
     """Equatorial (RA, Dec) to galactic (l in (-pi, pi], b) [rad]."""
-    v = jnp.stack([jnp.cos(lat) * jnp.cos(lon), jnp.cos(lat) * jnp.sin(lon), jnp.sin(lat)])
+    v = jnp.stack(
+        [jnp.cos(lat) * jnp.cos(lon), jnp.cos(lat) * jnp.sin(lon), jnp.sin(lat)]
+    )
     x, y, z = jnp.tensordot(jnp.asarray(EQUATORIAL_TO_GALACTIC), v, axes=1)
     return jnp.arctan2(y, x), jnp.arctan2(z, jnp.hypot(x, y))
 
@@ -115,7 +127,9 @@ def sample_sky(key: Key[Array, ""]) -> Float[Array, "2"]:
 
     # every component's (l, sin b): a Gaussian bulge, inverse-cdf Laplace disks cut at half_width, a uniform floor
     disk_scales = jnp.asarray([THICK_DISK_SCALES, THIN_DISK_SCALES])
-    disks = -disk_scales * jnp.log1p(-uniform * (1 - jnp.exp(-half_width / disk_scales)))
+    disks = -disk_scales * jnp.log1p(
+        -uniform * (1 - jnp.exp(-half_width / disk_scales))
+    )
     disks = disks * jr.rademacher(key_sign, (2,))
     candidates = jnp.stack(
         [

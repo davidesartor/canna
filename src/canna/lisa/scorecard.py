@@ -13,10 +13,16 @@ from . import validate
 from .chart import flow_to_physical, physical_to_flow, sample_flow
 from .injections import N_POSTERIOR, eval_injections, match_sources
 from .network import LisaFlow
-from .problem import LisaGB, f0_window, sample_f
+from .problem import LisaGB, f0_window
 from .sample import ODE_STEPS, sample_posterior
 from .samples import pack_validation, unpack
-from .simulator import preprocess, sample_observation, sample_physical, snr
+from .simulator import (
+    preprocess,
+    sample_observation,
+    sample_physical,
+    sample_window,
+    snr,
+)
 from .train import load_trained, print_peak_memory
 
 N_DRAWS = 256
@@ -113,7 +119,7 @@ def main() -> None:
     # the eval grid's injections first, then n_random plain prior draws on the seed's stream 4
     latents, windows, _, grid, noise_keys, _ = eval_injections(problem, config.seed)
     key_window, key_pick, key_noise = jr.split(jr.fold_in(jr.key(config.seed), 4), 3)
-    random_windows = jax.vmap(partial(sample_f, problem))(jr.split(key_window, n_random))
+    random_windows = jax.vmap(partial(sample_window, problem))(jr.split(key_window, n_random))
     random_latents = jax.vmap(partial(sample_physical, problem))(
         jr.split(key_pick, n_random), random_windows
     )

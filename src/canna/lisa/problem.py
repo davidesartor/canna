@@ -27,6 +27,8 @@ class LisaGB(eqx.Module):
     f0_range: tuple[float, float] = eqx.field(static=True, default=(1e-4, 12.0e-3))
     # "middle" charts phi0 at mid-observation, phi0 - pi f0 T - pi fdot T^2 / 4: the data phase at f0's bin
     phase_reference: str = eqx.field(static=True, default="middle")
+    # window centres follow about the visible prior's f0, p(f0) P(snr >= visible_snr | f0) (simulator.sample_window)
+    visible_snr: float = eqx.field(static=True, default=7.0)
     response: jaxgb.JaxGB = eqx.field(init=False, static=True)
 
     def __post_init__(self):
@@ -61,12 +63,13 @@ class LisaGB(eqx.Module):
 
 
 def sample_f(problem: LisaGB, key: Key[Array, ""]) -> Float[Array, ""]:
-    """Centre frequency of a window slid by the source prior's f0 marginal, so training sees the catalogue's f0.
-
-    The sparse high-f0 end, where most visible sources are, is trained rarely; if the posterior there
-    turns out miscalibrated, we may want to correct this (e.g. a flatter window prior reweighted back).
-    """
+    """Centre frequency of a window slid by the source prior's f0 marginal; training uses simulator.sample_window."""
     f_centre = sample_sources(key, *map(jnp.asarray, problem.f0_range), 1)[0, 0]
+    return window_centre(problem, f_centre)
+
+
+def window_centre(problem: LisaGB, f_centre: Float[Array, ""]) -> Float[Array, ""]:
+    """Centre frequency of the window on the stride grid nearest f_centre, clamped inside the band."""
     lo, hi = problem.window_index_range
     index = jnp.clip(
         jnp.round((f_centre * problem.t_obs - problem.window_bins / 2) / WINDOW_STRIDE),
