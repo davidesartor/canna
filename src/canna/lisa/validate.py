@@ -14,7 +14,7 @@ from jaxtyping import Array, Complex, Float, Key
 from . import config as run_config
 from .chart import flow_to_physical, physical_to_flow, sample_flow
 from .network import LisaFlow
-from .problem import LisaGB, sample_f, window_power
+from .problem import LisaGB, window_power
 from .sample import ODE_STEPS, sample_posterior
 from .simulator import (
     clean_signal,
@@ -22,6 +22,7 @@ from .simulator import (
     preprocess,
     sample_observation,
     sample_physical,
+    sample_window,
 )
 from .train import print_peak_memory
 
@@ -76,7 +77,7 @@ def validate_injection(
 ) -> dict:
     """One prior injection and n_draws flow draws on it; row 0 of every quantity is the truth."""
     key_f, key_p, key_n, key_u, key_tarp = jr.split(key, 5)
-    f = sample_f(problem, key_f)
+    f = sample_window(problem, key_f)
     truth = sample_physical(problem, key_p, f)
     o = sample_observation(problem, key_n, truth, f)
     y = preprocess(problem, o, f)

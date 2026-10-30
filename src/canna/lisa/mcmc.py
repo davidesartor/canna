@@ -80,6 +80,8 @@ def problem_id(problem: LisaGB, seed: int) -> str:
     fields["sky_prior"] = "galactic"
     fields["seed"] = seed
     fields["eval_grid"] = [N_WINDOWS, N_PER_WINDOW]
+    if problem.visible_snr:
+        fields["visible_snr"] = problem.visible_snr
     text = json.dumps(fields, sort_keys=True, default=str)
     return hashlib.sha1(text.encode()).hexdigest()[:10]
 

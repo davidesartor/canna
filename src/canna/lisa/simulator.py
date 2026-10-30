@@ -1,12 +1,34 @@
 """The prior over sources, their jaxgb A/E/T response in the window, and the noisy, whitened data."""
 
+import math
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from jax.scipy.special import log_ndtr
 from jaxtyping import Array, Complex, Float, Int, Key
 
-from .physics import sample_sky, sample_sources
-from .problem import LisaGB, f0_window, window_power, window_start
+from .physics import (
+    AMP_STD,
+    SOURCE_COVARIANCE,
+    SOURCE_MEAN,
+    log10_amplitude_mean,
+    log10_fdot_mean,
+    sample_sky,
+    sample_sources,
+)
+from .problem import (
+    LisaGB,
+    amplitude_unit,
+    f0_window,
+    window_centre,
+    window_power,
+    window_start,
+)
+
+# the log-uniform window centres sample_window resamples by the visible prior
+VISIBLE_WINDOWS = 64
 
 
 def source_segments(
@@ -71,6 +93,40 @@ def sample_physical(
     iota = jnp.arcsin(jr.uniform(keys[3], shape, minval=-1.0, maxval=1.0))
     phi0 = jr.uniform(keys[4], shape, maxval=2 * jnp.pi)
     return jnp.concat([sources, sky, psi, iota, phi0], axis=-1)
+
+
+def sample_window(problem: LisaGB, key: Key[Array, ""]) -> Float[Array, ""]:
+    """The window's centre, by about the visible prior's f0, p(f0) P(snr >= visible_snr | f0); the sources stay the catalogue's.
+
+    Log-uniform candidates are resampled by p(f0) over their density times P(snr >= visible_snr | f0, sky, orientation),
+    one prior sky and orientation each, alone in the window centred on it.
+    """
+    key_f0, key_sky, key_psi, key_iota, key_pick = jr.split(key, 5)
+    shape = (VISIBLE_WINDOWS, 1)
+    log_f0 = jr.uniform(
+        key_f0,
+        shape,
+        minval=math.log10(problem.f0_range[0]),
+        maxval=math.log10(problem.f0_range[1]),
+    )
+    f0 = 10.0**log_f0
+    f = jax.vmap(partial(window_centre, problem))(f0[:, 0])
+    sky = jax.vmap(sample_sky)(jr.split(key_sky, VISIBLE_WINDOWS))
+    psi = jr.uniform(key_psi, shape, maxval=2 * jnp.pi)
+    iota = jnp.arcsin(jr.uniform(key_iota, shape, minval=-1.0, maxval=1.0))
+    # one amplitude unit at the mean fdot: snr is linear in A and all but blind to fdot and phi0
+    unit = amplitude_unit(problem, f)[:, None]
+    p = jnp.concat(
+        [f0, 10.0 ** log10_fdot_mean(f0), unit, sky, psi, iota, jnp.zeros(shape)],
+        axis=-1,
+    )
+    unit_snr = jax.vmap(lambda p, f: snr(problem, p[None], f))(p, f)
+
+    # where snr = visible_snr cuts log10 A given f0, in stds of its Gaussian
+    log10_cut = jnp.log10(problem.visible_snr * unit[:, 0] / unit_snr)
+    cut = (log10_cut - log10_amplitude_mean(f0[:, 0])) / AMP_STD
+    log_p = -0.5 * (log_f0[:, 0] - SOURCE_MEAN[0]) ** 2 / SOURCE_COVARIANCE[0, 0]
+    return f[jr.categorical(key_pick, log_p + log_ndtr(-cut))]
 
 
 def sample_observation(
