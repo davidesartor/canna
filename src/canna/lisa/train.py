@@ -108,12 +108,13 @@ def losses(
     problem: LisaGB,
     batch: TrainSample,
     snr: Float[Array, "B S"] | None = None,
+    train_flow: bool = True,
 ) -> Float[Array, "3"] | tuple[Float[Array, "3"], Binned]:
     """The objective, the frame's NLL of x1 and the flow's NLL of z1, all trained on but the frame NLL as is.
 
     The frame (mu_A, sigma_A) = (mu_p + sigma_p delta_mu, sigma_p e^{delta_s}) is fit by the NLL of x1 weighted by
     sg(e^{delta_s}) with a ridge on delta; the flow by the Gaussian NLL of z1 = sg((x1 - mu_A) / sigma_A) on paths
-    from z0. snr: each source's own, for the diagnostics per bin.
+    from z0. snr: each source's own, for the diagnostics per bin. train_flow=False: the objective is the frame's alone.
     """
     # the data stream is encoded once per observation and shared by its K draws
     delta, cache = jax.vmap(flow.encode)(batch.y, batch.f)
@@ -136,7 +137,8 @@ def losses(
     )
     k_z = (z1 - m) * jnp.exp(-s)
     flow_nll = jnp.mean(jnp.square(k_z) + 2 * s)
-    parts = jnp.stack([frame_loss + flow_nll, jnp.mean(frame_nll), flow_nll])
+    objective = frame_loss + flow_nll if train_flow else frame_loss
+    parts = jnp.stack([objective, jnp.mean(frame_nll), flow_nll])
     if snr is None:
         return parts
 
@@ -226,11 +228,12 @@ def train_step(
     state: TrainState,
     batch: TrainSample,
     micro_batches: int = 1,
+    train_flow: bool = True,
 ) -> tuple[TrainState, Float[Array, "3"]]:
     """One optimizer step on the objective; the frame NLL, the flow NLL and the grad norm."""
 
     def total(flow, chunk):
-        parts = losses(flow, problem, chunk)
+        parts = losses(flow, problem, chunk, train_flow=train_flow)
         return parts[0], parts
 
     # the batch's gradient as the mean over equal chunks, one chunk's activations live at a time
@@ -269,6 +272,7 @@ def train_epoch(
     n_steps: int,
     draws: int = 1,
     micro_batches: int = 1,
+    train_flow: bool = True,
 ) -> tuple[TrainState, Float[Array, "S 3"]]:
     """Fuse n_steps (batch draw + train_step) pairs into one XLA dispatch via lax.scan.
 
@@ -289,7 +293,7 @@ def train_epoch(
             jr.split(key_batch, observations), rearrange(u, "(b k) -> b k", k=draws)
         )
         state, parts = train_step(
-            problem, tx, state._replace(key=key), batch, micro_batches
+            problem, tx, state._replace(key=key), batch, micro_batches, train_flow
         )
         return eqx.filter(state, eqx.is_array), parts
 
@@ -566,6 +570,7 @@ def main() -> None:
             config.log_interval,
             config.draws,
             config.micro_batches,
+            config.train_flow,
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
         catalog_history[epoch], binned = jax.device_get(

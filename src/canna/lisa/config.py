@@ -79,6 +79,8 @@ class Config:
     bf16: str = "backbone"
     # a new run's starting weights: this run's averaged x at its latest checkpoint (train.warm_start)
     init_from: str = ""
+    # False trains the frame alone: the flow's NLL is still computed and logged, but sends no gradient
+    train_flow: bool = True
 
     def __post_init__(self):
         for field, choices in CHOICES.items():
