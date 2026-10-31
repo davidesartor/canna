@@ -1,4 +1,4 @@
-# canna.lisa takeaways (current state, 2026-10-31, F63)
+# canna.lisa takeaways (current state, 2026-10-31, F64)
 
 One `0<nn>-<slug>.md` per finding F<nn>, outcome first. The literature lives in
 [../literature/](../literature/): [GW and cosmology
@@ -7,6 +7,12 @@ schedules](../literature/optimizers-schedules/000-takeaways.md), [diffusion and 
 matching](../literature/diffusion-flow-matching/000-takeaways.md) and the others; the findings
 keep only its consequences for our code.
 
+- **narrow-B finished, but the fitted prior leaves it almost nothing to detect** ([F64](064-narrow-b-finished-fitted-prior-faint.md)):
+  98% of its scorecard sources are below SNR 7 and the loudest is 11.9, so it can't be scored
+  against narrow-S above SNR 15. At SNR 7–15 it finds 24 of 24 at 1.6× the ideal f₀ width,
+  calibrated (in95 1.00), where narrow-S found 68% at 0.7×, overconfident. Its detection
+  threshold is SNR 5–7. The posterior underuses the data: the truth's overlap ⟨o|h⟩ ranks +0.08
+  to +0.20 above the draws'.
 - **full-B diverged on a8e3477: schedule-free's z ran away again** ([F63](063-narrow-b-full-b-full-b-diverged.md)):
   at Muon lr 10⁻², z grew to 4–5× x (narrow-B: up to 10×), so the training point y left x's
   basin. In y, the frame's galactic-latitude width collapsed (σ_b ≈ 10⁻⁴ prior widths on SNR
