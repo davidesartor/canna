@@ -82,6 +82,8 @@ class Config:
     fork_from: str = ""
     # False trains the frame alone: the flow's NLL is still computed and logged, but sends no gradient
     train_flow: bool = True
+    # True writes the frame (mu, log sigma) on the eval catalog every epoch, to run_dir/frames/
+    catalog_frames: bool = False
 
     def __post_init__(self):
         for field, choices in CHOICES.items():

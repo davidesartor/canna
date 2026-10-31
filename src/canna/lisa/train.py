@@ -365,6 +365,16 @@ def diagnostics(
     return jnp.concat([losses(state.flow, problem, batch)[1:], w_rms[None]]), by_bin
 
 
+@eqx.filter_jit
+def catalog_frames(
+    problem: LisaGB, state: TrainState, catalog: Catalog
+) -> dict[str, Float[Array, "N S 8"]]:
+    """The frame (mu, log sigma) on each eval-catalog injection."""
+    delta, _ = jax.vmap(state.flow.encode)(catalog.y, catalog.f)
+    mu, log_sigma = jax.vmap(partial(reference_frame, problem))(delta, catalog.f)
+    return dict(mu=mu, log_sigma=log_sigma)
+
+
 def checkpoint_manager(
     run_dir: Path, read_only: bool = False, folder: str = "checkpoints"
 ) -> ocp.CheckpointManager:
@@ -670,6 +680,20 @@ def main() -> None:
         save_checkpoint(checkpoints, state, epoch + 1, histories)
         if config.snapshot_every and (epoch + 1) % config.snapshot_every == 0:
             save_checkpoint(snapshots, state, epoch + 1, histories)
+        if config.catalog_frames:
+            frames_dir = run_dir / "frames"
+            if not (frames_dir / "catalog.npz").exists():
+                frames_dir.mkdir(exist_ok=True)
+                x1 = jax.vmap(partial(physical_to_flow, problem))(catalog.p, catalog.f)
+                np.savez(
+                    frames_dir / "catalog.npz",
+                    x1=jax.device_get(x1),
+                    snr=jax.device_get(catalog.snr),
+                    f=jax.device_get(catalog.f),
+                )
+            frames = jax.device_get(catalog_frames(problem, state, catalog))
+            np.savez(frames_dir / "tmp.npz", epoch=epoch + 1, **frames)
+            (frames_dir / "tmp.npz").replace(frames_dir / f"{epoch + 1:03d}.npz")
         frame_l, flow_l, grad_norm = np.median(loss_history[epoch], axis=0)
         frame_c, flow_c, w_rms = catalog_history[epoch]
         if frame_c + flow_c < best_nll:
