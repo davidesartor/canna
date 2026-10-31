@@ -366,6 +366,23 @@ def diagnostics(
     return jnp.concat([nll(x), nll(state.flow), jnp.stack([w_rms, spread])]), by_bin
 
 
+@eqx.filter_jit
+def catalog_frames(
+    problem: LisaGB, state: TrainState, catalog: Catalog
+) -> dict[str, Float[Array, "N S 8"]]:
+    """The frame (mu, log sigma) of the averaged x and of the iterate y on each eval-catalog injection."""
+
+    def frame(flow):
+        delta, _ = jax.vmap(flow.encode)(catalog.y, catalog.f)
+        return jax.vmap(partial(reference_frame, problem))(delta, catalog.f)
+
+    (mu_x, log_sigma_x), (mu_y, log_sigma_y) = (
+        frame(eval_flow(state.flow, state.opt_state)),
+        frame(state.flow),
+    )
+    return dict(mu_x=mu_x, log_sigma_x=log_sigma_x, mu_y=mu_y, log_sigma_y=log_sigma_y)
+
+
 def checkpoint_manager(run_dir: Path, read_only: bool = False) -> ocp.CheckpointManager:
     """The run's checkpoints, keeping only the latest (orbax holds the old one while saving).
 
@@ -592,6 +609,20 @@ def main() -> None:
 
         # orbax writes the checkpoint while the next epoch trains; log the median of the epoch's losses
         save_checkpoint(checkpoints, state, epoch + 1, histories)
+        if config.catalog_frames:
+            frames_dir = run_dir / "frames"
+            if not (frames_dir / "catalog.npz").exists():
+                frames_dir.mkdir(exist_ok=True)
+                x1 = jax.vmap(partial(physical_to_flow, problem))(catalog.p, catalog.f)
+                np.savez(
+                    frames_dir / "catalog.npz",
+                    x1=jax.device_get(x1),
+                    snr=jax.device_get(catalog.snr),
+                    f=jax.device_get(catalog.f),
+                )
+            frames = jax.device_get(catalog_frames(problem, state, catalog))
+            np.savez(frames_dir / "tmp.npz", epoch=epoch + 1, **frames)
+            (frames_dir / "tmp.npz").replace(frames_dir / f"{epoch + 1:03d}.npz")
         frame_l, flow_l, grad_norm = np.median(loss_history[epoch], axis=0)
         frame_x, flow_x, frame_y, flow_y, w_rms, spread = catalog_history[epoch]
         pbar.set_postfix(frame=f"{frame_x:.4f}", flow=f"{flow_x:.4f}")
