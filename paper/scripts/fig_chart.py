@@ -6,6 +6,9 @@ import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 
 import style
+from canna.lisa import config
+from canna.lisa.physics import FDOT_STD, log10_fdot_mean
+from canna.lisa.problem import LisaGB, f0_window
 from style import plt
 
 BANDS = {"narrow": style.ORANGE, "full": style.BLUE}
@@ -36,12 +39,21 @@ def drawn_marginal(values: np.ndarray, reach: tuple, density, bins: int) -> dict
     return dict(hist=hist, reach=reach)
 
 
+def chart_f0_fdot(problem: LisaGB, d) -> tuple[np.ndarray, np.ndarray]:
+    """x_f and x_fdot of the drawn sources, as physical_to_flow maps them."""
+    lo, hi = (np.log(np.asarray(e))[:, None] for e in f0_window(problem, d["f"]))
+    f0 = 10.0 ** d["log_f0"]
+    x_fdot = (d["log_fdot"] - np.asarray(log10_fdot_mean(f0))) / FDOT_STD
+    return (2 * np.log(f0) - lo - hi) / (hi - lo), x_fdot
+
+
 def flow_coordinates(band: str) -> list:
     """The prior's marginals in chart order: f0 and fdot from the source draws, then l, b and the four z± parts."""
     draws = np.load(style.REPO / f"reports/prior/f0-fdot-amplitude/data/{band}.npz")
-    x_f = drawn_marginal(draws["x_f"].ravel(), (-1.0, 1.0), lambda x: np.full_like(x, 0.5), 40)
+    chart_f, chart_fdot = chart_f0_fdot(LisaGB(**config.load(f"{band}-B").problem), draws)
+    x_f = drawn_marginal(chart_f.ravel(), (-1.0, 1.0), lambda x: np.full_like(x, 0.5), 40)
     x_fdot = drawn_marginal(
-        draws["x_fdot"].ravel(),
+        chart_fdot.ravel(),
         (-4.0, 4.0),
         lambda x: np.exp(-x**2 / 2) / np.sqrt(2 * np.pi),
         48,
@@ -122,7 +134,7 @@ ax.set(
 )
 style.panel_label(ax, "c")
 
-# (d) the prior's marginal of each flow coordinate, per band, network reach shaded beyond
+# (d) the prior's marginal of each flow coordinate, per band
 marginal_axes = bottom.subplots(1, 8, sharey=False)
 for j, ax in enumerate(marginal_axes):
     for band, color in BANDS.items():
@@ -143,11 +155,6 @@ for j, ax in enumerate(marginal_axes):
                 lw=0.6,
                 ls="--",
             )
-    lo, hi = coord["reach"]
-    left, right = ax.get_xlim()
-    ax.axvspan(left, lo, color=style.FILL, lw=0)
-    ax.axvspan(hi, right, color=style.FILL, lw=0)
-    ax.set_xlim(left, right)
     ax.set_ylim(bottom=0)
     ax.set_yticks([])
     ax.set_xlabel(LABELS[j])

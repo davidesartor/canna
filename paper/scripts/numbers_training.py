@@ -12,16 +12,7 @@ import style
 import optax
 
 from canna.lisa import config
-from canna.lisa.optim import (
-    ADAM_B2,
-    CLIP_NORM,
-    MUON_FIELDS,
-    MUON_RMS,
-    WARM_START_WARMUPS,
-    normuon_rows,
-    optimizer,
-    schedule_free,
-)
+from canna.lisa.optim import ADAM_B2, CLIP_NORM, MUON_FIELDS, MUON_RMS, optimizer
 from canna.lisa.problem import LisaGB
 
 WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
@@ -58,11 +49,8 @@ for field in (
     "weight_decay",
     "cooldown_frac",
     "muon_momentum",
-    "nesterov",
     "momentum_dtype",
     "adam_b1",
-    "sf_beta",
-    "sf_beta_end",
     "log_interval",
     "ode_steps",
     "weights",
@@ -80,17 +68,15 @@ for band in BANDS:
         )
         == 1
     ), band
-assert full.cooldown_frac == 0.0 and full.nesterov and full.momentum_dtype == "bfloat16"
-assert full.bf16 == "backbone" and full.weights == "average" and full.micro_batches == 1
+assert full.cooldown_frac > 0.0 and full.momentum_dtype == "bfloat16"
+assert full.bf16 == "backbone" and full.weights == "last" and full.micro_batches == 1
 assert (
     full.total_steps % full.log_interval == 0
     and narrow.total_steps % narrow.log_interval == 0
 )
 warmup_share = {c.warmup_steps / c.total_steps for c in (narrow, full)}
 assert len(warmup_share) == 1, warmup_share
-normuon_beta2 = inspect.signature(normuon_rows).parameters["beta2"].default
-average_power = inspect.signature(schedule_free).parameters["r"].default
-assert not re.search(r"\br=", inspect.getsource(optimizer))
+assert "nesterov=True" in inspect.getsource(optimizer)
 newton_schulz_steps = (
     inspect.signature(optax.contrib.muon).parameters["ns_steps"].default
 )
@@ -122,17 +108,12 @@ numbers = {
     "TrainingAdamRate": power(full.adam_learning_rate),
     "TrainingMuonRms": f"{MUON_RMS:g}",
     "TrainingMomentum": f"{full.muon_momentum:g}",
-    "TrainingNorMuonBeta": f"{normuon_beta2:g}",
     "TrainingBetaOne": f"{full.adam_b1:g}",
     "TrainingBetaTwo": f"{ADAM_B2:g}",
     "TrainingWeightDecay": f"{full.weight_decay:g}",
-    "TrainingAveragePower": f"{average_power:g}",
     "TrainingNewtonSchulzSteps": f"{newton_schulz_steps}",
     "TrainingNewtonSchulzWord": WORDS[newton_schulz_steps],
     "TrainingAdamEps": power(adam_eps),
-    "TrainingBetaStart": f"{full.sf_beta:g}",
-    "TrainingBetaEnd": f"{full.sf_beta_end:g}",
-    "TrainingWarmStartWord": WORDS[WARM_START_WARMUPS],
     "TrainingMuonFieldCount": WORDS[len(MUON_FIELDS)],
     "TrainingMuonShareXS": share("full-XS"),
     "TrainingMuonShareB": share("full-B"),
@@ -142,6 +123,7 @@ numbers = {
     "TrainingDraws": f"{full.draws}",
     "TrainingEpochSteps": str(full.log_interval),
     "TrainingWarmupPercent": f"{100 * warmup_share.pop():g}",
+    "TrainingCooldownPercent": f"{100 * full.cooldown_frac:g}",
     "TrainingJobHours": f"{hours}",
     "TrainingRequeueMinutes": (
         WORDS[requeue_s // 60] if requeue_s % 60 == 0 else f"{requeue_s}\\,s"
@@ -149,14 +131,13 @@ numbers = {
 }
 for band, cfg in (("Narrow", narrow), ("Full", full)):
     numbers[f"TrainingWarmup{band}"] = str(cfg.warmup_steps)
-    numbers[f"TrainingWarmStart{band}"] = str(WARM_START_WARMUPS * cfg.warmup_steps)
     numbers[f"TrainingSteps{band}"] = str(cfg.total_steps)
     numbers[f"TrainingEpochs{band}"] = str(cfg.total_steps // cfg.log_interval)
 
-# the B runs' step on an A100 with the bf16 backbone at the default batch (step-time-memory's step
-# check), unsplit if it fits, else the fewest micro-batches that ran
+# the B runs' step on an A100 with the bf16 backbone at the default batch (step-time-memory's batch
+# sweeps), unsplit if it fits, else the fewest micro-batches that ran
 steps = {}
-for r in jsonl(BENCH / "step-time-memory/data/a100-bf16backbone-b256.jsonl"):
+for r in (r for band in BANDS for r in jsonl(BENCH / f"step-time-memory/data/a100-bf16backbone-{band}.jsonl")):
     if r.get("step_s") is None or r["batch"] * r["draws"] != full.batch_size:
         continue
     if (

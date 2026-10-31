@@ -77,7 +77,7 @@ drift_resolution = math.sqrt(1 / (1 / 80 - 1 / 144)) / math.pi
 toy = json.loads(
     (style.REPO / "reports/posterior-eval/test-power/data/toy.json").read_text()
 )
-coords = ["f0", "mc", "lon", "lat", "re_zp", "im_zp", "re_zm", "im_zm"]
+coords = ["f0", "fdot", "lon", "lat", "re_zp", "im_zp", "re_zm", "im_zm"]
 errors = {
     "Null": "null",
     "Phase": "z+ phase from prior",
@@ -141,10 +141,15 @@ ratio_text = lambda r: (
     if r >= 1000
     else f"{r:.2f}" if r < 10 else f"{r:.1f}" if r < 100 else f"{r:.0f}"
 )
-loud = lambda bands: next(
-    b["ratio"]
-    for b in bands
-    if b["subset"] == "all" and b["lo"] == scorecard.SNR_BANDS[3][0]
+# the loudest band's width over the ideal; "--" where no source reached it (the mocks ran with visible_snr = 0)
+MISSING = "--"
+loud = lambda bands, text: next(
+    (
+        text(b["ratio"])
+        for b in bands
+        if b["subset"] == "all" and b["lo"] == scorecard.SNR_BANDS[3][0]
+    ),
+    MISSING,
 )
 dataspace = {
     band: {c["name"]: c for c in read(f"data-space-checks/data/mocks-{band}.json")["cases"]}
@@ -161,7 +166,7 @@ for key, mock in MOCKS.items():
     sources = reference["widths"]["sources"]
     medians = [np.median([s["flow"][j] / s["mcmc"][j] for s in sources]) for j in range(8)]
     ladder |= {
-        f"EvaluationMock{key}Ideal": ratio_text(loud(card["bands"])),
+        f"EvaluationMock{key}Ideal": loud(card["bands"], ratio_text),
         f"EvaluationMock{key}Cover": f"{np.mean(card['rows']['in68']):.2f}",
         f"EvaluationMock{key}Coord": p_value(tests["coords_min"]),
         f"EvaluationMock{key}Tarp": p_value(tests["tarp"]),
@@ -175,13 +180,16 @@ for key, mock in MOCKS.items():
 floor_rows = read("fisher-scorecard/data/mock-narrow-loud-floor.json")["rows"]
 floor_in68 = np.array(floor_rows["in68"])
 quiet = np.array(floor_rows["snr"]) < scorecard.SNR_BANDS[2][0]
-# its coordinate ranks in the loud strata (Mc excepted: the prior width caps its floor)
+# its coordinate ranks in the loud strata; "--" where no source reached them
 floor_cal = read("calibration/data/narrow-loud-floor.json")
 loud_strata = floor_cal["strata"][2:4]
 assert loud_strata == ["40-100", ">=100"]
-floor_loud_p = max(
-    floor_cal["cells"][s][c]["pooled"]["p"] for s in loud_strata for c in coords if c != "mc"
-)
+floor_loud_ps = [
+    cell["pooled"]["p"]
+    for s in loud_strata
+    for c in coords
+    if (cell := floor_cal["cells"][s][c])["pooled"] is not None
+]
 ladder |= {
     "EvaluationMockWide": f"{constants['WIDE']:g}",
     "EvaluationMockNarrow": f"{constants['NARROW']:g}",
@@ -191,11 +199,11 @@ ladder |= {
     "EvaluationMockInjectionsFull": f"{dataspace['full']['fisher']['n']}",
     "EvaluationMockScorecardSources": f"{card['n_rows']}",
     "EvaluationMockReferenceSources": f"{len(sources)}",
-    "EvaluationMockFisherIdealFull": f"{loud(read('fisher-scorecard/data/mock-full-fisher.json')['bands']):.2f}",
+    "EvaluationMockFisherIdealFull": loud(read('fisher-scorecard/data/mock-full-fisher.json')['bands'], "{:.2f}".format),
     "EvaluationMockPriorCoverFull": f"{np.mean(read('fisher-scorecard/data/mock-full-prior.json')['rows']['in68']):.2f}",
     "EvaluationMockFloorCoverQuiet": f"{floor_in68[quiet].mean():.2f}",
-    "EvaluationMockFloorCoverLoud": f"{floor_in68[~quiet].mean():.2f}",
-    "EvaluationMockFloorLoudP": p_value(floor_loud_p),
+    "EvaluationMockFloorCoverLoud": f"{floor_in68[~quiet].mean():.2f}" if (~quiet).any() else MISSING,
+    "EvaluationMockFloorLoudP": p_value(max(floor_loud_ps)) if floor_loud_ps else MISSING,
 }
 for name, value in ladder.items():
     print(name, value)

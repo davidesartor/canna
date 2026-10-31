@@ -9,15 +9,16 @@ detectable sources per window (\cref{app:forward-model-limits}). A real analysis
 of sources inferred, the noise estimated with them, and windows stitched across their edges, as a
 global fit does. The flow is checked on data from its own prior; out-of-distribution windows are
 probed in \cref{app:evaluation-sampler} \textcolor{red}{TODO(new runs): outcome}. The sampler's
-uniform grid can collapse the narrowest posteriors (\cref{fig:fm-sensitivity}), so widths are
-read where they no longer change with the number of steps. Our validation tests are necessary
+uniform grid collapses posteriors much narrower than the frame (\cref{fig:fm-sensitivity}), so a
+frame far too wide would show as widths that change with the number of steps; they are read where
+they no longer do. Our validation tests are necessary
 conditions; the Gaussian mock fails some of them, and only the reference chains give widths, for
 a few windows. \textcolor{red}{TODO(new runs): where the flow stays wider than the
 \acs{mcmc}, e.g.\ the loud sky and $\phi_-$.}
 
 We have shown that conditional flow matching returns joint posteriors of overlapping \acp{gb}
 under the full instrument response, across the \ac{lisa} band, in a fraction of a second per
-window. The chart and the \ac{snr} ordering turn a posterior multimodal by symmetry into one a
+window. The chart, the frequency order and the frame turn a posterior multimodal by symmetry into one a
 flow on straight paths can learn, and the one-way network makes each draw cost only the source
 stream. Validation needs tests in data space and known-answer mocks: without them, flows that
 ignore the data pass.

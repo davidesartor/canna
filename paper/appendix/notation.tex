@@ -33,7 +33,7 @@ S_c(f),\ P_c(f) & one-sided noise \acs*{psd} of channel $c$; noise variance per 
 y & whitened data, $K\times6$ real numbers: the network's conditioning input & \cref{eq:noise-whiten} \\
 \midrule
 \notationgroup{sources and prior}
-S & sources per window, exchangeable; in validation, slot $s$ holds the $s$-th loudest & \cref{tab:forward-model-bands} \\
+S & sources per window, exchangeable; the flow's slots hold them in order of $f_0$, validation relabels them loudest first & \cref{tab:forward-model-bands,app:chart-slots} \\
 \theta=(f_0,\fdot,\Amp,\alpha,\delta,\psi,\iota,\phi_0) & one source: frequency, frequency derivative, amplitude, sky, polarisation, inclination, initial phase & \cref{tab:priors-source} \\
 R & response points: the bins that carry one source's signal & \cref{app:forward-model-windows} \\
 \pi(\cdot\mid\fw) & prior over the $S$ sources of a window & \cref{eq:priors-window-prior} \\
@@ -47,9 +47,12 @@ S_n(f),\ u(f) & sky-averaged sensitivity; amplitude unit $\sqrt{S_n/\Tobs}$ & \c
 \varphi(\cdot\,;\fw) & chart from $\theta$ to flow coordinates & \cref{eq:chart} \\
 x=(x_f,x_{\fdot},x_l,x_b,z_+,z_-) & one source in flow coordinates; $z_\pm\in\mathbb C$ are helicity amplitudes & \cref{eq:chart} \\
 X\in\R^{8S} & all sources of a window in flow coordinates & \cref{app:fm-paths} \\
-X_0,\ X_1,\ X_s & prior draw, target, point on the straight path between them & \cref{eq:fm-path} \\
+X_1 & target: the window's true sources, in order of $f_0$ & \cref{app:fm-paths} \\
+\mu,\ \sigma & frame: mean and standard deviation per coordinate of each slot, from $(y,\fw)$ & \cref{eq:fm-frame} \\
+Z=(X-\mu)/\sigma & coordinates in the frame & \cref{app:fm-paths} \\
+Z_0,\ Z_1,\ Z_s & standard normal base draw, target, point on the straight path between them & \cref{eq:fm-path} \\
 s,\ t & position along the path; the same as the network's time input & \cref{eq:fm-path} \\
-\vnet,\ \hat X_1,\ \sigma & network velocity; mean and standard deviation of the endpoint & \cref{eq:fm-velocity,eq:loss} \\
+\vnet,\ \hat Z_1,\ \tau & network velocity; mean and standard deviation of the endpoint in the frame & \cref{eq:fm-velocity,eq:loss} \\
 \midrule
 \notationgroup{conventions}
 w,\ w^\star & posterior width $\num{1.4826}\,\MAD$, the standard deviation for a Gaussian; ideal $f_0$ width & \cref{eq:evaluation-ideal-width} \\

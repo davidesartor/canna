@@ -1,9 +1,9 @@
 """Figure: what the velocity MSE and the Gaussian NLL of x1 pay for a too-wide model, and what the sampler returns.
 
-1-D Gaussian model of the f0 coordinate: base N(0, s0^2) with s0 = 1/sqrt(3), posterior N(0, sigma^2), uniform time.
+1-D Gaussian model of one coordinate: base N(0, s0^2), posterior N(0, sigma^2), uniform time.
 (a) the excess loss of a N(0, sigma_m^2) model under each loss, quadrature against the asymptotes;
-(b) the width canna.lisa.sample.sample_posterior returns for the exact Gaussian x1 | x_s.
-Bars: the ideal f0 widths of each band, between the SNR range's ends.
+(b) the width canna.lisa.sample.sample_posterior returns for the exact Gaussian z1 | z_t, base N(0, 1) in the prior's frame.
+Bars: the ideal f0 widths of each band over the prior's s0 = 1/sqrt(3), the widths without a frame, between the SNR range's ends.
 """
 
 import math
@@ -16,6 +16,7 @@ import numpy as np
 import style
 from style import plt
 from canna.lisa import config, sample
+from canna.lisa.network import COORDS, reference_frame
 from canna.lisa.problem import WINDOW_STRIDE, LisaGB, f0_window
 
 style.setup()
@@ -29,12 +30,16 @@ STEP_COUNTS = {
 }
 
 
+def centre_window(name: str) -> tuple[LisaGB, float]:
+    """The config's problem and the centre frequency of its middle window."""
+    problem = LisaGB(**config.load(name).problem)
+    lo, hi = problem.window_index_range
+    return problem, ((lo + hi) // 2 * WINDOW_STRIDE + problem.window_bins / 2) / problem.t_obs
+
+
 def ideal_range(name: str) -> tuple[float, float]:
     """The band's ideal f0 widths over s0 at the loud and the weak end of its visible SNRs: 7 to the prior's 99.99% quantile."""
-    run = config.load(name)
-    problem = LisaGB(**run.problem)
-    lo, hi = problem.window_index_range
-    f = ((lo + hi) // 2 * WINDOW_STRIDE + problem.window_bins / 2) / problem.t_obs
+    problem, f = centre_window(name)
     low, high = (float(x) for x in f0_window(problem, jnp.asarray(f)))
     bins_per_unit = problem.t_obs * math.sqrt(low * high) * math.log(high / low) / 2
     prior = style.REPO / f"reports/prior/f0-fdot-amplitude/data/{name.removesuffix('-B')}.npz"
@@ -84,25 +89,30 @@ def excess(sigma_m, sigma, nll: bool, s0=S0):
 
 
 class GaussianFlow(eqx.Module):
-    """The exact mean and log std of x1 | x_s of a N(0, s0^2) base and a N(0, sigma^2) posterior, as a LisaFlow."""
+    """The exact mean and log std of z1 | z_t of a N(0, 1) base and a N(0, sigma^2) z1, as a LisaFlow whose frame is the prior's."""
 
     sigma: float
-    s0: float = S0
+    n_sources: int = eqx.field(static=True)
 
     def encode(self, y, f):
-        return jnp.zeros(())
+        return jnp.zeros((self.n_sources, 2 * COORDS)), None
 
-    def __call__(self, u, t, y, f, cache):
-        m2 = (1 - t) ** 2 * self.s0**2 + t**2 * self.sigma**2
-        log_std = jnp.log((1 - t) * self.s0 * self.sigma) - 0.5 * jnp.log(m2)
-        return jnp.concat([t * self.sigma**2 / m2 * u, jnp.broadcast_to(log_std, u.shape)], -1)
+    def __call__(self, z, t, frame, f, cache):
+        m2 = (1 - t) ** 2 + t**2 * self.sigma**2
+        log_std = jnp.log((1 - t) * self.sigma) - 0.5 * jnp.log(m2)
+        return jnp.concat([t * self.sigma**2 / m2 * z, jnp.broadcast_to(log_std, z.shape)], axis=-1)
 
 
-def sampled_width(sigma_scaled: float, ode_steps: int, n: int = 1 << 14) -> float:
-    u = S0 * jr.normal(jr.key(0), (n, 1))
-    flow = GaussianFlow(sigma=sigma_scaled * S0)
-    x = sample.sample_posterior(flow, u, jnp.zeros(()), jnp.zeros(()), ode_steps)
-    return float(jnp.std(x) / (sigma_scaled * S0))
+problem, f = centre_window("narrow-B")
+
+
+def sampled_width(sigma: float, ode_steps: int, n: int = 1 << 10) -> float:
+    z = jr.normal(jr.key(0), (n, problem.n_sources, COORDS))
+    flow = GaussianFlow(sigma, problem.n_sources)
+    x = sample.sample_posterior(problem, flow, z, jnp.zeros(()), jnp.asarray(f), ode_steps)
+    # the coordinates past f0 have prior mean 0: x / sigma_frame is z1 without cancellation
+    _, log_sigma = reference_frame(problem, flow.encode(None, f)[0], jnp.asarray(f))
+    return float(jnp.std(x[..., 1:] / jnp.exp(log_sigma[..., 1:])) / sigma)
 
 
 fig, axes = plt.subplots(1, 2, figsize=(style.FULL, 2.0), layout="constrained")
@@ -135,14 +145,16 @@ style.direct_label(
     xycoords="axes fraction",
 )
 band_bars(ax)
-ax.set(xlabel=r"model width $\sigma_m/s_0$", ylabel=r"excess loss $\Delta L$", ylim=(1e-6, 300))
+ax.set(xlabel=r"model width $w_m/s_0$", ylabel=r"excess loss $\Delta L$", ylim=(1e-6, 300))
 ax.set_title("What a too-wide model costs")
 style.panel_label(ax, "a")
 
-# (b) the width the sampler returns for the exact Gaussian x1 | x_s
+# (b) the width the sampler returns for the exact Gaussian z1 | z_t; the frame puts it near one
 ax = axes[1]
-true = np.logspace(-7, -0.5, 27)
+true = np.logspace(-7, 0.5, 31)
 ax.axhline(1, **style.GUIDE)
+ax.axvline(1, **style.GUIDE)
+style.direct_label(ax, 1, 0.97, "frame", dx=3, ha="left", va="top", xycoords=ax.get_xaxis_transform())
 for n_steps, color in STEP_COUNTS.items():
     ratio = [sampled_width(w, n_steps) for w in true]
     ax.loglog(true, ratio, color=color)
@@ -151,9 +163,9 @@ for n_steps, color in STEP_COUNTS.items():
     )
 band_bars(ax)
 ax.set(
-    xlabel=r"true width $\sigma/s_0$",
+    xlabel=r"true width $w/s_0$",
     ylabel="sampled / true width",
-    xlim=(1e-10, 1),
+    xlim=(1e-10, 10),
     ylim=(1e-6, 3),
 )
 ax.set_title("What the sampler returns")

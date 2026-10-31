@@ -18,7 +18,7 @@
 \definecolor{blue}{HTML}{2A78D6}
 \definecolor{orange}{HTML}{EB6834}
 \definecolor{violet}{HTML}{6250D6}
-% the source stream blue, the data stream neutral, sinks violet, conditioning orange
+% the source stream blue, the data stream and registers neutral, sinks violet, conditioning orange
 \colorlet{xfill}{blue!12}
 \colorlet{xchip}{blue!6}
 \colorlet{yfill}{wash}
@@ -57,14 +57,15 @@
 
   % ----------------------------------------------------------------- inputs and embeddings
   \node[xbox, anchor=west] (xemb) at (12, \ys)
-    {\textbf{source tokens}\\ PLE of coordinates\\ + Fourier($f_0$ bin)};
+    {\textbf{source tokens}\\ linear of $Z$, $X$, $\mu$, $\log\sigma$\\ + Fourier($f_0$)};
   \node[sbox, anchor=west] (semb) at (12, 28.4) {\textbf{sink tokens}: $\nu$ + learned};
   \node[cbox, anchor=west] (cemb) at (12, 18.4)
-    {\textbf{conditioning}\\ $\nu$ from $t$, $\log_{10}(1-t)$, $\ln f_w$\\ $\nu_f$ from $\ln f_w$};
+    {\textbf{conditioning}\\ $\nu$ from $t$, $\log_{10}(1-t)$, $+\nu_f$\\ $\nu_f$ from the window's $f_0$ range};
   \node[ybox, anchor=west] (yemb) at (12, \yd)
-    {\textbf{data tokens}\\ spectra of $Q$ bins per token\\ PLE of amplitude and phase\\
-     + Fourier(centre bin)};
-  \node[note, anchor=east, align=right] (xin) at (9, \ys) {$X_t$\\ $S\times 8$};
+    {\textbf{data tokens}\\ spectra of $Q$ bins per token\\ linear of amplitude and phase\\
+     + Fourier(lowest, highest bin)};
+  \node[ybox, anchor=west] (remb) at (12, -10.4) {\textbf{frame registers}: $\nu_f$ + learned};
+  \node[note, anchor=east, align=right] (xin) at (9, \ys) {$Z_t$\\ $S\times 8$};
   \node[note, anchor=east, align=right] (cin) at (9, 18.4) {$t$, $f_w$};
   \node[note, anchor=east, align=right] (yin) at (9, \yd) {$y$\\ $K\times 6$};
   \draw[arr] (xin) -- (xemb);
@@ -73,7 +74,7 @@
   \node[title, anchor=south] at (xemb.north) {embeddings};
 
   % ----------------------------------------------------------------- one block, two streams
-  \foreach \s/\y/\c/\what in {x/\ys/blue/{sources, sinks, data}, y/\yd/muted/{data only}} {
+  \foreach \s/\y/\c/\what in {x/\ys/blue/{sources, sinks, data, registers}, y/\yd/muted/{data, registers}} {
     \node[\s chip, minimum width=9mm] (\s a1) at (66, \y) {adaLN};
     \node[\s chip, text width=22mm, right=2.4mm of \s a1] (\s att)
       {attention\\[-0.6pt] {\sm\color{ink2}\what}};
@@ -92,11 +93,11 @@
   \draw[res=muted] (yin1) |- ($(yatt.south)+(0,-2.6)$) -| (yp1.south);
   \draw[res=muted] ($(yp1.east)+(1,0)$) |- ($(yff.south)+(0,-2.6)$) -| (yp2.south);
 
-  % one-way attention: data keys and values reach the sources, never the reverse
+  % one-way attention: data and register keys and values reach the sources, never the reverse
   \draw[kv] (yatt.north) -- node[note, fill=white, inner sep=1pt, pos=0.5]
-    {keys, values\\ of the data} (yatt.north |- xatt.south);
+    {keys, values of\\ data and registers} (yatt.north |- xatt.south);
 
-  % conditioning: nu modulates the source stream, sinks and head; nu_f the data stream
+  % conditioning: nu modulates the source stream, sinks and head; nu_f the data stream, registers and frame head
   \def\bx{33.4}
   \def\by{6.6}
   \draw[cond, -] ($(cemb.east)+(0,1.6)$) -| (55.5, \bx) -- (xp2.east |- 0,\bx);
@@ -109,12 +110,13 @@
 
   % RoPE on one frequency axis, in both attentions
   \node[note, anchor=west, align=left] at ($(xp1.west |- 0,20)+(1,0)$)
-    {rotary positions on one\\ frequency axis: a source at\\ its $f_0$ bin, a data token\\ at its centre bin};
+    {rotary positions on one\\ frequency axis: a source at\\ its $f_0$, a data token at\\ its centre; registers and\\ sinks unrotated};
 
-  % embeddings into the block; the sinks join the source stream
+  % embeddings into the block; the sinks join the source stream, the registers the data stream
   \draw[arr] (xemb.east) -- (xa1.west);
   \draw[arr] ($(semb.east)+(0,1.2)$) -| ($(xin1)+(-1.4,0)$);
   \draw[arr] (yemb.east) -- (ya1.west);
+  \draw[arr] (remb.east) -| ($(yin1)+(-1.4,0)$);
 
   % block frame, behind everything
   \begin{scope}[on background layer]
@@ -124,7 +126,7 @@
   \node[title, anchor=north west] at ($(frame.north west)+(1.2,-0.8)$)
     {source stream \textcolor{ink2}{\normalfont per draw and step}};
   \node[title, anchor=south west] at ($(frame.south west)+(1.2,0.8)$)
-    {data stream \textcolor{ink2}{\normalfont once per observation}};
+    {data and registers \textcolor{ink2}{\normalfont once per observation}};
   \node[title, anchor=north east] at ($(frame.north east)+(-1.2,-0.8)$) {block $\times N$};
 
   % ----------------------------------------------------------------- head and cache
@@ -132,11 +134,17 @@
     {head\\[-0.6pt] {\sm\color{ink2}adaLN, SwiGLU}};
   \draw[arr] (xp2) -- (head);
   \node[anchor=west, inner sep=1pt, align=center] (out) at ($(head.east)+(2.4,0)$)
-    {$\hat X_1,\ \log\sigma$\\ {\sm\color{ink2}$S\times 16$}};
+    {$\hat Z_1,\ \log\tau$\\ {\sm\color{ink2}$S\times 16$}};
   \draw[arr] (head) -- (out);
   \draw[cond] (xp2.east |- 0,\bx) -| (head.south);
   \node[ychip, text width=18mm, anchor=west] (cache) at ($(frame.east |- 0,\yd)+(3.5,0)$)
     {cache\\[-0.6pt] {\sm\color{ink2}keys and values\\[-1pt] of all blocks}};
   \draw[arr] (yp2) -- (cache);
+  \node[ychip, text width=18mm, anchor=west] (fhead) at ($(frame.east |- 0,-9.6)+(3.5,0)$)
+    {frame head\\[-0.6pt] {\sm\color{ink2}adaLN, linear}};
+  \draw[arr] ($(yp2.east)+(1.2,0)$) |- (fhead);
+  \node[anchor=west, inner sep=1pt, align=center] (fout) at ($(fhead.east)+(2.4,0)$)
+    {$\mu,\ \log\sigma$\\ {\sm\color{ink2}$S\times 16$}};
+  \draw[arr] (fhead) -- (fout);
 \end{tikzpicture}
 \end{document}

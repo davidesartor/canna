@@ -8,7 +8,6 @@ import numpy as np
 import style
 from canna.lisa import config
 from canna.lisa.chart import GALACTIC_SCALE
-from canna.lisa.network import COORD_RANGES, Z_REACH
 from canna.lisa.physics import (
     BULGE_SCALES,
     FDOT_STD,
@@ -16,11 +15,11 @@ from canna.lisa.physics import (
     SOURCE_SLOPE,
     THICK_DISK_SCALES,
     THIN_DISK_SCALES,
+    log10_fdot_mean,
 )
-from canna.lisa.problem import LisaGB
+from canna.lisa.problem import LisaGB, f0_window
 
 EDGE_DEG = 10.0
-SNR_QUANTILE = 0.9999
 BANDS = ("narrow", "full")
 prior = {
     name: json.loads((style.REPO / f"reports/prior/{name}/data/{name}.json").read_text())["bands"]
@@ -34,6 +33,14 @@ problems = {band: LisaGB(**config.load(f"{band}-B").problem) for band in BANDS}
 narrow, full = problems["narrow"], problems["full"]
 assert narrow.n_sources == full.n_sources
 assert narrow.phase_reference == full.phase_reference == "middle"
+
+
+def chart_f0_fdot(problem: LisaGB, d) -> tuple[np.ndarray, np.ndarray]:
+    """x_f and x_fdot of the drawn sources, as physical_to_flow maps them."""
+    lo, hi = (np.log(np.asarray(e))[:, None] for e in f0_window(problem, d["f"]))
+    f0 = 10.0 ** d["log_f0"]
+    x_fdot = (d["log_fdot"] - np.asarray(log10_fdot_mean(f0))) / FDOT_STD
+    return (2 * np.log(f0) - lo - hi) / (hi - lo), x_fdot
 
 
 def marginal_mass(axis: int, inside: float) -> float:
@@ -63,16 +70,15 @@ flow = {
 }
 z_names = ("Re z+", "Im z+", "Re z-", "Im z-")
 z_std = [flow[band][name]["std"] for band in BANDS for name in z_names]
-x_f_std = [float(draws[band]["x_f"].std()) for band in BANDS]
-unit_std = [float(draws[band]["x_fdot"].std()) for band in BANDS] + [
+x_f0_fdot = {band: chart_f0_fdot(problems[band], draws[band]) for band in BANDS}
+x_f_std = [float(x_f0_fdot[band][0].std()) for band in BANDS]
+unit_std = [float(x_f0_fdot[band][1].std()) for band in BANDS] + [
     flow[band][name]["std"] for band in BANDS for name in ("l", "b")
 ]
-fdot_beyond = max(float(np.mean(np.abs(draws[band]["x_fdot"]) > 4)) for band in BANDS)
 max_corr = max(
     float(np.max(np.abs(np.asarray(data["corr"]) - np.eye(8))))
     for data in prior["polarization"].values()
 )
-snr_top = float(np.quantile(draws["full"]["snr"], SNR_QUANTILE))
 
 # SNR per unit amplitude, rho u / A, over the drawn sources of each band
 scatters = {band: prior["polarization"][band]["scatter"] for band in BANDS}
@@ -93,8 +99,6 @@ bins_per_unit = {
 }
 f32_bins_full = bins_per_unit["full"] * float(np.spacing(np.float32(1.0)))
 
-reach = COORD_RANGES[1][1]
-assert all(r == (-reach, reach) for r in COORD_RANGES[1:4])
 numbers = {
     "ChartCoords": "8",
     "ChartSources": f"{full.n_sources}",
@@ -110,14 +114,6 @@ numbers = {
     "ChartEdgeDeg": f"{EDGE_DEG:g}",
     "ChartSeamMass": f"{100 * seam_mass:.2f}",
     "ChartPoleMass": f"{100 * pole_mass:.2f}",
-    "ChartReach": f"{reach:g}",
-    "ChartZReach": f"{Z_REACH:.2f}",
-    "ChartSnrTop": f"{snr_top:.0f}",
-    "ChartSnrQuantile": f"{100 * SNR_QUANTILE:g}",
-    "ChartZCap": f"{math.sinh(Z_REACH):.0f}",
-    "ChartBeyondFdot": f"{100 * fdot_beyond:.2f}",
-    "ChartBeyondL": f"{100 * max(flow[b]['l']['beyond_reach'] for b in flow):.1f}",
-    "ChartBeyondB": f"{100 * max(flow[b]['b']['beyond_reach'] for b in flow):.1f}",
     "ChartUnitStdLow": f"{min(unit_std):.2f}",
     "ChartUnitStdHigh": f"{max(unit_std):.2f}",
     "ChartZStdLow": f"{min(z_std):.2f}",

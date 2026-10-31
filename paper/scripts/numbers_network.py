@@ -46,8 +46,8 @@ for size in SIZES:
     cfg = configs["full", size]
     d, h, n = (cfg.network[k] for k in ("hidden_dim", "num_heads", "num_blocks"))
     backbone = count(flows["full", size].backbone)
-    # 16 D^2 per stream (data, sources, sinks) per block, H query gains; the last block drops 10 D^2 of the data and of the sink stream
-    assert backbone == n * (48 * d**2 + h) - 20 * d**2, (size, backbone)
+    # 16 D^2 per stream (data, sources, sinks, frame registers) per block, H query gains; the last block drops 10 D^2 of the data and of the sink stream
+    assert backbone == n * (64 * d**2 + h) - 20 * d**2, (size, backbone)
     assert count(flows["narrow", size].backbone) == backbone, size
     key = size.capitalize()
     numbers |= {
@@ -78,11 +78,11 @@ head_dim = head_dims.pop()
 assert len(flow.rope_periods) * 2 == head_dim
 rope_bins = [period * flow.t_obs for period in flow.rope_periods]
 assert math.isclose(rope_bins[0], 2.0) and math.isclose(rope_bins[-1], 2.0 * flow.window_bins)
-assert network.Z_REACH == network.COORD_RANGES[-1][1]
-assert all(r == network.COORD_RANGES[1] for r in network.COORD_RANGES[1:4])
 sinks, sources = flow.s_slot.shape[0], problems["full"].n_sources
 assert flow.y_embed.in_features == 3 * flow.patch * 3
-assert flow.x_unembed.linear2.out_features == 2 * len(network.COORD_RANGES)
+assert flow.x_unembed.linear2.out_features == 2 * network.COORDS
+assert flow.frame_unembed.out_features == 2 * network.COORDS
+assert flow.frame_slot.shape[0] == sources
 
 # the backbone's FF width, read off the built block
 expand = flow.backbone.last.mlp_x.linear2.weight.shape[1] // cfg.network["hidden_dim"]
@@ -104,17 +104,13 @@ numbers |= {
     "NetworkPhaseScalars": f"{2 * 3 * flow.patch}",
     "NetworkSinksWord": WORDS[sinks],
     "NetworkSourcesWord": WORDS[sources],
-    "NetworkCoords": f"{len(network.COORD_RANGES)}",
-    "NetworkCoordsWord": WORDS[len(network.COORD_RANGES)],
-    "NetworkHeadOutputs": f"{2 * len(network.COORD_RANGES)}",
+    "NetworkCoords": f"{network.COORDS}",
+    "NetworkCoordsWord": WORDS[network.COORDS],
+    "NetworkHeadOutputs": f"{2 * network.COORDS}",
     "NetworkExpand": f"{expand}",
-    "NetworkFzeroBins": f"{network.F0_BINS}",
-    "NetworkCoordBins": f"{network.COORD_BINS}",
-    "NetworkCoordReach": f"{network.COORD_RANGES[1][1]:.0f}",
-    "NetworkZReach": f"{math.sinh(network.Z_REACH):.0f}",
     "NetworkHarmonics": f"{network.HARMONICS}",
     "NetworkHarmonicScalars": f"{4 * (network.HARMONICS - 1)}",
-    "NetworkSourceScalars": f"{len(network.COORD_RANGES) + 4 * (network.HARMONICS - 1)}",
+    "NetworkSourceScalars": f"{flow.x_embed.in_features}",
     "NetworkFreqFinest": f"1/{1 / network.FREQ_FINEST_PERIOD:.0f}",
     "NetworkTimeDecades": f"{network.TIME_DECADES:.0f}",
     "NetworkSinusoidFreqs": f"{network.SINUSOID_FREQS}",
