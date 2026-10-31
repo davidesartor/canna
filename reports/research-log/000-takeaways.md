@@ -1,4 +1,4 @@
-# canna.lisa takeaways (current state, 2026-10-25, F61)
+# canna.lisa takeaways (current state, 2026-10-31, F63)
 
 One `0<nn>-<slug>.md` per finding F<nn>, outcome first. The literature lives in
 [../literature/](../literature/): [GW and cosmology
@@ -7,6 +7,10 @@ schedules](../literature/optimizers-schedules/000-takeaways.md), [diffusion and 
 matching](../literature/diffusion-flow-matching/000-takeaways.md) and the others; the findings
 keep only its consequences for our code.
 
+- **full-B diverged on a8e3477** ([F63](063-narrow-b-full-b-full-b-diverged.md)): from epoch
+  ~45 the frame loss climbed and the gradient norm grew from ~20 to 540, ending in a NaN at
+  epoch 93 of 240. Catalog flow was still improving to epoch 77 (−1.57). Only the latest checkpoint
+  is kept, and it is mid-runaway. narrow-B trains on, flat since epoch ~100.
 - **The oneshot code's first runs** ([F59](059-oneshot-first-runs-narrow-s-full-b.md)):
   narrow-S is the narrow-band model (779 of 840 found, every parameter within 0.8–3.3× of the
   MCMC at SNR 15–100 in the medians, the exceptions close pairs, at 2.2× fewer parameters than
