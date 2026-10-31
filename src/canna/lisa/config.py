@@ -80,6 +80,8 @@ class Config:
     # epochs between kept snapshots, 0 for none; a fork <run>/<epoch> resumes one and cools down from it
     snapshot_every: int = 0
     fork_from: str = ""
+    # False trains the frame alone: the flow's NLL is still computed and logged, but sends no gradient
+    train_flow: bool = True
 
     def __post_init__(self):
         for field, choices in CHOICES.items():
