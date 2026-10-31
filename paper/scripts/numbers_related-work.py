@@ -54,7 +54,7 @@ SNR_VISIBLE, snr_top = 7.0, float(np.quantile(prior_snr, 0.9999))
 numbers = {
     "RelatedWorkSources": f"{full.n_sources}",
     "RelatedWorkSourcesWord": WORDS[full.n_sources],
-    "RelatedWorkParameters": f"{full.n_sources * len(network.COORD_RANGES)}",
+    "RelatedWorkParameters": f"{full.n_sources * network.COORDS}",
     "RelatedWorkTobs": f"{full.t_obs / YEAR:.0f}",
     "RelatedWorkDelmondTobs": f"{DELMOND_TOBS / YEAR:.0f}",
     "RelatedWorkPatch": f"{patch}",

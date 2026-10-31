@@ -24,8 +24,8 @@ matching \citep{lipman2023flow,liu2023flow,albergo2023building,dax2023flow} with
 evaluation. Three difficulties stand in the way. The posterior is multimodal by symmetry: each
 source has four copies under its polarisation and phase, and the sources of a window can be
 exchanged. Its widths span orders of magnitude, from the prior for a quiet source to a small
-fraction of a bin in frequency for a loud one, and a flow sampled on a uniform grid cannot
-resolve the narrow end. And with no reference posterior for most windows, the usual calibration
+fraction of a bin in frequency for a loud one, and a flow run on the prior's scale and sampled on
+a uniform grid cannot resolve the narrow end. And with no reference posterior for most windows, the usual calibration
 checks pass flows that are plainly wrong.
 
 \paragraph{Contributions.}
@@ -33,13 +33,13 @@ checks pass flows that are plainly wrong.
   \item A flat chart of eight coordinates per source in which the signal is linear in one complex
     amplitude per helicity, so a source's four equivalent copies become one mode and the flow
     runs on straight paths (\cref{sec:method-chart}).
-  \item Unordered sources: a permutation-equivariant network, so the flow's draws carry no labels
-    and have no slot boundary for sources of similar \ac{snr} or frequency to swap across, trained
-    on straight paths that pair base and target sources in order of frequency
-    (\cref{sec:method-chart,sec:method-fm}).
-  \item A flow-matching recipe for posteriors that are narrow at the end of the path:
-    a Gaussian likelihood of the endpoint, whose reward for narrowing is relative to each source's
-    own width, and an analysis of what the sampler resolves there (\cref{sec:method-fm}).
+  \item Sources as slots in order of frequency, each with a Gaussian frame the network reads off
+    the data alone, around the prior's moments, so the flow transports order-one widths for loud
+    and quiet sources alike (\cref{sec:method-chart,sec:method-fm}).
+  \item A flow-matching recipe for posteriors that are narrow at the end of the path: Gaussian
+    likelihoods of the frame and of the endpoint in it, whose reward for narrowing is relative to
+    each source's own width, and an analysis of what the sampler resolves with and without the
+    frame (\cref{sec:method-fm}).
   \item A one-way transformer whose data stream depends on the observation alone, so it is encoded
     once per window and reused by every draw and every sampler step, trained on batches simulated
     on the device (\cref{sec:method-network}).

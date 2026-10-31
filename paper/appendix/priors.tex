@@ -229,8 +229,7 @@ problem of mixture models \citep{stephens2000dealing,jasra2005markov}, which \ac
 gravitational-wave sources meet as well \citep{buscicchio2019label}. With
 \cref{eq:psi-phi-symmetry}, every mode of an unordered posterior has
 $\PriorsPermutations{}\times4^{\PriorsSources{}} = \num{\PriorsCopies}$ equivalent copies. The chart folds the
-phase copies; the permutations we keep, since an equivariant flow puts the same mass on every
-labelling by construction (\cref{app:chart-slots}). The evaluation pairs drawn and injected sources
+phase copies, and the slots in order of $f_0$ remove the permutations (\cref{app:chart-slots}). The evaluation pairs drawn and injected sources
 before scoring (\cref{app:evaluation}).
 
 \paragraph{Approximate degeneracies.}
@@ -251,15 +250,13 @@ There is no fixed dataset: every training example is a freshly simulated window,
   \cref{eq:priors-window-prior};
   \item noisy data in the window's $4R$ bins and its whitened conditioning input $y$
   (\cref{app:noise});
-  \item the target $X_1 = \varphi(\theta_{1:S};\fw)$ in flow coordinates, $S\times\PriorsCoords{}$
-  (\cref{eq:chart});
-  \item \PriorsDraws{} base points $X_0 = \varphi(\theta'_{1:S};\fw)$, each from an independent
-  $\theta'_{1:S}\sim\pi_w$ in the same window and each with its own flow time $t$, which give the
-  interpolants and target velocities of \cref{eq:loss} (\cref{app:fm}).
+  \item the target $X_1 = \varphi(\theta_{1:S};\fw)$ in flow coordinates, $S\times\PriorsCoords{}$,
+  sources in order of $f_0$ (\cref{eq:chart});
+  \item \PriorsDraws{} standard normal base points $Z_0$, each with its own flow time $t$, which
+  with the frame give the paths and targets of \cref{eq:loss} (\cref{app:fm}).
 \end{enumerate}
-The base distribution is the prior itself, drawn and mapped to flow coordinates without a
-waveform, so one example costs one simulation, of its target. A batch of
-\num{\PriorsBatch} $(X_0, t)$ pairs is $\PriorsObservationsPerStep{}$ windows times \PriorsDraws{} base
+The base needs no simulation, so one example costs one simulation, of its target. A batch of
+\num{\PriorsBatch} $(Z_0, t)$ pairs is $\PriorsObservationsPerStep{}$ windows times \PriorsDraws{} base
 points, drawn inside the compiled training step. A run therefore sees $\num{\PriorsFullObservations}$ to $\num{\PriorsNarrowObservations}$ independent
 windows (\cref{tab:priors-bands}): overfitting is not a concern, and every comparison between runs
 is one of optimisation, not of generalisation. The simulation is cheap next to the network,

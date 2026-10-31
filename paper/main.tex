@@ -83,7 +83,7 @@
 \begin{abstract}
   % Adapted from the fml draft of 2026-10-11 (origin/fml paper/main.tex) to the current appendices.
   % Each claim and its source: cost (app:fm-sampling, app:mcmc-cost); four sources, full response,
-  % bands (app:priors); chart (app:chart); unordered sources (app:chart-slots, app:fm-coupling); network (app:network); simulated
+  % bands (app:priors); chart (app:chart); frequency-ordered slots and frame (app:chart-slots, app:fm-frame); network (app:network); simulated
   % batches (app:training-batch); validation power (app:evaluation-validation); references (app:mcmc).
   \Ac{lisa} will resolve thousands of \acp{gb} whose signals overlap in frequency, so their
   parameters must be inferred jointly, which a trans-dimensional \ac{mcmc} global fit does at great
@@ -94,10 +94,11 @@
   window takes \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} on \McmcJointCores{} CPU cores.
   The flow runs on straight paths in a flat chart of eight coordinates per source, in which the
   signal is linear in one complex amplitude per helicity, so the four equivalent copies of each
-  source's polarisation and phase become one mode. The sources are an unordered set: the network is
-  equivariant to their permutations, so its draws carry no labels and no ordering can split sources
-  of similar \ac{snr} or frequency, and each training path pairs a prior draw's sources with the
-  target's in order of frequency, so no two paths cross in $f_0$. A transformer reads the data as time--frequency tokens in a stream that depends
+  source's polarisation and phase become one mode. The sources are slots in order of frequency, so
+  each mode has one copy rather than one per labelling. From the data alone the network returns a
+  Gaussian frame per source, trained on the likelihood of the true sources, and the flow carries a
+  standard normal to the posterior in that frame, so loud sources, whose posteriors are decades
+  narrower than the prior, reach the flow with widths of order one. A transformer reads the data as time--frequency tokens in a stream that depends
   on the observation alone, encoded once per window, and every training batch is simulated on the
   device, so no observation is seen twice. We train on the band below
   \qty{\PriorsNarrowHighMhz}{\milli\hertz} with windows of \PriorsNarrowW{} bins and on the whole

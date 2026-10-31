@@ -5,8 +5,8 @@
 
 The flow does not transport physical parameters. A chart $\varphi$ maps each of the
 $S=\ChartSources{}$ sources of a window to \ChartCoords{} real coordinates, so a window's sources
-are a point of $\R^{\ChartCoords{}S}$, and the flow, its base distribution and its training paths
-all live there. The chart depends on the window through its centre frequency $\fw$, so
+are a point of $\R^{\ChartCoords{}S}$, and the frame and the flow's training paths
+(\cref{app:fm}) all live there. The chart depends on the window through its centre frequency $\fw$, so
 converting between physical and flow coordinates always needs the $\fw$ of the observation.
 \Cref{fig:chart} shows what the chart does to the prior.
 
@@ -80,9 +80,7 @@ within \qty{\ChartKappaLawRms}{\percent} rms; $\kappa$ runs from \ChartKappaNarr
 \ChartKappaNarrowHigh{} (face-on) in the narrow band and from \ChartKappaFullLow{} to
 \ChartKappaFullHigh{} in the full band (1st and 99th percentiles), where the response departs from
 its low-frequency limit. The radius is warped by $\operatorname{asinh}$, linear for faint
-amplitudes and logarithmic for loud ones. The prior's \qty{\ChartSnrQuantile}{\percent} quantile
-of the \ac{snr}, $\snr=\ChartSnrTop{}$, lies far inside the reach of the network's input
-embedding, $\operatorname{asinh}\ChartZCap{} = \ChartZReach{}$.
+amplitudes and logarithmic for loud ones.
 
 \begin{figure*}[t]
   \centering
@@ -94,8 +92,7 @@ embedding, $\operatorname{asinh}\ChartZCap{} = \ChartZReach{}$.
   their weak helicity orders of magnitude below the dominant one. (c)~\ac{snr}
   per unit amplitude against inclination, with the sky-averaged law \cref{eq:chart-kappa}.
   (d)~The prior's marginal in each of the \ChartCoords{} flow coordinates, for both bands, with the
-  closed-form marginal dashed where it exists. Shading marks coordinates beyond the range of the
-  network's input embedding. The $z_\pm$ spike at zero: most sources lie far below one noise
+  closed-form marginal dashed where it exists. The $z_\pm$ spike at zero: most sources lie far below one noise
   unit.}
   \label{fig:chart}
 \end{figure*}
@@ -178,47 +175,44 @@ All \ChartCoords{} coordinates are flat: the flow acts on $\R^{\ChartCoords{}}$ 
 no manifold, no angle with a branch cut and no exponential or logarithm map. The flow-matching
 path between a base point $x_0$ and a target $x_1$ is the straight line
 $x_s = x_0 + s\,(x_1 - x_0)$ of constant velocity $x_1 - x_0$ (\cref{app:fm}), and the sampler's
-steps stay in the chart whatever the network predicts. The base distribution is the prior pushed
-through \cref{eq:chart}, sampled by drawing physical parameters and mapping them, so neither
-training nor sampling evaluates a density and the chart's Jacobian never enters.
+steps stay in the chart whatever the network predicts. The frame of \cref{app:fm-frame} is an
+affine map per coordinate, so a straight path in the frame is a straight path in the chart. Neither
+training nor sampling evaluates a density of the prior, and the chart's Jacobian never enters.
 
 The pushed-forward prior is not simple, but it is well scaled (\cref{fig:chart}d): $x_f$ is
 close to uniform, the drift and sky coordinates have standard deviations between
 \ChartUnitStdLow{} and \ChartUnitStdHigh{}, and no pair of the \ChartCoords{} coordinates is correlated by more than
-$\lvert r\rvert = \ChartMaxCorr{}$ over \ChartPriorDraws{} prior sources per band. The sky prior's
-tails are long: \qty{\ChartBeyondL}{\percent} of its $x_l$ and \qty{\ChartBeyondB}{\percent} of its $x_b$ lie beyond
-$\pm\ChartReach{}$, where the network's input embedding ends (\cref{app:network}), against
-\qty{\ChartBeyondFdot}{\percent} of $x_{\fdot}$. The helicity components are the exception: in noise
-units the prior's sources are faint, and their standard deviations lie between \ChartZStdLow{} and
-\ChartZStdHigh{}. The scale that matters for them is the posterior's, about one noise unit for
-every source the data resolve.
+$\lvert r\rvert = \ChartMaxCorr{}$ over \ChartPriorDraws{} prior sources per band. The helicity
+components are the exception: in noise units the prior's sources are faint, and their standard
+deviations lie between \ChartZStdLow{} and \ChartZStdHigh{}. The scale that matters for them is the
+posterior's, about one noise unit for every source the data resolve. The frame starts from these
+prior moments and is trained to the posterior's (\cref{app:fm-frame}), so the flow sees every
+coordinate on the posterior's scale, whatever its scale under the prior.
 
 A flat chart of the sphere distorts lengths away from $b=0$, but the prior sits near the
-galactic plane, where the distortion is small, and its two defects carry the masses quoted
-above. A Riemannian flow on the product of the sphere and the phase torus would remove them at the cost of
+galactic plane, where the distortion is small, and little of its mass lies at the poles or
+across the cut in longitude. A Riemannian flow on the product of the sphere and the phase torus would remove them at the cost of
 geodesic paths and exponential maps.
 
-\subsection{Unordered Sources}
+\subsection{Sources in Frequency Order}
 \label{app:chart-slots}
 
 The $S$ sources of a window are exchangeable under the prior and the likelihood
-(\cref{app:priors-symmetries}), so every mode of the posterior has $S!$ copies, one per
-labelling. We keep the symmetry instead of breaking it. The network is equivariant to
-permutations of the sources (\cref{app:network-slots}), so from an exchangeable base the flow puts
-the same mass on every labelling, and its draws are unordered sets, as the posterior's are. The
-order in which the simulator lists the targets is invisible to it. Each base draw is paired with
-its target in order of frequency (\cref{app:fm-coupling}), so no base source crosses the window
-to reach a target that merely shares its label.
+(\cref{app:priors-symmetries}), so every mode of the posterior has $S!$ copies, one per labelling.
+We break the symmetry by an ordering: the slots hold the sources in order of $f_0$, in training
+targets and in the frame (\cref{app:fm}), and the flow learns the posterior restricted to
+$f_{0,1}\le\dots\le f_{0,S}$, which has one copy of each mode. This is the label-switching remedy
+of mixture models \citep{stephens2000dealing,jasra2005markov}, and the ordering of
+\citet{delmond2026neural}; slots matched to the targets in the loss by the Hungarian algorithm
+\citep{houba2025slotflow} would leave the network to learn the labelling as well. Each slot then
+has a frame of its own, centred on the $k$-th lowest source.
 
-The alternative is an ordering. Other amortised estimators for overlapping sources order them in
-frequency \citep{delmond2026neural} or match per-source slots in the loss by the Hungarian
-algorithm \citep{houba2025slotflow}. Every ordering has a boundary where two labellings meet: in
-frequency it falls between sources close in frequency, the overlap that is hardest to resolve; in
-\ac{snr} between sources of similar loudness, common among the faint ones. A posterior that
-straddles the boundary has its sources trade slots from draw to draw, and the flow must place a
-sharp edge inside it. Here the frequency order enters only the pairing of the training paths
-(\cref{app:fm-coupling}); the flow's output carries no labels, so its draws have no boundary to
-straddle.
+Every ordering has a boundary where two labellings meet. In frequency it falls between sources
+close in $f_0$, the overlap that is hardest to resolve: where two sources' $f_0$ posteriors overlap,
+the ordered posterior is folded at $f_{0,k} = f_{0,k+1}$, and its marginals per slot are cut there.
+The frame takes the moments of the folded marginals, and the flow places the edge. Its draws are
+not forced into order, and close sources may swap in a draw's tail; the order matters only for
+which slot learns which source.
 
 Scores against the injections still need a labelling. They pair drawn sources with injected ones
 by the cheapest assignment over frequency, amplitude and sky, and the calibration tests relabel

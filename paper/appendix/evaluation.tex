@@ -36,14 +36,12 @@ toy with an exact posterior for the size and power of the validation tests
 
 Every pass evaluates the schedule-free average of the weights, the sequence $\bar\vartheta$ of
 \citet{defazio2024road} whose convergence the method guarantees (\cref{app:training}); the
-interpolated weights at which gradients are taken are never reported. The default flow
-predicts $x_1$ (\cref{app:fm}), and the sampler takes \EvaluationOdeSteps{} midpoint steps
-toward the predicted $x_1$, each exact if the prediction were constant along the step; a
-velocity-predicting flow takes fourth-order Runge--Kutta steps instead. On a uniform grid the last
+interpolated weights at which gradients are taken are never reported. The flow predicts the
+endpoint $Z_1$ in the frame (\cref{app:fm}), and the sampler takes \EvaluationOdeSteps{} midpoint
+steps toward the predicted mean, each exact if the prediction were constant along the step. On a uniform grid the last
 step cannot resolve posteriors much narrower than $s_0/2K_t$ (\cref{fig:fm-sensitivity}b), so
 widths and coverage are read only where they no longer change with the number of steps. The base draws are
-prior draws in flow coordinates (\cref{app:chart}), so a flow that ignored the data would
-return the prior. A run is evaluated in the precision it was trained in.
+standard normal in the frame, which the network encodes from the data (\cref{app:fm-frame}). A run is evaluated in the precision it was trained in.
 
 \subsection{Eval Injections}
 \label{app:evaluation-injections}
@@ -62,9 +60,10 @@ sample, for inspection and never for calibration.
 \subsection{Relabelling Draws to the Truth}
 \label{app:evaluation-matching}
 
-The flow's draws are unordered: the network is equivariant (\cref{app:network-slots}), so each
-draw lists its sources in any of the $S!$ labellings, the label switching of mixture models
-\citep{stephens2000dealing,jasra2005markov,buscicchio2019label}. For display and for the scorecard, each draw $\theta_{1:S}$ is relabelled to the truth
+The flow's draws list their sources in order of $f_0$ (\cref{app:chart-slots}), which breaks
+the $S!$ labellings, the label switching of mixture models
+\citep{stephens2000dealing,jasra2005markov,buscicchio2019label}, only where the frequencies are
+resolved: a draw of two sources closer than their widths can swap them. For display and for the scorecard, each draw $\theta_{1:S}$ is relabelled to the truth
 $\theta^\star_{1:S}$ by the permutation
 \begin{gather}
   \hat\sigma = \operatorname*{arg\,min}_{\sigma\in\mathfrak S_S}
@@ -311,7 +310,7 @@ a linear-Gaussian model and approximately calibrated here. The ladder perturbs i
   \item \emph{wide} and \emph{narrow}: every width times \EvaluationMockWide{} and
     \EvaluationMockNarrow, centre and correlations kept;
   \item \emph{biased}: every $f_0$ shifted by one marginal width;
-  \item \emph{prior}: the flow's own base draws, a flow that ignores the data;
+  \item \emph{prior}: prior draws for the same window, a flow that ignores the data;
   \item \emph{phases-prior}: the phases of $z_\pm$ redrawn uniform, radii kept;
   \item \emph{loud-floor}: widths that stop shrinking above \ac{snr} \EvaluationMockFloorSnr{}, where
     $w^\star$ reaches \EvaluationMockFloorBins{} bins, capped at the prior width: quiet sources exact,
@@ -370,7 +369,7 @@ Four readings follow, and each shapes how the results are read.
   \item \emph{Coverage hides a width floor.} The loud-floor mock covers \EvaluationMockFloorCoverQuiet{}
     of sources below \ac{snr} \EvaluationBandTwo{} and \EvaluationMockFloorCoverLoud{} above, so it
     reads conservative; the coordinate ranks in the strata from \ac{snr} \EvaluationBandTwo{} up
-    reject it (every coordinate but $x_{\Mc}$ at $p$ \EvaluationMockFloorLoudP), and the width ratio
+    reject it (every coordinate at $p$ \EvaluationMockFloorLoudP), and the width ratio
     gives its size.
 \end{itemize}
 

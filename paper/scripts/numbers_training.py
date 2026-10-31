@@ -153,10 +153,10 @@ for band, cfg in (("Narrow", narrow), ("Full", full)):
     numbers[f"TrainingSteps{band}"] = str(cfg.total_steps)
     numbers[f"TrainingEpochs{band}"] = str(cfg.total_steps // cfg.log_interval)
 
-# the B runs' step on an A100 with the bf16 backbone at the default batch (step-time-memory's step
-# check), unsplit if it fits, else the fewest micro-batches that ran
+# the B runs' step on an A100 with the bf16 backbone at the default batch (step-time-memory's batch
+# sweeps), unsplit if it fits, else the fewest micro-batches that ran
 steps = {}
-for r in jsonl(BENCH / "step-time-memory/data/a100-bf16backbone-b256.jsonl"):
+for r in (r for band in BANDS for r in jsonl(BENCH / f"step-time-memory/data/a100-bf16backbone-{band}.jsonl")):
     if r.get("step_s") is None or r["batch"] * r["draws"] != full.batch_size:
         continue
     if (

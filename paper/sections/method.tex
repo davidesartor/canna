@@ -15,29 +15,29 @@ their radius warped by $\operatorname{asinh}$. The signal is linear in $\zeta_\p
 (\cref{eq:forward-model-helicity}), so the four copies of a source in $(\psi,\phi_0)$ map to one
 point, and at high \ac{snr} the likelihood in $\zeta_\pm$ is close to Gaussian
 (\cref{app:chart-helicity}). The chart is flat, so the flow's paths are straight lines
-(\cref{app:chart-flat}). The sources carry no labels: every source token is embedded by the same
-maps and the network has no slot embedding, so it is equivariant to permutations of the sources,
-and its draws are unordered sets, as the posterior's are (\cref{app:chart-slots,app:network-slots}).
+(\cref{app:chart-flat}). The sources are slots in order of $f_0$, so each mode of the posterior
+has one copy instead of $S!$, one per labelling (\cref{app:chart-slots}).
 
 \subsection{Flow Matching}
 \label{sec:method-fm}
 
-The base distribution is the prior, mapped through the chart, so a source the data do not
-constrain needs no transport. Paths are straight, $X_s = X_0 + s(X_1-X_0)$, from a prior draw
-$X_0$ to the true sources $X_1$ (\cref{eq:fm-path}), with the sources of $X_0$ paired with those of
-$X_1$ in order of frequency (\cref{eq:fm-coupling}): each base source heads for the target source
-of the same $f_0$ rank, not for whichever one shares its label, and no two paths cross in $f_0$.
-The network is equivariant, so this pairing shapes the paths without labelling the draws
-\citep{klein2023equivariant}. The network predicts the mean $\hat X_1$ and log standard deviation $\log\sigma$ of a Gaussian
-over the endpoint, per coordinate, and is trained on the endpoint's negative log-likelihood
-(\cref{eq:loss}) at times uniform along the path; its velocity is $(\hat X_1 - X_s)/(1-s)$
-(\cref{app:fm-loss}). A loud source's posterior is a small fraction of a bin wide in $f_0$. A
-Gaussian model (\cref{prop:fm-sensitivity}, \cref{fig:fm-sensitivity}) shows that the velocity
-loss of standard flow matching barely rewards narrowing such a posterior, while the likelihood
-pays the same for every e-fold of excess width, relative to each source's own width. The same
-model gives the resolution a sampler grid reaches at the end of the path, and shows that the
-default uniform grid collapses the narrowest posteriors; draws use \FlowMatchingOdeSteps{}
-midpoint steps of the velocity (\cref{app:fm-sampling}).
+The network first reads a Gaussian frame off the data, a mean $\mu$ and a standard deviation
+$\sigma$ per coordinate of each slot, around the prior's moments (\cref{eq:fm-frame}). It is trained
+on the Gaussian likelihood of the true sources $X_1$, so it learns the posterior's marginal mean and
+width, with a weight that keeps loud sources, whose frames are decades narrower than the prior, from
+dominating the batch (\cref{eq:fm-frame-loss}). The flow then works in that frame, $Z =
+(X-\mu)/\sigma$: paths are straight, $Z_s = Z_0 + s(Z_1-Z_0)$, from a standard normal $Z_0$ to the
+true sources $Z_1$ (\cref{eq:fm-path}), and the flow cannot move the frame. The network predicts
+the mean $\hat Z_1$ and log standard deviation $\log\tau$ of a Gaussian over the endpoint, per
+coordinate, and is trained on the endpoint's negative log-likelihood (\cref{eq:loss}) at times
+uniform along the path; its velocity is $(\hat Z_1 - Z_s)/(1-s)$ (\cref{app:fm-loss}). A loud
+source's posterior is a small fraction of a bin wide in $f_0$. A Gaussian model
+(\cref{prop:fm-sensitivity}, \cref{fig:fm-sensitivity}) shows that the velocity loss of standard
+flow matching barely rewards narrowing such a posterior, while the likelihood pays the same for
+every e-fold of excess width, relative to each source's own width. The same model shows that a
+uniform sampler grid run on the prior's scale collapses the narrowest posteriors, and that in a
+frame of the posterior's width it does not; draws use \FlowMatchingOdeSteps{} midpoint steps of the
+velocity and are mapped back with $X = \mu+\sigma Z$ (\cref{app:fm-sampling}).
 
 \subsection{Network}
 \label{sec:method-network}
@@ -46,12 +46,14 @@ The network is a two-stream transformer \citep{peebles2023scalable,esser2024scal
 stream and a source stream (\cref{fig:network-architecture}). The data stream reads the window as
 a short-time Fourier transform, \NetworkPatch{} bins per token, each token holding its band's time
 samples in the three channels (\cref{eq:network-stft}): \NetworkTokensNarrow{} tokens in the
-narrow band, \NetworkTokensFull{} in the full band. The source stream holds one token per source, with no slot label,
-embedded from its chart coordinates, together with attention sinks
-\citep{xiao2024efficient,darcet2024vision}. Attention is one-way: the data stream attends only to
-itself and is conditioned on $\fw$ alone, never on the time or the sources, so its keys and values
-are computed once per window and reused by every draw and every sampler step; the source stream
-attends to both and is conditioned on the time. Rotary embeddings in frequency
+narrow band, \NetworkTokensFull{} in the full band. One frame register per slot runs with the
+data stream and gives that slot's frame (\cref{app:network-frame}). The source stream holds one
+token per slot, embedded from its coordinates in the frame and in the chart and from the frame
+itself, together with attention sinks \citep{xiao2024efficient,darcet2024vision}. Attention is
+one-way: the data stream and the registers attend only to each other and are conditioned on the
+window alone, never on the time or the sources, so their keys and values, and the frame, are
+computed once per window and reused by every draw and every sampler step; the source stream
+attends to everything and is conditioned on the time. Rotary embeddings in frequency
 \citep{su2024roformer} place each source at its $f_0$ and each data token at its centre bin.
 \Cref{app:network} gives the embeddings and \cref{tab:network-sizes} the sizes; all results use
 size B, \num{\NetworkBTotalFull} parameters.

@@ -3,13 +3,17 @@
 \label{app:fm}
 % =======================================================================================
 
-The flow is trained on straight paths from prior draws to the true sources. The network predicts
-a Gaussian over the endpoint of the path, its mean and width per coordinate, and is trained on the
-endpoint's negative log-likelihood; the sampler follows the velocity to the predicted mean.
-\Cref{tab:fm-recipe} lists the choices. A Gaussian model of one coordinate
+The posterior is learned in two parts. From the data alone, the network first returns a Gaussian
+frame per source, a mean $\mu$ and a standard deviation $\sigma$ for each coordinate, which places
+and scales the posterior. A flow then carries a standard normal to the posterior in that frame,
+$Z = (X-\mu)/\sigma$, on straight paths: it predicts a Gaussian over the endpoint $Z_1$, its mean
+and width per coordinate, and is trained on the endpoint's negative log-likelihood, the frame on
+that of $X_1$. The sampler follows the velocity to the predicted mean and maps the draw back with
+$X = \mu + \sigma Z$. \Cref{tab:fm-recipe} lists the choices. A Gaussian model of one coordinate
 (\cref{app:fm-sensitivity}) shows why the likelihood, unlike the velocity loss, rewards narrow
-posteriors, and what the sampler can and cannot resolve at the end of the path. The network is described in
-\cref{app:network}, the optimiser in \cref{app:training}.
+posteriors, and why a flow run on the prior's scale cannot resolve them at the end of the path,
+while one run in the frame can. The network is described in \cref{app:network}, the optimiser in
+\cref{app:training}.
 
 \begin{table*}[t]
   \centering
@@ -20,149 +24,156 @@ posteriors, and what the sampler can and cannot resolve at the end of the path. 
     \toprule
     component & setting & reason \\
     \midrule
-    base & the prior & undetectable sources need no transport \\
-    coupling & frequency order of the target & unordered sources, no crossing in $f_0$ \\
-    path & straight, $X_s = X_0 + s(X_1 - X_0)$ & flat coordinates (\cref{app:chart}) \\
-    output & endpoint mean $\hat X_1$ and $\log\sigma$ & bounded output, a width per source \\
-    loss & Gaussian likelihood of $X_1$ & rewards narrowing relative to each width \\
+    sources & slots in order of $f_0$ & one copy of each mode, no labels to learn \\
+    frame & $(\mu,\log\sigma)$ per slot from the data, around the prior's moments & posterior widths of order one in $Z$ \\
+    base & $Z_0\sim\Normal(0,I)$ in the frame & matched to the frame \\
+    path & straight, $Z_s = Z_0 + s(Z_1 - Z_0)$ & flat coordinates (\cref{app:chart}) \\
+    output & endpoint mean $\hat Z_1$ and $\log\tau$ & bounded output, a width per coordinate \\
+    loss & Gaussian likelihood of $X_1$ in the frame and of $Z_1$ in the flow & rewards narrowing relative to each width \\
     time & uniform, stratified over the batch & every stratum in every batch \\
     sampler & \FlowMatchingOdeSteps{} midpoint steps, \FlowMatchingEvaluations{} evaluations & data encoded once per window \\
     \bottomrule
   \end{tabular}
 \end{table*}
 
-\subsection{Straight Paths from the Prior}
+\subsection{Straight Paths in the Frame}
 \label{app:fm-paths}
 
-A window with centre frequency $\fw$ holds $S$ sources $\theta_{1:S}$, in no particular order,
-and its data $d$ enter the network as the input $y = y(d,\fw)$ (\cref{app:network}). Write
-$X = \varphi(\theta_{1:S};\fw)\in\R^{8S}$ for the sources in the flow coordinates of
-\cref{eq:chart}, source by source. The target is the posterior $p(X\mid y,\fw)\propto p(d\mid
-X)\,\pi(X\mid\fw)$, with the likelihood of \cref{eq:loglik} and the prior of \cref{app:priors}.
-The flow transports draws $X(0)$ from the prior along
+A window with centre frequency $\fw$ holds $S$ sources $\theta_{1:S}$, and its data $d$ enter the
+network as the input $y = y(d,\fw)$ (\cref{app:network}). Write $X = \varphi(\theta_{1:S};\fw)\in
+\R^{8S}$ for the sources in the flow coordinates of \cref{eq:chart}, source by source, listed in
+order of $f_0$ (\cref{app:chart-slots}). The target is the posterior $p(X\mid y,\fw)\propto p(d\mid
+X)\,\pi(X\mid\fw)$ over ordered sources, with the likelihood of \cref{eq:loglik} and the prior of
+\cref{app:priors}. Given the frame $(\mu,\sigma)$ of the window (\cref{app:fm-frame}), a function
+of $(y,\fw)$ alone, the flow transports standard normal draws $Z(0)$ along
 \begin{equation}
-  \frac{\dd X}{\dd s} = \vnet\bigl(X, s; y, \fw\bigr),\qquad s\in[0,1],
+  \frac{\dd Z}{\dd s} = \vnet\bigl(Z, s; y, \fw\bigr),\qquad s\in[0,1],
   \label{eq:fm-ode}
 \end{equation}
-so that $X(1)$ is a posterior draw. The position $s$ along the path is the network's time input,
-written $t$ in \cref{app:network}.
+so that $X = \mu + \sigma Z(1)$ is a posterior draw, elementwise. The position $s$ along the path is
+the network's time input, written $t$ in \cref{app:network}.
 
 Training uses conditional flow matching \citep{lipman2023flow,liu2023flow,albergo2023building}.
 One training observation draws $\fw$ and $\theta_{1:S}$ from the prior, simulates the data
-(\cref{app:forward-model,app:noise}) and sets $X_1 = \varphi(\theta_{1:S};\fw)$. It then draws
-\FlowMatchingDraws{} independent base points $X_0 = \varphi(\theta'_{1:S};\fw)$,
-$\theta'_{1:S}\sim\pi(\cdot\mid\fw)$, each paired with $X_1$ in order of $f_0$ (\cref{eq:fm-coupling}) and each with its own time; a
-batch holds \FlowMatchingWindows{} observations, \FlowMatchingBatch{} points in all. The path is
-the straight line, source by source,
+(\cref{app:forward-model,app:noise}) and sets $X_1 = \varphi(\theta_{1:S};\fw)$, its sources in
+order of $f_0$, and $Z_1 = (X_1-\mu)/\sigma$ in the frame the network reads off the data. It then
+draws \FlowMatchingDraws{} independent base points $Z_0\sim\Normal(0,I)$, each with its own time; a
+batch holds \FlowMatchingWindows{} observations, \FlowMatchingBatch{} points in all. The path is the
+straight line
 \begin{equation}
-  X_s = X_0 + s\,(X_1 - X_0),\qquad
-  u = \frac{\dd X_s}{\dd s} = X_1 - X_0 .
+  Z_s = Z_0 + s\,(Z_1 - Z_0),\qquad
+  u = \frac{\dd Z_s}{\dd s} = Z_1 - Z_0 .
   \label{eq:fm-path}
 \end{equation}
-Regressing a field on $u$ has the marginal field $v^\star(X,s;y,\fw) = \E[u\mid X_s = X,
-y,\fw]$ as its minimiser, which carries $p_0$ to $p_1 = p(\cdot\mid y,\fw)$
-\citep{lipman2023flow}. Because $X_0$ is independent of the data up to its labelling, $p_0$ is the
-prior itself (\cref{app:fm-coupling}). All
-eight coordinates are flat (\cref{app:chart}), so the line needs no geodesics.
+Regressing a field on $u$ has the marginal field $v^\star(Z,s;y,\fw) = \E[u\mid Z_s = Z, y,\fw]$ as
+its minimiser, which carries $\Normal(0,I)$ to the posterior of $Z_1$ \citep{lipman2023flow}. The
+frame is an affine map per coordinate, so straight lines in $Z$ are straight lines in $X$, and all
+eight coordinates are flat (\cref{app:chart}): the path needs no geodesics. \Ac{fmpe} with a
+Gaussian base is studied by \citet{dax2023flow}, and has been applied to \ac{lisa} massive
+black-hole binaries \citep{liang2024rapid} and to a single \ac{gb}-like source in gapped data
+\citep{mao2025robust}; here the Gaussian is placed and scaled by the data.
 
-The prior is the natural base for two reasons. A source the data say nothing about, such as a
-source far below the noise, has a posterior close to its prior and needs almost no transport. And
-every base draw is a valid set of sources in the window, so the path never leaves the region
-where the network is trained. \Ac{fmpe} with a Gaussian base is studied by \citet{dax2023flow},
-and has been applied to \ac{lisa} massive black-hole binaries \citep{liang2024rapid} and to a
-single \ac{gb}-like source in gapped data \citep{mao2025robust}.
+\subsection{The Frame}
+\label{app:fm-frame}
 
-\subsection{Pairing Unordered Sources}
-\label{app:fm-coupling}
-
-The sources are exchangeable (\cref{app:chart-slots}), so the order in which $X_1$ lists them
-carries no information, and a base draw paired with it label by label would send each base source
-to an arbitrary target source, often across the window. Each base draw is therefore
-paired with its target in order of frequency,
+The frame is the network's first output (\cref{app:network-frame}): for each of the $S$ slots and
+each coordinate, a shift and a log scale $(\delta_\mu,\delta_s)$ around the prior's moments,
 \begin{equation}
-  X_0 \leftarrow X_0^{\hat\sigma},\qquad
-  \hat\sigma = \tau_0\circ\tau_1^{-1},
-  \label{eq:fm-coupling}
+  \mu = \mu_\pi + \sigma_\pi\,\delta_\mu,\qquad \log\sigma = \log\sigma_\pi + \delta_s,
+  \label{eq:fm-frame}
 \end{equation}
-with $X_0^{\sigma}$ the sources of $X_0$ in the order $\sigma(1),\dots,\sigma(S)$ and $\tau_0$,
-$\tau_1$ the permutations that sort $X_0$ and $X_1$ by $f_0$: the base source of the $k$-th lowest
-frequency heads for the target source of the $k$-th lowest. This is a sort, $O(S\log S)$, and the
-optimal coupling of $f_0$ alone, the monotone rearrangement, so no two paths cross in $f_0$, the
-coordinate the posterior pins down most tightly. It keeps the marginals: the relabelling permutes
-the sources of $X_0$ without changing them, the network is equivariant and the prior exchangeable,
-so the field it learns is that of the coupling symmetrised under a common relabelling of both ends,
-whose ends are the prior and the posterior over unordered sources \citep{klein2023equivariant}.
-The other coordinates are paired as they fall. Per source, the mean squared path in the
-narrow-B window (flow coordinates) is \FlowMatchingPathNarrow{} in $f_0$ order, of which
-\FlowMatchingPathNarrowFZero{} in $f_0$ against \FlowMatchingPathNarrowRandomFZero{} under labels
-blind to $f_0$; the loudest-first and random labellings are \FlowMatchingPathNarrowSnrLonger{}\%
-and \FlowMatchingPathNarrowRandomLonger{}\% longer in total. The nearest labelling below is
-\FlowMatchingPathNarrowNearestShorter{}\% shorter (\FlowMatchingPathFullNearestShorter{}\% in
-full-B), with a longer $f_0$ part (\FlowMatchingPathNarrowNearestFZero{}) and shorter
-$\fdot$ and sky parts.
+with $(\mu_\pi,\sigma_\pi)$ the mean and standard deviation of the slot's coordinate under the prior,
+sources in order of $f_0$. For $x_f$ these are the moments of the $k$-th of $S$ uniform order
+statistics on $[-1,1]$, mean $2k/(S+1)-1$ and standard deviation
+$2\sqrt{k(S+1-k)/((S+1)^2(S+2))}$; $x_{\fdot}$ and the sky are standardised by the chart and have
+$(0,1)$; for $z_\pm$ the mean is zero and the variance $\E\lvert z_\pm\rvert^2/2$, by quadrature over
+the amplitude prior at the window's centre and the inclination. The frame head starts at zero, so an
+untrained network's frame is the prior's.
 
-The nearest labelling over all coordinates,
+\paragraph{Loss.}
+The frame is trained on the Gaussian negative log-likelihood of $X_1$, up to a constant and a
+factor of two, with a weight and a ridge,
 \begin{equation}
-  \hat\sigma = \operatorname*{arg\,min}_{\sigma\in\mathfrak S_S}
-  \sum_{s=1}^{S}\bigl\|X_{0,\sigma(s)} - X_{1,s}\bigr\|^2,
-  \label{eq:fm-coupling-ot}
+  \mathcal L_{\rm frame} = \E\;\frac{1}{8S}\sum_{k=1}^{S}\sum_{i=1}^{8}
+  \operatorname{sg}\bigl(e^{\delta_{s,ki}}\bigr)\Bigl[\kappa_{ki}^2 + 2\delta_{s,ki}
+  + \lambda\bigl(\delta_{\mu,ki}^2 + \delta_{s,ki}^2\bigr)\Bigr],\qquad
+  \kappa = \frac{X_1-\mu}{\sigma},
+  \label{eq:fm-frame-loss}
 \end{equation}
-is the optimal-transport coupling over the permutation group of equivariant flow matching
-\citep{klein2023equivariant}, applied to each pair rather than across the batch
-\citep{tong2024improving}. It shortens the paths in every coordinate, at the cost of an assignment
-per draw: $S!$ sums exhaustively, $O(S^3)$ by the Hungarian algorithm \citep{kuhn1955hungarian},
-or Sinkhorn iterations \citep{cuturi2013sinkhorn} for an entropy-regularised soft assignment,
-cheaper still on a GPU and rounded to a permutation per draw, as minibatch couplings are
-\citep{tong2024improving}.
+with $\operatorname{sg}$ the stop-gradient and $\lambda = \FlowMatchingFrameDecay{}$. The frame
+depends on $(y,\fw)$ alone, so the weight is the same for every $X_1$ the posterior holds and does
+not move the minimiser of each observation's term: up to the ridge, $\mu = \E[X_1\mid y,\fw]$ and
+$\sigma^2 = \Var(X_1\mid y,\fw)$, the posterior's marginal moments. What the weight changes is the
+balance across observations. The gradient of $\kappa^2$ in $\delta_\mu$ is $-2\kappa\,e^{-\delta_s}$,
+which grows as the frame narrows: a loud source, whose frame is many decades narrower than the
+prior, would dominate the batch. With the weight it is $-2\kappa$, the same for every source in
+standardised units. The ridge keeps $\delta$ finite where the batch holds no information, and is
+small against the likelihood wherever it does.
+
+\paragraph{Why a frame.}
+The posterior widths span many decades, from the prior for a quiet source to a small fraction of a
+bin in $f_0$ for a loud one (\cref{app:fm-sensitivity}). A flow from a base on the prior's scale
+has to resolve the narrow end in the last steps of its path, where a uniform sampler grid collapses
+it (\cref{app:fm-sampling}). In the frame, the posterior of $Z_1$ has mean near zero and variance near
+one for every source, loud or quiet, so the flow transports order-one widths along its whole path
+and learns what a Gaussian per coordinate misses: correlations, tails and multimodality, such as
+the sky's antipodal modes and the edge where two close sources swap their order. The flow is
+trained on $Z_1 = \operatorname{sg}(\kappa)$ and reads the frame through a stop-gradient
+(\cref{app:network}), so it cannot move the frame to make its own task easier; the frame stays the
+Gaussian moment match of \cref{eq:fm-frame-loss}.
 
 \subsection{The Endpoint Distribution and the Loss}
 \label{app:fm-loss}
 
 \paragraph{Output.}
-For each source and coordinate the network outputs the mean $\hat X_1$ and the log standard
-deviation $\log\sigma$ of a Gaussian over the endpoint, given the point on the path, and the
-velocity is the one that reaches the mean in the remaining path,
+For each source and coordinate the flow outputs the mean $\hat Z_1$ and the log standard deviation
+$\log\tau$ of a Gaussian over the endpoint, given the point on the path, and the velocity is the one
+that reaches the mean in the remaining path,
 \begin{equation}
-  \vnet = \frac{\hat X_1 - X_s}{1-s}.
+  \vnet = \frac{\hat Z_1 - Z_s}{1-s}.
   \label{eq:fm-velocity}
 \end{equation}
-The output is a position in flow coordinates, whose scale is set by the chart and does not change
-along the path, while the velocity grows as $1/(1-s)$ near the end, where a narrow posterior is
-resolved (\cref{app:fm-sensitivity}); endpoint prediction converted to a velocity is also used on
-structured data \citep{stark2024harmonic}. The width $\sigma$ serves the loss only; the sampler
-follows the mean.
+The output is a position in the frame, whose scale does not change along the path, while the
+velocity grows as $1/(1-s)$ near the end (\cref{app:fm-sensitivity}); endpoint prediction converted
+to a velocity is also used on structured data \citep{stark2024harmonic}. The width $\tau$ serves the
+loss only; the sampler follows the mean.
 
 \paragraph{Loss.}
-The objective is the Gaussian negative log-likelihood of the endpoint, up to a constant and a
-factor of two,
+The flow's objective is the Gaussian negative log-likelihood of the endpoint, up to a constant and
+a factor of two, and the network minimises the sum
 \begin{equation}
-  \mathcal L = \E\;\frac{1}{8S}\sum_{k=1}^{S}\sum_{i=1}^{8}
-  \Bigl[\Bigl(\frac{X_{1,ki}-\hat X_{1,ki}}{\sigma_{ki}}\Bigr)^2 + 2\log\sigma_{ki}\Bigr],
+  \mathcal L = \mathcal L_{\rm frame} + \E\;\frac{1}{8S}\sum_{k=1}^{S}\sum_{i=1}^{8}
+  \Bigl[\Bigl(\frac{Z_{1,ki}-\hat Z_{1,ki}}{\tau_{ki}}\Bigr)^2 + 2\log\tau_{ki}\Bigr],
   \label{eq:loss}
 \end{equation}
-with the expectation over the batch's observations, draws and times. Its minimiser is the
-conditional mean and variance of each coordinate, $\hat X_1 = \E[X_1\mid X_s,y,\fw]$ and $\sigma^2
-= \Var(X_1\mid X_s,y,\fw)$, so the velocity of \cref{eq:fm-velocity} is the marginal field
-$v^\star$. On the straight path $X_1 - X_s = (1-s)\,u$, so $\hat X_1 - X_1 = (1-s)(\vnet - u)$ and
-$\Var(X_1\mid X_s) = (1-s)^2\Var(u\mid X_s)$: at the optimal $\sigma$ each term of \cref{eq:loss}
-is, up to a constant,
+with the expectation over the batch's observations, draws and times. The two terms share the
+network but not their gradients: the frame sees only the first, the flow only the second. The
+second term's minimiser is the conditional mean and variance of each coordinate, $\hat Z_1 =
+\E[Z_1\mid Z_s,y,\fw]$ and $\tau^2 = \Var(Z_1\mid Z_s,y,\fw)$, so the velocity of
+\cref{eq:fm-velocity} is the marginal field $v^\star$. On the straight path $Z_1 - Z_s = (1-s)\,u$,
+so $\hat Z_1 - Z_1 = (1-s)(\vnet - u)$ and $\Var(Z_1\mid Z_s) = (1-s)^2\Var(u\mid Z_s)$: at the
+optimal $\tau$ each term is, up to a constant,
 \begin{equation}
-  \frac{(\vnet - u)^2}{\Var(u\mid X_s,y,\fw)},
+  \frac{(\vnet - u)^2}{\Var(u\mid Z_s,y,\fw)},
   \label{eq:fm-relative}
 \end{equation}
 a velocity loss divided by its own irreducible part, for every point, coordinate and source. The
-factors of $1-s$ cancel, and a loud source whose posterior is narrow weighs as much as a weak one
-whose posterior is its prior, with no weights over time or coordinates. The learned $\sigma$ acts as
-the learned task uncertainties of \citet{kendall2018multi}, one per point rather than one per task.
+factors of $1-s$ cancel, and a source the data pin down weighs as much as one whose posterior is
+its prior, with no weights over time or coordinates. The learned $\tau$ acts as the learned task
+uncertainties of \citet{kendall2018multi}, one per point rather than one per task.
 
 \paragraph{Diagnostics.}
-The loss is logged with the mean squared error of $\hat X_1$. On the evaluation catalog the same
-quantities are binned (\cref{app:training}): \FlowMatchingLossBins{} equal bins of
-$\log_{10}(1-s)$ on $[\FlowMatchingLossDecades{},0]$, $\FlowMatchingLossBinWidth{}$ of a decade each,
-and $G=\FlowMatchingGroups{}$ coordinate groups, $x_f$, $x_{\fdot}$, the sky $(x_l,x_b)$, $z_+$ and
-$z_-$, each pooled over the sources. Each bin and group reports the squared error of $\hat X_1$,
-the mean of $\sigma^2$ and the mean squared standardised error $\bigl((X_1-\hat X_1)/\sigma\bigr)^2$,
-which is one where the widths are calibrated.
+The loss is logged with its two parts, the frame's likelihood $\kappa^2 + 2\delta_s$ unweighted and
+the flow's. On the evaluation catalog the same quantities are binned (\cref{app:training}) over
+$G=\FlowMatchingGroups{}$ coordinate groups, $x_f$, $x_{\fdot}$, the sky $(x_l,x_b)$, $z_+$ and
+$z_-$, each pooled over the sources. The frame is binned by each source's own \ac{snr},
+\FlowMatchingSnrBins{} equal bins of $\log_{10}\snr$ on $[-1,3]$: per bin and group the mean of
+$\log_{10}(\sigma/\sigma_\pi)$, how far the frame has narrowed, and of $\kappa^2$, which is one where
+the frame is calibrated; and the frame's $f_0$ width in bins over the Fisher width
+$\sqrt3/(\pi\snr)$ of \cref{app:fm-sensitivity}. The flow is binned by time,
+\FlowMatchingLossBins{} equal bins of $\log_{10}(1-s)$ on $[\FlowMatchingLossDecades{},0]$,
+$\FlowMatchingLossBinWidth{}$ of a decade each: per bin and group the mean of $\log_{10}\tau$ and of
+$\bigl((Z_1-\hat Z_1)/\tau\bigr)^2$.
 
 \subsection{Stratified Time}
 \label{app:fm-clock}
@@ -187,85 +198,87 @@ the batch.
 
 The posteriors of loud sources are orders of magnitude narrower than the prior in $x_f$ and
 $x_{\fdot}$. A Gaussian model of one coordinate shows how much a loss rewards getting such a width
-right: the velocity loss of standard flow matching hardly does, the endpoint likelihood of
-\cref{eq:loss} does at every width.
+right, and how well a sampler resolves it: the velocity loss of standard flow matching hardly
+rewards it, the endpoint likelihood of \cref{eq:loss} does at every width, and a uniform sampler
+grid resolves it only once the frame has divided it out.
 
 \paragraph{Model.}
-Take one coordinate with base $x_0\sim\Normal(0,s_0^2)$, posterior $x_1\sim\Normal(0,\sigma^2)$,
-the straight path $x_s = (1-s)x_0 + s x_1$ and the target $u = x_1 - x_0$. With $\epsilon=1-s$ the
-remaining path, the marginal is $x_s\sim\Normal(0,m^2)$ with $m^2 = \epsilon^2s_0^2 + s^2\sigma^2$,
-and the optimal field is linear,
+Take one coordinate with base $x_0\sim\Normal(0,s_0^2)$, posterior $x_1\sim\Normal(0,w^2)$, the
+straight path $x_s = (1-s)x_0 + s x_1$ and the target $u = x_1 - x_0$. With $\epsilon=1-s$ the
+remaining path, the marginal is $x_s\sim\Normal(0,m^2)$ with $m^2 = \epsilon^2s_0^2 + s^2w^2$, and
+the optimal field is linear,
 \begin{equation}
   v^\star(x,s) = g(s)\,x,\qquad
-  g(s) = \frac{s\,\sigma^2 - \epsilon\,s_0^2}{m^2},\qquad
-  V \equiv \Var(u\mid x_s) = \frac{s_0^2\sigma^2}{m^2}.
+  g(s) = \frac{s\,w^2 - \epsilon\,s_0^2}{m^2},\qquad
+  V \equiv \Var(u\mid x_s) = \frac{s_0^2w^2}{m^2}.
 \end{equation}
-A model that takes the posterior to be the wider $\Normal(0,\sigma_m^2)$ has the field $g_m(s)\,x$
-and the conditional variance $V_m$, with $\sigma\to\sigma_m$ in $g$, $m$ and $V$. Under uniform
+Without a frame, $s_0$ is the prior's width; in the frame, $s_0=1$ and $w$ is the posterior's width
+over the frame's. A model that takes the posterior to be the wider $\Normal(0,w_m^2)$ has the field
+$g_m(s)\,x$ and the conditional variance $V_m$, with $w\to w_m$ in $g$, $m$ and $V$. Under uniform
 time the velocity loss pays, by the orthogonality of the regression residual, an excess over its
 irreducible part $V$ of
 \begin{equation}
-  \Delta L_{\rm vel}(\sigma_m;\sigma) = \int_0^1 m^2\,\bigl[g_m - g\bigr]^2\,\dd\epsilon ,
+  \Delta L_{\rm vel}(w_m;w) = \int_0^1 m^2\,\bigl[g_m - g\bigr]^2\,\dd\epsilon ,
   \label{eq:fm-excess}
 \end{equation}
-and \cref{eq:loss}, whose minimiser is $(g, V)$ by \cref{eq:fm-relative}, pays
+and the flow's term of \cref{eq:loss}, whose minimiser is $(g, V)$ by \cref{eq:fm-relative}, pays
 \begin{equation}
-  \Delta L_{\rm nll}(\sigma_m;\sigma) = \int_0^1 \Bigl[\frac{m^2(g_m-g)^2}{V_m}
+  \Delta L_{\rm nll}(w_m;w) = \int_0^1 \Bigl[\frac{m^2(g_m-g)^2}{V_m}
   + \frac{V}{V_m} - 1 - \ln\frac{V}{V_m}\Bigr]\dd\epsilon .
   \label{eq:fm-excess-nll}
 \end{equation}
 
 \begin{proposition}
 \label{prop:fm-sensitivity}
-For $\sigma\ll\sigma_m\ll s_0$,
+For $w\ll w_m\ll s_0$,
 \begin{equation}
-  \Delta L_{\rm vel} \simeq \frac{\pi}{4}\,s_0\,\sigma_m ,
+  \Delta L_{\rm vel} \simeq \frac{\pi}{4}\,s_0\,w_m ,
   \label{eq:fm-sensitivity-uniform}
 \end{equation}
-to leading order independent of the true width $\sigma$, and for $\sigma,\sigma_m\ll s_0$
+to leading order independent of the true width $w$, and for $w,w_m\ll s_0$
 \begin{equation}
-  \Delta L_{\rm nll} \simeq \ln\frac{\sigma_m^2}{\sigma^2} + \frac{\sigma^2}{\sigma_m^2} - 1
-  = 2\,\mathrm{KL}\bigl(\Normal(0,\sigma^2)\,\big\|\,\Normal(0,\sigma_m^2)\bigr),
+  \Delta L_{\rm nll} \simeq \ln\frac{w_m^2}{w^2} + \frac{w^2}{w_m^2} - 1
+  = 2\,\mathrm{KL}\bigl(\Normal(0,w^2)\,\big\|\,\Normal(0,w_m^2)\bigr),
   \label{eq:fm-sensitivity-nll}
 \end{equation}
-which depends on the widths only through $\sigma_m/\sigma$.
+which depends on the widths only through $w_m/w$.
 \end{proposition}
 
 \begin{proof}
-Set $s_0=1$. Where $\epsilon\gg\sigma$, $m^2\simeq\epsilon^2$ and $g\simeq-1/\epsilon$, so up to a
+Set $s_0=1$. Where $\epsilon\gg w$, $m^2\simeq\epsilon^2$ and $g\simeq-1/\epsilon$, so up to a
 relative $O(\epsilon)$
 \begin{equation*}
-  m^2(g_m-g)^2 \simeq \frac{\sigma_m^4}{(\epsilon^2+\sigma_m^2)^2},
+  m^2(g_m-g)^2 \simeq \frac{w_m^4}{(\epsilon^2+w_m^2)^2},
 \end{equation*}
-and the region $\epsilon\lesssim\sigma$ contributes a relative $O(\sigma/\sigma_m)$. With
-$\epsilon=\sigma_m z$, \cref{eq:fm-excess} is $\sigma_m\int_0^\infty(1+z^2)^{-2}\dd z =
-\frac{\pi}{4}\sigma_m$. In \cref{eq:fm-excess-nll}, $V_m\simeq\sigma_m^2/(\epsilon^2+\sigma_m^2)$, so the
-first term is $\simeq\sigma_m^2/(\epsilon^2+\sigma_m^2)$ and integrates to $\frac{\pi}{2}\sigma_m$.
-Where $\epsilon\gg\sigma_m$, $V/V_m\simeq\sigma^2/\sigma_m^2$ up to a relative
-$O(\sigma_m^2/\epsilon^2)$, and the rest of the integrand is the constant
-\cref{eq:fm-sensitivity-nll}; the region $\epsilon\lesssim\sigma_m$ changes the integral by
-$O(\sigma_m\ln(\sigma_m/\sigma))$. The factors of $s_0$ follow from dimensions: $\Delta L_{\rm vel}$
-scales as $s_0^2$ and depends on $\sigma_m/s_0$ alone, $\Delta L_{\rm nll}$ is dimensionless.
+and the region $\epsilon\lesssim w$ contributes a relative $O(w/w_m)$. With $\epsilon=w_m z$,
+\cref{eq:fm-excess} is $w_m\int_0^\infty(1+z^2)^{-2}\dd z = \frac{\pi}{4}w_m$. In
+\cref{eq:fm-excess-nll}, $V_m\simeq w_m^2/(\epsilon^2+w_m^2)$, so the first term is $\simeq
+w_m^2/(\epsilon^2+w_m^2)$ and integrates to $\frac{\pi}{2}w_m$. Where $\epsilon\gg w_m$,
+$V/V_m\simeq w^2/w_m^2$ up to a relative $O(w_m^2/\epsilon^2)$, and the rest of the integrand is the
+constant \cref{eq:fm-sensitivity-nll}; the region $\epsilon\lesssim w_m$ changes the integral by
+$O(w_m\ln(w_m/w))$. The factors of $s_0$ follow from dimensions: $\Delta L_{\rm vel}$ scales as
+$s_0^2$ and depends on $w_m/s_0$ alone, $\Delta L_{\rm nll}$ is dimensionless.
 \end{proof}
 
-Quadrature of \cref{eq:fm-excess,eq:fm-excess-nll} confirms both: at $\sigma_m = 10^{-3}s_0$ and a
-true posterior $10^4$ times narrower, the velocity loss's excess is \FlowMatchingCheckUniform{} of
+Quadrature of \cref{eq:fm-excess,eq:fm-excess-nll} confirms both: at $w_m = 10^{-3}s_0$ and a true
+posterior $10^4$ times narrower, the velocity loss's excess is \FlowMatchingCheckUniform{} of
 \cref{eq:fm-sensitivity-uniform} and the likelihood's \FlowMatchingCheckNll{} of
 \cref{eq:fm-sensitivity-nll} (\cref{fig:fm-sensitivity}a).
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/warp.pdf}
-  \caption{The Gaussian model of one coordinate. The bars mark the ideal $f_0$ widths
-  $\sigma/s_0$ of each band over its \ac{snr} range. (a)~Excess loss of a model $\sigma_m$ wide when
-  the true posterior is $10^4$ times narrower, under the velocity loss (grey) and the endpoint
-  likelihood of \cref{eq:loss} (blue): quadrature of \cref{eq:fm-excess,eq:fm-excess-nll} (rings)
-  against \cref{eq:fm-sensitivity-uniform,eq:fm-sensitivity-nll} (lines). The velocity loss's
-  reward for narrowing vanishes linearly with the width; the likelihood's stays the same at every
-  width. (b)~Width the sampler of \cref{app:fm-sampling} returns, run on the exact mean
-  $\E[x_1\mid x_s]$, over the true width. With \FlowMatchingOdeSteps{} steps it collapses well
-  inside the narrow band's range and over all of the full band's; more steps only move the
-  collapse to narrower widths.}
+  \caption{The Gaussian model of one coordinate. The bars mark the ideal $f_0$ widths $w/s_0$ of
+  each band over its \ac{snr} range, with $s_0$ the prior's width. (a)~Excess loss of a model $w_m$
+  wide when the true posterior is $10^4$ times narrower, under the velocity loss (grey) and the
+  endpoint likelihood of \cref{eq:loss} (blue): quadrature of \cref{eq:fm-excess,eq:fm-excess-nll}
+  (rings) against \cref{eq:fm-sensitivity-uniform,eq:fm-sensitivity-nll} (lines). The velocity
+  loss's reward for narrowing vanishes linearly with the width; the likelihood's stays the same at
+  every width. (b)~Width the sampler of \cref{app:fm-sampling} returns, run on the exact mean
+  $\E[x_1\mid x_s]$, over the true width. With \FlowMatchingOdeSteps{} steps from the prior's scale
+  it collapses well inside the narrow band's range and over all of the full band's, and more steps
+  only move the collapse to narrower widths; in a calibrated frame the width is $s_0$ (line), where
+  the sampler is exact.}
   \label{fig:fm-sensitivity}
 \end{figure*}
 
@@ -278,25 +291,26 @@ only down to the latest time the weighting reaches.
 
 \paragraph{The likelihood rewards relative narrowness, everywhere.}
 \Cref{eq:fm-sensitivity-nll} pays $2$ for every e-fold by which the model is too wide, whatever the
-true width, until $\sigma_m$ nears $\sigma$; a model too narrow pays more still, through
-$\sigma^2/\sigma_m^2$. The reward is collected along the whole path rather than at its end: wherever
-$\epsilon\gg\sigma_m/s_0$, $V$ is the posterior variance itself, and the loss compares the model's
-width with it directly. Because $\sigma$ is predicted per point, the comparison is made for each
-source separately, not against a mean pooled over the batch.
+true width, until $w_m$ nears $w$; a model too narrow pays more still, through $w^2/w_m^2$. The
+reward is collected along the whole path rather than at its end: wherever $\epsilon\gg w_m/s_0$,
+$V$ is the posterior variance itself, and the loss compares the model's width with it directly.
+Because $\tau$ is predicted per point, the comparison is made for each source separately, not
+against a mean pooled over the batch. The frame's loss, \cref{eq:fm-frame-loss}, is the same
+Gaussian likelihood at $s=0$ and pays the same $2\,\mathrm{KL}$ per coordinate for a frame of the
+wrong width.
 
 \paragraph{Where the bands sit.}
-The $x_f$ coordinate is uniform on $[-1,1]$ under the prior, so $s_0 = 1/\sqrt3$, and one unit of
-$x_f$ spans \FlowMatchingNarrowBinsPerUnit{} frequency bins in the narrow band and
+The $x_f$ coordinate is uniform on $[-1,1]$ under the prior, so without a frame $s_0 = 1/\sqrt3$, and
+one unit of $x_f$ spans \FlowMatchingNarrowBinsPerUnit{} frequency bins in the narrow band and
 \FlowMatchingFullBinsPerUnit{} in the full band (\cref{app:chart}). For a sinusoid of unknown
 amplitude and phase the Fisher bound on the frequency is $\sqrt3/(\pi\snr)$ bins. Over the visible
 sources, from \ac{snr} \FlowMatchingSnrLow{} to the prior's \FlowMatchingSnrQuantile{}\% quantile
 (\FlowMatchingNarrowSnrHigh{} in the narrow band, \FlowMatchingFullSnrHigh{} in the full band),
-this gives an ideal $\sigma/s_0$ from
-\num{\FlowMatchingNarrowLoud} to \num{\FlowMatchingNarrowWeak} in the narrow band and from
-\num{\FlowMatchingFullLoud} to \num{\FlowMatchingFullWeak} in the full band (bars in
-\cref{fig:fm-sensitivity}). The floor of the time input, $10^{\FlowMatchingTimeDecades{}}$, lies
-below both ranges, so every ideal width is resolved before the last time the network can tell
-apart.
+this gives an ideal $w/s_0$ from \num{\FlowMatchingNarrowLoud} to \num{\FlowMatchingNarrowWeak} in
+the narrow band and from \num{\FlowMatchingFullLoud} to \num{\FlowMatchingFullWeak} in the full band
+(bars in \cref{fig:fm-sensitivity}). A frame that matches the posterior's width brings every one of
+these to $w/s_0\approx1$, and the flow's term then sees order-one widths whatever the source's
+\ac{snr}; the decades the frame does not remove are left to the likelihood's relative reward.
 
 The model is idealised: one coordinate, Gaussian base and posterior, and the simplest model error.
 Its point is the scaling. A flow-matching loss on the velocity with uniform time is nearly blind to
@@ -319,13 +333,15 @@ loss is a second candidate.
   \label{fig:fm-cost}
 \end{figure}
 
-To sample a window, $N$ base sets are drawn from the prior, carried over $K_t =
-\FlowMatchingOdeSteps{}$ uniform midpoint steps of \cref{eq:fm-ode} with the velocity of
-\cref{eq:fm-velocity}, and mapped back with $\varphi^{-1}$ (\cref{alg:fm-sample}). A step from $s$
-to $s+\Delta s$ evaluates the velocity at its start, takes a half step to the midpoint and takes the
-full step with the velocity there, so a draw costs $2K_t=\FlowMatchingEvaluations{}$ network
-evaluations. The data stream of the network depends only on $(y,\fw)$, so it is encoded once per
-window and serves every draw and every step (\cref{app:network}).
+To sample a window, the data are encoded once and the frame $(\mu,\sigma)$ read off; $N$ base draws
+$Z\sim\Normal(0,I)$ are carried over $K_t = \FlowMatchingOdeSteps{}$ uniform midpoint steps of
+\cref{eq:fm-ode} with the velocity of \cref{eq:fm-velocity}, and mapped back with $X = \mu + \sigma
+Z$ and $\varphi^{-1}$ (\cref{alg:fm-sample}). A step from $s$ to $s+\Delta s$ evaluates the velocity
+at its start, takes a half step to the midpoint and takes the full step with the velocity there, so
+a draw costs $2K_t=\FlowMatchingEvaluations{}$ network evaluations. The data stream of the network
+depends only on $(y,\fw)$, so it serves every draw and every step (\cref{app:network}). The draws
+keep the order of the slots but are not forced into it: two close sources may swap, as they do in
+the posterior's tail across the boundary of the ordered region (\cref{app:chart-slots}).
 
 \paragraph{Cost.}
 On one A100, \FlowMatchingCostDraws{} draws of one window take \qty{\FlowMatchingCostNarrow}{\second} with the
@@ -342,18 +358,19 @@ once more in training (\cref{app:training}).
 
 \paragraph{Resolution at the end of the path.}
 The time grid is uniform, so the last step starts at $1-s = 1/K_t$ and evaluates its midpoint at
-$1-s = \FlowMatchingLastMid{}$, where the velocity carries the draw to $2\hat X_1' - \hat X_1$, with
-$\hat X_1$ and $\hat X_1'$ the means at the start and the midpoint. Where a posterior is much
-narrower than $s_0/2K_t$, the exact means $\E[X_1\mid X_s]$ at both points hardly vary across
-draws: they are close to the posterior mean, and the last step puts every draw near it. Run on the
-exact Gaussian mean, the sampler returns \FlowMatchingWidthWide{} of the true width at $\sigma =
-0.1\,s_0$, but \FlowMatchingWidthNarrowWeak{} of it at the narrow band's ideal width for \ac{snr}
+$1-s = \FlowMatchingLastMid{}$, where the velocity carries the draw to $2\hat Z_1' - \hat Z_1$, with
+$\hat Z_1$ and $\hat Z_1'$ the means at the start and the midpoint. Where a posterior is much
+narrower than $s_0/2K_t$, the exact means at both points hardly vary across draws: they are close to
+the posterior mean, and the last step puts every draw near it. Run from the prior's scale on the
+exact Gaussian mean, the sampler returns \FlowMatchingWidthWide{} of the true width at $w = 0.1\,s_0$,
+but \FlowMatchingWidthNarrowWeak{} of it at the narrow band's ideal width for \ac{snr}
 \FlowMatchingSnrLow{} (\FlowMatchingWidthNarrowWeakMore{} with \FlowMatchingOdeStepsMore{} steps,
 \FlowMatchingWidthNarrowWeakMost{} with \FlowMatchingOdeStepsMost{}) and
 \num{\FlowMatchingWidthFullWeak} at the full band's (\FlowMatchingWidthFullWeakMost{} with
-\FlowMatchingOdeStepsMost{} steps; \cref{fig:fm-sensitivity}b). A trained network is not the exact
-mean, and errors that widen its posteriors partly offset this, so the effect on trained models
-has to be measured.
+\FlowMatchingOdeStepsMost{} steps; \cref{fig:fm-sensitivity}b). In a frame of the posterior's width,
+$w = s_0$, it returns \FlowMatchingWidthFrame{} of it with \FlowMatchingOdeSteps{} steps: the frame
+removes the collapse, as long as it is not decades wider than the posterior. A trained frame and
+flow are not exact, so the widths of trained models have to be measured.
 \textcolor{red}{TODO(new runs): narrow-B/full-B $f_0$, $\fdot$ widths and calibration against the
 number of steps.}
 
@@ -365,12 +382,13 @@ number of steps.}
     \STATE {\bfseries Input:} network weights $\eta$
     \STATE draw $\fw$ and $\theta_{1:S}\sim\pi(\cdot\mid\fw)$ (\cref{app:priors})
     \STATE simulate the data $d$ and form $y = y(d,\fw)$ (\cref{app:forward-model,app:noise})
-    \STATE $X_1\leftarrow\varphi(\theta_{1:S};\fw)$;\ \ encode the data stream of $(y,\fw)$ once
+    \STATE $X_1\leftarrow\varphi(\theta_{1:S};\fw)$, sources in order of $f_0$
+    \STATE encode $(y,\fw)$ once: frame $(\mu,\sigma)$ \hfill (\cref{eq:fm-frame})
+    \STATE $Z_1\leftarrow\operatorname{sg}\bigl((X_1-\mu)/\sigma\bigr)$
     \FOR{each of the \FlowMatchingDraws{} points}
-      \STATE $X_0\leftarrow\varphi(\theta'_{1:S};\fw)$, $\theta'_{1:S}\sim\pi(\cdot\mid\fw)$;\ \ $s$ from its stratum
-      \STATE pair the sources of $X_0$ with those of $X_1$ in order of $f_0$ \hfill (\cref{eq:fm-coupling})
-      \STATE $X_s\leftarrow X_0 + s(X_1 - X_0)$ \hfill (\cref{eq:fm-path})
-      \STATE $(\hat X_1,\log\sigma)\leftarrow\mathrm{net}_\eta(X_s, s; y, \fw)$
+      \STATE $Z_0\sim\Normal(0,I)$;\ \ $s$ from its stratum
+      \STATE $Z_s\leftarrow Z_0 + s(Z_1 - Z_0)$ \hfill (\cref{eq:fm-path})
+      \STATE $(\hat Z_1,\log\tau)\leftarrow\mathrm{net}_\eta\bigl(Z_s, s; \operatorname{sg}(\mu,\sigma), y, \fw\bigr)$
     \ENDFOR
     \STATE take an optimiser step on \cref{eq:loss} in $\eta$ (\cref{app:training})
   \end{algorithmic}
@@ -381,15 +399,15 @@ number of steps.}
   \label{alg:fm-sample}
   \begin{algorithmic}
     \STATE {\bfseries Input:} the input $y$ of a window $\fw$, number of draws $N$, steps $K_t=\FlowMatchingOdeSteps{}$
-    \STATE encode the data stream of $(y,\fw)$ once;\ \ $\Delta s\leftarrow1/K_t$
-    \STATE $\vnet(X,s) = \bigl(\hat X_{1,\eta}(X, s; y, \fw) - X\bigr)/(1-s)$ \hfill (\cref{eq:fm-velocity})
+    \STATE encode $(y,\fw)$ once: frame $(\mu,\sigma)$;\ \ $\Delta s\leftarrow1/K_t$
+    \STATE $\vnet(Z,s) = \bigl(\hat Z_{1,\eta}(Z, s; y, \fw) - Z\bigr)/(1-s)$ \hfill (\cref{eq:fm-velocity})
     \FOR{$n=1$ {\bfseries to} $N$ (in parallel)}
-      \STATE $X\leftarrow\varphi(\theta_{1:S};\fw)$, $\theta_{1:S}\sim\pi(\cdot\mid\fw)$
+      \STATE $Z\sim\Normal(0,I)$
       \FOR{$j=0$ {\bfseries to} $K_t-1$}
-        \STATE $s\leftarrow j\Delta s$;\ \ $X'\leftarrow X + \tfrac{\Delta s}{2}\,\vnet(X, s)$
-        \STATE $X\leftarrow X + \Delta s\,\vnet\bigl(X', s+\tfrac{\Delta s}{2}\bigr)$ \hfill (\cref{eq:fm-ode})
+        \STATE $s\leftarrow j\Delta s$;\ \ $Z'\leftarrow Z + \tfrac{\Delta s}{2}\,\vnet(Z, s)$
+        \STATE $Z\leftarrow Z + \Delta s\,\vnet\bigl(Z', s+\tfrac{\Delta s}{2}\bigr)$ \hfill (\cref{eq:fm-ode})
       \ENDFOR
-      \STATE {\bfseries output} $\varphi^{-1}(X;\fw)$
+      \STATE {\bfseries output} $\varphi^{-1}(\mu + \sigma Z;\fw)$
     \ENDFOR
   \end{algorithmic}
 \end{algorithm}

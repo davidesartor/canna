@@ -63,7 +63,7 @@ SlotFlow \citep{houba2025slotflow}, \acs*{nsf} per slot
   & \acs*{rjmcmc} \\
 \midrule
 this work, flow matching
-  & \RelatedWorkSources{}, unordered
+  & \RelatedWorkSources{}, ordered in $f_0$
   & \rwyes & \rwyes & \rwno
   & full response; $A$, $E$, $T$; $\Tobs=\qty{\RelatedWorkTobs}{\year}$; $(f_0, \fdot, \Amp)$ from a
     Galactic catalogue over \qtyrange{\RelatedWorkFzeroLow}{\RelatedWorkFzeroHigh}{\milli\hertz}; most sources
@@ -165,10 +165,11 @@ black-hole binaries \citep{liang2024rapid} and exoplanet atmospheres \citep{gebh
 \citet{arruda2025diffusion} review diffusion and flow models for simulation-based inference.
 Score-based alternatives amortise over arbitrary conditionals \citep{gloeckler2024allinone} or
 compose per-observation scores \citep{geffner2023compositional,sharrock2024sequential}. Our
-objective departs from standard \ac{fmpe} in two ways, argued in \cref{app:fm}: the base is the
-prior, not a Gaussian, so every point of the path lies in the prior's support; and the network
-predicts a Gaussian over the endpoint, trained on its likelihood, and samples with the velocity
-its mean implies, as FrameFlow does with a point estimate \citep{yim2023fast}. The learned width
+objective departs from standard \ac{fmpe} in two ways, argued in \cref{app:fm}: the Gaussian base
+is placed and scaled per source by a frame the network reads off the data and trains on the
+likelihood of the true sources, so the flow sees order-one widths at every \ac{snr}; and the
+network predicts a Gaussian over the endpoint, trained on its likelihood, and samples with the
+velocity its mean implies, as FrameFlow does with a point estimate \citep{yim2023fast}. The learned width
 weights each point's error by its own irreducible part, as learned task uncertainties weight tasks
 \citep{kendall2018multi}, in place of fixed weights over time
 \citep{karras2022elucidating,kingma2023understanding}.
@@ -182,13 +183,11 @@ Neural estimators order the sources \citep{delmond2026neural}, match slots to in
 the loss \citep{houba2025slotflow}, or make the model permutation-equivariant
 \citep{zaheer2017deep,lee2019set,klein2023equivariant} and align base and target by
 optimal-transport couplings over permutations \citep{tong2024improving,klein2023equivariant}.
-We take the last route with the simplest coupling: no source carries a slot, the network is
-equivariant, and each base draw is paired with its target in order of frequency, the optimal
-coupling of that coordinate alone (\cref{app:chart-slots,app:fm-coupling}). An ordering of the
-output has a boundary where two labellings meet: by frequency it falls between sources close in
-frequency, the overlap that is hardest to resolve; by \ac{snr} between sources of similar
-loudness. Equivariance has none; only the evaluation, which compares draws with injections, pairs
-them by matching (\cref{app:evaluation}).
+We order by frequency, as the global fit does (\cref{app:chart-slots}): each slot then has a
+frame of its own, which an equivariant model, whose slots are interchangeable, could not give.
+The ordering has a boundary between sources close in frequency, the overlap that is hardest to
+resolve, where the ordered posterior is folded and the flow must place the edge. The evaluation,
+which compares draws with injections, pairs them by matching (\cref{app:evaluation}).
 
 \paragraph{Transformers for simulation-based inference.}
 Dingo-T1 \citep{kofler2026flexible} feeds the strain as tokens of 16 frequency bins; the
@@ -199,9 +198,8 @@ Simformer \citep{gloeckler2024allinone} is a transformer over parameters and dat
 data as another, short-time Fourier tokens of \RelatedWorkPatch{} bins on a frequency axis
 shared through rotary embeddings \citep{su2024roformer}. Its attention is one-way: the data
 never attend to the sources, so the data stream is encoded once per observation and reused for
-every posterior draw in training and every step of the sampler. Attention sinks
-\citep{xiao2024efficient,darcet2024vision}, piecewise-linear input encodings
-\citep{gorishniy2022embeddings} and a schedule-free \citep{defazio2024road} Muon optimiser
+every posterior draw in training and every step of the sampler. Frame registers and attention sinks
+\citep{xiao2024efficient,darcet2024vision} and a schedule-free \citep{defazio2024road} Muon optimiser
 \citep{jordan2024muon,liu2025muon,li2025normuon}, close to SF-NorMuon \citep{apte2026anytime}
 (\cref{app:training}) complete it.
 
@@ -217,10 +215,9 @@ every posterior draw in training and every step of the sampler. Attention sinks
         below the noise (\qty{\RelatedWorkVisibleShare}{\percent} of full-band sources reach \ac{snr}
         \RelatedWorkSnrLow{}), so the flow must also return the prior where the data say nothing;
         the visible ones reach \ac{snr} \RelatedWorkSnrHigh{}.
-  \item Symmetries handled without ordering by hand: the phase degeneracies folded by a flat
-        helicity chart, so the flow needs no manifold, and the sources kept unordered under an
-        equivariant network whose training paths pair base and target sources by $f_0$ rank, so no
-        ordering boundary splits close sources.
+  \item The phase degeneracies folded by a flat helicity chart, so the flow needs no manifold, and
+        the sources ordered in frequency, each with a Gaussian frame read off the data, so the flow
+        transports order-one widths for loud and quiet sources alike.
   \item A one-way transformer whose data encoding is computed once per observation, which makes
         many posterior draws per simulation cheap in training.
   \item \textcolor{red}{TODO(new runs): narrow-B and full-B widths against \ac{mcmc} and Fisher,

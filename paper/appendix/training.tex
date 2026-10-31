@@ -41,7 +41,7 @@ Schedule & gradient clipping & global norm \TrainingClipNorm{} \\
 & total steps & \num{\TrainingStepsNarrow} (narrow), \num{\TrainingStepsFull} (full) \\
 & epoch & \TrainingEpochSteps{} steps, one checkpoint each \\
 \addlinespace
-Batch & samples per step & \TrainingBatch{} $=$ \TrainingObservations{} observations $\times$ \TrainingDraws{} draws of $(x_0, t)$ \\
+Batch & samples per step & \TrainingBatch{} $=$ \TrainingObservations{} observations $\times$ \TrainingDraws{} draws of $(Z_0, t)$ \\
 & data & simulated on the device each step, never repeated \\
 \addlinespace
 Precision & backbone & bfloat16 compute, float32 weights \\
@@ -156,11 +156,11 @@ SF-NorMuon and ScheduleFree+ reinstate it \citep{apte2026anytime,defazio2026sche
 \paragraph{Which parameters Muon takes.}
 Muon is meant for hidden-layer matrices \citep{jordan2024muon}. It takes the weight matrix of
 every linear layer in \TrainingMuonFieldCount{} modules of the network (\cref{app:network}): the
-backbone, the two conditioning \acp{mlp} (of the time and centre frequency, and of the data
-stream's frequency), the two Fourier-feature \acp{mlp} (of the source frequency and of the data
-tokens' frequency bins) and the output modulation, plus the head's hidden layer. AdamW takes the
-rest: the piecewise-linear embedding of the sources, the linear embedding of the data tokens,
-the attention-sink embeddings, the query--key gains, every bias and the head's output layer. Muon holds \qty{\TrainingMuonShareXS}{\percent} of the
+backbone, the two conditioning \acp{mlp} (of the time, and of the window's range of $f_0$), the
+two Fourier-feature \acp{mlp} (of the source frequency and of the data tokens' frequency bins) and
+the output modulations of the flow and of the frame, plus the head's hidden layer. AdamW takes the
+rest: the linear embeddings of the sources and of the data tokens, the frame-register and
+attention-sink embeddings, the frame's output layer, the query--key gains, every bias and the head's output layer. Muon holds \qty{\TrainingMuonShareXS}{\percent} of the
 parameters of full-XS, \qty{\TrainingMuonShareB}{\percent} of full-B and \qty{\TrainingMuonShareXL}{\percent} of full-XL.
 
 \paragraph{Learning rates.}
@@ -186,7 +186,7 @@ band and \qty{\TrainingComputeFullBHours}{\hour} on the full band (\cref{fig:tra
 \subsection{Batch}
 \label{app:training-batch}
 
-A batch holds \TrainingBatch{} $(x_0, t)$ samples: \TrainingObservations{} simulated
+A batch holds \TrainingBatch{} $(Z_0, t)$ samples: \TrainingObservations{} simulated
 observations, each with its own centre frequency $\fw$ and sources (\cref{app:priors}), and
 \TrainingDraws{} draws of the base point and time per observation. The data stream of an
 observation is encoded once and shared by its draws (\cref{app:network}), so the draws amortise
@@ -236,11 +236,12 @@ gradient and the optimiser update of all its steps run in one loop on the device
 \paragraph{Eval-catalog loss.}
 After every epoch, the \EvaluationInjections{} eval injections with their noise
 (\cref{app:evaluation-injections}), each at the midpoints of \FlowMatchingLossBins{} equal steps
-in $s$, give the loss of \cref{eq:loss} at $\bar\vartheta$ and at $\tilde\vartheta$; the same
+in $s$, give the frame's and the flow's negative log-likelihoods at $\bar\vartheta$ and at $\tilde\vartheta$; the same
 injections at the midpoints of the \FlowMatchingLossBins{} bins of $\log_{10}(1-s)$ down to
-$10^{\FlowMatchingLossDecades}$ give, per bin and coordinate group, $\tilde\vartheta$'s squared
-error of $\hat X_1$, its predicted $\sigma^2$ and their ratio (\cref{app:fm-loss}). The catalog and
-its draws of $x_0$, from a random stream that training never uses, are fixed for the run, so the
+$10^{\FlowMatchingLossDecades}$ give, per bin and coordinate group, $\tilde\vartheta$'s predicted $\log_{10}\tau$ and the
+squared standardised error $((Z_1-\hat Z_1)/\tau)^2$ (\cref{app:fm-loss}), and per bin of the
+source's \ac{snr} the frame's $\log_{10}\sigma/\sigma_\pi$, its $\kappa^2$ and the width of $f_0$
+over its Fisher width (\cref{app:fm-frame}). The catalog and its draws of $Z_0$, from a random stream that training never uses, are fixed for the run, so the
 curves move only with the weights. It also records the RMS of $\bar\vartheta$'s
 backbone weights and the RMS of $\vartheta - \bar\vartheta$, which flags a fast sequence running
 away from the average (\cref{app:training-sf}). Training stops before the checkpoint if any loss

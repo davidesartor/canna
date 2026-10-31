@@ -12,11 +12,15 @@ import numpy as np
 import style
 from canna.lisa import config, sample
 from canna.lisa.network import (
+    COORDS,
     LOSS_GROUPS,
+    LOSS_SNR_BINS,
     LOSS_TIME_BINS,
     LOSS_TIME_DECADES,
     TIME_DECADES,
+    reference_frame,
 )
+from canna.lisa.train import FRAME_DECAY
 from canna.lisa.problem import WINDOW_STRIDE, LisaGB, f0_window
 
 cfg = config.load("full-B")
@@ -24,7 +28,7 @@ narrow = config.load("narrow-B")
 for field in ("batch_size", "draws", "ode_steps"):
     assert getattr(cfg, field) == getattr(narrow, field), field
 steps = cfg.ode_steps
-S0 = 1 / math.sqrt(3)  # std of the f0 coordinate, uniform on [-1, 1] under the prior
+S0 = 1 / math.sqrt(3)  # std of the f0 coordinate, uniform on [-1, 1] under the prior: the scale without a frame
 
 
 def tfrac(x: float) -> str:
@@ -84,13 +88,16 @@ check_nll = excess(1e-3 * S0, 1e-7 * S0, excess_density_nll) / nll_asymptote(1e-
 SNR_VISIBLE, SNR_QUANTILE = 7.0, 0.9999
 
 
-# the ideal f0 width in chart units, from the Fisher bound of a sinusoid with unknown amplitude and phase
-def band(name: str) -> dict[str, float]:
-    run = config.load(name)
-    problem = LisaGB(**run.problem)
+def centre_window(name: str) -> tuple[LisaGB, float]:
+    """The config's problem and the centre frequency of its middle window."""
+    problem = LisaGB(**config.load(name).problem)
     lo, hi = problem.window_index_range
-    index = (lo + hi) // 2
-    f = (index * WINDOW_STRIDE + problem.window_bins / 2) / problem.t_obs
+    return problem, ((lo + hi) // 2 * WINDOW_STRIDE + problem.window_bins / 2) / problem.t_obs
+
+
+# the ideal f0 width in prior units, from the Fisher bound of a sinusoid with unknown amplitude and phase
+def band(name: str) -> dict[str, float]:
+    problem, f = centre_window(name)
     low, high = (float(x) for x in f0_window(problem, jnp.asarray(f)))
     bins_per_unit = problem.t_obs * math.sqrt(low * high) * math.log(high / low) / 2
     prior = style.REPO / f"reports/prior/f0-fdot-amplitude/data/{name.removesuffix('-B')}.npz"
@@ -109,30 +116,35 @@ bands = {"Narrow": band("narrow-B"), "Full": band("full-B")}
 
 
 class GaussianFlow(eqx.Module):
-    """The exact mean and log std of x1 | x_s of a N(0, s0^2) base and a N(0, sigma^2) posterior, as a LisaFlow."""
+    """The exact mean and log std of z1 | z_t of a N(0, 1) base and a N(0, sigma^2) z1, as a LisaFlow whose frame is the prior's."""
 
     sigma: float
-    s0: float = S0
+    n_sources: int = eqx.field(static=True)
 
     def encode(self, y, f):
-        return jnp.zeros(())
+        return jnp.zeros((self.n_sources, 2 * COORDS)), None
 
-    def __call__(self, u, t, y, f, cache):
-        m2 = (1 - t) ** 2 * self.s0**2 + t**2 * self.sigma**2
-        log_std = jnp.log((1 - t) * self.s0 * self.sigma) - 0.5 * jnp.log(m2)
-        return jnp.concat([t * self.sigma**2 / m2 * u, jnp.broadcast_to(log_std, u.shape)], -1)
-
-
-def sampled_width(
-    sigma_scaled: float, ode_steps: int = steps, n: int = 1 << 16
-) -> float:
-    """The width sample_posterior returns for the exact Gaussian x1 | x_s, over the true width."""
-    u = S0 * jr.normal(jr.key(0), (n, 1))
-    flow = GaussianFlow(sigma=sigma_scaled * S0)
-    x = sample.sample_posterior(flow, u, jnp.zeros(()), jnp.zeros(()), ode_steps)
-    return float(jnp.std(x) / (sigma_scaled * S0))
+    def __call__(self, z, t, frame, f, cache):
+        m2 = (1 - t) ** 2 + t**2 * self.sigma**2
+        log_std = jnp.log((1 - t) * self.sigma) - 0.5 * jnp.log(m2)
+        return jnp.concat([t * self.sigma**2 / m2 * z, jnp.broadcast_to(log_std, z.shape)], axis=-1)
 
 
+problem, f = centre_window("narrow-B")
+
+
+def sampled_width(sigma: float, ode_steps: int = steps, n: int = 1 << 13) -> float:
+    """The width of z1 sample_posterior returns for the exact Gaussian z1 | z_t, over the true width."""
+    z = jr.normal(jr.key(0), (n, problem.n_sources, COORDS))
+    flow = GaussianFlow(sigma, problem.n_sources)
+    x = sample.sample_posterior(problem, flow, z, jnp.zeros(()), jnp.asarray(f), ode_steps)
+    # the coordinates past f0 have prior mean 0: x / sigma_frame is z1 without cancellation
+    _, log_sigma = reference_frame(problem, flow.encode(None, f)[0], jnp.asarray(f))
+    return float(jnp.std(x[..., 1:] / jnp.exp(log_sigma[..., 1:])) / sigma)
+
+
+# without a frame the base is the prior and the f0 width is sigma / s0; the frame divides it out, to about one
+width_frame = sampled_width(1.0)
 width_wide = sampled_width(0.1)
 width_narrow_weak = sampled_width(bands["Narrow"]["weak"])
 width_full_weak = sampled_width(bands["Full"]["weak"])
@@ -183,6 +195,9 @@ numbers = {
     "FlowMatchingNarrowSnrHigh": f"{bands['Narrow']['snr_hi']:.0f}",
     "FlowMatchingFullSnrHigh": f"{bands['Full']['snr_hi']:.0f}",
     "FlowMatchingWidthWide": f"{width_wide:.2f}",
+    "FlowMatchingWidthFrame": f"{width_frame:.3f}",
+    "FlowMatchingFrameDecay": f"{FRAME_DECAY:g}",
+    "FlowMatchingSnrBins": f"{LOSS_SNR_BINS}",
     "FlowMatchingWidthNarrowWeak": f"{width_narrow_weak:.2f}",
     "FlowMatchingWidthNarrowWeakMore": f"{width_narrow_weak_more:.2f}",
     "FlowMatchingWidthFullWeak": sci(width_full_weak),
@@ -204,27 +219,11 @@ for name, b in bands.items():
     numbers[f"FlowMatching{name}Weak"] = sci(b["weak"])
     numbers[f"FlowMatching{name}Loud"] = sci(b["loud"])
 
-# path length per source under each pairing of base and target sources, measured in reports/architecture/source-pairing
-pairing = json.loads(
-    (style.REPO / "reports/architecture/source-pairing/data/pairing.json").read_text()
-)
-for band, b in pairing["bands"].items():
-    Band = band.capitalize()
-    f0_order = b["total"]["f0"]
-    numbers[f"FlowMatchingPath{Band}"] = f"{f0_order:.2f}"
-    # against f0 order, in percent
-    numbers[f"FlowMatchingPath{Band}NearestShorter"] = f"{100 * (1 - b['total']['nearest'] / f0_order):.0f}"
-    for key, name in (("snr", "Snr"), ("random", "Random")):
-        numbers[f"FlowMatchingPath{Band}{name}Longer"] = f"{100 * (b['total'][key] / f0_order - 1):.0f}"
-    # the f0 part alone: f0 order's, the nearest labelling's, and any f0-blind labelling's
-    f0_part = {k: b["mean"][k][pairing["groups"].index("f0")] for k in ("f0", "nearest", "random")}
-    for key, name in (("f0", ""), ("nearest", "Nearest"), ("random", "Random")):
-        numbers[f"FlowMatchingPath{Band}{name}FZero"] = f"{f0_part[key]:.2f}"
-
 print("bands", bands)
 print("checks", check_uniform, check_nll)
 print(
     "sampled widths",
+    width_frame,
     width_wide,
     width_narrow_weak,
     width_narrow_weak_more,
