@@ -20,7 +20,7 @@ toy with an exact posterior for the size and power of the validation tests
     \toprule
     Pass & Injections & Draws & Use \\
     \midrule
-    Eval & \EvaluationInjections{} fixed windows: \EvaluationPerFrequencyWord{} at each of \EvaluationFrequenciesWord{} frequencies
+    Eval & \EvaluationInjections{} fixed windows, log-uniform over the band
          & \EvaluationPosterior & corner plots; comparison with Fisher and \acs{mcmc} \\
     Scorecard & the same plus \EvaluationRandom{} prior windows (\EvaluationWindows{} in all)
          & \EvaluationDraws & widths, detection, offsets, coverage per \acs{snr} band;
@@ -47,11 +47,10 @@ standard normal in the frame, which the network encodes from the data (\cref{app
 \subsection{Eval Injections}
 \label{app:evaluation-injections}
 
-The eval injections sit at \EvaluationFrequenciesWord{} centre frequencies $\fw$, the midpoints
-of \EvaluationFrequenciesWord{} equal-probability bins of the window prior, so they cover the band
-as training sees it. Each frequency holds \EvaluationPerFrequencyWord{} prior draws of
-\EvaluationNSources{} sources (\cref{app:priors}), ordered by window \ac{snr}, that of the summed
-signal. They span window \acp{snr} \EvaluationNarrowSnrLo--\EvaluationNarrowSnrHi{} in the
+The eval injections sit at \EvaluationInjections{} centre frequencies $\fw$, one log-uniform draw
+in each of \EvaluationInjections{} equal bins of $\log f_0$, so they cover the whole band, empty
+windows included. Each holds one prior draw of \EvaluationNSources{} sources (\cref{app:priors}),
+ordered by $f_0$. They span window \acp{snr} \EvaluationNarrowSnrLo--\EvaluationNarrowSnrHi{} in the
 narrow band and \EvaluationFullSnrLo--\EvaluationFullSnrHi{} in the full band, and source
 \acp{snr} \EvaluationSourceSnrLo--\EvaluationSourceSnrHi. Injections and noise are fixed by the
 run's seed and band, so every checkpoint and every run on the same band sees the same data,

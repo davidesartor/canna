@@ -11,7 +11,7 @@ import numpy as np
 import style
 from canna.lisa import config
 from canna.lisa import mcmc
-from canna.lisa.injections import N_PER_WINDOW, N_WINDOWS
+from canna.lisa.injections import N_INJECTIONS
 from canna.lisa.problem import LisaGB
 
 REPORTS = style.REPO / "reports"
@@ -84,7 +84,7 @@ cores = int(
         r"--cpus-per-task=(\d+)", (style.REPO / "slurm/lisa-mcmc.sbatch").read_text()
     )[1]
 )
-n_injections = N_WINDOWS * N_PER_WINDOW
+n_injections = N_INJECTIONS
 print(f"problem {pid}; sampler {run}; cores {cores}; {n_injections} eval injections")
 
 # the joint chains' widths against Fisher, per source of every injection with chains; widths in units of draws.json's scale
