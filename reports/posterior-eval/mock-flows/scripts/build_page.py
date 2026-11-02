@@ -1,7 +1,7 @@
 """Write mock-flows.html from data/<band>/<mock>/mock.json: what each mock is and whether the ladder behaves as designed.
 
 Stdlib only; run from the repo root:
-    uv run --frozen python reports/posterior-eval/mock-flows/scripts/build_page.py
+    python reports/posterior-eval/mock-flows/scripts/build_page.py
 """
 
 import json
@@ -86,7 +86,7 @@ td.na { color: var(--muted); }
 </div>
 <div class="card">
   <h2>Are the widths what the ladder says?</h2>
-  <p class="note">Median over the eval grid's 64 injections' sources (8 windows × 8 SNR ranks) of the matched mock width over the Fisher forecast's width (<code>draws.npz</code> <code>matched</code> vs <code>fisher</code>, 1.4826 MAD in flow coordinates). <code>fisher</code> should read ~1 where the data dominate; the forecast and the mock differ in centre and in prior handling, so prior-dominated coordinates (quiet sources, fdot) need not. Columns: f0 per SNR band, then every coordinate over all sources.</p>
+  <p class="note">Median over the 128 eval injections' sources (one per log-uniform window, slots by f0) of the mock width over the Fisher forecast's width (<code>draws.npz</code> <code>draws</code> vs <code>fisher</code>, both sorted by f0, 1.4826 MAD in flow coordinates). <code>fisher</code> should read ~1 where the data dominate; the forecast and the mock differ in centre and in prior handling, so prior-dominated coordinates (quiet sources, fdot) need not. Columns: f0 per SNR band, then every coordinate over all sources.</p>
   <div class="scroll" id="t-width"></div>
 </div>
 <div class="card">

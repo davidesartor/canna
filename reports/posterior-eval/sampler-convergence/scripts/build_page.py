@@ -1,7 +1,7 @@
 """Write sampler-convergence.html from data/*.json: per-source posterior widths against the ODE integrator, per run.
 
 Stdlib only; run from the repo root:
-    uv run --frozen python reports/posterior-eval/sampler-convergence/scripts/build_page.py
+    python reports/posterior-eval/sampler-convergence/scripts/build_page.py
 """
 
 import json

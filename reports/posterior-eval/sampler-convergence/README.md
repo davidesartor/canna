@@ -1,8 +1,8 @@
-# Sampler convergence: when do the flow's widths stop depending on the integrator? (2026-10-24)
+# Sampler convergence: when do the flow's widths stop depending on the integrator? (2026-11-02)
 
-Probed on `misty-meadow-narrow-S` and `lucky-falcon-full-B` (2026-10-24, research log
-[F60](../../research-log/060-sampler-grid-not-the-f0-floor.md)); `dusty-otter-narrow-XS` is the
-2,000-step pipeline test.
+Probed on `261101-royal-ferret-narrow-B` (epoch 1250, bf16 backbone; job 66528675, 2026-11-02).
+The older runs from before f0 ordering are in research log
+[F60](../../research-log/060-sampler-grid-not-the-f0-floor.md). `dusty-island-full-B` was not probed.
 
 ## Takeaways
 
@@ -18,29 +18,33 @@ Probed on `misty-meadow-narrow-S` and `lucky-falcon-full-B` (2026-10-24, researc
   Per source and coordinate (f0 first), the probe records the width (1.4826 × MAD), the offset
   and rank of the truth, and the CRPS. The page shows each as a ratio to the finest log-schedule
   cell.
-- **Answer.** The eval's 32 uniform steps are converged, and grids that put more steps late in
-  the path widen f0 instead.
-  - Uniform midpoint, 32 → 256 steps: full-B 0.46 → 0.40 bins, narrow-S 0.025 → 0.028 (median f0
-    width over the 40 eval sources).
-  - Power-3 and log grids at 256 steps: full-B 0.62–0.65 bins, narrow-S 0.056–0.063, wider in
-    every SNR band, with a worse CRPS. The network's x1 is worse late in the path than at the
-    eval's last query (1 − s = 1/64), so the grid does not set full-B's f0 floor.
-  - Both runs were also probed with `--schedules uniform,power2,power3,log`. To rerun, from the
-    repo root:
+- **Answer.** On the narrow-B run the eval's 32 uniform steps are converged, to the reference
+  (log schedule, 128 steps, 64 draws, 512 sources).
+  - Uniform midpoint, f0 width over the reference: 0.971 at 4 steps, 0.994 at 32, 0.999 at 128.
+    The other coordinates are within 4% at 32 (0.97-1.02). Median f0 width at 32 steps is 27.0
+    bins against 28.1 for the reference.
+  - Power-2 and log grids reach 1.00 by 32 steps; the log grid is the least collapsed at 4 steps.
+    Midpoint and Euler 128 steps give 0.985 and 1.00 for f0 (Euler at 32: 0.958).
+  - Median f0 CRPS ratio is 0.99 everywhere, so more late steps do not change the score.
+  - So no collapse for this flow at the eval's steps; the earlier late-time floor story
+    belongs to the old runs. The `power3` schedule and 256 steps were not run.
+  - The grid sampler matches `sample_posterior` on the eval's grid to max |Δx| 0.055 (bf16
+    backbone, different jit shapes), against f0 widths of 27 bins.
+
+  To rerun, from the repo root (single bare sbatch):
 
   ```bash
-  source slurm/<cluster>.env
-  sbatch $CANNA_SBATCH_GPU --gres=gpu:1 reports/posterior-eval/sampler-convergence/scripts/convergence.sbatch <run> --schedules uniform,power2,power3,log
+  sbatch --export=ALL,PYTHON=$PWD/.venv/bin/python --partition=gpu-highvram,gpu-preempt-highvram --account=pi_mehuber_umass_edu --qos=normal --constraint=a100 --gres=gpu:1 reports/posterior-eval/sampler-convergence/scripts/convergence.sbatch 261101-royal-ferret-narrow-B --draws 64 --steps 4,8,16,32,64,128
   ```
 
-  Each writes `data/<run>.json` and rebuilds the page. Read the result off the first card: the
+  It writes `data/<run>.json` and rebuilds the page. Read the result off the first card: the
   step count where the uniform midpoint line reaches 1, and the f0 tile at the eval's steps.
 
 ## What the page shows
 
 [`sampler-convergence.html`](sampler-convergence.html) is standalone and works from `file://`.
 The selected run, coordinate and cell are kept in the URL hash. A run with fewer than 100k
-training steps is badged "untrained" and the page carries a banner saying it is a pipeline test.
+training steps is badged "untrained".
 
 - **Tiles.** The run, the eval's sampler, the selected coordinate's median width at the eval's
   steps over the reference, and the check that the probe's grid sampler reproduces
@@ -55,23 +59,22 @@ training steps is badged "untrained" and the page carries a banner saying it is 
 - **Does the score keep improving with more network calls?** The median CRPS over the reference
   CRPS against network calls per draw. Cost per call is in
   [sampling cost](../../benchmarks/sampling-cost/sampling-cost.html).
-- **What this means.** How to read the curves, and this run's eval-steps ratio. For an untrained
-  run, an explicit note that its numbers are not findings.
+- **What this means.** How to read the curves, and this run's eval-steps ratio.
 
 ## Method
 
-- `scripts/convergence_probe.py` loads the run with `load_trained` on the run's commit. It
-  rebuilds the eval's injections (`eval_injections(problem, config.seed)`), its observations
-  (`sample_observation` with the eval's noise keys) and its base draws (`sample_flow` on the
-  first `--draws` of `jr.split(key, N_POSTERIOR)`), so the eval's 32-step cell is the eval's own
+- `scripts/convergence_probe.py` loads the run with `load_trained` on the working tree's `src`. It
+  rebuilds the eval's injections (`eval_injections(problem, config.seed)`, f0-sorted), its
+  observations (`sample_observation` with the eval's noise keys) and its base draws (the first
+  `--draws` of `jr.normal(fold_in(key, 1), (N_POSTERIOR, ...))`), so the eval's 32-step cell is the eval's own
   posterior.
-- `sample_on_grid` is the eval's sampler on an arbitrary grid of times. It moves `x_t` along the
-  velocity (m − x_t)/(1 − t), m the flow's mean of x₁: midpoint makes two calls a step, Euler one.
+- `sample_on_grid` is the eval's sampler on an arbitrary grid of times. It moves `z_t` along the
+  velocity (m − z_t)/(1 − t), m the flow's mean of z₁ in the reference frame (x₁ = μ + σ z₁): midpoint makes two calls a step, Euler one.
   The `log` schedule spaces 1 − t log-uniformly from 1 down to 10^−`LOSS_TIME_DECADES`, then
   takes the last step to t = 1. The eval's own
   `sample_posterior` runs too, and the grid sampler must match it on the uniform grid at the
   eval's step count (`eval_match`).
-- The draws are matched to the true sources with `match_sources` and mapped to columns: f0 in
+- Draws and truths are both f0-sorted, so slot i is source i; columns are: f0 in
   frequency bins, then the seven flow coordinates past f0 (log ḟ, l, b, Re/Im z±). Per source and
   column the probe records:
   - width: 1.4826 × MAD
@@ -81,20 +84,16 @@ training steps is badged "untrained" and the page carries a banner saying it is 
 
 ## How to rebuild
 
-From the repo root, after `source slurm/unity.env`:
+From the repo root, as the single bare sbatch above (GPU, ~17 min on an A100 for this grid).
+The page alone (stdlib, fine on a login node):
 
 ```bash
-# a trained B run: the full grid (4…256 steps, 256 draws), ~1.5k network calls per draw per schedule
-sbatch $CANNA_SBATCH_GPU --partition=gpu,gpu-preempt --gres=gpu:1 reports/posterior-eval/sampler-convergence/scripts/convergence.sbatch <run>
-# the smoke test this folder holds (CPU, 4 cores, under 1 h for an XS run)
-sbatch $CANNA_SBATCH_CPU reports/posterior-eval/sampler-convergence/scripts/convergence.sbatch dusty-otter-narrow-XS --draws 32 --steps 4,8,16,32,64,128
-# the page alone (stdlib, fine on a login node)
-uv run --frozen python reports/posterior-eval/sampler-convergence/scripts/build_page.py
+python3 reports/posterior-eval/sampler-convergence/scripts/build_page.py
 ```
 
-The sbatch clears stray `LISA_*`, runs the probe on the run's commit via `slurm/run-src.sh`, and
-then rebuilds the page. Words after the run go to the probe: `--draws` (at most 256),
-`--steps`, `--schedules` (midpoint), `--euler`.
+The sbatch clears stray `LISA_*`, takes bf16 from the run's config, runs the probe on the working
+tree's `src`, and then rebuilds the page. Words after the run go to the probe: `--draws` (at most
+256), `--steps`, `--schedules` (midpoint), `--euler`.
 
 ## Data
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Flow draws against the MCMC reference (reference_probe.py beside this file), on CPU, then the page (build_page.py).
 # Settings are name=eval_dir pairs; the records go to reports/posterior-eval/reference-comparison/data/<name>.json.
-# A run needs its --run; the mocks use the narrow-B config. From the repo root, after `source slurm/unity.env`:
+# A run needs its --run; the mocks use the narrow-B config. On the working tree's src; from the repo root, PYTHON=<venv python> exported (default .venv/bin/python):
 #     sbatch $CANNA_SBATCH_CPU reports/posterior-eval/reference-comparison/scripts/reference.sbatch --run <run> <run>-32=outputs/runs/<run>/eval/<epoch>-average-32
 #     sbatch $CANNA_SBATCH_CPU reports/posterior-eval/reference-comparison/scripts/reference.sbatch mock-fisher=reports/posterior-eval/mock-flows/data/narrow/fisher ...
 
@@ -19,6 +19,8 @@ HERE=reports/posterior-eval/reference-comparison
 mkdir -p .slurm-logs "$HERE/data"
 unset $(compgen -e LISA_) || true
 export PYTHONUNBUFFERED=1
+export PYTHONPATH="$PWD/src"
+PYTHON="${PYTHON:-.venv/bin/python}"
 export JAX_PLATFORMS=cpu
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
@@ -26,6 +28,6 @@ echo "host      : $(hostname)"
 echo "job       : ${SLURM_JOB_ID:-none}"
 echo "date      : $(date)"
 echo "args      : $*"
-uv run --frozen python --version
-uv run --frozen python -u "$HERE/scripts/reference_probe.py" "$@"
-uv run --frozen python "$HERE/scripts/build_page.py"
+"$PYTHON" --version
+"$PYTHON" -u "$HERE/scripts/reference_probe.py" "$@"
+"$PYTHON" "$HERE/scripts/build_page.py"
