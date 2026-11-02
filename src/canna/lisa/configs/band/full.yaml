@@ -5,7 +5,7 @@ problem:
   response_points: 128
   oms_noise: 15.0
   acceleration_noise: 3.0
-  f0_range: [1.0e-4, 12.0e-3]
+  f0_range: [1.0e-4, 16.0e-3]
 
 warmup_steps: 4800
 total_steps: 240000
