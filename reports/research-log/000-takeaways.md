@@ -1,4 +1,4 @@
-# canna.lisa takeaways (current state, 2026-10-31, F64)
+# canna.lisa takeaways (current state, 2026-11-02, F65)
 
 One `0<nn>-<slug>.md` per finding F<nn>, outcome first. The literature lives in
 [../literature/](../literature/): [GW and cosmology
@@ -7,6 +7,12 @@ schedules](../literature/optimizers-schedules/000-takeaways.md), [diffusion and 
 matching](../literature/diffusion-flow-matching/000-takeaways.md) and the others; the findings
 keep only its consequences for our code.
 
+- **The frame alone diverges like full-B; its sky output turns into a per-window constant** ([F65](065-frame-alone-diverges-sky-frame-per-window.md)):
+  with the flow's gradient off, full-B's frame still blows up from epoch ~45 (NaN at epoch 151).
+  On the fixed catalog, galactic b (then l), not f₀, goes wrong: μ_b stops depending on the
+  source, shifts per window and claims σ_b ≈ 0.06 prior widths on faint sources. The β-NLL's
+  δs gradient, ∝ (x − μ)²/σ, then gives b up to half the frame gradient, with single entries
+  475× the median.
 - **narrow-B finished, but the fitted prior leaves it almost nothing to detect** ([F64](064-narrow-b-finished-fitted-prior-faint.md)):
   98% of its scorecard sources are below SNR 7 and the loudest is 11.9, so it can't be scored
   against narrow-S above SNR 15. At SNR 7–15 it finds 24 of 24 at 1.6× the ideal f₀ width,
