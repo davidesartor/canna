@@ -1,6 +1,6 @@
 """Mock flows: the lisa eval pipeline with the flow's sampler swapped for stand-in posteriors with known defects.
 
-Usage: uv run --frozen python reports/posterior-eval/mock-flows/scripts/mock_eval.py <band> [--mocks a,b] [--n-validation N] [--n-random N]
+Usage: PYTHONPATH=src python reports/posterior-eval/mock-flows/scripts/mock_eval.py <band> [--mocks a,b] [--n-validation N] [--n-random N]
 Writes data/<band>/<mock>/{eval.yaml, draws.npz, scorecard.npz, mock.json}.
 """
 
@@ -27,18 +27,19 @@ from canna.lisa.injections import (
     N_PRIOR_DRAWS,
     eval_injections,
     fisher_samples,
-    match_sources,
     scaled_inverse,
+    sort_by_f0,
 )
-from canna.lisa.problem import LisaGB, sample_f, window_power
+from canna.lisa.problem import LisaGB, window_power
 from canna.lisa.samples import load as load_samples
-from canna.lisa.samples import pack_validation, unpack
+from canna.lisa.samples import pack_draws, pack_validation, unpack
 from canna.lisa.scorecard import N_DRAWS as SCORE_DRAWS
 from canna.lisa.scorecard import SNR_BANDS, score
 from canna.lisa.simulator import (
     clean_signal,
     sample_observation,
     sample_physical,
+    sample_window,
     snr,
     source_snrs,
 )
@@ -63,11 +64,13 @@ DESCRIPTIONS = {
 def flow_prior(
     problem: LisaGB, seed: int
 ) -> tuple[Float[Array, " P"], Float[Array, "P P"]]:
-    """Mean and covariance of N_PRIOR_DRAWS prior draws in flow coordinates, sources flattened."""
+    """Mean and covariance of N_PRIOR_DRAWS prior draws in flow coordinates, sources by f0 and flattened."""
     key_pick, key_window, _ = jr.split(jr.key(seed), 3)
-    windows = jax.vmap(partial(sample_f, problem))(jr.split(key_window, N_PRIOR_DRAWS))
-    latents = jax.vmap(partial(sample_physical, problem))(
-        jr.split(key_pick, N_PRIOR_DRAWS), windows
+    windows = jax.vmap(partial(sample_window, problem))(jr.split(key_window, N_PRIOR_DRAWS))
+    latents = sort_by_f0(
+        jax.vmap(partial(sample_physical, problem))(
+            jr.split(key_pick, N_PRIOR_DRAWS), windows
+        )
     )
     x = jax.vmap(partial(physical_to_flow, problem))(latents, windows)
     flat = rearrange(x, "n s d -> n (s d)")
@@ -135,7 +138,7 @@ def mock_draws(
     cov: Float[Array, "P P"],
     prior_sd: Float[Array, " P"],
 ) -> Float[Array, "N S 8"]:
-    """The mock's draws for one observation, in physical units like the flow's: draws = flow_to_physical(x)."""
+    """The mock's draws for one observation, in physical units with sources by f0, like eval's."""
     sd = jnp.sqrt(jnp.diag(cov))
     w, v = jnp.linalg.eigh(cov / jnp.outer(sd, sd))
     root = sd[:, None] * v * jnp.sqrt(jnp.maximum(w, 0.0))
@@ -158,7 +161,8 @@ def mock_draws(
     x = jax.vmap(mock_draw, in_axes=(None, None, 0, None, None, None))(
         problem, mock, keys, f, centre + shift, scale[:, None] * root
     )
-    return jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(x, f)
+    physical = jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(x, f)
+    return sort_by_f0(physical)
 
 
 @eqx.filter_jit
@@ -180,8 +184,8 @@ def observe(
 def validation_injection(problem: LisaGB, key: Key[Array, ""], prior: tuple):
     """validate_injection's prior injection and keys, without the flow."""
     key_f, key_p, key_n, key_u, key_tarp = jr.split(key, 5)
-    f = sample_f(problem, key_f)
-    truth = sample_physical(problem, key_p, f)
+    f = sample_window(problem, key_f)
+    truth = sort_by_f0(sample_physical(problem, key_p, f))
     o, centre, cov = observe(problem, key_n, truth, f, prior)
     return (
         f,
@@ -212,10 +216,10 @@ def write_eval_yaml(out: Path, n_random: int, n_validation: int) -> None:
 
 
 def width_ratios(problem: LisaGB, d: dict) -> dict:
-    """Matched mock width over the repo's Fisher-forecast width (1.4826 MAD), per flow coordinate and true-SNR band."""
+    """Mock width over the repo's Fisher-forecast width (1.4826 MAD), per flow coordinate and true-SNR band."""
     to_flow = jax.vmap(jax.vmap(partial(physical_to_flow, problem), in_axes=(0, None)))
     widths = []
-    for key in ("matched", "fisher"):
+    for key in ("draws", "fisher"):
         x = np.asarray(to_flow(jnp.asarray(d[key]), jnp.asarray(d["f"])))
         widths.append(1.4826 * np.median(np.abs(x - np.median(x, 1, keepdims=True)), 1))
     ratio = rearrange(widths[0] / widths[1], "n s d -> (n s) d")
@@ -316,16 +320,18 @@ def main() -> None:
     prior = (prior_mean, scaled_inverse(prior_cov))
     prior_sd = jnp.sqrt(jnp.diag(prior_cov))
 
-    # eval.py: the eval grid's injections and their Fisher forecasts
-    latents, windows, snrs, grid, noise_keys, prior_prec_p = eval_injections(
-        problem, seed
-    )
-    n_eval = len(grid)
+    # eval.py: the eval injections and their Fisher forecasts
+    latents, windows, snrs, noise_keys, prior_prec_p = eval_injections(problem, seed)
+    n_eval = len(windows)
     # scorecard.py: the same, then n_random plain prior draws on the seed's stream 4
     key_window, key_pick, key_noise = jr.split(jr.fold_in(jr.key(seed), 4), 3)
-    random_windows = jax.vmap(partial(sample_f, problem))(jr.split(key_window, n_random))
-    random_latents = jax.vmap(partial(sample_physical, problem))(
-        jr.split(key_pick, n_random), random_windows
+    random_windows = jax.vmap(partial(sample_window, problem))(
+        jr.split(key_window, n_random)
+    )
+    random_latents = sort_by_f0(
+        jax.vmap(partial(sample_physical, problem))(
+            jr.split(key_pick, n_random), random_windows
+        )
     )
     score_latents = jnp.concatenate([latents, random_latents])
     score_windows = jnp.concatenate([windows, random_windows])
@@ -336,7 +342,6 @@ def main() -> None:
 
     # the eval injections are the scorecard's first n_eval: one loop, 1024 draws there, 256 elsewhere
     draws = {m: [] for m in mocks}
-    matched = {m: [] for m in mocks}
     rows = {m: [] for m in mocks}
     fisher, source_snr, injection, is_eval = [], [], [], []
     for n, key_n in enumerate(score_keys):
@@ -347,7 +352,6 @@ def main() -> None:
             if n < n_eval:
                 d = np.asarray(mock_draws(problem, m, keys, f, centre, cov, prior_sd))
                 draws[m].append(d)
-                matched[m].append(match_sources(problem, d, np.asarray(latent), f))
                 d = d[:SCORE_DRAWS]
             else:
                 d = np.asarray(
@@ -371,16 +375,14 @@ def main() -> None:
         write_eval_yaml(out, n_random, n_validation)
         d = dict(
             draws=np.stack(draws[m]),
-            matched=np.stack(matched[m]),
             fisher=np.stack(fisher),
             truth=np.asarray(latents),
             f=np.asarray(windows),
             snr=snrs,
             source_snr=np.stack(source_snr),
-            grid=grid,
             epoch=-1,
         )
-        np.savez(out / "draws.npz", **d)
+        np.savez(out / "draws.npz", **pack_draws(d))
         checks[m]["width_over_fisher"] = width_ratios(problem, d)
         r = {k: np.concatenate([row[k] for row in rows[m]]) for k in rows[m][0]}
         r["injection"], r["is_eval"] = np.array(injection), np.array(is_eval)

@@ -1,5 +1,7 @@
 # Reference comparison: the flow's draws against the MCMC reference (2026-10-24)
 
+> **2026-11-02: the numbers below predate f0 ordering and await the next runs.** The scripts now compare f0-sorted draws and chains (no `match_sources`) and read packed draws, but no MCMC chain set matches a current problem (royal-ferret-narrow-B `a0085bc000` and the 1-3 mHz narrow-B `cc4b9e9aa0` have none), so nothing was regenerated. `data/*.json` are the old records; delete them by hand when the rebuild runs.
+
 Every number for the run is **smoke**: `dusty-otter-narrow-XS` is a 2,000-step narrow-XS pipeline test stopped at
 epoch 4. It shows that the comparison works end to end, not how good the method is. Real findings need narrow-B and
 full-B (training on trex, ETA 2026-10-25); they drop in by re-running the sbatch under [How to rebuild](#how-to-rebuild).
@@ -53,11 +55,10 @@ banner appears for the run, a mock banner for the mocks, and a sampler banner fo
   (`ad8a87a575`) is the chains' and the run's. Noise keys are not saved in `draws.npz`: they follow from the seed and
   the injection index, as in the repo's eval and as `mock_eval.py` replays them, so the joint chains' noise realisation is
   the one every setting was drawn on.
-- **Per-source widths.** Each source's draws are matched to the truth and folded (`mcmc.fold`); the parameters are
+- **Per-source widths.** Each source's draws and chains are f0-sorted like the truth and folded (`mcmc.fold`); the parameters are
   f₀ in bins, log ḟ, log A, sky, ψ, sin ι, φ₀, plus φ± = φ₀ ± 2ψ read off `physical_to_flow` at the chart's phase
   reference. Widths are 1.4826·MAD, circular (√(−2 ln R)) for φ±, against each source's marginal of the joint MCMC
-  (`mcmc.load_chains`, `outputs/mcmc/joint-<id>`, up to 40,000 draws per injection over its seeds, matched to the
-  truth). "Pinned" is the narrower of the MCMC's φ₊ and φ₋. The truth's rank among the draws is recorded too (φ± cut
+  (`mcmc.load_chains`, `outputs/mcmc/joint-<id>`, up to 40,000 draws per injection over its seeds, sorted by f0). "Pinned" is the narrower of the MCMC's φ₊ and φ₋. The truth's rank among the draws is recorded too (φ± cut
   opposite the circular mean).
 - **Joint comparison.** Four injections (a mid-SNR one in every other window of the band, `--windows` to change)
   against the same chains, kept per seed (`outputs/mcmc/joint-<id>/inj<j>_seed<k>.npz`): widths, W1 over the MCMC width, the Fisher Gaussian's width,
@@ -72,23 +73,23 @@ banner appears for the run, a mock banner for the mocks, and a sampler banner fo
 
 ## How to rebuild
 
-From the repo root, after `source slurm/unity.env` (CPU only, ~4 min for four settings; the sbatch ends by rebuilding
+From the repo root, `PYTHON=<venv python>` exported (CPU only, ~4 min for four settings; the sbatch ends by rebuilding
 the page). The settings of this report:
 
 ```bash
-sbatch $CANNA_SBATCH_CPU reports/posterior-eval/reference-comparison/scripts/reference.sbatch mock-fisher=reports/posterior-eval/mock-flows/data/narrow/fisher mock-wide=reports/posterior-eval/mock-flows/data/narrow/wide mock-narrow=reports/posterior-eval/mock-flows/data/narrow/narrow mock-biased=reports/posterior-eval/mock-flows/data/narrow/biased
-sbatch $CANNA_SBATCH_CPU reports/posterior-eval/reference-comparison/scripts/reference.sbatch mock-prior=reports/posterior-eval/mock-flows/data/narrow/prior mock-phases-prior=reports/posterior-eval/mock-flows/data/narrow/phases-prior mock-loud-floor=reports/posterior-eval/mock-flows/data/narrow/loud-floor
+sbatch $CANNA_SBATCH_CPU --export=ALL,PYTHON=$PYTHON reports/posterior-eval/reference-comparison/scripts/reference.sbatch mock-fisher=reports/posterior-eval/mock-flows/data/narrow/fisher mock-wide=reports/posterior-eval/mock-flows/data/narrow/wide mock-narrow=reports/posterior-eval/mock-flows/data/narrow/narrow mock-biased=reports/posterior-eval/mock-flows/data/narrow/biased
+sbatch $CANNA_SBATCH_CPU --export=ALL,PYTHON=$PYTHON reports/posterior-eval/reference-comparison/scripts/reference.sbatch mock-prior=reports/posterior-eval/mock-flows/data/narrow/prior mock-phases-prior=reports/posterior-eval/mock-flows/data/narrow/phases-prior mock-loud-floor=reports/posterior-eval/mock-flows/data/narrow/loud-floor
 ```
 
 The real narrow-B run drops in by pointing at its eval dir (it needs `draws.npz`, as written by `canna.lisa.eval`, and
 the narrow per-source and joint chains in `outputs/mcmc`; full-B settings have no chains and give card 3 only):
 
 ```bash
-sbatch $CANNA_SBATCH_CPU reports/posterior-eval/reference-comparison/scripts/reference.sbatch --run <narrow-B run> <run>-32=outputs/runs/<run>/eval/<epoch>-average-32
-sbatch $CANNA_SBATCH_CPU reports/posterior-eval/reference-comparison/scripts/reference.sbatch --run <narrow-B run> <run>-128=outputs/runs/<run>/eval/<epoch>-average-128
+sbatch $CANNA_SBATCH_CPU --export=ALL,PYTHON=$PYTHON reports/posterior-eval/reference-comparison/scripts/reference.sbatch --run <narrow-B run> <run>-32=outputs/runs/<run>/eval/<epoch>-average-32
+sbatch $CANNA_SBATCH_CPU --export=ALL,PYTHON=$PYTHON reports/posterior-eval/reference-comparison/scripts/reference.sbatch --run <narrow-B run> <run>-128=outputs/runs/<run>/eval/<epoch>-average-128
 ```
 
-The page alone: `uv run --frozen python reports/posterior-eval/reference-comparison/scripts/build_page.py`.
+The page alone: `python reports/posterior-eval/reference-comparison/scripts/build_page.py`.
 
 ## Data
 

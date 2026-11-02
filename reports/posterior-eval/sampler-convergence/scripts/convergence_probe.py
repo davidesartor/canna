@@ -1,7 +1,7 @@
 """Per-source posterior widths against the ODE integrator: steps, step schedule and update rule, on the eval's injections.
 
-Run from the repo root on the run's commit (slurm/run-src.sh), as convergence.sbatch does:
-    LISA_RUN=<run> uv run --frozen python reports/posterior-eval/sampler-convergence/scripts/convergence_probe.py \
+Run from the repo root as convergence.sbatch does:
+    LISA_RUN=<run> PYTHONPATH=src python reports/posterior-eval/sampler-convergence/scripts/convergence_probe.py \
         [--draws 256] [--steps 4,8,16,32,64,128,256] [--schedules uniform,power2,log] [--euler uniform,log]
 The record goes to data/<run>.json, rewritten after every cell so a cut-short job still leaves one.
 """
@@ -23,9 +23,10 @@ import numpy as np
 from jaxtyping import Array, Float, Int
 
 from canna.lisa import config as run_config
-from canna.lisa.chart import flow_to_physical, physical_to_flow, sample_flow
-from canna.lisa.injections import N_POSTERIOR, eval_injections, match_sources
-from canna.lisa.network import LOSS_TIME_DECADES, LisaFlow
+from canna.lisa.chart import flow_to_physical, physical_to_flow
+from canna.lisa.injections import N_POSTERIOR, eval_injections, sort_by_f0
+from canna.lisa.network import LOSS_TIME_DECADES, LisaFlow, reference_frame
+from canna.lisa.problem import LisaGB
 from canna.lisa.sample import CHUNK, sample_posterior
 from canna.lisa.simulator import preprocess, sample_observation, source_snrs
 from canna.lisa.train import load_trained
@@ -49,6 +50,7 @@ def network_times(schedule: str, steps: int) -> np.ndarray:
 
 @eqx.filter_jit
 def sample_on_grid(
+    problem: LisaGB,
     flow: LisaFlow,
     u: Float[Array, "N S 8"],
     y: Float[Array, "F 6"],
@@ -57,13 +59,14 @@ def sample_on_grid(
     n_steps: Int[Array, ""],
     rule: str,
 ) -> Float[Array, "N S 8"]:
-    """Draws moved along the velocity (m - u) / (1 - t) over times[0..n_steps]: two calls a step (midpoint, the eval's rule) or one (euler)."""
-    cache = flow.encode(y, f)
+    """Base draws moved along the velocity (m - u) / (1 - t) over times[0..n_steps] (two calls a step: midpoint, the eval's rule; or one: euler), then x = mu + sigma z."""
+    delta, cache = flow.encode(y, f)
+    frame = reference_frame(problem, delta, f)
 
     @eqx.filter_vmap(in_axes=(None, 0))
     def push(flow: LisaFlow, u: Float[Array, "S 8"]) -> Float[Array, "S 8"]:
         def velocity(u, t):
-            m, _ = jnp.split(flow(u, t, y, f, cache), 2, axis=-1)
+            m, _ = jnp.split(flow(u, t, frame, f, cache), 2, axis=-1)
             return (m - u) / (1 - t)
 
         def step(i, u):
@@ -75,7 +78,8 @@ def sample_on_grid(
 
         return jax.lax.fori_loop(0, n_steps, step, u)
 
-    return push(flow, u)
+    mu, log_sigma = frame
+    return mu + jnp.exp(log_sigma) * push(flow, u)
 
 
 def crps(a: np.ndarray, truth: np.ndarray) -> np.ndarray:
@@ -91,13 +95,13 @@ def summarise(problem, post: np.ndarray, truth: np.ndarray, f) -> dict:
     physical = np.asarray(
         jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)
     )
-    matched = match_sources(problem, physical, truth, f)
+    ordered = sort_by_f0(physical)
 
     def columns(p):
         x = np.asarray(physical_to_flow(problem, jnp.asarray(p), f))
         return np.concatenate([p[..., :1] * problem.t_obs, x[..., 1:]], axis=-1)
 
-    a, true = columns(matched), columns(truth)
+    a, true = columns(ordered), columns(truth)
     median = np.median(a, axis=0)
     return dict(
         width=1.4826 * np.median(np.abs(a - median), axis=0),
@@ -129,7 +133,7 @@ def main() -> None:
     problem, flow, epoch = load_trained(config)
     out = Path(args.out or REPORT / "data" / f"{config.run}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
-    latents, windows, snrs, quantiles, noise_keys, _ = eval_injections(
+    latents, windows, snrs, noise_keys, _ = eval_injections(
         problem, config.seed
     )
 
@@ -139,9 +143,7 @@ def main() -> None:
         latent, f = latents[j], windows[j]
         ys.append(preprocess(problem, sample_observation(problem, key_n, latent, f), f))
         u0s.append(
-            jax.vmap(partial(sample_flow, problem), in_axes=(0, None))(
-                jr.split(key_n, N_POSTERIOR)[: args.draws], f
-            )
+            jr.normal(jr.fold_in(key_n, 1), (N_POSTERIOR, *latent.shape))[: args.draws]
         )
         truths.append(np.asarray(latent))
         source_snr = np.asarray(source_snrs(problem, latent, f))
@@ -189,7 +191,7 @@ def main() -> None:
 
     # the eval's own sampler, the yardstick every grid cell is checked against
     eval_sampler = lambda j: sample_posterior(
-        flow, u0s[j], ys[j], windows[j], config.ode_steps
+        problem, flow, u0s[j], ys[j], windows[j], config.ode_steps
     )
     eval_sampler(0)
     merged, seconds, eval_posts = run_cell(eval_sampler)
@@ -208,6 +210,7 @@ def main() -> None:
             times = np.ones(n_max + 1)
             times[: n + 1] = network_times(schedule, n)
             sampler = lambda j: sample_on_grid(
+                problem,
                 flow,
                 u0s[j],
                 ys[j],

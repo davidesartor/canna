@@ -2,7 +2,7 @@
 
 Settings are `name=eval_dir` pairs (an eval dir holds draws.npz); the base config is --run's config or --config's.
 Run from the repo root as reference.sbatch does:
-    uv run --frozen python reports/posterior-eval/reference-comparison/scripts/reference_probe.py \
+    PYTHONPATH=src python reports/posterior-eval/reference-comparison/scripts/reference_probe.py \
         --run <run> <run>-32=outputs/runs/<run>/eval/<epoch>-average-32
 """
 
@@ -24,14 +24,10 @@ from record import window_record
 
 from canna.lisa import config as run_config
 from canna.lisa.chart import physical_to_flow
-from canna.lisa.injections import (
-    N_PER_WINDOW,
-    N_WINDOWS,
-    eval_injections,
-    match_sources,
-)
+from canna.lisa.injections import eval_injections
 from canna.lisa.mcmc import cache_dir, fold, load_chains, make_window
 from canna.lisa.problem import LisaGB
+from canna.lisa.samples import load as load_samples
 from canna.lisa.simulator import log_likelihood, source_snrs
 
 PARAMETERS = [
@@ -50,8 +46,7 @@ PHASES = slice(8, 10)
 N_MCMC = 40000
 N_PLOT = 2000
 SMOKE_STEPS = 20_000
-# the joint card's windows: a mid-SNR injection in every other window of the band
-WINDOWS = [w * N_PER_WINDOW + N_PER_WINDOW // 2 for w in range(0, N_WINDOWS, 2)]
+N_JOINT_WINDOWS = 4
 ROWS = [
     "mcmc width",
     "flow/mcmc width",
@@ -60,6 +55,17 @@ ROWS = [
     "seed1/seed0 width",
     "seed W1/sd",
 ]
+
+
+def by_f0(p: np.ndarray) -> np.ndarray:
+    """Draws [..., S, 8] with the sources in ascending f0, the order eval's draws and truth are in."""
+    return np.take_along_axis(p, np.argsort(p[..., 0], axis=-1)[..., None], axis=-2)
+
+
+def joint_windows(chain_dir: Path) -> list[int]:
+    """Evenly spread among the injections that have joint chains, N_JOINT_WINDOWS of them."""
+    have = sorted({int(p.stem.removeprefix("inj").split("_")[0]) for p in chain_dir.glob("inj*_seed*.npz")})
+    return [have[int((k + 0.5) * len(have) / N_JOINT_WINDOWS)] for k in range(N_JOINT_WINDOWS)]
 
 
 def page_coordinates(
@@ -132,13 +138,13 @@ def check_symmetry(problem: LisaGB, window) -> None:
 
 
 def per_source_records(problem: LisaGB, saved: dict, chains: dict) -> list[dict]:
-    """Every eval source: SNR, sin iota, flow widths, truth ranks and, where chains exist, the MCMC marginal's widths."""
+    """Every eval source (slots by f0): SNR, sin iota, flow widths, truth ranks and, where chains exist, the MCMC marginal's widths."""
     sources = []
-    for j, (matched, truth) in enumerate(zip(saved["matched"], saved["truth"])):
+    for j, (draws, truth) in enumerate(zip(saved["draws"], saved["truth"])):
         f = saved["f"][j]
-        mcmc = match_sources(problem, chains[j], truth, f) if j in chains else None
+        mcmc = by_f0(chains[j]) if j in chains else None
         for s in range(truth.shape[0]):
-            flow = page_coordinates(problem, matched[:, s], truth[s], f)
+            flow = page_coordinates(problem, draws[:, s], truth[s], f)
             true = page_coordinates(problem, truth[s][None], truth[s], f)[0]
             record = dict(
                 injection=j,
@@ -169,7 +175,7 @@ def main() -> int:
         default="narrow-B",
         help="base config when there is no --run (mocks)",
     )
-    parser.add_argument("--windows", type=int, nargs="+", default=WINDOWS)
+    parser.add_argument("--windows", type=int, nargs="+", help="joint windows, default evenly spread among those with chains")
     parser.add_argument(
         "--label",
         action="append",
@@ -197,15 +203,15 @@ def main() -> int:
     for pair in args.settings:
         name, eval_dir = pair.split("=", 1)
         eval_dir = Path(eval_dir)
-        saved = dict(np.load(eval_dir / "draws.npz"))
+        saved = load_samples(eval_dir / "draws.npz")
         meta = yaml.safe_load((eval_dir / "eval.yaml").read_text())
         mock = meta["weights"] == "mock"
-        error = float(np.abs(saved["truth"] - truth_all).max())
-        assert error == 0.0 and np.allclose(
+        error = float(np.abs(saved["truth"] / truth_all - 1).max())
+        assert error < 1e-4 and np.allclose(
             saved["f"], windows_f
-        ), f"{eval_dir}: other injections than {config.name}'s eval (truth err {error})"
+        ), f"{eval_dir}: other injections than {config.name}'s eval (relative truth err {error})"
         assert np.allclose(
-            saved["source_snr"], source_snr, rtol=1e-6
+            saved["source_snr"], source_snr, rtol=1e-3
         ), f"{eval_dir}: other source SNRs"
         print(
             f"{name}: {eval_dir}, truth, f and source SNR identical to the eval injections",
@@ -224,7 +230,7 @@ def main() -> int:
             eval=eval_dir.name,
             epoch=int(saved["epoch"]),
             weights=meta["weights"],
-            draws=int(saved["matched"].shape[1]),
+            draws=int(saved["draws"].shape[1]),
             parameters=PARAMETERS,
             saved=saved,
         )
@@ -242,21 +248,21 @@ def main() -> int:
 
     # joint windows: the chains and Fisher load once per window, then every setting is compared
     joint_chains = cache_dir(problem, config.seed)
-    for j in args.windows:
+    for j in args.windows or joint_windows(joint_chains):
         window = make_window(problem, injections, j)
         check_symmetry(problem, window)
         truth, f, t_obs = window.truth, window.f, problem.t_obs
         runs = sorted(joint_chains.glob(f"inj{j}_seed*.npz"))
         assert runs, f"no joint MCMC for window {j} in {joint_chains}"
         rng = np.random.default_rng(0)
-        mcmc, matched = [], []
+        mcmc, ordered = [], []
         for path in runs:
             physical = np.load(path)["physical"]
             pick = rng.choice(len(physical), min(N_MCMC, len(physical)), replace=False)
-            matched.append(match_sources(problem, physical[pick], truth, f))
-            mcmc.append(fold_sources(matched[-1], truth, t_obs))
+            ordered.append(by_f0(physical[pick]))
+            mcmc.append(fold_sources(ordered[-1], truth, t_obs))
         ref = np.concatenate(mcmc)
-        fisher_matched = match_sources(problem, window.fisher, truth, f)
+        fisher_matched = by_f0(window.fisher)
         fisher = fold_sources(fisher_matched, truth, t_obs)
         true_phases = chart_phases(problem, truth, f)
         wrap = (
@@ -264,7 +270,7 @@ def main() -> int:
             - np.pi
         )
         true = fold_sources(truth[None], truth, t_obs)[0]
-        phases = dict(mcmc=wrap(np.concatenate(matched)), fisher=wrap(fisher_matched))
+        phases = dict(mcmc=wrap(np.concatenate(ordered)), fisher=wrap(fisher_matched))
         seed_compare = (
             {s: compare(mcmc[1][:, s], mcmc[0][:, s]) for s in range(truth.shape[0])}
             if len(mcmc) > 1
@@ -272,9 +278,9 @@ def main() -> int:
         )
 
         for r in records.values():
-            flow_matched = match_sources(problem, r["saved"]["draws"][j], truth, f)
-            flow = fold_sources(flow_matched, truth, t_obs)
-            phases["flow"] = wrap(flow_matched)
+            flow_draws = r["saved"]["draws"][j]
+            flow = fold_sources(flow_draws, truth, t_obs)
+            phases["flow"] = wrap(flow_draws)
             out = {}
             for s in range(truth.shape[0]):
                 r_flow, r_fish = compare(flow[:, s], ref[:, s]), compare(

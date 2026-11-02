@@ -1,14 +1,15 @@
-# Mock flows: stand-in posteriors with known defects (2026-10-30)
+# Mock flows: stand-in posteriors with known defects (2026-11-02)
 
 ## Takeaways
 
-- Seven mock posteriors run through the repo's own eval pipeline (src at 8310cb3), in the exact format of a real run's `eval/<tag>/`, so any eval page can be tested against a known answer.
-- At HEAD's default prior every eval source is faint: `snr_hat` of the eval grid has median 0.05 and maximum 2.6, so all injections fall in the 0-15 SNR stratum and the 15-40, 40-100 and >=100 strata (and every "loud" column) are empty. The ladder is read at sub-threshold SNR only until `visible_snr` (window centres by the visible prior) is the default; rerun `mock.sbatch` then.
-- `fisher` is no longer a calibrated reference there. Narrow (200 validation injections, 4 sources): f0 p=0.055, fdot p=0.78, f0+fdot p=0.26, f0-fdot p=0.86 pass, but lon, lat, the z± coordinates, `abs_zp/zm`, own SNR, TARP and the joint ranks reject (p<0.001), and the flow-over-Fisher f0 width is 1.79 (scorecard in68 0.75, in95 0.99). Faint sources are non-Gaussian in the flow coordinates (posterior close to the prior), which the linearised Gaussian cannot follow. Full band (100 injections): f0 p=0.29, fdot p=0.95, f0+fdot p=0.48; sky, z±, TARP and the joint ranks reject; f0 width ratio 4.0.
-- `wide`, `narrow`, `biased` fail every rank test they should (p<0.001 on f0, the sky and z± coordinates, TARP, band depth); `biased` passes fdot (narrow p=0.58, full 0.86) and fails f0 and every combination containing it (`f0_plus_fdot`, `f0_minus_fdot`). `narrow` keeps the joint average rank (p=0.55 narrow, 0.53 full), so only the per-coordinate ranks, TARP, band depth and the log-likelihood rank catch it.
-- `prior` is the clean pass here: narrow f0 p=0.69, lon 0.36, lat 0.18, TARP 0.24, joint average rank 0.72, band depth 0.81 (joint 0.026); it fails only fdot (p=0.009, narrow), `overlap` (p=0.003) and the joint log-likelihood rank (p=0.001). Full: lat p=0.016 and re_zp 0.044 are marginal, the log-likelihood rank and overlap (p=0.007) reject. Plain SBC and TARP pass it, as the literature says; only the data-space ranks catch it (see [../data-space-checks/](../data-space-checks/)).
-- `phases-prior` is no longer separable from `fisher` on the SBC ranks (both reject the z± ranks, lon and lat), because `fisher` already rejects them at this SNR.
-- `loud-floor` is identical to `fisher` here (same p-values and widths): its width cap starts at source SNR 18.4 and no source reaches it, so it tests nothing until loud sources exist.
+- Seven mock posteriors run through the repo's own eval pipeline (working-tree src, narrow-B config: 1-3 mHz, 4 sources, seed 0), in the exact format of a real run's `eval/<tag>/`, so any eval page can be tested against a known answer. Sources are f0-sorted in draws and truth, as the flow emits them. Narrow band only; no full-band mocks were rebuilt.
+- Since the visible-window prior the eval grid reaches loud sources: 128 injections, 1312 scorecard sources (1111 at SNR 0-15, 185 at 15-40, 15 at 40-100, 1 above 100). The validation stream (200 injections) still has no source above SNR 100, so every "loud" column is empty.
+- `fisher` is a calibrated reference only in f0 and fdot. Over all 800 validation slots the p-values pass for f0 (0.141), fdot (0.422), `f0_plus_fdot` (0.255), `f0_minus_fdot` (0.251) and the joint average rank (0.117); lat, im_zp, re_zm, im_zm, `abs_zp/zm`, overlap, own SNR, TARP and band depth reject (p<0.001). Flow-over-Fisher f0 width 1.04, scorecard in68 0.66 and in95 0.93; the width over ideal grows with SNR (1.07 at 0-15, 1.47 at 15-40, 3.54 at 40-100).
+- `wide` (f0 width 3.10 x Fisher, in68 1.00) and `narrow` (0.52, in68 0.40, in95 0.65) fail every per-slot rank test and TARP (p<0.001). `narrow` keeps the joint average rank (p=0.006), so only the per-coordinate ranks, TARP, band depth and the log-likelihood rank catch it; `wide` rejects it too (p<0.001).
+- `biased` (f0 +1 sigma) fails f0 (p<0.001) and keeps fdot (0.422) and the f0 sums (0.255, 0.251); in68 falls to 0.47.
+- `prior` is the clean pass: f0 p=0.689, lon 0.356, lat 0.101, TARP 0.546, average rank 0.916 (joint 0.775, TARP 0.853), band depth 0.294. It fails only overlap (p<0.001), fdot (0.03, marginal), band depth joint (0.026) and the joint log-likelihood rank (p<0.001). Only the data-space ranks catch it (see [../data-space-checks/](../data-space-checks/)).
+- `phases-prior` is not separable from `fisher` on the SBC ranks (both reject the z± ranks and the sky), because `fisher` already rejects them; it differs in the joint average rank (0.606 vs 0.117) and re_zp (<0.001 vs 0.049).
+- `loud-floor` rejects the same quantities as `fisher` (f0 p=0.622 against 0.141): its width cap starts at source SNR 18.4, and its in68 0.68 / in95 0.94 barely differ from `fisher`, so it tests the floor only through the 16 sources above SNR 40.
 
 ## What the page shows
 
@@ -16,7 +17,7 @@
 
 ## Method
 
-`scripts/mock_eval.py` replays `eval.main`, `scorecard.main` and `validate.sample` with the flow's sampler replaced by a mock, using the same candidates, noise keys and draw keys as a real run of the band's `<band>-B` config (seed 0). `eval_injections`, `fisher_samples`, `match_sources`, `score`, `validate.quantities` and `validate.summarise` are the repo's own. `src/` is untouched.
+`scripts/mock_eval.py` replays `eval.main`, `scorecard.main` and `validate.sample` with the flow's sampler replaced by a mock, using the same candidates, noise keys and draw keys as a real run of the band's `<band>-B` config (seed 0), with sources sorted by f0 in the truth and in every draw. `eval_injections`, `fisher_samples`, `sort_by_f0`, `score`, `validate.quantities` and `validate.summarise` are the repo's own. `src/` is untouched.
 
 The mock base is a linearised Gaussian posterior in flow coordinates (flat, near-Gaussian): for each observation, `C = (F + P)^-1` with `F` the exact expected Fisher at the truth (jacobian of `clean_signal` through `flow_to_physical`) and `P` the Gaussian prior precision (the flow-coordinate covariance of the eval's 1024 prior candidates). The centre is the linearised MAP of the actual noisy data, `x0 + C (score + P (mu - x0))`. This is exactly calibrated in a linear-Gaussian model; it is approximate here because of non-Gaussian priors (galactic sky mixture, uniform x_f, the SNR >= 7 truncation), low-SNR non-Gaussianity and sky multimodality, and because the Fisher is taken at the truth (a mock may use the truth; a flow may not). Not to be confused with the repo's `fisher` key in `draws.npz` (`fisher_samples`), which is centred on the truth and so is not a calibrated reference; it is only the width yardstick.
 
@@ -34,25 +35,25 @@ Validation injections are the repo's stream (`split(fold_in(key(seed), 1), n)`, 
 
 ## How to rebuild
 
-From the repo root, after `source slurm/unity.env` (CPU only, never on a login node):
+From the repo root, `PYTHON=<venv python>` exported (CPU only, never on a login node; the sbatch runs the working tree's `src`):
 
     sbatch $CANNA_SBATCH_CPU reports/posterior-eval/mock-flows/scripts/mock.sbatch narrow --mocks fisher,wide,narrow,biased
     sbatch $CANNA_SBATCH_CPU reports/posterior-eval/mock-flows/scripts/mock.sbatch narrow --mocks prior,phases-prior,loud-floor
 
-Each job takes ~8 min (4 or 3 mocks). Full ran with `--n-random 50 --n-validation 100` (smaller files), the same four and three mocks per job; the full default counts would also fit in 1 h per job. The sbatch rebuilds the page; `uv run --frozen python reports/posterior-eval/mock-flows/scripts/build_page.py` alone does it from `data/`.
+Each job took ~14 min (jobs 66528333 and 66528334). The sbatch rebuilds the page; `python reports/posterior-eval/mock-flows/scripts/build_page.py` alone does it from `data/`.
 
 ## Data
 
-`data/<band>/<mock>/` for band in `narrow`, `full` and the seven mocks above, ~54 MB each (draws.npz ~48 MB, scorecard.npz 3.2 MB narrow / 1.6 MB full, which carries the validation samples and scores). `validation.npz` and `validation_scores.npz` in the dirs are unused leftovers of the 2026-10-24 layout; nothing reads them and they can be deleted. Counts per mock are in its `mock.json`. Narrow: 64 eval-grid + 200 random scorecard injections, 200 validation injections. Full: 64 + 50 and 100.
+`data/narrow/<mock>/` for the seven mocks above, ~20 MB each (gitignored; draws are packed, see Format). Counts per mock are in its `mock.json`: 128 eval injections + 200 random scorecard injections, 200 validation injections.
 
 ## Format
 
 Each `data/<band>/<mock>/` has the layout of a real `outputs/runs/<run>/eval/<tag>/` (a mock is told apart by `epoch: -1`, `ode_steps: 0`, `weights: mock`); N = injections, S = 4 sources.
 
 - `eval.yaml`: `epoch: -1, weights: mock, ode_steps: 0, bf16: none, backend: cpu, n_random, n_validation`.
-- `draws.npz` (as `eval.main`): `draws`, `matched`, `fisher` `<f8 (64,1024,4,8)`; `truth` `(64,4,8)`; `f`, `snr` `(64,)`; `grid` `(64,2)` (window index, SNR rank within it: 8 windows × 8 SNR ranks); `source_snr` `(64,4)`; `epoch` `<i8 ()`. `draws` are physical `[f0, fdot, A, lon, lat, psi, iota, phi0]`; `matched` is `match_sources` of them; `fisher` is the repo's truth-centred forecast, identical across mocks.
+- `draws.npz` (as `eval.main`, packed by `canna.lisa.samples.pack_draws`; `samples.load` unpacks): `draws` and `fisher` `(128,1024,4,8)`; `truth` `(128,4,8)`; `f`, `snr` `(128,)`; `source_snr` `(128,4)`; `epoch`. `draws` are physical `[f0, fdot, A, lon, lat, psi, iota, phi0]`, sources sorted by f0 like `truth`; `fisher` is the repo's truth-centred forecast, identical across mocks.
 - `scorecard.npz` (as `scorecard.main`), three groups in one file:
   - stage: `epoch`, `ode_steps`, `n_random` `<i8 ()`; `t_obs` `<f8 ()`.
-  - f0 rows, each `card_`-prefixed: `f0`, `x_f`, `snr`, `width`, `ideal`, `offset`, `rank` `<f8 (64+n_random)*4`; `f0_window` `(.,2)`; `in68`, `in95`, `is_eval` bool; `injection` `<i8`. Rows are source-major within an injection; the first 64 injections are the eval ones.
+  - f0 rows, each `card_`-prefixed: `f0`, `x_f`, `snr`, `width`, `ideal`, `offset`, `rank` `<f8 (128+n_random)*4`; `f0_window` `(.,2)`; `in68`, `in95`, `is_eval` bool; `injection` `<i8`. Rows are source-major within an injection; the first 128 injections are the eval ones.
   - validation samples, packed (`canna.lisa.samples.load` unpacks): `f` `(N,)`; `f0_bins`, `overlap`, `source_snr` `(N,128,4)`; `log_likelihood`, `snr` `(N,128)`; `tarp_ref` `(N,4,8)`; `x` `(N,128,4,8)` (row 0 of the draw axis is the truth). Beside them `validate.summarise`'s scores: `rank_<q>` `<i8 (N,4)`, `joint_rank_<q>` `(N,)`, `snr_hat`, `joint_snr_hat`, `energy`, `crps`, `joint_energy`, `width_ratio`, `draws`.
 - `mock.json`: description, parameters (`wide`, `narrow`, `floor_bins`, `floor_snr`), counts, and a `checks` block (width over Fisher per SNR band, scorecard per SNR band, gamma-test p, bias and middle-half share per rank set, all and loud).

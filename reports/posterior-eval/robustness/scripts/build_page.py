@@ -1,7 +1,7 @@
 """Write robustness.html from data/*.json: the flow's posteriors on misspecified windows against their in-distribution pairs, per run.
 
 Stdlib only; run from the repo root:
-    uv run --frozen python reports/posterior-eval/robustness/scripts/build_page.py
+    python reports/posterior-eval/robustness/scripts/build_page.py
 """
 
 import json
@@ -131,7 +131,7 @@ svg [data-act] { cursor: pointer; }
 </div>
 <div class="card">
   <h2>Is the truth still inside the flow's credible intervals?</h2>
-  <p class="note">Left: the fraction of sources whose truth lies inside the central 68% and 95% of their matched draws, per case, against the nominal level (a calibrated flow sits on the line, an overconfident one below it). Right: the selected case's histogram of the truth's rank among the draws (flat when calibrated; a U means too narrow, a hump too wide). Click a case to select it.</p>
+  <p class="note">Left: the fraction of sources whose truth lies inside the central 68% and 95% of their draws, per case, against the nominal level (a calibrated flow sits on the line, an overconfident one below it). Right: the selected case's histogram of the truth's rank among the draws (flat when calibrated; a U means too narrow, a hump too wide). Click a case to select it.</p>
   <div class="legend" id="lg-cov"></div>
   <div class="two"><div id="p-cov"></div><div id="p-rank"></div></div><div class="tip"></div>
 </div>
@@ -234,9 +234,9 @@ function tiles() {
   const tile = (k, v, s) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${s}</div></div>`;
   document.getElementById("tiles").innerHTML = [
     tile("Run", esc(d.config), `${esc(d.run)}, epoch ${d.epoch}, ${esc(d.device)}`),
-    tile("Windows per case", nInj, `the eval's ${nEval}${nInj > nEval ? ` and ${nInj - nEval} of the scorecard's random ones` : ""}, ${d.n_sources} sources each`),
+    tile("Windows per case", nInj, `evenly spread over the eval's 128, ${d.n_sources} sources each`),
     tile("Sampler", `${d.ode_steps} steps`, `the eval's sampler, ${d.draws} draws per window`),
-    tile("Matcher check", d.matcher_mismatch === undefined ? "–" : pct(d.matcher_mismatch), "baseline draws the page's matcher pairs unlike the eval's; 0% expected"),
+    tile("Matcher check", d.matcher_mismatch === undefined ? "–" : pct(d.matcher_mismatch), "baseline sources whose f0 match to the truth is not the slot index; 0% expected"),
   ].join("");
 }
 
@@ -284,7 +284,7 @@ function summary(rows, value) {
 
 function shiftPanels() {
   const d = run(), c = S.col, col = d.columns[c], rows = paired(d);
-  document.getElementById("n-shift").innerHTML = `Left: each matched source's ${esc(col)} width over its own width in the baseline case (same window, truth and noise); 1 means unchanged. Right: the offset of its posterior median from the truth in units of its own width, |median − truth| / width; a calibrated posterior keeps this around 0.67 (the median |z| of a Gaussian), the dashed line. Orange is the source the case perturbs, blue the others in the window (the noise cases perturb the window, not a source). Dots are medians, bars the interquartile range.`;
+  document.getElementById("n-shift").innerHTML = `Left: each source's ${esc(col)} width over its own width in the baseline case (same window, truth and noise); 1 means unchanged. Right: the offset of its posterior median from the truth in units of its own width, |median − truth| / width; a calibrated posterior keeps this around 0.67 (the median |z| of a Gaussian), the dashed line. Orange is the source the case perturbs, blue the others in the window (the noise cases perturb the window, not a source). Dots are medians, bars the interquartile range.`;
   rowPanel("p-width", summary(rows, r => r.base && ok(r.width[c]) && ok(r.base.width[c]) && r.base.width[c] > 0 ? r.width[c] / r.base.width[c] : NaN), {log: true, ref: 1, label: `${col} width / baseline width`, xfmt: v => fmt(v) + "×", title: "width against the source's baseline"});
   rowPanel("p-z", summary(rows, r => ok(r.offset[c]) && ok(r.width[c]) && r.width[c] > 0 ? Math.abs(r.offset[c]) / r.width[c] : NaN), {log: true, ref: 0.6745, label: `|${col} offset| / width`, xfmt: fmt, title: "offset in posterior widths"});
   const sw = c => `<svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="${c}" stroke-width="2"/><circle cx="11" cy="5" r="4" fill="${c}"/></svg>`;

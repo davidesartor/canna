@@ -1,9 +1,8 @@
-# Robustness: how does the flow behave on windows it was not trained on? (2026-10-24)
+# Robustness: how does the flow behave on windows it was not trained on? (2026-11-02)
 
-The only run in `data/` is `dusty-otter-narrow-XS`, a 2,000-step narrow-XS **pipeline test**
-stopped at epoch 4. It shows that every case runs end to end. Its posteriors are close to the
-prior, so it says nothing about how a trained flow handles misspecification. The narrow-B and
-full-B runs land around 2026-10-25; until they are probed, this report has no findings.
+Run: `261101-royal-ferret-narrow-B` (epoch 1250, bf16 backbone, 128 draws, 32 ODE steps), 32 injections
+per case (128 sources each; the page's windows tile reads the same). `dusty-island-full-B` was not probed. The `dusty-otter-narrow-XS` record is the old
+pipeline test (old case names); delete `data/dusty-otter-narrow-XS.json` by hand, it still shows on the page.
 
 ## Takeaways
 
@@ -28,27 +27,35 @@ full-B runs land around 2026-10-25; until they are probed, this report has no fi
   - 68% and 95% coverage, and a rank histogram;
   - what the flow's slots claim when there is nothing to find;
   - how often a fifth source gets a slot.
-- **Answer.** Pending the trained runs. Once the runs' directories are in `outputs/runs/`, from
-  the repo root:
+- **Answer.** Mostly it widens only a little and does not go confidently wrong, with weak spots
+  in calibration. Baseline f0 68% coverage is 0.60 (width ratio 1 by definition), noise x0.5
+  keeps it at 0.61, noise x2 drops it to 0.44 with f0 widths 0.80x the baseline's (median
+  |offset|/width 1.21 against 0.79). f0 past the edge gives 0.42 (|offset|/width 1.26), fdot
+  above the prior 0.63, SNR above the prior 0.53 (widths 0.95x). One source fewer widens nothing
+  (0.89x, coverage 0.75); one source more narrows the others to 0.74x (coverage 0.52), and the
+  extra source gets a slot in 0.89 of draws (median found fraction). In the empty window the 128
+  slots claim a median SNR of 0.34, the same as the baseline's, with f0 spread 29.1 against 27.0
+  bins. Even the baseline sits at 0.60, below 0.68, so the cases are read against it.
+
+  The sources in the baseline have median |offset|/width 0.79 (0.67 is calibrated).
+
+  Rebuild, from the repo root (single bare sbatch; `PYTHON` is the project venv's python):
 
   ```bash
-  source slurm/unity.env
-  sbatch $CANNA_SBATCH_GPU --partition=gpu,gpu-preempt --gres=gpu:1 reports/posterior-eval/robustness/scripts/robustness.sbatch <narrow-B run> --extra 40
-  sbatch $CANNA_SBATCH_GPU --partition=gpu,gpu-preempt --gres=gpu:1 reports/posterior-eval/robustness/scripts/robustness.sbatch <full-B run> --extra 40
+  sbatch --export=ALL,PYTHON=$PWD/.venv/bin/python --partition=gpu-highvram,gpu-preempt-highvram --account=pi_mehuber_umass_edu --qos=normal --constraint=a100 --gres=gpu:1 reports/posterior-eval/robustness/scripts/robustness.sbatch 261101-royal-ferret-narrow-B --draws 128 --injections 32
   ```
 
-  Each writes `data/<run>.json` and rebuilds the page. The probe samples with the eval's 32
-  steps. If [sampler convergence](../sampler-convergence/README.md) finds that 32 steps collapse
-  narrow posteriors, add `--ode-steps <converged>` so the baseline itself is not too narrow.
+  The probe samples with the run's 32 steps. If [sampler convergence](../sampler-convergence/README.md)
+  finds that 32 steps collapse narrow posteriors, add `--ode-steps <converged>`.
 
 ## What the page shows
 
 [`robustness.html`](robustness.html) is standalone and works from `file://`. The selected run,
 coordinate and case are kept in the URL hash. A run with fewer than 100k training steps is badged
-"untrained" and the page carries a banner saying it is a pipeline test.
+"untrained".
 
-- **Tiles.** The run, the windows per case, the sampler, and the check that the page's general
-  matcher pairs baseline draws exactly as the eval's `match_sources` does.
+- **Tiles.** The run, the windows per case, the sampler, and the check that no baseline source's
+  f0 match is off its slot index (0% expected).
 - **Do the posteriors widen or shift off-distribution?** One row per case, as a median with an
   interquartile bar, and the perturbed source apart from the untouched ones. On the left is the
   width over the same source's baseline width. On the right is |median − truth| / width, against
@@ -61,15 +68,13 @@ coordinate and case are kept in the URL hash. A run with fewer than 100k trainin
   band). It also marks the prior's SNR range.
 - **Does the flow find a fifth source it has no slot for?** Per true source in the one-more case,
   the fraction of draws that give it a slot, against its SNR.
-- **What this means.** How to read each card. For an untrained run, an explicit note that its
-  numbers are not findings.
+- **What this means.** How to read each card. 
 
 ## Method
 
-- `scripts/robustness_probe.py` runs on the run's commit with `load_trained`. The injections are
-  the eval's 10 SNR quantiles and, with `--extra n`, the scorecard's first n random candidates,
-  with the eval's and scorecard's noise keys. Base draws are the eval's (`sample_flow` on
-  `jr.split(key, N_POSTERIOR)`), shared by every case.
+- `scripts/robustness_probe.py` runs on the working tree's `src` with `load_trained`. The injections are
+  the eval's first `--injections` (default 128, all sorted by f0), with the eval's noise keys.
+  Base draws are the eval's (`jr.normal(fold_in(key, 1), ...)`), shared by every case.
 - Each case is built with the repo's own simulator. `src/` is not modified.
   - **Noise cases.** `dataclasses.replace(problem, oms_noise=…·√k, acceleration_noise=…·√k)`
     simulates the observation. `preprocess` still whitens by the trained problem's PSD, as a
@@ -83,9 +88,9 @@ coordinate and case are kept in the URL hash. A run with fewer than 100k trainin
     one slot of another `sample_physical` draw for the same window. An empty window zeros every
     amplitude.
 - The posterior comes from `sample_posterior` at the run's `ode_steps` (or `--ode-steps`).
-  Draws are matched to the present true sources by the cheapest injective pairing in
-  `match_sources`' own features. With five truths and four slots, a truth goes unpaired in a
-  draw. In the baseline, this matcher must agree with `match_sources` (`matcher_mismatch`).
+  Draws are matched to the present true sources by f0 order (the flow's slots are f0-ordered); with
+  five truths and four slots, a truth goes unpaired in a draw. In the baseline, the match must be
+  the slot index (`matcher_mismatch`, 0.0 here).
 - Per matched source and column (f0 in bins, then the flow coordinates past f0), the probe
   records:
   - width: 1.4826 × MAD
@@ -99,20 +104,16 @@ coordinate and case are kept in the URL hash. A run with fewer than 100k trainin
 
 ## How to rebuild
 
-From the repo root, after `source slurm/unity.env`:
+From the repo root, as the single bare sbatch above (GPU, about 9 min for 32 injections and
+128 draws on an A100). The page alone (stdlib, fine on a login node):
 
 ```bash
-# a trained B run: 50 windows × 9 cases at 256 draws
-sbatch $CANNA_SBATCH_GPU --partition=gpu,gpu-preempt --gres=gpu:1 reports/posterior-eval/robustness/scripts/robustness.sbatch <run> --extra 40
-# the smoke test this folder holds (CPU, 4 cores, under 1 h for an XS run)
-sbatch $CANNA_SBATCH_CPU reports/posterior-eval/robustness/scripts/robustness.sbatch dusty-otter-narrow-XS --draws 64
-# the page alone (stdlib, fine on a login node)
-uv run --frozen python reports/posterior-eval/robustness/scripts/build_page.py
+python3 reports/posterior-eval/robustness/scripts/build_page.py
 ```
 
-The sbatch clears stray `LISA_*`, runs the probe on the run's commit via `slurm/run-src.sh`, and
-then rebuilds the page. Words after the run go to the probe: `--draws`, `--extra`,
-`--ode-steps`, `--cases`.
+The sbatch clears stray `LISA_*`, takes bf16 from the run's config, runs the probe on the working
+tree's `src`, and then rebuilds the page. Words after the run go to the probe: `--draws`,
+`--injections`, `--ode-steps`, `--cases`.
 
 ## Data
 

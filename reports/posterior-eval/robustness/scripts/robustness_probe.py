@@ -1,11 +1,11 @@
 """The flow on misspecified windows: noise level, sources just outside the prior, a source fewer or more, no source.
 
 Every case reuses the baseline's truth, window and noise key and changes one thing, so each matched
-source pairs with its in-distribution self. Flow only: the case's data come from the repo's
+source pairs with its in-distribution self (slots and truth sources both by f0). Flow only: the case's data come from the repo's
 simulator with modified parameters, the posterior from sample_posterior alone.
-Run from the repo root on the run's commit (slurm/run-src.sh), as robustness.sbatch does:
-    LISA_RUN=<run> uv run --frozen python reports/posterior-eval/robustness/scripts/robustness_probe.py \
-        [--draws 256] [--extra 40] [--ode-steps <run's>] [--cases baseline,noise x2,...]
+Run from the repo root as robustness.sbatch does:
+    LISA_RUN=<run> PYTHONPATH=src python reports/posterior-eval/robustness/scripts/robustness_probe.py \
+        [--draws 256] [--injections 128] [--ode-steps <run's>] [--cases baseline,noise x2,...]
 The record goes to data/<run>.json, rewritten after every case.
 """
 
@@ -27,23 +27,23 @@ import numpy as np
 from jaxtyping import Array, Float
 
 from canna.lisa import config as run_config
-from canna.lisa.chart import flow_to_physical, physical_to_flow, sample_flow
-from canna.lisa.injections import N_POSTERIOR, match_sources, sort_by_snr
+from canna.lisa.chart import flow_to_physical, physical_to_flow
+from canna.lisa.injections import N_POSTERIOR, eval_injections, sort_by_f0
 from canna.lisa.physics import FDOT_STD, log10_fdot_mean
-from canna.lisa.problem import LisaGB, f0_window, sample_f
+from canna.lisa.problem import LisaGB, f0_window
 from canna.lisa.sample import sample_posterior
 from canna.lisa.simulator import (
     preprocess,
     sample_observation,
     sample_physical,
+    sample_window,
     snr,
     source_snrs,
 )
 from canna.lisa.train import load_trained
 
 REPORT = Path(__file__).parents[1]
-# the eval's selection when this report ran: the candidates at ten window-SNR quantiles
-N_CANDIDATES, N_QUANTILES = 1024, 10
+N_CANDIDATES = 1024
 COLUMNS = ["f0 [bins]", "fdot", "l", "b", "Re z+", "Im z+", "Re z−", "Im z−"]
 CASES = {
     "baseline": "in distribution: the eval's injections as drawn",
@@ -61,13 +61,13 @@ CASES = {
 def misspecify(
     problem: LisaGB, case: str, latent: Float[Array, "S 8"], f, key, snr_top: float
 ) -> tuple[LisaGB, Float[Array, "T 8"], np.ndarray, np.ndarray, np.ndarray]:
-    """The case's noise problem, truth [T, 8], which sources are present and perturbed, and each one's baseline slot."""
+    """The case's noise problem, truth [T, 8] by f0, which sources are present and perturbed, and each one's baseline slot."""
     n = latent.shape[0]
     present, perturbed, base_slot = np.ones(n, bool), np.zeros(n, bool), np.arange(n)
     noisy = problem
-    scale_to = lambda p, s, target: p.at[s, 2].multiply(
-        target / source_snrs(problem, p, f)[s]
-    )
+    own_snr = np.asarray(source_snrs(problem, latent, f))
+    loudest, quietest = int(np.argmax(own_snr)), int(np.argmin(own_snr))
+    scale_to = lambda p, s, target: p.at[s, 2].multiply(target / own_snr[s])
     if case.startswith("noise"):
         k = float(case.removeprefix("noise ×"))
         noisy = dataclasses.replace(
@@ -77,17 +77,19 @@ def misspecify(
         )
     elif case == "f0 past the edge":
         past = problem.response_points // 8 / problem.t_obs
-        latent = latent.at[0, 0].set(f0_window(problem, f)[1] + past)
-        perturbed[0] = True
+        latent = latent.at[loudest, 0].set(f0_window(problem, f)[1] + past)
+        perturbed[loudest] = True
     elif case == "fdot above the prior":
-        latent = latent.at[0, 1].set(10.0 ** (log10_fdot_mean(latent[0, 0]) + 5 * FDOT_STD))
-        perturbed[0] = True
+        latent = latent.at[loudest, 1].set(
+            10.0 ** (log10_fdot_mean(latent[loudest, 0]) + 5 * FDOT_STD)
+        )
+        perturbed[loudest] = True
     elif case == "SNR above the prior":
-        latent = scale_to(latent, 0, 1.5 * snr_top)
-        perturbed[0] = True
+        latent = scale_to(latent, loudest, 1.5 * snr_top)
+        perturbed[loudest] = True
     elif case == "one source fewer":
-        latent = latent.at[n - 1, 2].set(0.0)
-        present[n - 1] = False
+        latent = latent.at[quietest, 2].set(0.0)
+        present[quietest] = False
     elif case == "one source more":
         other = sample_physical(problem, key, f)
         latent = jnp.concat([latent, other[int(jr.randint(jr.fold_in(key, 1), (), 0, n))][None]])
@@ -98,37 +100,29 @@ def misspecify(
         present[:] = False
     else:
         assert case == "baseline", case
-    return noisy, latent, present, perturbed, base_slot
+    # truth sources by f0, as eval's: the perturbed f0 and an appended source move
+    order = np.argsort(np.asarray(latent[:, 0]))
+    return noisy, latent[order], present[order], perturbed[order], base_slot[order]
 
 
 def features(problem: LisaGB, p: np.ndarray, f) -> np.ndarray:
-    """match_sources' matching features: f0 over the window, log A, the sky's unit vector."""
+    """The matching feature: f0 over the window's width."""
     lo, hi = (float(v) for v in f0_window(problem, f))
-    lam, beta = p[..., 3], p[..., 4]
-    return np.stack(
-        [
-            p[..., 0] / (hi - lo),
-            np.log10(np.abs(p[..., 2]) + 1e-300),
-            np.cos(beta) * np.cos(lam),
-            np.cos(beta) * np.sin(lam),
-            np.sin(beta),
-        ],
-        axis=-1,
-    )
+    return p[..., :1] / (hi - lo)
 
 
 def match_any(problem: LisaGB, draws: np.ndarray, truth: np.ndarray, f) -> np.ndarray:
-    """Draws [N, D, 8] onto truths [T, 8] by the cheapest injective pairing; a truth left without a slot gets NaN."""
+    """Draws [N, D, 8] by f0 onto truths [T, 8] by f0, the order-preserving injective pairing nearest in f0; a truth left without a slot gets NaN."""
     fd, ft = features(problem, draws, f), features(problem, truth, f)
     n, d, t = draws.shape[0], draws.shape[1], truth.shape[0]
     if t <= d:
         # each truth picks a distinct slot
-        perms = np.array(list(itertools.permutations(range(d), t)))
+        perms = np.array(list(itertools.combinations(range(d), t)))
         cost = ((fd[:, perms] - ft[None, None]) ** 2).sum((-1, -2))
         best = perms[np.argmin(cost, axis=1)]
         return np.take_along_axis(draws, best[:, :, None], axis=1)
     # each slot picks a distinct truth
-    perms = np.array(list(itertools.permutations(range(t), d)))
+    perms = np.array(list(itertools.combinations(range(t), d)))
     cost = ((fd[:, None] - ft[perms][None]) ** 2).sum((-1, -2))
     best = perms[np.argmin(cost, axis=1)]
     aligned = np.full((n, t, draws.shape[2]), np.nan)
@@ -149,33 +143,28 @@ def rounded(v) -> list:
     )(np.asarray(v, np.float64)).tolist()
 
 
-def injection_set(problem: LisaGB, seed: int, n_extra: int):
-    """The eval's ten injections and the scorecard's first n_extra random ones, with the same keys, sources loudest first.
+def injection_set(problem: LisaGB, seed: int, n: int):
+    """n of the eval's injections spread over the band, with the eval's noise keys, sources by f0.
 
-    Also returns the 99.9% quantile of the candidates' per-source SNR, the top of the prior's loudness.
+    Also returns the 99.9% quantile of plain prior draws' per-source SNR, the top of the prior's loudness.
     """
-    key_pick, key_window, key_noise = jr.split(jr.key(seed), 3)
-    windows = jax.vmap(partial(sample_f, problem))(jr.split(key_window, N_CANDIDATES))
-    latents = jax.vmap(partial(sample_physical, problem))(
-        jr.split(key_pick, N_CANDIDATES), windows
+    latents, windows, snrs, noise_keys, _ = eval_injections(problem, seed)
+    key_pick, key_window = jr.split(jr.fold_in(jr.key(seed), 7))
+    prior_windows = jax.vmap(partial(sample_window, problem))(jr.split(key_window, N_CANDIDATES))
+    prior_latents = jax.vmap(partial(sample_physical, problem))(
+        jr.split(key_pick, N_CANDIDATES), prior_windows
     )
-    snrs = np.asarray(jax.lax.map(lambda pc: snr(problem, *pc), (latents, windows)))
-    source_snr = np.asarray(jax.lax.map(lambda pc: source_snrs(problem, *pc), (latents, windows)))
-    quantiles = np.linspace(1.0 / N_QUANTILES, 1.0, N_QUANTILES)
-    chosen = np.argsort(snrs)[np.round(quantiles * (N_CANDIDATES - 1)).astype(int)]
-    others = np.setdiff1d(np.arange(N_CANDIDATES), chosen)[:n_extra]
-    keys = list(jr.split(key_noise, N_QUANTILES)) + [
-        jr.fold_in(key_noise, 10_000 + int(i)) for i in others
-    ]
-    picked = np.concatenate([chosen, others])
-    sorted_latents = jax.vmap(partial(sort_by_snr, problem))(latents[picked], windows[picked])
-    return sorted_latents, windows[picked], snrs[picked], keys, float(np.quantile(source_snr, 0.999))
+    source_snr = np.asarray(
+        jax.lax.map(lambda pc: source_snrs(problem, *pc), (prior_latents, prior_windows))
+    )
+    picked = np.linspace(0, len(windows) - 1, n).round().astype(int)
+    return latents[picked], windows[picked], snrs[picked], list(noise_keys[picked]), float(np.quantile(source_snr, 0.999))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--draws", type=int, default=256)
-    parser.add_argument("--extra", type=int, default=0)
+    parser.add_argument("--injections", type=int, default=128)
     parser.add_argument("--ode-steps", type=int, default=None)
     parser.add_argument("--cases", default=",".join(CASES))
     parser.add_argument("--out", default=None)
@@ -189,7 +178,7 @@ def main() -> None:
     out = Path(args.out or REPORT / "data" / f"{config.run}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     latents, windows, window_snrs, keys, snr_top = injection_set(
-        problem, config.seed, args.extra
+        problem, config.seed, args.injections
     )
 
     record = dict(
@@ -211,7 +200,7 @@ def main() -> None:
         injections=[
             dict(
                 index=j,
-                eval=j < N_QUANTILES,
+                eval=True,
                 f=float(windows[j]),
                 window_snr=round(float(window_snrs[j]), 3),
                 f0_window_bins=round(
@@ -228,11 +217,10 @@ def main() -> None:
         slots=[],
     )
     save = lambda: out.write_text(json.dumps(record) + "\n")
+    # the eval's base draws, one slot per flow slot whatever the case's source count
     u0s = [
-        jax.vmap(partial(sample_flow, problem), in_axes=(0, None))(
-            jr.split(key_n, N_POSTERIOR)[: args.draws], f
-        )
-        for key_n, f in zip(keys, windows)
+        jr.normal(jr.fold_in(key_n, 1), (N_POSTERIOR, problem.n_sources, 8))[: args.draws]
+        for key_n in keys
     ]
 
     mismatch = 0.0
@@ -245,16 +233,18 @@ def main() -> None:
             )
             # the case's data, whitened by the PSD the flow was trained on
             y = preprocess(problem, sample_observation(noisy, key_n, truth, f), f)
-            post = sample_posterior(flow, u0s[j], y, f, ode_steps)
+            post = sample_posterior(problem, flow, u0s[j], y, f, ode_steps)
             draws = np.asarray(
-                jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)
+                sort_by_f0(
+                    jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)
+                )
             )
             truth = np.asarray(truth)
             seen_snr = np.asarray(source_snrs(noisy, jnp.asarray(truth), f))
 
-            # the general matcher must agree with the eval's where both apply
+            # in the baseline the nearest-f0 pairing should be the slot index
             if case == "baseline":
-                same = match_any(problem, draws, truth, f) == match_sources(problem, draws, truth, f)
+                same = match_any(problem, draws, truth, f) == draws
                 mismatch = max(mismatch, float(1 - same.all(axis=(1, 2)).mean()))
 
             # each present true source against the draws paired to it
@@ -321,7 +311,7 @@ def main() -> None:
         )
     record["matcher_mismatch"] = mismatch
     save()
-    print(f"draws the general matcher pairs unlike match_sources: {mismatch:.3g}")
+    print(f"baseline draws the f0 matcher pairs unlike the slot index: {mismatch:.3g}")
     print(f"wrote {out}")
 
 
