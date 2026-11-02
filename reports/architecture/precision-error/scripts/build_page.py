@@ -1,7 +1,7 @@
 """Write precision-error.html from data/<run>-<platform>.json: each bf16 mode's error against float32, per block and in posterior widths.
 
 Stdlib only; run from the repo root:
-    uv run --frozen python reports/architecture/precision-error/scripts/build_page.py
+    python reports/architecture/precision-error/scripts/build_page.py
 """
 
 import json
@@ -10,7 +10,7 @@ from pathlib import Path
 
 REPORT = Path(__file__).parents[1]
 SMOKE_STEPS = 100_000
-COORDS = ["f0", "Mc", "l", "b", "Re z+", "Im z+", "Re z−", "Im z−"]
+COORDS = ["f0", "fdot", "l", "b", "Re z+", "Im z+", "Re z−", "Im z−"]
 
 
 def flat(a) -> list:

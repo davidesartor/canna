@@ -1,36 +1,31 @@
-# bf16 precision error: how far each `bf16` mode moves the flow from float32, in posterior widths (2026-10-24)
+# bf16 precision error: how far each `bf16` mode moves the flow from float32, in posterior widths (2026-11-02)
 
 ## Takeaways
 
-- **Trained runs (2026-10-25, research log [F61](../../research-log/061-fp32-backbone-halves-f0-but-overconfident.md)):**
-  `misty-meadow-narrow-S` and `lucky-falcon-full-B` on a TREX A100. In `backbone` mode full-B's
-  |Δx̂₁| is a median 0.02–0.08 posterior widths but 280–810 on its loudest sources, and the
-  sampled draws move by up to 254 widths; `attention` mode stays below 0.04 (median). A float32
-  eval halves f₀'s width and only f₀'s. The smoke-run notes below are kept for the record.
+Run `261101-royal-ferret-narrow-B` (epoch 1250, A100, job 66528662, 128 eval injections, 16 states
+and 64 draws each, f0-sorted). The old `misty-meadow-narrow-S` and `lucky-falcon-full-B`
+(research log [F61](../../research-log/061-fp32-backbone-halves-f0-but-overconfident.md)) and
+the `dusty-otter-narrow-XS` smoke records predate f0 ordering and the frame model; they still
+show on the page, and their JSONs are for you to delete. `dusty-island-full-B` was not probed.
 
-- **Smoke data only.** The only checkpoint on Unity is dusty-otter-narrow-XS (2000 steps), measured
-  on CPU, so these numbers show the mechanism and the tooling, not a trained flow's error. Rerun on
-  narrow-B and full-B on a GPU (commands below) before quoting any of it.
-- **The recording copies of `encode`/`decode` reproduce the unpatched forward pass** (max |Δ| 1.7e-6,
-  float32), and the float64 floor sits at about 1e-7 relative token error and 2e-6 σ in x̂₁, so
-  the float32 reference is clean.
-- **Relative token error at the backbone output (CPU, smoke run, median):** `attention` 2e-3 at t = 0
-  falling to 1e-4 by t = 0.99, and `backbone` 8e-3 falling to 4e-3, which is about the bf16 roundoff
-  2^-8 = 4e-3. So bf16 backbone error does not accumulate past one rounding.
-- **In posterior widths (median over sources and coordinates):** `backbone` |Δx̂₁| is 0.12 σ at
-  t = 0 and 0.04 σ at t ≥ 0.99, and 0.14 σ of draw displacement after the 32-step sampler.
-  `attention` is 0.03 σ at t = 0 and below 0.001 σ at t ≥ 0.99, and 0.06 σ after the sampler.
-  - **The maximum matters more than the median:** the worst source and coordinate reaches
-    100 to 300 σ in `backbone` mode (127 σ in `attention` mode). That is the high-SNR sources, whose
-    Fisher width is tiny; relative error is constant but the width shrinks as 1/SNR. The page's SNR
-    scatter shows which sources and coordinates these are. This is the number to check on a trained
-    run.
-  - Sample width ratios to float32 span 0.90 to 1.31 (`backbone`) and 0.89 to 1.19 (`attention`),
-    against 0.97 to 1.03 for float64.
-- **Relative velocity error grows toward late t** in `backbone` mode (0.005 at t = 0 to 0.18 at
-  t = 0.9999), since the velocity divides x̂₁ − x by 1 − s (now 1 − t).
+- **bf16 error is small in posterior widths on narrow-B.** `backbone` mode (training's default):
+  median |Δx₁|/width is 0.004 at t = 0 and 0.003 at t ≥ 0.99, and the 32-step sampler moves draws
+  a median 0.008 widths. `attention` is 0.001 and 0.001, sampler 0.001. The old full-B
+  and narrow-S medians were 10 to 100 times larger.
+- **The maxima are not.** The worst source and coordinate reaches 22 widths (`backbone`, t = 0) and
+  24 (t = 0.999), 7 in `attention`. After the sampler, `backbone` displaces a draw by up to 5
+  widths and sample widths to float32 span 0.80 to 2.02 (`attention` 0.89 to 1.19).
+- **Relative token error** at the backbone output: `attention` 2e-3 and `backbone` 6e-3 to 8e-3
+  throughout, about the bf16 roundoff 2^-8 = 4e-3, so it does not accumulate past one rounding.
+- **Relative velocity error grows toward late t** in `backbone` mode: 0.005 at t = 0 to 0.47 at
+  t = 0.9999 (`attention` 0.002 to 0.034), since the velocity divides by 1 − t. The x₁ error does not grow
+  with it.
 - **A 1σ move is smaller than the bf16 rounding of the decode-input token for some (source,
-  coordinate)**: the ratio has median 4.9 and minimum 0.057.
+  coordinate)**: the ratio has median 48 and minimum 0.16.
+- **The recording copies of `encode`/`decode` reproduce the unpatched forward pass** (max |Δ|
+  1.7e-6, float32). There is no float64 floor for this run: on the GPU the `f64` mode is
+  dropped (cuBLAS has no float64 GEMM path here). The CPU smoke record has it (about 1e-7 relative
+  token error), which is the old XS run.
 
 ## What the page shows
 
@@ -56,7 +51,7 @@ accuracy only.
 
 ## Method
 
-`scripts/precision_probe.py` runs on the run's own commit (via `slurm/run-src.sh`):
+`scripts/precision_probe.py` runs on the working tree's `src`:
 
 - **Modes.** The trained parameters (float32) are put into four network structures that differ only
   in their static dtypes, as `train.setup` builds them:
@@ -66,15 +61,15 @@ accuracy only.
   - `f64`: a float64 backbone, the reference's own floor. Attention logits stay float32 through
     `preferred_element_type`. The mode is dropped if XLA rejects that.
   - Embeddings, modulation and unembedding are float32 in every mode, as in the code.
-- **Inputs.** The 10 eval injections at the SNR deciles (`eval_injections(problem, seed)`), with
-  observation, base draws and noise keys built exactly as `eval.py` builds them.
+- **Inputs.** The eval's injections (`eval_injections(problem, seed)`, f0-sorted), with
+  observation, base draws (`fold_in(key, 1)`) and noise keys built exactly as `eval.py` builds them.
 - **Recording.** `MMDiT.encode` and `MMDiT.decode` are swapped for copies that also return every
   block's activations: the data tokens, keys and values, and the source stream entering each block
   and leaving the last. A check against the unpatched forward pass is stored as `patch_check`.
 - **States.** For each t in {0, 0.5, 0.9, 0.99, 0.999, 0.9999}:
   - 16 base draws are moved along the straight path to the truth, x_t = (1 − t) u + t x₁.
   - x̂₁ is the head's mean m, from one network call. data/ predates this: it was measured with a
-    time power and self-conditioning on the float32 network's own first-call prediction.
+
 - **Widths.** The posterior width per source and coordinate is 1.4826 × MAD of the Fisher forecast
   draws (`fisher_samples`, 1024 draws, the same draws `eval.py` uses), mapped to flow coordinates.
   - The mcmc reference report checks the Fisher forecast against MCMC. Above SNR 40, Fisher ÷ MCMC
@@ -82,7 +77,7 @@ accuracy only.
   - So low-SNR widths here are good to a factor of about 2.
   - Fisher draws in Mc can be negative at low SNR, which gives NaN in flow coordinates. MAD ignores
     them.
-- **End to end.** `sample_posterior` with the run's `ode_steps` (midpoint steps), from the same 64
+- **End to end.** `sample_posterior(problem, ...)` with the run's `ode_steps` (midpoint steps), from the same 64
   base draws in every mode. It reports the median displacement from the float32 draws in widths,
   and the ratio of the sample widths.
 - **Token resolution.** At the truth (t = 0.99), each coordinate in turn is moved by 1σ, and
@@ -98,26 +93,23 @@ accuracy only.
 
 ## Rebuild
 
-From the repo root, CPU:
+From the repo root, as a single bare sbatch (GPU, 15 min on an A100 for 128 injections; the
+sbatch takes bf16 from the run's config and sources `slurm/gpu.sh` for the float32 reference):
 
-    source slurm/unity.env; sbatch $CANNA_SBATCH_CPU reports/architecture/precision-error/scripts/probe.sbatch <run>
-
-GPU, for the numbers that describe training's own arithmetic:
-
-    source slurm/unity.env; sbatch $CANNA_SBATCH_GPU --partition=gpu,gpu-preempt --gres=gpu:1 reports/architecture/precision-error/scripts/probe.sbatch <run>
+    sbatch --export=ALL,PYTHON=$PWD/.venv/bin/python --partition=gpu-highvram,gpu-preempt-highvram --account=pi_mehuber_umass_edu --qos=normal --constraint=a100 --gres=gpu:1 reports/architecture/precision-error/scripts/probe.sbatch 261101-royal-ferret-narrow-B
 
 The job writes `data/<run>-<platform>.json` and rebuilds the page from every JSON in `data/`. To
-rebuild only the page (stdlib only): `uv run --frozen python reports/architecture/precision-error/scripts/build_page.py`.
+rebuild only the page (stdlib only): `python3 reports/architecture/precision-error/scripts/build_page.py`.
 
 ## Data
 
 `data/<run>-<platform>.json`, one per run and platform.
 - **Run and platform:** run, config, commit, epoch, `run_bf16`, device, platform, `matmul_precision`.
 - **Setup:** `modes`, `reference`, `t_grid`, `patch_check`.
-- **Per injection:** `snr` [10, S]; `width` [10, S, 8].
+- **Per injection:** `snr` [128, S]; `width` [128, S, 8].
 - **Per block** (median and p90 per block): `encode[mode][y|k|v]` [L, 2]; `decode[mode]` [t, L+1, 2].
-- **Output error:** `x1_over_width[mode]` [10, t, S, 8]; `velocity[mode]` [10, t].
-- **End to end:** `e2e_displacement[mode]`, `e2e_width_ratio[mode]` [10, S, 8].
-- **Token resolution:** `token_ratio` [10, S, 8]; `token_rounding` [10, S].
+- **Output error:** `x1_over_width[mode]` [128, t, S, 8]; `velocity[mode]` [128, t].
+- **End to end:** `e2e_displacement[mode]`, `e2e_width_ratio[mode]` [128, S, 8].
+- **Token resolution:** `token_ratio` [128, S, 8]; `token_rounding` [128, S].
 
-Present: `dusty-otter-narrow-XS-cpu` (smoke, 2000 steps, commit 11fc8a4, CPU, job 66014389, 7 min).
+Present: `261101-royal-ferret-narrow-B-gpu` (epoch 1250, commit 8fc3ed9, A100, job 66528662, 15 min, modes none/attention/backbone) and the old records `misty-meadow-narrow-S-gpu`, `lucky-falcon-full-B-gpu` and `dusty-otter-narrow-XS-cpu` (smoke, 2000 steps, commit 11fc8a4, CPU, job 66014389, 7 min).

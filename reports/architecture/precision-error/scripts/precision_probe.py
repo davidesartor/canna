@@ -14,9 +14,9 @@ from einops import rearrange
 from jaxtyping import Array, Float
 
 from canna.lisa import config as run_config
-from canna.lisa.chart import physical_to_flow, sample_flow
-from canna.lisa.injections import eval_injections, fisher_samples
-from canna.lisa.network import LisaFlow
+from canna.lisa.chart import physical_to_flow
+from canna.lisa.injections import N_POSTERIOR, eval_injections, fisher_samples
+from canna.lisa.network import LisaFlow, reference_frame
 from canna.lisa.sample import sample_posterior
 from canna.lisa.simulator import preprocess, sample_observation, source_snrs
 from canna.lisa.train import load_trained
@@ -38,19 +38,20 @@ MAD_SIGMA = 1.4826
 RECORD: dict = {}
 
 
-def recording_encode(self, y, c, rope=None):
+def recording_encode(self, y, c, rope=None, r=None):
     """MMDiT.encode, also recording the y stream after every block and the cached keys and values."""
     params, static = eqx.partition(self.blocks, eqx.is_array)
 
-    def body(y, block):
-        y, kv = eqx.combine(block, static).encode(y, c, rope)
-        return y, (y, kv)
+    def body(carry, block):
+        y, r = carry
+        y, r, kv = eqx.combine(block, static).encode(y, c, rope, r)
+        return (y, r), (y, kv)
 
-    y_out, (ys, (k, v)) = jax.lax.scan(body, y, params)
-    _, (k_last, v_last) = self.last.encode(y_out, c, rope)
+    (y_out, r), (ys, (k, v)) = jax.lax.scan(body, (y, r), params)
+    _, r, (k_last, v_last) = self.last.encode(y_out, c, rope, r)
     k, v = jnp.concat([k, k_last[None]]), jnp.concat([v, v_last[None]])
     RECORD.update(y=jnp.concat([y[None], ys]), k=k, v=v)
-    return k, v
+    return (k, v), r
 
 
 def recording_decode(self, x, c, cache, rope=None, s=None):
@@ -74,22 +75,25 @@ def recording_decode(self, x, c, cache, rope=None, s=None):
 
 @eqx.filter_jit
 def encode_recorded(flow: LisaFlow, y: Float[Array, "F 6"], f: Float[Array, ""]):
-    """The data stream's cache, with every block's y, k and v."""
+    """The data stream's frame delta and cache, with every block's y, k and v."""
     RECORD.clear()
-    cache = flow.encode(y, f)
-    return cache, {key: RECORD[key].astype(jnp.float64) for key in ("y", "k", "v")}
+    delta, cache = flow.encode(y, f)
+    return (delta, cache), {key: RECORD[key].astype(jnp.float64) for key in ("y", "k", "v")}
 
 
 @eqx.filter_jit
-def decode_recorded(flow: LisaFlow, x, t, y, f, cache):
-    """The flow's mean m of x1 at states [N, S, 8], with the x stream at every block."""
+def decode_recorded(flow: LisaFlow, problem, z, t, delta, f, cache):
+    """The flow's z1 mean m [N, S, 8] and the x1 it implies in the mode's own frame, with the x stream at every block."""
+    frame = reference_frame(problem, delta, f)
+    mu, log_sigma = frame
 
-    def one(x):
+    def one(z):
         RECORD.clear()
-        m, _ = jnp.split(flow(x, t, y, f, cache), 2, axis=-1)
-        return m.astype(jnp.float64), RECORD["x"].astype(jnp.float64)
+        m, _ = jnp.split(flow(z, t, frame, f, cache), 2, axis=-1)
+        x1 = mu + jnp.exp(log_sigma) * m
+        return m.astype(jnp.float64), x1.astype(jnp.float64), RECORD["x"].astype(jnp.float64)
 
-    return jax.vmap(one)(x)
+    return jax.vmap(one)(z)
 
 
 def as_mode(problem, cfg, flow: LisaFlow, mode: str) -> LisaFlow:
@@ -130,7 +134,7 @@ def main() -> None:
     cfg = run_config.load_run()
     problem, trained, epoch = load_trained(cfg)
     flows = {mode: as_mode(problem, cfg, trained, mode) for mode in MODES}
-    latents, windows, _, _, noise_keys, prior_prec_p = eval_injections(
+    latents, windows, _, noise_keys, prior_prec_p = eval_injections(
         problem, cfg.seed
     )
 
@@ -141,10 +145,15 @@ def main() -> None:
         sample_observation(problem, noise_keys[0], latents[0], windows[0]),
         windows[0],
     )
-    u_check = sample_flow(problem, noise_keys[0], windows[0])
-    forward = eqx.filter_jit(
-        lambda flow: jnp.split(flow(u_check, jnp.asarray(0.5), y0, windows[0]), 2, axis=-1)[0]
-    )
+    u_check = jr.normal(jr.fold_in(noise_keys[0], 1), latents[0].shape)
+
+    @eqx.filter_jit
+    def forward(flow):
+        delta, cache = flow.encode(y0, windows[0])
+        frame = reference_frame(problem, delta, windows[0])
+        out = flow(u_check, jnp.asarray(0.5), frame, windows[0], cache)
+        return jnp.split(out, 2, axis=-1)[0]
+
     plain = forward(flows[REFERENCE])
 
     # attention's float32 logits may reject a float64 backbone: then there is no floor to show
@@ -154,12 +163,13 @@ def main() -> None:
         print(f"[precision] f64 mode dropped: {type(error).__name__}: {error}", flush=True)
         del flows["f64"]
     mmdit.MMDiT.encode, mmdit.MMDiT.decode = recording_encode, recording_decode
-    cache0, _ = encode_recorded(flows[REFERENCE], y0, windows[0])
-    recorded, _ = decode_recorded(
+    (delta0, cache0), _ = encode_recorded(flows[REFERENCE], y0, windows[0])
+    recorded, _, _ = decode_recorded(
         flows[REFERENCE],
+        problem,
         u_check[None],
         jnp.asarray(0.5),
-        y0,
+        delta0,
         windows[0],
         cache0,
     )
@@ -190,14 +200,15 @@ def main() -> None:
         )
         widths.append(width)
         snrs.append(np.asarray(source_snrs(problem, latent, f)))
-        u0 = jax.vmap(partial(sample_flow, problem), in_axes=(0, None))(
-            jr.split(key_n, N_DRAWS), f
-        )
+        u0 = jr.normal(jr.fold_in(key_n, 1), (N_POSTERIOR, *latent.shape))[:N_DRAWS]
 
         # the data stream, per mode
         caches, enc = {}, {}
         for mode, flow in flows.items():
             caches[mode], enc[mode] = encode_recorded(flow, y, f)
+        mu_ref, log_sigma_ref = reference_frame(problem, caches[REFERENCE][0], f)
+        sigma_ref = np.asarray(jnp.exp(log_sigma_ref))
+        z1 = (x1 - mu_ref) / jnp.exp(log_sigma_ref)
         for mode in flows:
             for key, axes in (
                 ("y", "l m d -> l m d"),
@@ -212,28 +223,28 @@ def main() -> None:
                     )
                 )
 
-        # x1 and the x stream at straight-path states between base draws and the truth
+        # x1 and the x stream at straight-path states between base draws and the truth, in the reference frame's z
         dec_t = {m: [] for m in flows}
         x1_t = {m: [] for m in flows}
         vel_t = {m: [] for m in flows}
         for t in T_GRID:
-            xt = (1 - t) * u0[:N_STATES] + t * x1
+            zt = (1 - t) * u0[:N_STATES] + t * z1
             t_arr = jnp.asarray(t)
             outs = {
-                m: decode_recorded(flows[m], xt, t_arr, y, f, caches[m])
+                m: decode_recorded(flows[m], problem, zt, t_arr, *caches[m][:1], f, caches[m][1])
                 for m in flows
             }
-            ref_out, ref_x = (np.asarray(a) for a in outs[REFERENCE])
-            for mode, (out, xs) in outs.items():
-                out, xs = np.asarray(out), np.asarray(xs)
+            ref_m, ref_x1, ref_x = (np.asarray(a) for a in outs[REFERENCE])
+            for mode, (m_z, x1_mode, xs) in outs.items():
+                m_z, x1_mode, xs = np.asarray(m_z), np.asarray(x1_mode), np.asarray(xs)
                 dec_t[mode].append(
                     token_relative_error(xs, ref_x, "n l s d -> l (n s) d")
                 )
-                x1_t[mode].append(np.median(np.abs(out - ref_out), axis=0) / width)
+                x1_t[mode].append(np.median(np.abs(x1_mode - ref_x1), axis=0) / width)
                 vel_t[mode].append(
                     np.median(
-                        np.linalg.norm(out - ref_out, axis=-1)
-                        / np.linalg.norm(ref_out - np.asarray(xt), axis=-1)
+                        np.linalg.norm(m_z - ref_m, axis=-1)
+                        / np.linalg.norm(ref_m - np.asarray(zt), axis=-1)
                     )
                 )
         for mode in flows:
@@ -244,7 +255,7 @@ def main() -> None:
         # end to end: the default sampler from the same base draws in every mode
         draws = {
             m: np.asarray(
-                sample_posterior(flows[m], u0, y, f, cfg.ode_steps)
+                sample_posterior(problem, flows[m], u0, y, f, cfg.ode_steps)
             )
             for m in flows
         }
@@ -257,15 +268,16 @@ def main() -> None:
             )
 
         # can a bf16 token resolve a 1σ move? the float32 decode input at the truth, each coordinate moved by its width
-        tokens = lambda x: decode_recorded(
+        tokens = lambda z: decode_recorded(
             flows[REFERENCE],
-            x[None],
+            problem,
+            z[None],
             jnp.asarray(0.99),
-            y,
+            caches[REFERENCE][0],
             f,
-            caches[REFERENCE],
-        )[1][0, 0]
-        base = np.asarray(tokens(x1))
+            caches[REFERENCE][1],
+        )[2][0, 0]
+        base = np.asarray(tokens(z1))
         rounding = np.linalg.norm(
             base
             - np.asarray(
@@ -277,12 +289,12 @@ def main() -> None:
             [
                 np.linalg.norm(
                     np.asarray(
-                        tokens(x1.at[:, c].add(jnp.asarray(width[:, c])))
+                        tokens(z1.at[:, c].add(jnp.asarray(width[:, c] / sigma_ref[:, c])))
                     )
                     - base,
                     axis=-1,
                 )
-                for c in range(x1.shape[-1])
+                for c in range(z1.shape[-1])
             ],
             -1,
         )
