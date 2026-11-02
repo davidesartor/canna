@@ -187,8 +187,10 @@ def test_attention_qk_norm_has_no_parameters_but_the_opt_in_gain():
         "attention_dtype",
         "qkv_proj_s",
         "out_proj_s",
+        "qkv_proj_r",
+        "out_proj_r",
     }
-    assert att.qk_gain is None and att.qkv_proj_s is None
+    assert att.qk_gain is None and att.qkv_proj_s is None and att.qkv_proj_r is None
 
 
 def test_attention_qk_gain_starts_as_the_plain_norm_and_sharpens_the_logits():

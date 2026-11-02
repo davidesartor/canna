@@ -65,7 +65,7 @@ def test_the_network_runs_and_its_velocity_depends_on_where_the_source_sits():
     params, static = jax.tree_util.tree_flatten(net)
     params = [
         (
-            p + 0.3 * jr.normal(jr.key(i), p.shape, p.dtype)
+            p + 0.1 * jr.normal(jr.key(i), p.shape, p.dtype)
             if isinstance(p, jax.Array) and jnp.issubdtype(p.dtype, jnp.floating)
             else p
         )

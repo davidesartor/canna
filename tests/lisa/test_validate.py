@@ -151,7 +151,7 @@ def test_a_whole_validation_runs_end_to_end(small_flow, tmp_path, capsys):
 
     problem, flow, _, _, _ = small_flow
     rows = [
-        validate_injection(problem, flow, jr.key(i), 1.0, n_draws=8, ode_steps=2)
+        validate_injection(problem, flow, jr.key(i), n_draws=8, ode_steps=2)
         for i in range(12)
     ]
     samples = {k: np.stack([np.asarray(r[k]) for r in rows]) for k in rows[0]}

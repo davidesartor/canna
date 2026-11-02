@@ -65,10 +65,10 @@ def test_an_unconstrained_direction_is_held_at_the_prior():
 def test_chunking_the_draws_changes_nothing(small_flow):
     """sample_posterior pushes the draws through in chunks; each draw's path is its own."""
     problem, flow, z0, y, f = small_flow
-    whole = sample_posterior(problem, flow, z0, y, f, 3, chunk=len(z0))
-    chunked = sample_posterior(problem, flow, z0, y, f, 3, chunk=2)
-    # the network computes in float32, the batch size changes its summation order, and the sub-bin f0 embedding amplifies it
-    np.testing.assert_allclose(whole, chunked, atol=5e-2)
+    whole = sample_posterior(problem, flow, z0, y, f, 1, chunk=len(z0))
+    chunked = sample_posterior(problem, flow, z0, y, f, 1, chunk=2)
+    # one step: the random flow amplifies the batch size's float32 summation order ~1e3 per step
+    np.testing.assert_allclose(whole, chunked, atol=1e-3)
 
 
 def perturbed(module, seed=7, scale=0.05):
