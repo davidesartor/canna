@@ -1,21 +1,21 @@
-# Source count: how many sources, and how many visible ones, a window holds (2026-10-26)
+# Source count: how many sources, and how many visible ones, a window holds (2026-11-02, full-B up to 16 mHz)
 
 ## Takeaways
 
 At N = 9,000,000 sources in the band and full-B's w = 512 bins (4 × R = 128):
 
-- **A window holds hundreds of thousands of sources.** The median is 172,651, and 99% of windows
-  hold at most 345,032.
-- **Most windows hold no visible source.** 0.70% of the prior's sources reach SNR 7, a mean of 6.9
+- **A window holds hundreds of thousands of sources.** The median is 172,521, and 99% of windows
+  hold at most 344,744.
+- **Most windows hold no visible source.** 0.70% of the prior's sources reach SNR 7, a mean of 6.92
   per window. Windows are centred where the prior is, mostly below where SNR 7 is reachable, so
-  90.8% of windows hold none.
+  91.1% of windows hold none.
 - **The rest can hold hundreds.**
-  - 6.3% of windows hold more than the 4 source tokens.
-  - 99% of windows hold at most 263 visible sources, 99.9% at most 329 and 99.99% at most 352.
-  - The busiest centres, near 1.68 mHz, hold up to 365 in 99% of their windows. 1.3% of windows
+  - 6.8% of windows hold more than the 4 source tokens.
+  - 99% of windows hold at most 262 visible sources, 99.9% at most 333 and 99.99% at most 356.
+  - The busiest centres, near 1.69 mHz, hold up to 372 in 99% of their windows. 1.3% of windows
     are centred within 0.1 dex of them.
 - **The count scales with the window.** At SNR ≥ 7, 99.99% of windows hold at most 30 at w = 32,
-  97 at w = 128, 352 at w = 512 and 2649 at w = 4096.
+  99 at w = 128, 356 at w = 512 and 2686 at w = 4096.
 
 ## The question
 
@@ -75,9 +75,8 @@ sbatch --partition=cpu,cpu-preempt --account=pi_mehuber_umass_edu --qos=normal r
 uv run --frozen python reports/prior/source-count/scripts/build_page.py
 ```
 
-The current `data/` was copied from response-span's run (job 66137238 at `bc6211f` with `src/`
-dirty). Its draws are the same, and its JSON records `response_points` 128 and `n_sources` 4 from
-the current full-B config.
+The current `data/` comes from job 66525778 at `2643615` with `src/` dirty (16 mHz full band).
+Its JSON records `response_points` 128 and `n_sources` 4 from the current full-B config.
 
 ## Data
 

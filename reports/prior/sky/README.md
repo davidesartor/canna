@@ -81,8 +81,8 @@ carried to the sibling prior pages).
 
 ## Method
 
-[`draw_sky.py`](scripts/draw_sky.py), run by [`sky.sbatch`](scripts/sky.sbatch) on CPU: job 66469678,
-44 s at `eaf9fff` with `src/` dirty (this narrow-band change).
+[`draw_sky.py`](scripts/draw_sky.py), run by [`sky.sbatch`](scripts/sky.sbatch) on CPU: job 66525777,
+44 s at `2643615` with `src/` dirty (narrow band from 1 mHz).
 
 - **Draws and parts:** 2²⁰ draws of `physics.sample_sky`. Each draw's part is recovered from its key
   with the same split and choice that `sample_sky` makes (`component_of`), so the per-part
@@ -117,7 +117,7 @@ To redraw (JAX, a CPU job, ~1 min), submit from the repo root:
 
 ## Data
 
-`data/sky.json`, from job 66469678:
+`data/sky.json`, from job 66525777:
 
 - **`sky`:** frames (`lon0`, `centre`, `integral`, base64 `map`, per-component integrals and
   near-plane shares), `components` (names, weights, scales, catalogue size), `galactic_scale`,

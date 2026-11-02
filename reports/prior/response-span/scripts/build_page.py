@@ -25,6 +25,8 @@ F0_BINS = 20
 CELLS = 64
 SMOOTH = np.array([0.054, 0.242, 0.399, 0.242, 0.054])
 MASSES = (0.5, 0.9, 0.99)
+# the second slider: the widest of n sources at one f0, as a window of n sources needs
+WORST_OF = (1, 2, 4, 8, 16)
 # the density's integer scale on the page
 DENSITY_SCALE = 10000
 # the keep curves' x axis, -log10(1 - x) up to 99.99%, then x = 100% at FULL
@@ -118,6 +120,7 @@ details p { max-width: 80ch; margin: 8px 0; }
 <div class="card">
   <h2>How many bins does a source need at each f₀?</h2>
   <p class="note">__N_WIDTH__</p>
+  <div class="row controls"><span>sources per window</span><input type="range" id="n" min="0" step="1" aria-label="sources per window n"><b id="n-label"></b><span id="n-note"></span></div>
   <div class="legend" id="lg-width"></div>
   <div id="p-width"></div><div class="tip"></div>
   <div class="legend" id="lg-share" style="margin-top:12px"></div>
@@ -131,7 +134,7 @@ details p { max-width: 80ch; margin: 8px 0; }
 </main>
 <script>
 const PG = __PAGE__;
-const S = {k: 0};
+const S = {k: 0, n: 1};
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const sig = (v, n = 3) => Number.isFinite(v) ? (Math.abs(v) >= 1e4 || (Math.abs(v) < 1e-2 && v !== 0) ? v.toExponential(n - 1) : (+v.toPrecision(n)).toString()) : "–";
 const pct = (v, d = 1) => v > 0 && v < 10 ** -(d + 2) ? `${(100 * v).toExponential(1)}%` : `${(100 * v).toFixed(d)}%`;
@@ -141,15 +144,19 @@ const nearest = (xs, v) => xs.reduce((best, x, i) => Math.abs(x - v) < Math.abs(
 const pow2 = q => 2 ** Math.max(1, Math.ceil(Math.log2(q)));
 const mhz = f => sig(f * 1e3, 3);
 
-// state in the address bar: #k=5
+// state in the address bar: #k=5&n=4
 function readHash() {
   const q = new URLSearchParams(location.hash.slice(1));
   if (PG.ks.includes(+q.get("k"))) S.k = +q.get("k");
+  if (PG.ns.includes(+q.get("n"))) S.n = +q.get("n");
 }
 function writeHash() {
-  history.replaceState(null, "", S.k ? `#k=${S.k}` : location.pathname + location.search);
+  const q = new URLSearchParams();
+  if (S.k) q.set("k", S.k);
+  if (S.n > 1) q.set("n", S.n);
+  history.replaceState(null, "", q.size ? `#${q}` : location.pathname + location.search);
 }
-addEventListener("hashchange", () => { readHash(); slider.value = PG.ks.indexOf(S.k); schedule(); });
+addEventListener("hashchange", () => { readHash(); slider.value = PG.ks.indexOf(S.k); nSlider.value = PG.ns.indexOf(S.n); schedule(); });
 
 function tip(host, ev, html) {
   const t = host.nextElementSibling, card = host.closest(".card").getBoundingClientRect();
@@ -252,8 +259,16 @@ slider.max = PG.ks.length - 1;
 slider.addEventListener("input", () => { S.k = PG.ks[+slider.value]; schedule(); });
 slider.addEventListener("change", writeHash);
 dragSlider(slider);
+const nSlider = document.getElementById("n");
+nSlider.max = PG.ns.length - 1;
+nSlider.addEventListener("input", () => { S.n = PG.ns[+nSlider.value]; schedule(); });
+nSlider.addEventListener("change", writeHash);
+dragSlider(nSlider);
+const worst = () => PG.ns.indexOf(S.n);
 function controls() {
   html("k-label", S.k ? `SNR ≥ ${S.k}` : "off");
+  html("n-label", S.n === 1 ? "1" : `widest of ${S.n}`);
+  html("n-note", S.n === 1 ? "one source's width" : `the widest of ${S.n} sources at the same f₀, the R a window of ${S.n} needs`);
   html("k-note", S.k ? `where <code>LisaGB.visible_snr = ${S.k}</code> centres training windows` : "every source with a bin above the noise");
   const T = cut(), tile = (k, v, d) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
   html("tiles", tile("sources counted", pct(T.mass, 2), `of the prior's, with ${counted()}`)
@@ -319,9 +334,10 @@ function widthCard() {
   const host = document.getElementById("p-width"), T = cut(), D = PG.density, G = PG.grid;
   const n = D.n, dx = (D.x[1] - D.x[0]) / n, dy = (D.y[1] - D.y[0]) / n;
   const at = ([i, j]) => [D.x[0] + (i + 0.5) * dx, D.y[0] + (j + 0.5) * dy];
-  const layers = [{image: {url: densityImage(T.density, n, css("--c1"), S.k), x: D.x, y: D.y}}];
-  T.levels.forEach((level, m) => {
-    const segs = contour(T.density, n, level).map(([p, q]) => [at(p), at(q)]);
+  const v = worst(), grid = T.density[v], Q = T.q[v];
+  const layers = [{image: {url: densityImage(grid, n, css("--c1"), `${S.k}-${S.n}`), x: D.x, y: D.y}}];
+  T.levels[v].forEach((level, m) => {
+    const segs = contour(grid, n, level).map(([p, q]) => [at(p), at(q)]);
     layers.push({segs, color: "var(--c1)", width: [2, 1.5, 1.1][m]});
     if (segs.length) { const top = segs.flat().reduce((a, b) => b[1] > a[1] ? b : a); layers.push({note: [top[0], top[1], share(D.masses[m])]}); }
   });
@@ -329,16 +345,16 @@ function widthCard() {
     {vline: Math.log10(PG.narrow.f0_max), color: "var(--muted)", width: 1.2, dash: "3 3", text: "narrow-B top", anchor: "end", tdx: -4},
     {hline: Math.log10(PG.narrow.R), color: "var(--muted)", width: 1.2, dash: "3 3", text: `narrow-B R = ${PG.narrow.R}`, left: true},
     {hline: Math.log10(PG.R), color: "var(--ink)", width: 1.4, dash: "6 3", text: `R in use = ${PG.R}`, left: true});
-  chart(host, {x: D.x, y: D.y, H: 400, xlabel: "f₀ [mHz]", ylabel: "bins holding all of a source's above-noise power", label: "density of f0 and full above-noise width",
+  chart(host, {x: D.x, y: D.y, H: 400, xlabel: "f₀ [mHz]", ylabel: S.n === 1 ? "bins holding all of a source's above-noise power" : `bins holding all the above-noise power of the widest of ${S.n}`, label: "density of f0 and full above-noise width",
     xticks: f0Ticks(), yticks: PG.w_ticks.filter(w => Math.log10(w) <= D.y[1]).map(w => [Math.log10(w), String(w)]), layers,
     hover: ({x, y}) => {
       const b = f0Bin(x), i = clamp(Math.floor((x - D.x[0]) / dx), 0, n - 1), j = clamp(Math.floor((y - D.y[0]) / dy), 0, n - 1), g = nearest(G.x, x);
       return {cross: x, html: `<b>${f0Range(b)}: ~${T.n[b].toLocaleString()} effective sources with ${counted()}</b>`
-        + trow("var(--c1)", `density at ${sig(10 ** y, 3)} bins: ${pct(T.density[j * n + i] / D.scale, 1)} of its peak`)
-        + PG.probabilities.map((p, m) => { const v = T.q[m][b]; return trow(null, v === null ? `${share(p)} of them: too few sources` : `${share(p)} of them within ${v} bins → R = ${pow2(v)}`); }).join("")
+        + trow("var(--c1)", `density at ${sig(10 ** y, 3)} bins: ${pct(grid[j * n + i] / D.scale, 1)} of its peak`)
+        + PG.probabilities.map((p, m) => { const q = Q[m][b], who = S.n === 1 ? "of them" : `of ${S.n}-source windows`; return trow(null, q === null ? `${share(p)} ${who}: too few sources` : `${share(p)} ${who} within ${q} bins → R = ${pow2(q)}`); }).join("")
         + trow("var(--ink-2)", `5σ hard bound here: ${sig(G.ceiling[g], 3)} bins`)};
     }});
-  html("lg-width", legendBox("var(--c1)", `density of the sources with ${counted()}; contours hold ${D.masses.map(share).join(" / ")} of them`)
+  html("lg-width", legendBox("var(--c1)", `density of ${S.n === 1 ? "the sources" : `the widest of ${S.n} sources`} with ${counted()}; contours hold ${D.masses.map(share).join(" / ")} of them`)
     + legendItem("var(--ink)", "R in use", "6 3") + legendItem("var(--muted)", "narrow-B's R and f₀ top", "3 3")
     + legendItem("var(--ink-2)", "response_span at the old 5σ ḟ ceiling (the hard bound)", null, 1.4));
   shareCard();
@@ -368,6 +384,7 @@ addEventListener("resize", schedule);
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", schedule);
 readHash();
 slider.value = PG.ks.indexOf(S.k);
+nSlider.value = PG.ns.indexOf(S.n);
 render();
 </script>
 </body>
@@ -420,15 +437,22 @@ def rounded(a, digits: int = 4) -> list:
     return [float(f"{v:.{digits}g}") for v in np.asarray(a, dtype=float).ravel()]
 
 
-def density(x, y, w, rx, ry) -> tuple[np.ndarray, list]:
-    """A smoothed weighted 2-D histogram over CELLS², scaled to its peak, with the density levels holding MASSES of it."""
+def densities(x, y, w, rx, ry) -> list[tuple[np.ndarray, list]]:
+    """Per n in WORST_OF, the weighted 2-D histogram over CELLS² of x and the largest of n y at that x (each column's CDF
+    to the n), smoothed, scaled to its peak, with the density levels holding MASSES of it."""
     h = np.histogram2d(x, y, CELLS, [rx, ry], weights=w)[0].T
-    for axis in (0, 1):
-        h = np.apply_along_axis(np.convolve, axis, h, SMOOTH, mode="same")
-    ordered = np.sort(h.ravel())[::-1]
-    held = np.cumsum(ordered) / ordered.sum()
-    levels = [ordered[np.searchsorted(held, m)] / ordered[0] for m in MASSES]
-    return h / ordered[0], levels
+    column = h.sum(axis=0)
+    cdf = np.cumsum(h, axis=0) / np.where(column > 0, column, 1.0)
+    out = []
+    for n in WORST_OF:
+        g = np.diff(cdf**n, axis=0, prepend=0.0) * column
+        for axis in (0, 1):
+            g = np.apply_along_axis(np.convolve, axis, g, SMOOTH, mode="same")
+        ordered = np.sort(g.ravel())[::-1]
+        held = np.cumsum(ordered) / ordered.sum()
+        levels = [ordered[np.searchsorted(held, m)] / ordered[0] for m in MASSES]
+        out.append((g / ordered[0], levels))
+    return out
 
 
 def main() -> None:
@@ -511,8 +535,23 @@ def main() -> None:
             ]
             for k in range(len(X))
         ]
+        # the full width's y-quantile per f0 bin for the widest of n: a single source's at y^(1/n)
+        worst_q = [
+            [
+                [
+                    (
+                        int(quantile(width_c[bins_c == b, k100], wc[bins_c == b], y ** (1 / n)))
+                        if n_bin[b] * (1 - y ** (1 / n)) >= 1
+                        else None
+                    )
+                    for b in range(F0_BINS)
+                ]
+                for y in PROBABILITIES
+            ]
+            for n in WORST_OF
+        ]
         seen_f0_share = np.bincount(bins, sw, F0_BINS)
-        h, levels = density(
+        worst = densities(
             log_f0[counted], log_width[counted], wc, density_x, density_y
         )
         return dict(
@@ -523,8 +562,9 @@ def main() -> None:
             n=[round(v) for v in n_bin],
             q=f0_q,
             seen=rounded(seen_f0_share / seen_f0_share.sum(), 6),
-            density=np.round(h * DENSITY_SCALE).astype(int).ravel().tolist(),
-            levels=[round(v * DENSITY_SCALE, 2) for v in levels],
+            worst_q=worst_q,
+            density=[np.round(h * DENSITY_SCALE).astype(int).ravel().tolist() for h, _ in worst],
+            levels=[[round(v * DENSITY_SCALE, 2) for v in levels] for _, levels in worst],
         )
 
     cuts = [population(snr >= k) for k in CUTS]
@@ -541,8 +581,12 @@ def main() -> None:
         probabilities=list(PROBABILITIES),
         narrow=dict(f0_max=d["narrow_f0_max"], R=d["narrow_response_points"]),
         ks=list(CUTS),
-        # the page reads the width quantiles at x = 100% only
-        cuts=[{**c, "q": c["q"][k100]} for c in cuts],
+        ns=list(WORST_OF),
+        # the page reads the width quantiles at x = 100% only, per n
+        cuts=[
+            {k: v for k, v in c.items() if k not in ("q", "worst_q")} | {"q": c["worst_q"]}
+            for c in cuts
+        ],
         density=dict(
             n=CELLS,
             x=rounded(density_x, 6),
@@ -552,7 +596,7 @@ def main() -> None:
         ),
         curve=dict(x=rounded(np.append(CURVE_X, FULL)), full=FULL),
         f_ticks=[
-            f for f in [1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2] if f_lo <= f <= f_hi
+            f for f in [1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2] if f_lo <= f <= f_hi
         ],
         w_ticks=[2**e for e in range(1, 12)],
         grid=dict(x=rounded(np.log10(grid["f0"]), 6), ceiling=rounded(grid["ceiling"])),
@@ -588,7 +632,8 @@ def main() -> None:
     width_note = (
         "Where the counted sources lie in f₀ and in the bins their whole above-noise power spans, with contours holding "
         + " / ".join(share(m) for m in MASSES)
-        + " of them. A source fits R when it lies below the R line. Below, how those sources and the prior's spread over f₀."
+        + " of them. A source fits R when it lies below the R line. The second slider shows the widest of n sources at the same f₀ instead,"
+        " whose CDF is the single source's to the n: a window of n sources fits R when that one does. Below, how the sources and the prior's spread over f₀."
     )
     method = "".join(
         f"<p>{t}</p>"

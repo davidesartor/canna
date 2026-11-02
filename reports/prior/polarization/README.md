@@ -13,26 +13,26 @@
   - The Python and JS ports of `physical_to_flow` and `flow_to_physical` match the 12 test vectors to ≤ 6.7e-16 (angles wrapped).
 - **The z± coordinates are narrow compared with the other flow coordinates.**
   - The catalogue prior puts A far below one `amplitude_unit`, where asinh is linear, so the warped z± are about the unwarped ones.
-  - The four warped Re/Im z± have std 0.143–0.150 (narrow 0.072–0.075), against 0.58–1.03 for f₀, ḟ, l and b. That is 0.16× their mean (narrow 0.08×).
-  - The largest |Re z±| or |Im z±| is 4.158 (narrow 1.815). asinh|z±| has rms 0.207 and 0.205 (full), 0.104 and 0.1036 (narrow).
-  - The largest off-diagonal correlation of the eight flow coordinates is 0.030 (full, Re z₊ with Im z₊) and 0.014 (narrow).
+  - The four warped Re/Im z± have std 0.143–0.150 (narrow 0.583–0.595), against 0.58–1.03 for f₀, ḟ, l and b. That is 0.16× their mean (narrow 0.65×, its 1–3 mHz sources being louder).
+  - The largest |Re z±| or |Im z±| is 4.170 (narrow 4.242). asinh|z±| has rms 0.207 and 0.205 (full), 0.833 and 0.834 (narrow).
+  - The largest off-diagonal correlation of the eight flow coordinates is 0.030 (full, Re z₊ with Im z₊) and 0.015 (narrow).
   - κ = SNR / (A / unit) has median 1.63 over the 1500 scatter sources (both bands).
 - **The angles are singular where z± are not.**
-  - The Fisher condition number in (ln A, s, ψ, φ₀) is 1.18 at s = 0 and reaches 3.2e20 (full) and 4.7e21 (narrow) at |sin ι| = 0.99999.
+  - The Fisher condition number in (ln A, s, ψ, φ₀) is 1.18 at s = 0 and reaches 3.2e20 (full) and 1.8e21 (narrow) at |sin ι| = 0.99999.
   - In z it stays at 1.177, flat to 2.8e-6 (full). In the warped flow coordinates it is 1.18 in both bands, since the warp is linear at these amplitudes.
   - corr(ψ, φ₀) goes to ∓1 at the poles. Where the marginal curve is missing, the matrix is singular in float64.
 - **Four angle choices are one signal.**
   - (ψ + kπ/2, φ₀ + (k mod 2)π) agree to ≤ 5.4e-13 in the signal over 256 sources, against 1.414 (median) for a wrong step.
   - `flow_to_physical` lands on the four branches for 8254, 8150, 8197 and 8167 of 32,768 sources (full).
-  - The returned ψ is the triangle (2π − 4|c|)/π² on the centred branch (χ²/dof 56/47 full, 45/47 narrow); the returned φ₀ is uniform under the middle reference (78/95 full, 79/95 narrow).
+  - The returned ψ is the triangle (2π − 4|c|)/π² on the centred branch (χ²/dof 56/47 full, 55/47 narrow); the returned φ₀ is uniform under the middle reference (78/95 full, 73/95 narrow).
   - At a pole only one phase survives: moving ψ and φ₀ so that it is kept costs ≤ 5.8e-13; moving it by 2 sin 1.4 costs 1.971.
 - **The round trip is exact to the float.**
-  - physical → flow → physical gives a worst signal mismatch of 5.1e-11 (full) and 4.6e-11 (narrow) in float64, over 256 sources.
-  - A float32-rounded flow output fed into the float64 chart gives 2.7e-5 (full) and 6.0e-6 (narrow). This is not a float32 chart.
+  - physical → flow → physical gives a worst signal mismatch of 5.1e-11 (full) and 1.4e-10 (narrow) in float64, over 256 sources.
+  - A float32-rounded flow output fed into the float64 chart gives 2.7e-5 (full) and 1.5e-5 (narrow). This is not a float32 chart.
   - sin ι is recovered to 2.2e-16 for gap ≥ 1e-6 and to 1e-6 (the clip) at the poles.
 - **The phase reference sits at the window middle.**
-  - corr(f₀, φ), conditional, falls from 0.872 (start) to 0.025 (middle) in full-B, and from 0.871 to 0.014 in narrow-B. The marginal goes 0.533 → −0.241 (full).
-  - The start reference's f₀-dependent shift is 2.0e4–1.4e6 rad (full), and float32 would round it by up to 0.12 rad. σ(φ) is 1.18× larger at the start (median).
+  - corr(f₀, φ), conditional, falls from 0.872 (start) to 0.025 (middle) in full-B, and from 0.872 to 0.021 in narrow-B. The marginal goes 0.533 → −0.241 (full).
+  - The start reference's f₀-dependent shift is 2.0e4–1.4e6 rad (full), and float32 would round it by up to 0.13 rad. σ(φ) is 1.18× larger at the start (median).
 
 ## What the page shows
 
@@ -62,7 +62,7 @@ The state lives in the URL hash, e.g. `#band=narrow&angle=psi&coord=cart&ex=1,0.
 
 ## Method
 
-[`draw_polarization.py`](scripts/draw_polarization.py) and [`polarization.sbatch`](scripts/polarization.sbatch): job 66469679 on CPU at `eaf9fff` with `src/` dirty (this narrow-band change) (2 min 45 s).
+[`draw_polarization.py`](scripts/draw_polarization.py) and [`polarization.sbatch`](scripts/polarization.sbatch): job 66525775 on CPU at `2643615` with `src/` dirty (narrow band from 1 mHz) (2 min 45 s).
 
 - **Draws:** 8192 windows per band with `jr.key(0)` on `LisaGB(**config.load("<band>-B").problem)`: `sample_f`, `sample_physical`, then `physical_to_flow`. The orientation histograms have bin widths 2π/96 for ψ and φ₀, and their references come from the closed forms.
 - **χ²/dof:** over bins whose reference count is at least 5, dof = bins − 1.
@@ -86,7 +86,7 @@ To redraw (JAX, a CPU job, about 1 min per band), submit from the repo root. It 
 
 ## Data
 
-`data/polarization.json`, from job 66469679: `{device, windows, bands: {narrow, full}}`.
+`data/polarization.json`, from job 66525775: `{device, windows, bands: {narrow, full}}`.
 
 Each band carries these keys under the names of the retired single bank `prior.json`:
 - `physical.orientation` (`psi [rad]`, `sin iota`, `phi0 [rad]`, plus `iota [rad]`);

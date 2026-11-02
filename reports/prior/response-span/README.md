@@ -1,17 +1,19 @@
-# Response span: the R that keeps x of a source's above-noise power with probability y (2026-10-26)
+# Response span: the R that keeps x of a source's above-noise power with probability y (2026-11-02, full-B up to 16 mHz)
 
 ## Takeaways
 
 - **R = 128 keeps almost all of what the data see, 8× below the hard bound.**
   - It keeps 99% of the above-noise power for 99% of the sources, and every above-noise bin for
-    99.9% of them. The hard bound, which autosizing used, is 1024.
+    99.9% of them. The hard bound is 2048 at the 16 mHz band top (1024 at the old 12 mHz top,
+    which autosizing used).
   - full-B's `response_points` is now 128, and the sampler no longer cuts ḟ.
-  - 99.99% of the sources span at most 166 bins.
+  - 99.99% of the sources span at most 196 bins.
 - **Most visible sources are narrow.**
   - The median source needs 18 bins for all its above-noise power.
   - R = 32 keeps 99% of it for half the sources and R = 64 for 90%. Per f₀, R = 64 does so for 99%
-    of the sources up to 4.6 mHz.
-  - Only the top of the band, above 7.4 mHz (0.18% of the visible sources), needs 256.
+    of the sources up to 4.5 mHz.
+  - Only the top of the band needs more: 256 above 7.5 mHz (0.18% of the visible sources) and 512
+    above 12.4 mHz (0.011%).
 - **Leakage below the noise is gone, so x = 100% costs no more than 99%.**
   - Past the response band, the sinc sidelobes sit under the noise. R(100%, y) equals R(99%, y) for
     every y on the page.
@@ -22,9 +24,12 @@
     SNR 1.6.
 - **A higher SNR cut widens the tail.** Brighter sources lift more sidelobes above the noise.
   - Counting only SNR ≥ k, the sources `LisaGB.visible_snr = k` places training windows on (default
-    k = 7): R(99%, 99%) stays 128 for every k ≤ 20, and R(100%, 99.9%) is 128 up to k = 7, then 256 from k = 10.
-  - The median source's full width grows from 18 bins (off) to 26 at k = 7 and 44 at k = 20.
-- **The brute-force draw agrees.**
+    k = 7): R(99%, 99%) stays 128 for every k ≤ 20, and R(100%, 99.9%) is 128 up to k = 5, then 256 from k = 7.
+  - The median source's full width grows from 18 bins (off) to 26 at k = 7 and 42 at k = 20.
+- **A window of n sources needs little more than one.** Sources at the same f₀ have about the same
+  width, so the widest of n grows slowly with n. At k = 7 the 99% full width per f₀ bin goes from
+  46 to 50 bins (n = 1 to 16) at 2.3 mHz, 114 to 124 at 7 mHz and 370 to 478 in the top bin.
+- **The brute-force draw agrees** (on the 12 mHz band).
   - 1,048,576 prior sources, with ḟ cut at 5σ, ran in 21 min (job 66136660), against 3 min here.
   - 1.16% of them are visible, and their width quantiles match to 2 bins up to y = 99%. At 99.9%
     they come 6–14 bins narrower (it cut ḟ), and every R(x, y) on the page is the same.
@@ -49,7 +54,7 @@ probability y.
 ## What the page shows
 
 [response-span.html](response-span.html), hand-written JS like the other prior pages (light/dark,
-hash state `#k=…`). Single problem, `full-B`. One slider sets the SNR cut k ∈ {off, 1, …, 20}; the
+hash state `#k=…&n=…`). Single problem, `full-B`. One slider sets the SNR cut k ∈ {off, 1, …, 20}; the
 tiles above the cards (counted share, R(99%, 99%), R(100%, 99.9%), R in use and the hard bound)
 follow it.
 - **SNR ≥ k** counts only the sources that also reach SNR k; off counts every source above the noise.
@@ -66,6 +71,9 @@ follow it.
   old 5σ ḟ ceiling (the hard bound), the R in use, and narrow-B's R and f₀ top. Widths come in even
   bins, so each is spread uniformly over its step before a one-cell smoothing. The tooltip gives the
   50–99.9% width quantiles per f₀ bin.
+  - Its own slider shows the widest of n ∈ {1, 2, 4, 8, 16} sources at the same f₀ instead: per f₀
+    column the width CDF is raised to the n before smoothing, and the tooltip's y-quantile becomes the
+    single source's y^(1/n)-quantile. A window of n sources fits R when its widest does.
   - Below it, on the same f₀ axis, the share of sources per bin: the prior's f₀ marginal in the band
     (the catalogue) and that of the counted sources (where `visible_snr = k` centres training windows)
     (peaks 0.23 vs 1.6 mHz with the cut off).
@@ -73,8 +81,8 @@ follow it.
 
 ## Method
 
-- `scripts/draw_span.py` runs on CPU under Slurm (`scripts/span.sbatch`, 5 min; job 66469676 at
-  `eaf9fff` with `src/` dirty (this narrow-band change)).
+- `scripts/draw_span.py` runs on CPU under Slurm (`scripts/span.sbatch`, 5 min; job 66525776 at
+  `2643615` with `src/` dirty (16 mHz full band, narrow from 1 mHz)).
   - It draws 65536 sources of `config.load("full-B")` from `jr.split(jr.key(0), 65536)`. Each draw
     has log f0 uniform over the band, weighted back to the catalogue's f0 marginal, so the visible top
     of the band gets as many sources as the bottom. ḟ, sky and orientation follow the prior, with ḟ

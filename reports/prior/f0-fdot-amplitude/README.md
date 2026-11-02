@@ -1,4 +1,4 @@
-# The LisaGB prior: f₀, ḟ and A (2026-10-30)
+# The LisaGB prior: f₀, ḟ and A (2026-11-02, full-B up to 16 mHz)
 
 (log₁₀ f₀, log₁₀ ḟ, log₁₀ A) is one Gaussian fitted to the double white dwarfs of a galaxy catalogue.
 A window holds 4 sources from the Gaussian inside it. The catalogue's window centre follows its f₀
@@ -9,36 +9,37 @@ page's slider shows the windows at each k.
 ## Takeaways
 
 - **The draws follow the catalogue.**
-  - At k = 0 the drawn means sit within 0.0016 (narrow-B) and 0.0015 (full-B) stds of the catalogue Gaussian
+  - At k = 0 the drawn means sit within 0.0057 (narrow-B) and 0.0028 (full-B) stds of the catalogue Gaussian
     truncated to the band. The contours overlap.
-  - 99.9% of the catalogue lies in narrow-B, below 3 mHz.
+  - 3.7% of the catalogue lies in narrow-B, 1–3 mHz.
 - **Almost every source is invisible.**
-  - 0.69% of narrow-B sources and 0.84% of full-B ones reach SNR 7.
-  - 98.60% and 98.47% of windows hold none, so for them the flow's best answer is the prior.
-  - The conditional mean A reaches the SNR-7 amplitude from 1.99 mHz.
+  - 15.83% of narrow-B sources and 0.84% of full-B ones reach SNR 7.
+  - 65.43% and 98.47% of windows hold none, so for them the flow's best answer is the prior.
+  - The conditional mean A reaches the SNR-7 amplitude from 1.93 mHz.
 - **The visible sources sit at the top of the band, where the catalogue's windows rarely go.**
-  - Half the full-B windows hold a visible source only from about 1.63 mHz.
-  - The upper half of the band in log f₀ gets 3.08% of the catalogue's windows: hence training's
+  - Half the full-B windows hold a visible source only from about 1.56 mHz.
+  - The upper half of the band in log f₀ gets 2.08% of the catalogue's windows: hence training's
     k = 7 window prior.
 - **The cut moves windows to where sources are visible; it does not make them visible.**
-  - At k = 7, 80.2% of full-B windows hold a source at SNR ≥ 7 (catalogue 1.53%), narrow-B 76.7%
-    (1.40%).
+  - At k = 7, 78.0% of full-B windows hold a source at SNR ≥ 7 (catalogue 1.53%), narrow-B 77.0%
+    (34.57%). These include the 10% of training windows `sample_window` draws log-uniform over the band
+    (`UNIFORM_WINDOWS`).
 - **ḟ matters only in full-B.**
   - 0.07% of full-B sources drift by more than a bin over the observation (narrow-B 0%).
-  - Every response still fits: the widest spans 112 of 128 bins (narrow-B 54 of 64).
+  - Every response still fits: the widest spans 114 of 128 bins (narrow-B 56 of 64).
 - **What the flow is given is a unit normal, at every cut.**
   - Per source in f₀ order, z = (x − μ) / σ in the prior's frame (`chart.prior_moments`), the frame
     the network starts from; the flow transports its N(0, 1) base to it.
-  - At SNR ≥ 7 (full-B) all eight z have std 0.985 to 1.01, and 1.5e-3% of z± lies beyond ±5 (a
+  - At SNR ≥ 7 (full-B) all eight z have std 0.985 to 1.01, and 0.02% of z± lies beyond ±5 (a
     unit normal: 6e-5%).
   - The cut moves the median full-B source from 10^−1.88 to 10^0.65 amplitude units, and the
     prior's frame follows it.
 - **The window weights are approximate, and the resampling stays healthy.**
   - Their prior mass P(SNR ≥ k) runs under the uncut draws' share, the more so at high k: 0.69% vs
-    0.84% at SNR 7 and 0.14% vs 0.23% at SNR 20 (full-B); narrow-B 0.571% vs 0.687% at SNR 7.
+    0.84% at SNR 7 and 0.14% vs 0.23% at SNR 20 (full-B); narrow-B 15.41% vs 15.83% at SNR 7.
     Each candidate scores one sky and orientation, alone and at the mean ḟ.
-  - At k = 7 full-B keeps a median ESS / M of 0.20 (5% quantile 0.14), about 13 of the 64 candidates;
-    narrow-B 0.21 (0.14).
+  - At k = 7 full-B keeps a median ESS / M of 0.19 (5% quantile 0.14), about 12 of the 64 candidates;
+    narrow-B 0.64 (0.57).
 
 ## The prior
 
@@ -92,7 +93,7 @@ catalogue prior. The nav links the other prior pages.
   - 8192 orientations, the same at each of 16 log-spaced f₀, each source alone and monochromatic in
     the window centred on it;
   - under an isotropic and the galactic sky, with C_low the mean below 1.5 mHz (narrow-B isotropic
-    3.19 ± 0.02, galactic 3.35 ± 0.02) and the ratio C(f₀) / C_low paired over the same orientations.
+    3.19 ± 0.02, galactic 3.36 ± 0.02) and the ratio C(f₀) / C_low paired over the same orientations.
 - The cut (`simulator.sample_window`) draws M = 64 log-uniform candidate f₀ (`VISIBLE_WINDOWS`),
   each with one prior sky and orientation, alone and monochromatic at the mean ḟ in the window
   centred on it. It picks one by p(f₀) over their density times P(SNR ≥ k | f₀, them) = Φ(−cut), cut
@@ -102,7 +103,7 @@ catalogue prior. The nav links the other prior pages.
     centres. The prior mass reweights their Φ(−cut) by p(f₀); ESS / M is the resample's.
 - The cut runs at k ∈ {1, 2, 3, 5, 7, 10, 15, 20} on the first 4096 windows' keys; the weights are
   recomputed on the first 1024 of them.
-- The draws ran in job 66469677, 6.5 min on 8 CPUs, at `eaf9fff` with `src/` dirty (this narrow-band change).
+- The draws ran in job 66525774, 6.5 min on 8 CPUs, at `2643615` with `src/` dirty (this narrow-band change).
 
 ## How to rebuild
 

@@ -42,6 +42,7 @@ from canna.lisa.physics import (
 from canna.lisa.problem import LisaGB, amplitude_unit, sample_f, window_centre
 from canna.lisa.simulator import (
     VISIBLE_WINDOWS,
+    UNIFORM_WINDOWS,
     sample_physical,
     sample_window,
     snr,
@@ -84,7 +85,7 @@ def draw(problem: LisaGB, key: jax.Array) -> dict:
 def window_weights(problem: LisaGB, key: jax.Array) -> dict:
     """sample_window's candidates at the key draw's own key: their f0, log10 P(snr >= cut | them), the resample's ESS / M and its pick."""
     key_f, _ = jr.split(key)
-    key_f0, key_sky, key_psi, key_iota, key_pick = jr.split(key_f, 5)
+    key_f0, key_sky, key_psi, key_iota, key_pick, key_mix = jr.split(key_f, 6)
     shape = (VISIBLE_WINDOWS, 1)
     log_f0 = jr.uniform(
         key_f0,
@@ -112,7 +113,7 @@ def window_weights(problem: LisaGB, key: jax.Array) -> dict:
         cand_log_f0=log_f0[:, 0],
         log_mass=log_ndtr(-cut) / math.log(10.0),
         ess=w.sum() ** 2 / (w**2).sum() / VISIBLE_WINDOWS,
-        pick=f[jr.categorical(key_pick, log_w)],
+        pick=f[jnp.where(jr.uniform(key_mix) < UNIFORM_WINDOWS, 0, jr.categorical(key_pick, log_w))],
     )
 
 
