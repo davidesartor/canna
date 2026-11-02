@@ -11,7 +11,7 @@ import numpy as np
 from . import config as run_config
 from . import validate
 from .chart import flow_to_physical, physical_to_flow
-from .injections import N_POSTERIOR, eval_injections, match_sources
+from .injections import N_POSTERIOR, eval_injections, sort_by_f0
 from .network import LisaFlow
 from .problem import LisaGB, f0_window
 from .sample import ODE_STEPS, sample_posterior
@@ -33,8 +33,9 @@ SNR_BANDS = [(0, 15), (15, 40), (40, 100), (100, np.inf)]
 def score(problem: LisaGB, draws: np.ndarray, truth: np.ndarray, f) -> dict:
     """Per-source f0 width, offset and calibration of draws [N, S, 8] against the truth [S, 8]."""
     t_obs = problem.t_obs
+    truth = np.asarray(sort_by_f0(truth))
     source_snr = np.asarray(snr(problem, jnp.asarray(truth)[:, None, :], f))
-    f0 = match_sources(problem, draws, truth, f)[..., 0] * t_obs  # in bins
+    f0 = np.asarray(sort_by_f0(draws))[..., 0] * t_obs  # in bins
     f0_true = truth[:, 0] * t_obs
     median = np.median(f0, axis=0)
     q = np.percentile(f0, [2.5, 16, 84, 97.5], axis=0)
@@ -114,13 +115,14 @@ def main() -> None:
         flush=True,
     )
 
-    # the eval grid's injections first, then n_random plain prior draws on the seed's stream 4
-    latents, windows, _, grid, noise_keys, _ = eval_injections(problem, config.seed)
+    # the eval injections first, then n_random plain prior draws on the seed's stream 4
+    latents, windows, _, noise_keys, _ = eval_injections(problem, config.seed)
     key_window, key_pick, key_noise = jr.split(jr.fold_in(jr.key(config.seed), 4), 3)
     random_windows = jax.vmap(partial(sample_window, problem))(jr.split(key_window, n_random))
     random_latents = jax.vmap(partial(sample_physical, problem))(
         jr.split(key_pick, n_random), random_windows
     )
+    n_eval = len(latents)
     latents = jnp.concatenate([latents, random_latents])
     windows = jnp.concatenate([windows, random_windows])
     noise_keys = jnp.concatenate([noise_keys, jr.split(key_noise, n_random)])
@@ -139,7 +141,7 @@ def main() -> None:
             )
         )
         injection += [n] * problem.n_sources
-        is_eval += [n < len(grid)] * problem.n_sources
+        is_eval += [n < n_eval] * problem.n_sources
         if (n + 1) % 5 == 0:
             print(
                 f"[{n + 1}/{len(noise_keys)}] injections scored, {time.perf_counter() - start:.0f} s",
@@ -159,7 +161,7 @@ def main() -> None:
     summary(
         rows,
         rows["is_eval"],
-        f"{len(grid)} eval injections (epoch {epoch}, {ode_steps} ODE steps)",
+        f"{n_eval} eval injections (epoch {epoch}, {ode_steps} ODE steps)",
     )
     summary(
         rows,

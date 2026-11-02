@@ -12,7 +12,7 @@ REPORT = Path(__file__).parents[1]
 from joint_mcmc import TEMPS
 
 from canna.lisa import config as run_config
-from canna.lisa.injections import eval_injections, match_sources
+from canna.lisa.injections import eval_injections, sort_by_f0
 from canna.lisa.mcmc import (
     COLUMNS,
     Window,
@@ -33,17 +33,16 @@ BENCH = CONVERGENCE / "bench"
 def fold_trace(
     problem: LisaGB, window: Window, physical: Float[np.ndarray, "W T S 8"]
 ) -> tuple[Float[np.ndarray, "W T S 8"], Float[np.ndarray, "S 8"]]:
-    """Physical draws -> COLUMNS coordinates (matched onto the truth, folded), as float32 offsets from the truth."""
+    """Physical draws -> COLUMNS coordinates (sources by f0 as the truth's, folded), as float32 offsets from the truth."""
     truth, n_sources = window.truth, window.truth.shape[0]
     true = np.stack(
         [fold(truth[s][None], truth[s], problem.t_obs)[0] for s in range(n_sources)]
     )
     out = np.empty(physical.shape, np.float32)
-    # one walker at a time: match_sources holds every permutation of every draw
     for w in range(physical.shape[0]):
-        matched = match_sources(problem, physical[w], truth, window.f)
+        ordered = np.asarray(sort_by_f0(physical[w]))
         folded = np.stack(
-            [fold(matched[:, s], truth[s], problem.t_obs) for s in range(n_sources)],
+            [fold(ordered[:, s], truth[s], problem.t_obs) for s in range(n_sources)],
             axis=1,
         )
         # f0 in bins is ~1e4-1e5 with sub-1e-3-bin widths: only the offset survives float32

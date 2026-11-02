@@ -15,7 +15,7 @@ import numpy as np
 from einops import rearrange
 
 from canna.lisa import config as run_config
-from canna.lisa.injections import N_PER_WINDOW, eval_injections
+from canna.lisa.injections import N_INJECTIONS, eval_injections
 from canna.lisa.mcmc import (
     initial_points,
     log_likelihood,
@@ -25,8 +25,8 @@ from canna.lisa.mcmc import (
 )
 from canna.lisa.problem import LisaGB
 
-# run long and traced on the page: eval windows 1, 3, 5, 7 at SNR ranks 7, 5, 3, 1 (loudest to faint)
-WINDOWS = [N_PER_WINDOW * w + k for w, k in ((1, 7), (3, 5), (5, 3), (7, 1))]
+# run long and traced on the page: one eval injection in each quarter of the band
+WINDOWS = [N_INJECTIONS * (2 * q + 1) // 8 for q in range(4)]
 TEMPS = [1.0, 1.58, 2.51, 3.98, 6.31, 10.0]
 
 

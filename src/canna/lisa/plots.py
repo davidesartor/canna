@@ -101,7 +101,7 @@ def physical_columns(
 def corner_index(
     problem, d: dict, sets: list[dict[str, np.ndarray]], lead: str
 ) -> tuple[dict, bytes]:
-    """A corner page's index and draws: per injection of d (truth, f, snr, source_snr, grid) its sets' draws
+    """A corner page's index and draws: per injection of d (truth, f, snr, source_snr) its sets' draws
     [N, S, 8] in physical and flow coordinates, as float16 offsets from the truth in robust widths of the lead set.
     """
     import jax.numpy as jnp
@@ -118,7 +118,11 @@ def corner_index(
         thinned = {}
         for name, p in sets[j].items():
             keep = PAGE_DRAWS[name]
-            thinned[name] = p[np.sort(rng.choice(len(p), keep, replace=False))] if len(p) > keep else p
+            thinned[name] = (
+                p[np.sort(rng.choice(len(p), keep, replace=False))]
+                if len(p) > keep
+                else p
+            )
             draws[name] = len(thinned[name])
         start_bin = float(window_start(problem, f))
         views = {}
@@ -130,7 +134,14 @@ def corner_index(
                 "flow": np.asarray(physical_to_flow(problem, jnp.asarray(p), f)),
             }
         # the lead's width, falling back to the other sets' (a set collapsed onto one value), then to 1
-        order = [lead, *(name for name in ("mcmc", "fisher", "flow") if name != lead and name in thinned)]
+        order = [
+            lead,
+            *(
+                name
+                for name in ("mcmc", "fisher", "flow")
+                if name != lead and name in thinned
+            ),
+        ]
         sources = []
         for s in range(n_sources):
             source = {
@@ -145,7 +156,9 @@ def corner_index(
                 for name in order:
                     if name in views:
                         fallback = robust_width(views[name][view][:, s], 0)
-                        scale = np.where(np.isfinite(scale) & (scale > 0), scale, fallback)
+                        scale = np.where(
+                            np.isfinite(scale) & (scale > 0), scale, fallback
+                        )
                 scale = np.where(np.isfinite(scale) & (scale > 0), scale, 1.0)
                 source["truth"][view] = centre.tolist()
                 source["scale"][view] = scale.tolist()
@@ -160,8 +173,6 @@ def corner_index(
             sources.append(source)
         injections.append(
             {
-                "window": int(d["grid"][j, 0]),
-                "rank": int(d["grid"][j, 1]),
                 "snr": float(d["snr"][j]),
                 "f_mhz": float(f * 1e3),
                 "start_bin": start_bin,
@@ -176,13 +187,12 @@ def corner_index(
         "coordinates": COORDINATES,
         "units": UNITS,
         "picks": {k: list(map(int, v)) for k, v in gb_picks(d["source_snr"]).items()},
-        "grid": (d["grid"].max(0) + 1).tolist(),
     }
     return {"meta": meta, "injections": injections}, b"".join(blob)
 
 
 def corner_data(eval_dir: Path) -> tuple[dict, bytes]:
-    """The eval corner page's index and draws: the flow's matched draws, the Fisher's and, once `mcmc pack` has
+    """The eval corner page's index and draws: the flow's draws, the Fisher's and, once `mcmc pack` has
     run on the problem, the eval catalog's MCMC reference."""
     import yaml
 
@@ -201,11 +211,14 @@ def corner_data(eval_dir: Path) -> tuple[dict, bytes]:
     d = load_samples(eval_dir / "draws.npz")
     reference = load_reference(problem, config["seed"])
     if reference is not None and not np.allclose(reference["truth"], d["truth"]):
-        print(f"[plots] {eval_dir}: the MCMC reference's truths differ, left out", file=sys.stderr)
+        print(
+            f"[plots] {eval_dir}: the MCMC reference's truths differ, left out",
+            file=sys.stderr,
+        )
         reference = None
     sets = []
     for j in range(len(d["truth"])):
-        sets.append({"flow": d["matched"][j], "fisher": d["fisher"][j]})
+        sets.append({"flow": d["draws"][j], "fisher": d["fisher"][j]})
         if reference is not None and np.isfinite(reference["mcmc"][j]).all():
             sets[j]["mcmc"] = reference["mcmc"][j]
     index, blob = corner_index(problem, d, sets, lead="flow")
@@ -301,9 +314,9 @@ window.onerror = (message, source, line) => {
 <div class="layout">
 <aside class="card side">
   <div class="stack"><span class="k">Coordinates</span><div class="seg" id="view" style="--cols: 2"></div></div>
-  <div class="stack"><label class="k" for="win">Window, lowest f first: <output id="win-out"></output></label><input type="range" id="win" min="0" step="1"></div>
-  <div class="stack"><label class="k" for="rank">Injection, faintest first: <output id="rank-out"></output></label><input type="range" id="rank" min="0" step="1"></div>
-  <div class="stack"><span class="k">Source (SNR, loudest first)</span><div class="seg" id="src" style="--cols: 5"></div></div>
+  <div class="stack"><label class="k" for="win">Window, by frequency: <output id="win-out"></output></label><input type="range" id="win" min="0" step="1"></div>
+  <div class="stack"><label class="k" for="rank">Window, by SNR: <output id="rank-out"></output></label><input type="range" id="rank" min="0" step="1"></div>
+  <div class="stack"><span class="k">Source (SNR, lowest f₀ first)</span><div class="seg" id="src" style="--cols: 5"></div></div>
   <div class="stack"><span class="k">Eval sources by SNR</span><div class="seg" id="picks" style="--cols: 3"></div></div>
   <p class="note">Click a corner cell to enlarge it, a legend entry to cycle it through points and contours, contours only and hidden. The view lives in the URL, so a link reopens it.</p>
 </aside>
@@ -326,7 +339,7 @@ window.onerror = (message, source, line) => {
       <ul>
         <li><b>Physical:</b> f₀ in frequency bins from the window's first bin (per source: offset from the truth), log₁₀ of the chirp ḟ in Hz/s and of the strain amplitude A, the <b>ecliptic</b> longitude λ and latitude β (rotated from the simulator's equatorial RA and Dec by the J2000 obliquity, 23.4393°; λ unwrapped around the truth), the polarisation ψ, the inclination ι (sin ι uniform in [−1, 1]) and the initial phase φ₀. ψ and φ₀ are folded onto the copy nearest the truth by the likelihood's exact symmetries ψ → ψ + π and (ψ, φ₀) → (ψ + π/2, φ₀ + π).</li>
         <li><b>Flow:</b> the 8 coordinates the network learns (<code>chart.physical_to_flow</code>): x<sub>f</sub> = (2 ln f₀ − ln f<sub>lo</sub> − ln f<sub>hi</sub>) / (ln f<sub>hi</sub> − ln f<sub>lo</sub>) over the window's drawable f₀ range (one unit is half of it); x<sub>ḟ</sub> = (log₁₀ ḟ − μ(f₀)) / σ, standardised by the (f₀, ḟ, A) prior's conditional mean and std at f₀; galactic l and b over the galactic sky prior's stds; and the helicity amplitudes z± = asinh(A / A₁ · (1 ∓ sin ι)² / 4) · e<sup>i(φ₀′ ± 2ψ)</sup>, A₁ the amplitude of SNR ≈ 1 and φ₀′ the phase at mid-observation. They need no folding: every (ψ, φ₀) copy has the same z±.</li>
-        <li><b>Sets:</b> the flow's draws matched onto the injected sources, the joint MCMC (all the window's sources free, its draws relabelled onto the injected sources) and the Fisher forecast (Hessian averaged over noise, plus the prior), whichever the page has, each thinned as the header says. The first in the legend leads: it sets the axes and the widths, and its density is shaded. Contours hold 39% and 86% of each set (1σ and 2σ of a 2-D Gaussian); widths are 1.4826 × MAD.</li>
+        <li><b>Sets:</b> the flow's draws, the joint MCMC (all the window's sources free) and the Fisher forecast (Hessian averaged over noise, plus the prior), every draw's sources ordered by f₀ as the truth's, whichever the page has, each thinned as the header says. The first in the legend leads: it sets the axes and the widths, and its density is shaded. Contours hold 39% and 86% of each set (1σ and 2σ of a 2-D Gaussian); widths are 1.4826 × MAD.</li>
       </ul>
     </details>
   </div>
@@ -337,7 +350,9 @@ window.onerror = (message, source, line) => {
 <script type="application/octet-stream" id="blob">__BLOB__</script>
 <script>
 "use strict";
-const META = DATA.meta, INJ = DATA.injections, [NW, NK] = META.grid, LEAD = META.lead;
+const META = DATA.meta, INJ = DATA.injections, LEAD = META.lead;
+// the two sliders walk the same injections, by window frequency and by window SNR
+const BY_F = [...INJ.keys()].sort((a, b) => INJ[a].f_mhz - INJ[b].f_mhz), BY_SNR = [...INJ.keys()].sort((a, b) => INJ[a].snr - INJ[b].snr);
 const SETS = [
   {key: "flow", text: "flow", colour: "--flow"},
   {key: "mcmc", text: "MCMC", colour: "--mcmc"},
@@ -680,7 +695,7 @@ function seg(id, items, active, onPick) {
 function pickers() {
   seg("view", [{v: "physical", html: "physical (λ, β)"}, {v: "flow", html: "flow"}], it => it.v === S.view, it => { S.view = it.v; });
   const w = INJ[S.inj];
-  for (const [id, v, text] of [["win", w.window, `${w.window + 1} of ${NW} · ${fmt(w.f_mhz, 3)} mHz`], ["rank", w.rank, `${w.rank + 1} of ${NK} · SNR ${fmt(w.snr, 1)}`]]) {
+  for (const [id, v, text] of [["win", BY_F.indexOf(S.inj), `${fmt(w.f_mhz, 3)} mHz`], ["rank", BY_SNR.indexOf(S.inj), `SNR ${fmt(w.snr, 1)}`]]) {
     document.getElementById(id).value = v;
     document.getElementById(`${id}-out`).textContent = text;
   }
@@ -712,7 +727,7 @@ function legend() {
 }
 function tiles(ctx) {
   const w = INJ[S.inj], t = [
-    ["window", `${fmt(w.f_mhz, 3)} mHz`, `window ${w.window + 1} of ${NW}, injection ${w.rank + 1} of ${NK} · SNR ${fmt(w.snr, 1)}`],
+    ["window", `${fmt(w.f_mhz, 3)} mHz`, `injection ${S.inj + 1} of ${INJ.length} · SNR ${fmt(w.snr, 1)}`],
     ["window bins", `${w.start_bin}–${w.start_bin + w.window_bins}`, `${w.window_bins} bins`],
   ];
   if (!ctx.pooled) {
@@ -731,7 +746,7 @@ function render() {
   const ctx = context();
   tiles(ctx);
   const src = ctx.pooled ? `all ${ctx.sources.length} sources pooled` : `source ${S.src + 1} (SNR ${fmt(INJ[S.inj].sources[S.src].snr, 1)})`;
-  document.getElementById("corner-title").textContent = `${fmt(INJ[S.inj].f_mhz, 3)} mHz, injection ${INJ[S.inj].rank + 1} of ${NK}, ${src}, ${S.view} coordinates`;
+  document.getElementById("corner-title").textContent = `${fmt(INJ[S.inj].f_mhz, 3)} mHz (SNR ${fmt(INJ[S.inj].snr, 1)}), ${src}, ${S.view} coordinates`;
   document.getElementById("corner-note").textContent = (ctx.pooled
     ? "Every source of the window in the same axes; squares are the truths."
     : `Axes hold the ${TEXT[LEAD]}'s central 99% (within 8 robust widths of its median), the reference's and the truth.`) +
@@ -758,9 +773,9 @@ function writeHash() {
 document.getElementById("title").textContent = META.title;
 document.getElementById("sub").textContent = `${META.subtitle} Draws per source: ` +
   SETS.filter(x => META.draws[x.key]).map(x => `${x.text} ${META.draws[x.key]}`).join(", ") + `. Layout ${META.layout}.`;
-for (const [id, max] of [["win", NW - 1], ["rank", NK - 1]]) document.getElementById(id).max = max;
-document.getElementById("win").oninput = ev => { S.inj = +ev.target.value * NK + INJ[S.inj].rank; writeHash(); schedule(); };
-document.getElementById("rank").oninput = ev => { S.inj = INJ[S.inj].window * NK + +ev.target.value; writeHash(); schedule(); };
+for (const id of ["win", "rank"]) document.getElementById(id).max = INJ.length - 1;
+document.getElementById("win").oninput = ev => { S.inj = BY_F[+ev.target.value]; writeHash(); schedule(); };
+document.getElementById("rank").oninput = ev => { S.inj = BY_SNR[+ev.target.value]; writeHash(); schedule(); };
 readHash();
 let pending = false;
 const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; render(); }); } };
@@ -855,6 +870,7 @@ a { color: var(--s1); }
 .chart { position: relative; min-width: 0; }
 canvas { display: block; max-width: 100%; }
 .cross { position: absolute; width: 1px; background: var(--ink-2); pointer-events: none; display: none; }
+.ramp { display: inline-block; width: 180px; height: 10px; border-radius: 2px; }
 .slider { display: grid; grid-template-columns: 110px minmax(0, 1fr) 170px; gap: 10px; align-items: center; font-size: 13px; color: var(--ink-2); margin: 4px 0; }
 .slider input { width: 100%; }
 .slider output { font-variant-numeric: tabular-nums; color: var(--ink); }
@@ -886,36 +902,32 @@ window.onerror = (message, source, line) => {
 <div class="layout">
 <aside class="card side">
   <div class="stack"><span class="k">Evals</span><ul class="links" id="evals"></ul></div>
-  <p class="note">Hover a chart for values; in the binned charts, click to pick the epoch or the bin. The view lives in the URL.</p>
+  <p class="note">Hover a chart for values; the sliders pick the epoch. The view lives in the URL.</p>
 </aside>
 <div class="content">
   <div class="tiles" id="tiles"></div>
   <div class="card">
-    <h2>Training</h2>
-    <p class="note">Per chunk of steps, the median (line) and 10–90% (band) of the per-step values.</p>
-    <div class="grid" id="train"></div>
-  </div>
-  <div class="card">
-    <h2>Eval catalog</h2>
-    <p class="note">Once per epoch, on the eval's injections and noise, the same every epoch: each injection at the midpoints of 16 equal steps of flow time. The frame and flow NLLs (their lowest sum picks the best checkpoint, beside the latest) and the backbone's weight RMS.</p>
-    <div class="grid" id="catalog"></div>
+    <h2>Losses</h2>
+    <p class="note">Train: per chunk of steps, the median (line) and 10–90% (band) of the per-step values. Eval catalog: once per epoch, on the eval's injections and noise, the same every epoch, each injection at the midpoints of 16 equal steps of flow time; the lowest frame + flow picks the best checkpoint, beside the latest.</p>
+    <div class="legend"><span><svg width="22" height="10"><rect x="1" y="1" width="20" height="8" fill="var(--s1)" fill-opacity="0.18"/><line x1="1" x2="21" y1="5" y2="5" stroke="var(--s1)" stroke-width="1.5"/></svg>train</span><span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(--s2)" stroke-width="2"/></svg>eval catalog</span></div>
+    <div class="grid" id="losses"></div>
   </div>
   <div class="card">
     <h2>Frame per SNR</h2>
     <div class="stack" style="max-width: 360px"><div class="seg" id="frame-mode" style="--cols: 3"></div></div>
+    <div class="stack" style="max-width: 360px"><div class="seg" id="frame-group" style="--cols: 2"></div></div>
     <p class="note" id="frame-note"></p>
     <div class="legend" id="frame-legend"></div>
     <div class="slider"><label for="frame-epoch">epoch</label><input type="range" id="frame-epoch" min="0" step="1"><output id="frame-epoch-out"></output></div>
-    <div class="slider"><label for="frame-bin">SNR bin</label><input type="range" id="frame-bin" min="0" step="1"><output id="frame-bin-out"></output></div>
     <div class="grid" id="frame"></div>
   </div>
   <div class="card">
     <h2>Flow per flow time</h2>
     <div class="stack" style="max-width: 360px"><div class="seg" id="flow-mode" style="--cols: 2"></div></div>
+    <div class="stack" style="max-width: 360px"><div class="seg" id="flow-group" style="--cols: 2"></div></div>
     <p class="note" id="flow-note"></p>
     <div class="legend" id="flow-legend"></div>
     <div class="slider"><label for="flow-epoch">epoch</label><input type="range" id="flow-epoch" min="0" step="1"><output id="flow-epoch-out"></output></div>
-    <div class="slider"><label for="flow-bin">time bin</label><input type="range" id="flow-bin" min="0" step="1"><output id="flow-bin-out"></output></div>
     <div class="grid" id="flow"></div>
   </div>
   <div class="card">
@@ -928,6 +940,11 @@ window.onerror = (message, source, line) => {
       </ul>
     </details>
   </div>
+  <div class="card">
+    <h2>Optimizer</h2>
+    <p class="note">Grad norm before clipping, per chunk of steps as above; the backbone's weight RMS once per epoch.</p>
+    <div class="grid" id="optimizer"></div>
+  </div>
 </div>
 </div>
 </main>
@@ -937,7 +954,7 @@ window.onerror = (message, source, line) => {
 const META = DATA.meta, E = META.epochs, G = META.groups;
 const LOSSES = {frame: "frame loss", flow: "flow loss", grad_norm: "grad norm"};
 const CATALOG = {w_rms: "backbone weight RMS"};
-const S = {epoch: E - 1, frame: {mode: "zoom", bin: 0}, flow: {mode: "zoom", bin: 0}};
+const S = {epoch: E - 1, frame: {mode: "zoom", group: "groups"}, flow: {mode: "zoom", group: "groups"}};
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 function rgba(name, alpha) {
@@ -1106,7 +1123,6 @@ function chartIn(parent, id, title) {
 }
 
 // losses that go negative are drawn as their gap above a floor just under the lowest value seen
-const SHIFTED = new Set(["frame", "flow"]);
 function aboveFloor(arrays) {
   const all = arrays.flat().filter(Number.isFinite).sort((a, b) => a - b), min = all[0];
   const floor = min - 1e-2 * (all[all.length >> 1] - min);
@@ -1114,33 +1130,39 @@ function aboveFloor(arrays) {
 }
 const STEP_AXIS = {log: true, label: "step"};
 
-function training() {
-  const t = DATA.train, parent = document.getElementById("train"), x = STEP_AXIS;
-  for (const name of META.loss_names) {
-    const q = t.losses[name], label = LOSSES[name] || name;
-    const gap = SHIFTED.has(name) ? aboveFloor([q.lo, q.median, q.hi]) : {shift: a => a, label: label => label};
-    plot(chartIn(parent, `train-${name}`, label), {
-      x, y: {log: true, label: gap.label(label)}, sync: "step",
-      layers: [{type: "band", x: t.step, lo: gap.shift(q.lo), hi: gap.shift(q.hi), colour: "--s1"}, {type: "line", x: t.step, y: gap.shift(q.median), colour: "--s1", width: 1.5}],
-      hover: {x: t.step, html: k => `step ${kilo(t.step[k])}<table>${row("", "90%", sig(q.hi[k]))}${row("--s1", "median", sig(q.median[k]))}${row("", "10%", sig(q.lo[k]))}</table>`},
+const trainLayers = (q, shift) => [{type: "band", x: DATA.train.step, lo: shift(q.lo), hi: shift(q.hi), colour: "--s1"}, {type: "line", x: DATA.train.step, y: shift(q.median), colour: "--s1", width: 1.5}];
+const trainRows = (q, k) => `${row("", "train 90%", sig(q.hi[k]))}${row("--s1", "train median", sig(q.median[k]))}${row("", "train 10%", sig(q.lo[k]))}`;
+// the epoch whose end is the first at or after a step: the eval-catalog point that step leads to
+const epochAt = s => { const e = DATA.epoch_step.findIndex(v => v >= s); return e < 0 ? E - 1 : e; };
+
+// train and eval catalog of one loss on one chart, above one shared floor
+function losses() {
+  const t = DATA.train, h = DATA.catalog, parent = document.getElementById("losses");
+  for (const name of ["frame", "flow"]) {
+    const q = t.losses[name], c = h[name];
+    if (!q) continue;
+    const gap = aboveFloor([q.lo, q.median, q.hi, c || []]);
+    const layers = trainLayers(q, gap.shift);
+    if (c) layers.push({type: "line", x: DATA.epoch_step, y: gap.shift(c), colour: "--s2"});
+    plot(chartIn(parent, `loss-${name}`, LOSSES[name]), {
+      x: STEP_AXIS, y: {log: true, label: gap.label(LOSSES[name])}, sync: "step", layers,
+      hover: {x: t.step, html: k => {
+        const e = epochAt(t.step[k]);
+        return `step ${kilo(t.step[k])}<table>${trainRows(q, k)}${c ? row("--s2", `eval, epoch ${e + 1}`, sig(c[e])) : ""}</table>`;
+      }},
     });
   }
 }
-function catalog() {
-  const h = DATA.catalog, step = DATA.epoch_step, parent = document.getElementById("catalog"), x = STEP_AXIS;
-  for (const name of ["frame", "flow"]) {
-    if (!h[name]) continue;
-    const gap = aboveFloor([h[name]]);
-    plot(chartIn(parent, `catalog-${name}`, `eval-catalog ${LOSSES[name]}`), {
-      x, y: {log: true, label: gap.label(LOSSES[name])}, sync: "step",
-      layers: [{type: "line", x: step, y: gap.shift(h[name]), colour: "--s1"}],
-      hover: {x: step, html: k => `epoch ${k + 1}, step ${kilo(step[k])}<table>${row("--s1", LOSSES[name], sig(h[name][k]))}</table>`},
-    });
-  }
+function optimizer() {
+  const q = DATA.train.losses.grad_norm, h = DATA.catalog, step = DATA.epoch_step, parent = document.getElementById("optimizer");
+  if (q) plot(chartIn(parent, "opt-grad_norm", LOSSES.grad_norm), {
+    x: STEP_AXIS, y: {log: true, label: LOSSES.grad_norm}, sync: "step", layers: trainLayers(q, a => a),
+    hover: {x: DATA.train.step, html: k => `step ${kilo(DATA.train.step[k])}<table>${trainRows(q, k)}</table>`},
+  });
   for (const [name, label] of Object.entries(CATALOG)) {
     if (!h[name]) continue;
-    plot(chartIn(parent, `catalog-${name}`, label), {
-      x, y: {log: h[name].every(v => !(v <= 0)), label}, sync: "step",
+    plot(chartIn(parent, `opt-${name}`, label), {
+      x: STEP_AXIS, y: {log: h[name].every(v => !(v <= 0)), label}, sync: "step",
       layers: [{type: "line", x: step, y: h[name], colour: "--s1"}],
       hover: {x: step, html: k => `epoch ${k + 1}, step ${kilo(step[k])}<table>${row("--s1", label, sig(h[name][k]))}</table>`},
     });
@@ -1149,7 +1171,7 @@ function catalog() {
 
 // the binned views: per [epoch][bin][group] (or [epoch][bin] for a single series) in the card's chosen mode
 const COLOURS = ["--s1", "--s2", "--s3", "--s4", "--s5"];
-const GROUP_TEXT = {f0: "f₀", fdot: "ḟ", sky: "sky", "z+": "z₊", "z-": "z₋"};
+const GROUP_TEXT = {f0: "f₀", fdot: "ḟ", sky: "sky", "z+": "z₊", "z-": "z₋", avg: "mean"};
 const centres = edges => edges.slice(0, -1).map((e, k) => 10 ** ((e + edges[k + 1]) / 2));
 const span = (edges, b) => `[${sig(10 ** edges[b])}, ${sig(10 ** edges[b + 1])}]`;
 const CALIBRATED = "1 where σ is calibrated, above it where σ is too narrow.";
@@ -1158,56 +1180,134 @@ const CARDS = {
     edges: META.snr_edges, x: "SNR", over: "SNR", bin: b => `SNR ∈ ${span(META.snr_edges, b)}`,
     modes: [
       {v: "zoom", html: "zoom", y: "log₁₀ σ ÷ σ_prior", data: DATA.frame.zoom,
-       note: "Mean log₁₀ of the frame's σ over the prior's, per coordinate group and bin of the source's true SNR: how far the data stream zooms in."},
+       note: "Mean log₁₀ of the frame's σ over the prior's, per bin of the source's true SNR: how far the data stream zooms in, darker where narrower."},
       {v: "calibration", html: "k²", y: "mean k²", log: true, ref: 1, data: DATA.frame.calibration,
-       note: `Mean squared k = (x₁ − μ)/σ of the truth in the frame, per coordinate group and bin of the source's true SNR; ${CALIBRATED}`},
-      {v: "fisher", html: "f₀ ÷ Fisher", y: "log₁₀ σ_f₀ ÷ Fisher width", ref: 0, data: DATA.frame.f0_fisher, single: true,
-       note: "Mean log₁₀ of f₀'s frame σ over the monochromatic Fisher width √3/(π SNR T), per bin of the source's true SNR; 0 at the Fisher width."},
+       note: `Mean squared k = (x₁ − μ)/σ of the truth in the frame, per bin of the source's true SNR; ${CALIBRATED} Red where too narrow, blue where too wide.`},
+      {v: "fisher", html: "f₀ ÷ Fisher", y: "log₁₀ σ_f₀ ÷ Fisher width", ref: 0, flip: true, data: DATA.frame.f0_fisher, single: true,
+       note: "Mean log₁₀ of f₀'s frame σ over the monochromatic Fisher width √3/(π SNR T), per bin of the source's true SNR; 0 at the Fisher width, red below it, blue above."},
     ],
   },
   flow: {
     edges: META.time_edges, x: "1 − t (flow time left)", over: "flow time", bin: b => `1 − t ∈ ${span(META.time_edges, b)}`,
     modes: [
       {v: "zoom", html: "zoom", y: "log₁₀ σ_z", data: DATA.flow.zoom,
-       note: "Mean log₁₀ σ_z, the flow's predicted width of z₁ in the frame, per coordinate group and log-spaced bin of flow time: below 0 where the flow resolves beyond the frame."},
+       note: "Mean log₁₀ σ_z, the flow's predicted width of z₁ in the frame, per log-spaced bin of flow time: below 0 where the flow resolves beyond the frame, darker where narrower."},
       {v: "calibration", html: "k²", y: "mean z error²", log: true, ref: 1, data: DATA.flow.calibration,
-       note: `Mean squared z error (z₁ − m)/σ_z, per coordinate group and log-spaced bin of flow time; ${CALIBRATED}`},
+       note: `Mean squared z error (z₁ − m)/σ_z, per log-spaced bin of flow time; ${CALIBRATED} Red where too narrow, blue where too wide.`},
     ],
   },
 };
 const modeOf = id => CARDS[id].modes.find(m => m.v === S[id].mode);
+
+// colour scales: sequential one hue (light to dark, dark to light on a dark page), diverging blue | grey | red
+const RAMPS = {
+  seq: {light: ["#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"], dark: ["#0d366b", "#1c5cab", "#3987e5", "#86b6ef", "#cde2fb"]},
+  div: {light: ["#1c5cab", "#86b6ef", "#f0efec", "#ef9a99", "#c62828"], dark: ["#3987e5", "#25456b", "#383835", "#7a3333", "#e66767"]},
+};
+const rgbOf = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+function ramp(stops, t) {
+  const u = clamp(t, 0, 1) * (stops.length - 1), i = Math.min(Math.floor(u), stops.length - 2), f = u - i;
+  const a = rgbOf(stops[i]), b = rgbOf(stops[i + 1]);
+  return `rgb(${a.map((v, k) => Math.round(v + (b[k] - v) * f)).join(",")})`;
+}
+const theme = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+const quantile = (sorted, q) => sorted[clamp(Math.round(q * (sorted.length - 1)), 0, sorted.length - 1)];
+// a mode's colour of a value in plot space (log₁₀ on a log mode): t in [0, 1] along its ramp, from all epochs and bins
+function scaleOf(m, plotted) {
+  const all = plotted.flat().filter(Number.isFinite).sort((a, b) => a - b);
+  if (!all.length) return {colour: () => "transparent", t: () => 0.5, lo: 0, hi: 1};
+  if (m.ref === undefined) {
+    const lo = all[0], hi = all[all.length - 1] > lo ? all[all.length - 1] : lo + 1;
+    const t = v => (hi - v) / (hi - lo);
+    return {colour: v => ramp(RAMPS.seq[theme()], t(v)), t, lo, hi};
+  }
+  const centre = m.log ? Math.log10(m.ref) : m.ref;
+  const half = Math.max(quantile(all.map(v => Math.abs(v - centre)).sort((a, b) => a - b), 0.98), 1e-6);
+  const t = v => 0.5 + (m.flip ? -1 : 1) * (v - centre) / (2 * half);
+  return {colour: v => ramp(RAMPS.div[theme()], t(v)), t, lo: centre - half, hi: centre + half};
+}
+
+// one heatmap: bins along the log₁₀ edges, one row per series; hover a cell for its value
+function heat(host, o) {
+  const rows = o.rows.length, W = host.clientWidth || 400, H = 8 + 30 * rows + 34, L = 52, R = 10, T = 8, B = 34;
+  const [cv, g] = canvasIn(host, W, H);
+  const xe = o.xEdges, nx = xe.length - 1, x0 = xe[0], x1 = xe[nx], rowH = (H - T - B) / rows;
+  const X = t => L + (t - x0) / (x1 - x0) * (W - L - R);
+  for (let r = 0; r < rows; r++) for (let b = 0; b < nx; b++) {
+    const v = o.values[r][b];
+    if (!Number.isFinite(v)) continue;
+    g.fillStyle = o.colour(v);
+    // a 2px surface gap between cells
+    g.fillRect(X(xe[b]) + 1, T + r * rowH + 1, X(xe[b + 1]) - X(xe[b]) - 2, rowH - 2);
+  }
+  g.fillStyle = css("--ink-2"); g.textAlign = "right"; g.textBaseline = "middle";
+  o.rows.forEach((name, r) => g.fillText(name, L - 6, T + (r + 0.5) * rowH));
+  g.fillStyle = css("--muted"); g.strokeStyle = css("--axis"); g.lineWidth = 1; g.textAlign = "center"; g.textBaseline = "top";
+  let right = -Infinity;
+  for (const t of axisTicks(x0, x1, true, 5)) {
+    const x = X(t.at), half = g.measureText(t.text).width / 2;
+    g.beginPath(); g.moveTo(x + 0.5, H - B); g.lineTo(x + 0.5, H - B + 4); g.stroke();
+    if (x - half > right + 4) { g.fillText(t.text, x, H - B + 6); right = x + half; }
+  }
+  g.fillStyle = css("--ink-2"); g.font = "12px system-ui, sans-serif"; g.fillText(o.xLabel, (L + W - R) / 2, H - 16);
+  cv.onmousemove = ev => {
+    const rect = cv.getBoundingClientRect(), px = ev.clientX - rect.left, py = ev.clientY - rect.top;
+    if (px < L || px > W - R || py < T || py > H - B) { hideTip(); return; }
+    const tx = x0 + (px - L) / (W - L - R) * (x1 - x0);
+    showTip(ev, o.hover(clamp(Math.floor((py - T) / rowH), 0, rows - 1), clamp(xe.findIndex(v => v > tx) - 1, 0, nx - 1)));
+  };
+  cv.onmouseleave = hideTip;
+  cv.style.cursor = "crosshair";
+}
+
 function binned(id) {
-  const card = CARDS[id], m = modeOf(id), st = S[id], parent = document.getElementById(id);
-  const xs = centres(card.edges), bins = [...xs.keys()], epochs = [...Array(E).keys()], step = DATA.epoch_step;
-  const names = m.single ? ["f0"] : G, colour = gi => COLOURS[G.indexOf(names[gi])];
-  const value = (e, b, gi) => m.single ? m.data[e][b] : m.data[e][b][gi];
-  const layers = (index, at, pick) => names.map((_, gi) => ({type: "line", x: at, y: index.map(i => pick(i, gi)), colour: colour(gi)}));
-  const ref = m.ref === undefined ? [] : [{type: "hline", at: m.ref}];
-  const table = (e, b) => `<table>${names.map((grp, gi) => row(colour(gi), GROUP_TEXT[grp] || grp, sig(value(e, b, gi)))).join("")}</table>`;
-  const y = {log: !!m.log, label: m.y};
-  plot(chartIn(parent, `${id}-at-epoch`, `over ${card.over}, at the picked epoch`), {
-    x: {log: true, label: card.x}, y,
-    layers: [...ref, ...layers(bins, xs, (b, gi) => value(S.epoch, b, gi)), {type: "vline", at: xs[st.bin]}],
-    hover: {x: xs, html: b => `epoch ${S.epoch + 1}, ${card.bin(b)}${table(S.epoch, b)}`},
-    click: b => { st.bin = b; writeHash(); render(); },
-  });
-  plot(chartIn(parent, `${id}-over-steps`, "over training, in the picked bin"), {
-    x: STEP_AXIS, y,
-    layers: [...ref, ...layers(epochs, step, (e, gi) => value(e, st.bin, gi)), {type: "vline", at: step[S.epoch]}],
-    hover: {x: step, html: e => `epoch ${e + 1}, step ${kilo(step[e])}, ${card.bin(st.bin)}${table(e, st.bin)}`},
-    click: e => { S.epoch = e; writeHash(); render(); },
+  const card = CARDS[id], m = modeOf(id), st = S[id], parent = document.getElementById(id), step = DATA.epoch_step;
+  const bins = [...Array(card.edges.length - 1).keys()];
+  const mean = a => { const f = a.filter(Number.isFinite); return f.length ? f.reduce((s, v) => s + v, 0) / f.length : null; };
+  const series = m.single ? ["f0"] : st.group === "avg" ? ["avg"] : G;
+  const value = (e, b, grp) => m.single ? m.data[e][b] : grp === "avg" ? mean(m.data[e][b]) : m.data[e][b][G.indexOf(grp)];
+  const toPlot = v => v === null || !Number.isFinite(v) ? NaN : m.log ? (v > 0 ? Math.log10(v) : NaN) : v;
+  // one colour scale over every epoch, so the slider moves the colours, not the scale
+  const scale = scaleOf(m, [...Array(E).keys()].flatMap(e => series.map(grp => bins.map(b => toPlot(value(e, b, grp))))));
+  heat(chartIn(parent, `${id}-heat`, `per ${card.over} bin, at the picked epoch`), {
+    xEdges: card.edges, xLabel: card.x, rows: series.map(grp => GROUP_TEXT[grp] || grp),
+    values: series.map(grp => bins.map(b => toPlot(value(S.epoch, b, grp)))), colour: scale.colour,
+    hover: (r, b) => `epoch ${S.epoch + 1}, ${card.bin(b)}<table>${row("", `${GROUP_TEXT[series[r]]}, ${m.y}`, sig(value(S.epoch, b, series[r])))}</table>`,
   });
   seg(`${id}-mode`, card.modes, it => it.v === st.mode, it => { st.mode = it.v; });
-  document.getElementById(`${id}-note`).textContent = `${m.note} Click the left chart to pick the bin, the right one to pick the epoch.`;
-  document.getElementById(`${id}-legend`).innerHTML = names.map((grp, gi) => `<span><svg width="22" height="10"><line x1="1" x2="21" y1="5" y2="5" stroke="var(${colour(gi)})" stroke-width="2"/></svg>${GROUP_TEXT[grp] || grp}</span>`).join("");
-  const ep = document.getElementById(`${id}-epoch`), bin = document.getElementById(`${id}-bin`);
-  ep.max = E - 1; ep.value = S.epoch; bin.max = xs.length - 1; bin.value = st.bin;
+  document.getElementById(`${id}-group`).parentElement.hidden = !!m.single;
+  seg(`${id}-group`, [{v: "groups", html: "per group"}, {v: "avg", html: "mean of groups"}], it => it.v === st.group, it => { st.group = it.v; });
+  document.getElementById(`${id}-note`).textContent = `${m.note} The slider picks the epoch; blank cells hold no injection.`;
+  const stops = [...Array(11).keys()].map(k => scale.colour(scale.lo + (scale.hi - scale.lo) * k / 10));
+  const ends = [scale.lo, scale.hi].map(v => m.log ? 10 ** v : v), rising = scale.t(scale.lo) <= scale.t(scale.hi);
+  const [left, rightEnd] = rising ? ends : [...ends].reverse();
+  document.getElementById(`${id}-legend`).innerHTML = `<span>${sig(left)}<span class="ramp" style="background:linear-gradient(to right, ${(rising ? stops : [...stops].reverse()).join(",")})"></span>${sig(rightEnd)}</span><span>${m.y}${m.ref === undefined ? "" : `, grey at ${m.ref}, clipped at the 98th percentile of the deviation`}</span>`;
+  const ep = document.getElementById(`${id}-epoch`);
+  if (+ep.value !== S.epoch) ep.value = S.epoch;
   document.getElementById(`${id}-epoch-out`).textContent = `${S.epoch + 1} of ${E}, step ${kilo(step[S.epoch])}`;
-  document.getElementById(`${id}-bin-out`).textContent = card.bin(st.bin);
 }
+// drag by pointer capture: VS Code's webview drops the native range drag (clicks and keys still go native)
+function dragSlider(slider) {
+  const at = ev => { const r = slider.getBoundingClientRect(); return Math.round(clamp((ev.clientX - r.left) / r.width, 0, 1) * +slider.max); };
+  slider.addEventListener("pointerdown", ev => {
+    if (ev.button !== 0) return;
+    ev.preventDefault(); slider.focus(); slider.setPointerCapture(ev.pointerId);
+    const move = e => { const v = at(e); if (v !== +slider.value) { slider.value = v; slider.dispatchEvent(new Event("input")); } };
+    const up = () => {
+      for (const [t, f] of [["pointermove", move], ["pointerup", up], ["pointercancel", up]]) slider.removeEventListener(t, f);
+      slider.dispatchEvent(new Event("change"));
+    };
+    for (const [t, f] of [["pointermove", move], ["pointerup", up], ["pointercancel", up]]) slider.addEventListener(t, f);
+    move(ev);
+  });
+}
+// set up once: writing a slider's max mid-drag drops the drag, and the hash is written on release only
 for (const id of Object.keys(CARDS)) {
-  document.getElementById(`${id}-epoch`).oninput = ev => { S.epoch = +ev.target.value; writeHash(); schedule(); };
-  document.getElementById(`${id}-bin`).oninput = ev => { S[id].bin = +ev.target.value; writeHash(); schedule(); };
+  const ep = document.getElementById(`${id}-epoch`);
+  ep.max = E - 1; ep.value = S.epoch;
+  ep.addEventListener("input", () => { S.epoch = +ep.value; schedule(); });
+  ep.addEventListener("change", writeHash);
+  dragSlider(ep);
 }
 
 function seg(id, items, active, onPick) {
@@ -1232,9 +1332,9 @@ function tiles() {
 function render() {
   SYNC = {};
   tiles();
-  training();
-  catalog();
+  losses();
   for (const id of Object.keys(CARDS)) binned(id);
+  optimizer();
 }
 
 function readHash() {
@@ -1242,11 +1342,11 @@ function readHash() {
   if (h.has("epoch")) S.epoch = clamp(+h.get("epoch") - 1 || 0, 0, E - 1);
   for (const [id, card] of Object.entries(CARDS)) {
     if (card.modes.some(m => m.v === h.get(id))) S[id].mode = h.get(id);
-    if (h.has(`${id}_bin`)) S[id].bin = clamp(+h.get(`${id}_bin`) || 0, 0, card.edges.length - 2);
+    if (["groups", "avg"].includes(h.get(`${id}_group`))) S[id].group = h.get(`${id}_group`);
   }
 }
 function writeHash() {
-  const h = new URLSearchParams({epoch: S.epoch + 1, frame: S.frame.mode, frame_bin: S.frame.bin, flow: S.flow.mode, flow_bin: S.flow.bin});
+  const h = new URLSearchParams({epoch: S.epoch + 1, frame: S.frame.mode, frame_group: S.frame.group, flow: S.flow.mode, flow_group: S.flow.group});
   history.replaceState(null, "", `#${h}`);
 }
 
@@ -1254,8 +1354,6 @@ document.getElementById("title").textContent = `${META.run}: training`;
 document.getElementById("sub").textContent = `${META.config} at ${META.commit}, ${E} epochs of ${kilo(META.steps_per_epoch)} steps. Layout ${META.layout}.`;
 document.getElementById("evals").innerHTML = META.evals.length ? META.evals.map(e => `<li>${e.name}: ` +
   [e.validation ? `<a href="eval/${e.name}/validation.html">validation</a>` : "", e.corner ? `<a href="eval/${e.name}/corner.html">corners</a>` : ""].filter(Boolean).join(" · ") + "</li>").join("") : "<li>none yet</li>";
-// the first bin with data at the last epoch, by default
-for (const id of Object.keys(CARDS)) S[id].bin = Math.max(0, CARDS[id].modes[0].data[E - 1].findIndex(r => r.some(Number.isFinite)));
 readHash();
 let pending = false;
 const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; render(); }); } };
@@ -1945,9 +2043,7 @@ def calibration_data(scores: dict, what: str) -> dict:
 
     bands = snr_bands()
     rank = {
-        k.removeprefix("rank_"): v
-        for k, v in scores.items()
-        if k.startswith("rank_")
+        k.removeprefix("rank_"): v for k, v in scores.items() if k.startswith("rank_")
     }
     joint_rank = {
         k.removeprefix("joint_rank_"): v
@@ -2021,10 +2117,7 @@ def calibration_data(scores: dict, what: str) -> dict:
             ["sources", *(int(m.sum()) for m in band)],
             [
                 "energy score",
-                *(
-                    median_in(scores["energy"][:, s], m)
-                    for s, m in enumerate(slots)
-                ),
+                *(median_in(scores["energy"][:, s], m) for s, m in enumerate(slots)),
                 median_in(scores["joint_energy"], joint),
             ],
             *(
@@ -2095,9 +2188,7 @@ def scorecard_data(sc: dict) -> dict:
         ("eval", sc["is_eval"]),
         ("random", ~sc["is_eval"]),
     ]:
-        for (lo, hi), label in zip(
-            bands, BANDS
-        ):
+        for (lo, hi), label in zip(bands, BANDS):
             m = which & in_band(sc["snr"], lo, hi)
             if not m.any():
                 continue
@@ -2141,14 +2232,17 @@ def mcmc_data(problem, d: dict, reference: dict) -> dict:
     for j, s in zip(*np.nonzero(np.isfinite(reference["mcmc"]).all(axis=(1, 3)))):
         truth = d["truth"][j, s]
         m = fold(reference["mcmc"][j, :, s], truth, problem.t_obs)
-        f = fold(d["matched"][j, :, s], truth, problem.t_obs)
+        f = fold(d["draws"][j, :, s], truth, problem.t_obs)
         f = f[np.isfinite(f).all(axis=1)]
         width = robust_width(m, 0)
         values = np.stack(
             [
                 width,
                 robust_width(f, 0) / width,
-                [wasserstein_distance(f[:, c], m[:, c]) / m[:, c].std() for c in range(len(COLUMNS))],
+                [
+                    wasserstein_distance(f[:, c], m[:, c]) / m[:, c].std()
+                    for c in range(len(COLUMNS))
+                ],
             ]
         )
         sources.append(
@@ -2158,7 +2252,10 @@ def mcmc_data(problem, d: dict, reference: dict) -> dict:
                 "values": significant(values),
             }
         )
-    return {"columns": COLUMNS, "sources": sorted(sources, key=lambda source: -source["snr"])}
+    return {
+        "columns": COLUMNS,
+        "sources": sorted(sources, key=lambda source: -source["snr"]),
+    }
 
 
 def write_validation(path: Path, index: dict) -> Path:
@@ -2181,7 +2278,8 @@ def write_validation(path: Path, index: dict) -> Path:
 
 def validation_report(eval_dir: Path) -> Path:
     """eval_dir/validation.html: the eval's rank calibration, sharpness and proper scores, f0 scorecard and, once
-    `mcmc pack` has run on the problem, the flow against the eval catalog's MCMC reference."""
+    `mcmc pack` has run on the problem, the flow against the eval catalog's MCMC reference.
+    """
     import yaml
 
     from .mcmc import load_reference
@@ -2206,7 +2304,11 @@ def validation_report(eval_dir: Path) -> Path:
     scorecard = None
     if "card_snr" in card:
         scorecard = scorecard_data(
-            {k.removeprefix("card_"): v for k, v in card.items() if k.startswith("card_")}
+            {
+                k.removeprefix("card_"): v
+                for k, v in card.items()
+                if k.startswith("card_")
+            }
             | {k: card[k] for k in ("epoch", "ode_steps", "n_random")}
         )
     mcmc = None
@@ -2216,10 +2318,14 @@ def validation_report(eval_dir: Path) -> Path:
         d = load_samples(eval_dir / "draws.npz")
         if reference is not None and np.allclose(reference["truth"], d["truth"]):
             mcmc = mcmc_data(problem, d, reference)
-    links = [[href, text] for href, text, there in [
-        ("corner.html", "corners", (eval_dir / "draws.npz").exists()),
-        ("../../run.html", "training", (run_dir / "history.npz").exists()),
-    ] if there]
+    links = [
+        [href, text]
+        for href, text, there in [
+            ("corner.html", "corners", (eval_dir / "draws.npz").exists()),
+            ("../../run.html", "training", (run_dir / "history.npz").exists()),
+        ]
+        if there
+    ]
     index = {
         "meta": {
             "title": f"{run_dir.name}: validation",
@@ -2256,9 +2362,13 @@ def mcmc_pages(path: Path, problem=None) -> list[Path]:
     d = load_samples(path)
     name, seed, pid = str(d["config"]), int(d["seed"]), str(d["problem_id"])
     problem = problem or LisaGB(**run_config.load(name).problem)
-    assert problem_id(problem, seed) == pid, f"{path}: config {name} is no longer problem {pid}"
+    assert (
+        problem_id(problem, seed) == pid
+    ), f"{path}: config {name} is no longer problem {pid}"
     stem = path.parent.parent / path.stem
-    corner, validation = stem.with_name(f"{stem.name}-corner.html"), stem.with_name(f"{stem.name}-validation.html")
+    corner, validation = stem.with_name(f"{stem.name}-corner.html"), stem.with_name(
+        f"{stem.name}-validation.html"
+    )
     complete = np.isfinite(d["mcmc"]).all(axis=(1, 2, 3))
     n_sources = int(np.isfinite(d["mcmc"][:, 0, :, 0]).sum())
     subtitle = (
@@ -2270,10 +2380,13 @@ def mcmc_pages(path: Path, problem=None) -> list[Path]:
     pages, links = [], []
     keep = np.flatnonzero(complete)
     if len(keep):
-        sub = {k: d[k][keep] for k in ("truth", "f", "snr", "source_snr", "grid")}
+        sub = {k: d[k][keep] for k in ("truth", "f", "snr", "source_snr")}
         sets = [{"mcmc": d["mcmc"][j], "fisher": d["fisher"][j]} for j in keep]
         index, blob = corner_index(problem, sub, sets, lead="mcmc")
-        index["meta"] |= {"title": f"MCMC reference {pid}: corners", "subtitle": subtitle}
+        index["meta"] |= {
+            "title": f"MCMC reference {pid}: corners",
+            "subtitle": subtitle,
+        }
         pages.append(write_corner(corner, index, blob))
         links.append([corner.name, "corners"])
 
@@ -2318,7 +2431,10 @@ def main() -> int:
         elif (target / "eval.yaml").exists():
             pages += eval_pages(target)
     if not pages:
-        print("nothing to draw: give a run dir, an eval dir or an MCMC reference", file=sys.stderr)
+        print(
+            "nothing to draw: give a run dir, an eval dir or an MCMC reference",
+            file=sys.stderr,
+        )
         return 1
     for page in pages:
         print(page, flush=True)

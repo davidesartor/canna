@@ -1,9 +1,10 @@
 """Reordering sources must not change the physics; training puts the sources in f0 order."""
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from canna.lisa.injections import sort_by_snr
+from canna.lisa.injections import sort_by_f0
 from canna.lisa.problem import LisaGB, window_start
 from canna.lisa.simulator import (
     clean_signal,
@@ -11,7 +12,6 @@ from canna.lisa.simulator import (
     sample_observation,
     sample_physical,
     snr,
-    source_snrs,
 )
 from canna.lisa.train import train_sample
 
@@ -80,13 +80,13 @@ def test_iota_change_on_one_source_leaves_a_siblings_band_untouched():
     assert jnp.allclose(o[band0], o_pert[band0], atol=1e-30)
 
 
-def test_sort_by_snr_reorders_whole_rows_loudest_first():
+def test_sort_by_f0_reorders_whole_rows_lowest_f0_first():
     problem = LisaGB(n_sources=4)
-    f = window(problem)
-    p = sample_physical(problem, jr.key(31), f)
-    shown = sort_by_snr(problem, p, f)
-    assert sorted(map(tuple, shown.tolist())) == sorted(map(tuple, p.tolist()))
-    assert jnp.all(jnp.diff(source_snrs(problem, shown, f)) <= 0)
+    p = jax.vmap(sample_physical, in_axes=(None, 0, None))(problem, jr.split(jr.key(31), 3), window(problem))
+    shown = sort_by_f0(p)
+    for a, b in zip(shown, p):
+        assert sorted(map(tuple, a.tolist())) == sorted(map(tuple, b.tolist()))
+    assert jnp.all(jnp.diff(shown[..., 0], axis=-1) >= 0)
 
 
 def test_train_sample_puts_the_sources_in_f0_order():

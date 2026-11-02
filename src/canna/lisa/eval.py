@@ -1,4 +1,4 @@
-"""The flow's draws on the eval grid's injections, matched to the truth, beside their Fisher forecasts, as draws.npz (packed, see samples)."""
+"""The flow's draws on the eval injections, sources by f0, beside their Fisher forecasts, as draws.npz (packed, see samples)."""
 
 from functools import partial
 
@@ -12,7 +12,7 @@ from .injections import (
     N_POSTERIOR,
     eval_injections,
     fisher_samples,
-    match_sources,
+    sort_by_f0,
 )
 from .sample import sample_posterior
 from .samples import pack_draws
@@ -24,11 +24,11 @@ def main() -> None:
     config = run_config.load_run()
     problem, flow, epoch = load_trained(config)
     out_dir = run_config.eval_dir(config, epoch, backend=jax.default_backend())
-    latents, windows, snrs, grid, noise_keys, prior_prec_p = eval_injections(
+    latents, windows, snrs, noise_keys, prior_prec_p = eval_injections(
         problem, config.seed
     )
 
-    draws, matched, fisher, source_snr = [], [], [], []
+    draws, fisher, source_snr = [], [], []
     for j, key_n in enumerate(noise_keys):
         latent, f = latents[j], windows[j]
 
@@ -37,16 +37,12 @@ def main() -> None:
         # the base draws: their own stream beside the noise's key_n
         z0 = jr.normal(jr.fold_in(key_n, 1), (N_POSTERIOR, *latent.shape))
         post = sample_posterior(problem, flow, z0, y, f, config.ode_steps)
-        draws.append(
-            np.asarray(
-                jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)
-            )
-        )
-        matched.append(match_sources(problem, draws[-1], np.asarray(latent), f))
+        physical = jax.vmap(partial(flow_to_physical, problem), in_axes=(0, None))(post, f)
+        draws.append(np.asarray(sort_by_f0(physical)))
         fisher.append(fisher_samples(problem, latent, f, key_n, prior_prec_p))
         source_snr.append(np.asarray(snr(problem, latent[:, None, :], f)))
         print(
-            f"[{j + 1}/{len(grid)}] window {grid[j, 0]}, SNR rank {grid[j, 1]} sampled",
+            f"[{j + 1}/{len(windows)}] f {float(f) * 1e3:.3f} mHz, SNR {snrs[j]:.1f} sampled",
             flush=True,
         )
 
@@ -56,13 +52,11 @@ def main() -> None:
         **pack_draws(
             dict(
                 draws=np.stack(draws),
-                matched=np.stack(matched),
                 fisher=np.stack(fisher),
                 truth=np.asarray(latents),
                 f=np.asarray(windows),
                 snr=snrs,
                 source_snr=np.stack(source_snr),
-                grid=grid,
                 epoch=epoch,
             )
         ),

@@ -1,11 +1,11 @@
-"""The scorecard bookkeeping: source matching, widths in bins, and calibration flags."""
+"""The scorecard bookkeeping: f0 ordering, widths in bins, and calibration flags."""
 
 import jax.random as jr
 import numpy as np
 import pytest
 
 from canna.lisa import config
-from canna.lisa.injections import match_sources
+from canna.lisa.injections import sort_by_f0
 from canna.lisa.problem import LisaGB, sample_f
 from canna.lisa.scorecard import score
 from canna.lisa.simulator import sample_physical
@@ -28,10 +28,10 @@ def draws_around(truth, n, f0_sigma_bins, t_obs, shift_bins=0.0, seed=0):
     return np.take_along_axis(d, order[:, :, None], axis=1)
 
 
-def test_matching_undoes_any_relabelling(setup):
+def test_f0_sorting_undoes_any_relabelling(setup):
     problem, f, truth = setup
     shuffled = draws_around(truth, 64, 0.0, problem.t_obs)
-    assert np.array_equal(match_sources(problem, shuffled, truth, f), np.repeat(truth[None], 64, 0))
+    assert np.array_equal(sort_by_f0(shuffled), np.repeat(sort_by_f0(truth)[None], 64, 0))
 
 
 def test_a_calibrated_gaussian_scores_as_calibrated(setup):

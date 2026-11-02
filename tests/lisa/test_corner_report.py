@@ -41,13 +41,11 @@ def test_a_synthetic_eval_round_trips_through_the_page(tmp_path):
     np.savez(
         eval_dir / "draws.npz",
         draws=draws,
-        matched=draws,
         fisher=draws[:, ::-1],
         truth=truth,
         f=f,
         snr=np.full(n_injections, 50.0),
         source_snr=np.tile(np.linspace(30.0, 10.0, problem.n_sources), (n_injections, 1)),
-        grid=np.stack(np.divmod(np.arange(n_injections), n_injections), axis=1),
         epoch=1,
     )
 

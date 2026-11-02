@@ -11,15 +11,15 @@ def test_a_packed_eval_reads_back_close_and_plain_files_unchanged(tmp_path):
     width = np.array([1e-10, 2e-19, 1e-24, 1e-3, 1e-3, 0.1, 0.1, 0.1])
     draws = truth[:, None] + width * rng.standard_normal((3, 256, 4, 8))
     draws[0, :3, 0, 0] += 3e-5  # three draws a few hundred thousand widths away
-    np.savez(tmp_path / "draws.npz", draws=draws, matched=draws, fisher=draws, truth=truth, epoch=1)
+    np.savez(tmp_path / "draws.npz", draws=draws, fisher=draws, truth=truth, epoch=1)
     np.savez(tmp_path / "plain.npz", draws=draws, truth=truth)
 
     samples.pack_eval_dir(tmp_path)
     back = samples.load(tmp_path / "draws.npz")
-    assert set(back) == {"draws", "matched", "fisher", "truth", "epoch"}
-    error = np.abs(back["matched"] - draws) / width
+    assert set(back) == {"draws", "fisher", "truth", "epoch"}
+    error = np.abs(back["draws"] - draws) / width
     assert np.max(error[:, 3:]) < 5e-3  # the core: a few thousandths of a width
-    assert np.allclose(back["matched"][0, :3, 0, 0], draws[0, :3, 0, 0], rtol=1e-6)  # the strays survive
+    assert np.allclose(back["draws"][0, :3, 0, 0], draws[0, :3, 0, 0], rtol=1e-6)  # the strays survive
     assert np.array_equal(back["truth"], truth)
     assert np.array_equal(samples.load(tmp_path / "plain.npz")["draws"], draws)
     assert samples.pack_eval_dir(tmp_path) == []  # packed already

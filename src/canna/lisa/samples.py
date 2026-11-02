@@ -64,9 +64,9 @@ def unpack(raw: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
 
 
 def pack_draws(d: dict) -> dict:
-    """draws.npz: the flow's, matched and Fisher draws [J, N, S, 8] around the truth [J, S, 8]."""
-    out = {k: v for k, v in d.items() if k not in ("draws", "matched", "fisher")}
-    for name in ("draws", "matched", "fisher"):
+    """draws.npz: the flow's and Fisher draws [J, N, S, 8] around the truth [J, S, 8]."""
+    out = {k: v for k, v in d.items() if k not in ("draws", "fisher")}
+    for name in ("draws", "fisher"):
         if name in d:
             out |= pack(name, d[name], d["truth"], axis=1)
     return out

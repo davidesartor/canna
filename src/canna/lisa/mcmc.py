@@ -20,11 +20,10 @@ from jaxtyping import Array, Float
 
 from . import config as run_config
 from .injections import (
-    N_PER_WINDOW,
-    N_WINDOWS,
+    N_INJECTIONS,
     eval_injections,
     fisher_samples,
-    match_sources,
+    sort_by_f0,
 )
 from .physics import (
     FDOT_STD,
@@ -79,7 +78,7 @@ def problem_id(problem: LisaGB, seed: int) -> str:
     fields["source_prior"] = [SOURCE_MEAN.tolist(), SOURCE_COVARIANCE.tolist(), FDOT_SIGMAS]
     fields["sky_prior"] = "galactic"
     fields["seed"] = seed
-    fields["eval_grid"] = [N_WINDOWS, N_PER_WINDOW]
+    fields["eval_catalog"] = ["log-uniform", N_INJECTIONS]
     if problem.visible_snr:
         fields["visible_snr"] = problem.visible_snr
     text = json.dumps(fields, sort_keys=True, default=str)
@@ -180,7 +179,7 @@ class Window(NamedTuple):
 
 
 def make_window(problem: LisaGB, injections, j: int) -> Window:
-    latents, windows, snrs, _, noise_keys, prior_prec = injections
+    latents, windows, snrs, noise_keys, prior_prec = injections
     f = windows[j]
     truth = np.asarray(latents[j], np.float64)
 
@@ -412,7 +411,7 @@ def run(config: run_config.Config, problem: LisaGB, args) -> None:
 
 
 def status(config: run_config.Config, problem: LisaGB, args) -> int:
-    n_injections = N_WINDOWS * N_PER_WINDOW
+    n_injections = N_INJECTIONS
     directory = cache_dir(problem, config.seed, args.root)
     missing = [
         chain_file(directory, j, k).name
@@ -457,20 +456,20 @@ def pack(config: run_config.Config, problem: LisaGB, args) -> None:
     from .chart import sample_flow
 
     seed = config.seed
-    latents, windows, snrs, grid, noise_keys, prior_prec_p = eval_injections(problem, seed)
+    latents, windows, snrs, noise_keys, prior_prec_p = eval_injections(problem, seed)
     truth = np.asarray(latents, np.float64)
     n_injections, n_sources = truth.shape[:2]
     directory = cache_dir(problem, seed, args.root)
     chains = load_chains(problem, seed, args.root, n=N_KEEP)
     assert chains, f"no MCMC for {config.name} in {directory}: run it first"
 
-    # each draw's sources relabelled onto the truth, angles back on the truth-centred box; NaN for an injection without chains
+    # each draw's sources by f0, as the truth's, angles back on the truth-centred box; NaN for an injection without chains
     mcmc = np.full((n_injections, N_KEEP, n_sources, N_PARAMS), np.nan)
     for j, draws in chains.items():
         if len(draws) < N_KEEP:
             print(f"[mcmc] injection {j}: {len(draws)} draws, skipped", file=sys.stderr)
             continue
-        draws = match_sources(problem, draws, truth[j], windows[j])
+        draws = np.array(sort_by_f0(draws))
         t = truth[j][:, ANGLES]
         draws[..., ANGLES] = t + (draws[..., ANGLES] - t + np.pi) % (2 * np.pi) - np.pi
         mcmc[j] = draws
@@ -531,7 +530,6 @@ def pack(config: run_config.Config, problem: LisaGB, args) -> None:
         f=np.asarray(windows),
         snr=snrs,
         source_snr=np.stack(source_snr),
-        grid=grid,
         rhat=rhat,
         ess=ess,
         n_seeds=n_seeds,

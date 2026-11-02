@@ -233,7 +233,7 @@ window.onerror = (message, source, line) => {
 <div class="layout">
 <aside class="card side">
   <div class="stack"><span class="k">Injection (window SNR; blue: long chains)</span><div class="seg grid" id="window" style="--cols: 8"></div></div>
-  <div class="stack"><span class="k">Source (SNR, loudest first)</span><div class="seg grid" id="source" style="--cols: 4"></div></div>
+  <div class="stack"><span class="k">Source (SNR, lowest f₀ first)</span><div class="seg grid" id="source" style="--cols: 4"></div></div>
   <div class="stack"><span class="k">Parameter</span><div class="seg grid" id="param" style="--cols: 4"></div></div>
   <div class="stack"><span class="k">Paired with (corner)</span><div class="seg grid" id="pair" style="--cols: 4"></div></div>
   <p class="note">The parameter drives every card. Clicking a corner cell, a column, a point or a table row changes these pickers.</p>
@@ -779,7 +779,7 @@ function tiles() {
   const cv = long ? DATA.convergence.windows[String(S.window)] : null;
   document.getElementById("tiles").innerHTML = [
     tile(`Injection ${S.window}`, `SNR ${Math.round(w.window_snr)}`, `f = ${(w.f * 1e3).toPrecision(5)} mHz; ${long ? "joint and long chains" : "joint chains"}`),
-    tile(`Source ${s}`, `SNR ${fmt(w.snr[s], 1)}`, `slot ${s} of 4, loudest first`),
+    tile(`Source ${s}`, `SNR ${fmt(w.snr[s], 1)}`, `slot ${s} of ${w.snr.length}, lowest f₀ first`),
     tile("Chain health", `R̂ ${fmt(rhat, 4)}`, `ESS ≥ ${big(ess)}; this injection's joint chains`),
     tile(`Seed 1 ÷ seed 0, ${NAMES[p]}`, fmt(w.joint_width[1]?.[s][p] / w.joint_width[0][s][p], 2), "width; the chains' own noise"),
     tile(`Fisher ÷ MCMC, ${NAMES[p]}`, fmt(w.fisher_width[s][p] / jointMean(w, s, p), 2), "against the joint width; 0.8–1.25 agrees"),

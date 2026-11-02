@@ -59,7 +59,7 @@ def main(out: str) -> None:
         cfg = config.load(f"{band}-B")
         problem = LisaGB(**cfg.problem)
         start = time.perf_counter()
-        latents, windows, snrs, grid, noise_keys, prior_prec = eval_injections(
+        latents, windows, snrs, noise_keys, prior_prec = eval_injections(
             problem, cfg.seed
         )
         prior_diag = np.diag(np.asarray(prior_prec))
@@ -76,8 +76,7 @@ def main(out: str) -> None:
             source_snr = np.asarray(source_snrs(problem, latents[j], windows[j]))
             injections.append(
                 dict(
-                    window=int(grid[j, 0]),
-                    snr_rank=int(grid[j, 1]),
+                    f=float(windows[j]),
                     window_snr=float(snrs[j]),
                     source_snr=source_snr.tolist(),
                     log10_hessian_diag=np.log10(hessian_diag).tolist(),

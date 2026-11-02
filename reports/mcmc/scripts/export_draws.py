@@ -14,7 +14,7 @@ from einops import rearrange
 from joint_mcmc import WINDOWS
 
 from canna.lisa import config as run_config
-from canna.lisa.injections import eval_injections, match_sources
+from canna.lisa.injections import eval_injections, sort_by_f0
 from canna.lisa.mcmc import COLUMNS, MCMC_ROOT, cache_dir, fold, make_window, problem_id
 from canna.lisa.problem import LisaGB
 from canna.lisa.simulator import sample_physical
@@ -66,25 +66,23 @@ def export_draws(
         truth, f, n_sources = window.truth, window.f, window.truth.shape[0]
         true = fold_sources(truth[None], truth, t_obs)[0]
 
-        # every source free, relabelled onto the truth; the unit is the seeds' pooled width
+        # every source free, sources by f0 as the truth's; the unit is the seeds' pooled width
         joint = {}
         for path in paths:
             seed = int(path.stem.rsplit("seed", 1)[1])
             physical = thin(np.load(path)["physical"], n_joint, rng)
-            joint[seed] = fold_sources(
-                match_sources(problem, physical, truth, f), truth, t_obs
-            )
+            joint[seed] = fold_sources(np.asarray(sort_by_f0(physical)), truth, t_obs)
         seeds = sorted(joint)
         scale = width(np.concatenate([joint[k] for k in seeds]))
 
-        fisher = fold_sources(
-            match_sources(problem, window.fisher, truth, f), truth, t_obs
-        )
+        fisher = fold_sources(np.asarray(sort_by_f0(window.fisher)), truth, t_obs)
 
-        # the prior of each loudness-sorted slot, folded onto that slot's truth
+        # the prior of each f0-sorted slot, folded onto that slot's truth
         prior = np.asarray(
-            jax.vmap(sample_physical, in_axes=(None, 0, None))(
-                problem, jr.split(jr.key(j), n_prior), f
+            sort_by_f0(
+                jax.vmap(sample_physical, in_axes=(None, 0, None))(
+                    problem, jr.split(jr.key(j), n_prior), f
+                )
             )
         )
         prior = fold_sources(prior, truth, t_obs)
