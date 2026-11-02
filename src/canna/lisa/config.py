@@ -17,7 +17,7 @@ CHOICES = dict(
 )
 # what a finished run's config.yaml lets eval, scorecard and validation change; a resume, also the chunking
 EVAL_FIELDS = ("ode_steps", "n_random", "n_validation", "weights", "bf16")
-RESUME_FIELDS = ("micro_batches", "total_steps", "ode_steps", "n_random", "n_validation", "weights")
+RESUME_FIELDS = ("micro_batches", "total_steps", "snapshot_every", "ode_steps", "n_random", "n_validation", "weights")
 LOCATION_FIELDS = ("output_dir", "run")
 ADJECTIVES = """
 agile airy amber ancient arctic azure balmy bold brave breezy bright brisk calm cheery clever cosmic
@@ -77,6 +77,9 @@ class Config:
     bf16: str = "backbone"
     # a new run's starting weights: this run's at its latest checkpoint (train.warm_start)
     init_from: str = ""
+    # epochs between kept snapshots, 0 for none; a fork <run>/<epoch> resumes one and cools down from it
+    snapshot_every: int = 0
+    fork_from: str = ""
 
     def __post_init__(self):
         for field, choices in CHOICES.items():

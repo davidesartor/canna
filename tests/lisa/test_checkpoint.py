@@ -4,6 +4,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from canna.lisa import config
 from canna.lisa.optim import routing_report
@@ -129,3 +130,28 @@ def test_warm_start_copies_the_latest_weights(tmp_path):
     target = load(init_from="source")
     started = warm_start(target, setup(target)[2].flow)
     assert same(started, state.flow)
+
+
+def test_every_snapshot_is_kept(tmp_path):
+    state = moved_state(small_config())
+    with checkpoint_manager(tmp_path, folder="snapshots") as snapshots:
+        for epoch in (1, 2, 3):
+            save_checkpoint(snapshots, state, epoch, HISTORIES)
+    assert sorted(p.name for p in (tmp_path / "snapshots").iterdir()) == ["1", "2", "3"]
+
+
+def test_a_fork_keeps_its_parent_and_cools_down_from_the_snapshot(tmp_path):
+    from canna.lisa.train import fork_config
+
+    parent = small_config(
+        output_dir=tmp_path, run="parent", commit="0" * 40, total_steps=100_000,
+        log_interval=1000, cooldown_frac=0.2, snapshot_every=8, learning_rate=3e-4,
+    )
+    parent.run_dir.mkdir(parents=True)
+    config.save(parent, parent.run_dir / "config.yaml")
+
+    fork = fork_config(small_config(output_dir=tmp_path, fork_from="parent/40"))
+    assert (fork.run, fork.commit, fork.learning_rate) == ("parent-e40", "0" * 40, 3e-4)
+    assert fork.total_steps == 50_000 and fork.snapshot_every == 0
+    with pytest.raises(AssertionError, match="cooldown"):
+        fork_config(small_config(output_dir=tmp_path, fork_from="parent/90"))

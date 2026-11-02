@@ -308,12 +308,9 @@ class Catalog(NamedTuple):
 
 
 def eval_catalog(problem: LisaGB, seed: int) -> Catalog:
-    latents, windows, _, _, noise_keys, _ = eval_injections(problem, seed)
+    latents, windows, _, noise_keys, _ = eval_injections(problem, seed)
     observe = lambda key, p, f: preprocess(
         problem, sample_observation(problem, key, p, f), f
-    )
-    latents = jnp.take_along_axis(
-        latents, jnp.argsort(latents[..., 0], axis=-1)[..., None], axis=-2
     )
     return Catalog(
         latents,
@@ -363,13 +360,13 @@ def checkpoint_manager(
     """The run's checkpoints in run_dir/folder, keeping only the latest (orbax holds the old one while saving).
 
     read_only: for a reader beside a live trainer, which must not delete the save it is writing.
-    folder: checkpoints for the latest epoch, best for the lowest catalog frame + flow NLL.
+    folder: checkpoints for the latest epoch, best for the lowest catalog frame + flow NLL, snapshots for every one.
     """
     # a requeue can kill a save midway: drop its partial folder when the run restarts
     return ocp.CheckpointManager(
         (run_dir / folder).absolute(),
         options=ocp.CheckpointManagerOptions(
-            max_to_keep=None if read_only else 1,
+            max_to_keep=None if read_only or folder == "snapshots" else 1,
             cleanup_tmp_directories=not read_only,
             read_only=read_only,
         ),
@@ -400,9 +397,10 @@ def restore_checkpoint(
     checkpoints: ocp.CheckpointManager,
     state: TrainState,
     histories: tuple[str, ...] = (),
+    epoch: int | None = None,
 ) -> tuple[TrainState, int, dict[str, np.ndarray] | None]:
-    """The state, epoch and the named histories to resume from, or `state` at 0."""
-    epoch = checkpoints.latest_step()
+    """The state, epoch (the latest, or the given one) and the named histories to resume from, or `state` at 0."""
+    epoch = checkpoints.latest_step() if epoch is None else epoch
     if epoch is None:
         return state, 0, None
 
@@ -453,6 +451,36 @@ def warm_start(config: Config, flow: LisaFlow) -> LisaFlow:
     return copied
 
 
+def fork_config(config: Config) -> Config:
+    """The fork's config: its parent's, as run <parent>-e<epoch>, the cooldown starting at the snapshot."""
+    parent, epoch = config.fork_from.rsplit("/", 1)
+    stored = yaml.safe_load(
+        (config.output_dir / "runs" / parent / "config.yaml").read_text()
+    )
+    name = stored.pop("name")
+    start = int(epoch) * stored["log_interval"]
+    assert (
+        0 < stored["cooldown_frac"] < 1
+    ), "a fork cools down: cooldown_frac must be in (0, 1)"
+    assert (
+        start <= (1 - stored["cooldown_frac"]) * stored["total_steps"]
+    ), f"{config.fork_from} is inside {parent}'s cooldown"
+    total_steps = stored["log_interval"] * round(
+        start / (1 - stored["cooldown_frac"]) / stored["log_interval"]
+    )
+    return Config(
+        name=name,
+        **run_config.merge([stored])
+        | dict(
+            output_dir=config.output_dir,
+            run=f"{parent}-e{epoch}",
+            fork_from=config.fork_from,
+            total_steps=total_steps,
+            snapshot_every=0,
+        ),
+    )
+
+
 def load_trained(config: Config) -> tuple[LisaGB, LisaFlow, int]:
     """The problem, the trained flow (the latest checkpoint's, or with weights: best the best one's) and its epoch."""
     folder = "checkpoints" if config.weights == "last" else "best"
@@ -483,12 +511,13 @@ def main() -> None:
     git = lambda *args: subprocess.run(
         ["git", "-C", str(src), *args], capture_output=True, text=True, check=True
     ).stdout.strip()
+    pinned = lambda config: git("rev-parse", "HEAD") == config.commit and not git(
+        "status", "--porcelain", "--", "."
+    )
     if config.run and (config.run_dir / "config.yaml").exists():
         # a resume: the run's config.yaml holds, on the source it trained at
         config = run_config.load_run(allowed=run_config.RESUME_FIELDS)
-        if git("rev-parse", "HEAD") != config.commit or git(
-            "status", "--porcelain", "--", "."
-        ):
+        if not pinned(config):
             raise SystemExit(
                 f"{config.run} trained at {config.commit}: resume it from that commit's"
                 f" worktree, outputs/src/{config.commit}"
@@ -499,6 +528,16 @@ def main() -> None:
         if stored["total_steps"] != config.total_steps:
             stored["total_steps"] = config.total_steps
             record.write_text(yaml.safe_dump(stored, sort_keys=False))
+    elif config.fork_from:
+        # a fork: its parent's config, on the source the parent trained at
+        config = fork_config(config)
+        if not pinned(config):
+            raise SystemExit(
+                f"{config.fork_from} trained at {config.commit}: fork it from that commit's"
+                f" worktree, outputs/src/{config.commit}"
+            )
+        config.run_dir.mkdir(parents=True, exist_ok=True)
+        run_config.save(config, config.run_dir / "config.yaml")
     else:
         # a new run: pinned to a commit, so its source must be committed
         if git("status", "--porcelain", "--", "."):
@@ -529,9 +568,18 @@ def main() -> None:
     )
     checkpoints = checkpoint_manager(run_dir)
     best = checkpoint_manager(run_dir, folder="best")
+    snapshots = checkpoint_manager(run_dir, folder="snapshots")
     state, start_epoch, restored = restore_checkpoint(
         checkpoints, state, tuple(histories)
     )
+    if start_epoch == 0 and config.fork_from:
+        parent, epoch = config.fork_from.rsplit("/", 1)
+        with checkpoint_manager(
+            config.output_dir / "runs" / parent, read_only=True, folder="snapshots"
+        ) as parent_snapshots:
+            state, start_epoch, restored = restore_checkpoint(
+                parent_snapshots, state, tuple(histories), epoch=int(epoch)
+            )
     if start_epoch == 0 and config.init_from:
         flow = warm_start(config, state.flow)
         state = TrainState(
@@ -584,6 +632,7 @@ def main() -> None:
         if not finite.all() or not np.isfinite(catalog_history[epoch]).all():
             checkpoints.close()
             best.close()
+            snapshots.close()
             where = (
                 f"loss at step {epoch * config.log_interval + int(np.argmin(finite))}"
                 if not finite.all()
@@ -593,6 +642,8 @@ def main() -> None:
 
         # orbax writes the checkpoint while the next epoch trains; log the median of the epoch's losses
         save_checkpoint(checkpoints, state, epoch + 1, histories)
+        if config.snapshot_every and (epoch + 1) % config.snapshot_every == 0:
+            save_checkpoint(snapshots, state, epoch + 1, histories)
         frame_l, flow_l, grad_norm = np.median(loss_history[epoch], axis=0)
         frame_c, flow_c, w_rms = catalog_history[epoch]
         if frame_c + flow_c < best_nll:
@@ -633,6 +684,7 @@ def main() -> None:
 
     checkpoints.close()
     best.close()
+    snapshots.close()
     print(f"[done] {config.run} -> {run_dir}", flush=True)
 
 
