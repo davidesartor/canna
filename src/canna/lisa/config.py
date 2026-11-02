@@ -55,8 +55,8 @@ class Config:
     batch_size: int = 1024
     # the batch's gradient accumulated over this many equal chunks, to fit a smaller GPU
     micro_batches: int = 1
-    learning_rate: float = 1e-3
-    adam_learning_rate: float = 1e-3
+    learning_rate: float = 1e-4
+    adam_learning_rate: float = 1e-4
     weight_decay: float = 0.1
     warmup_steps: int = 10_000
     cooldown_frac: float = 0.2

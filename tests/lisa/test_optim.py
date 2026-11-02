@@ -32,7 +32,7 @@ def test_the_schedule_warms_up_holds_and_cools_to_zero():
 
 def test_weight_decay_shrinks_the_muon_matrices_only():
     """F48: decay reaches Muon's matrices, never an AdamW leaf, matrix or not."""
-    _, tx, state = setup(small_config(warmup_steps=1, weight_decay=50.0))
+    _, tx, state = setup(small_config(warmup_steps=1, weight_decay=500.0))
     params = eqx.filter(state.flow, eqx.is_inexact_array)
     zeros = jax.tree.map(jnp.zeros_like, params)
     p, opt_state, update = params, state.opt_state, eqx.filter_jit(tx.update)
@@ -81,7 +81,7 @@ def muon_decay_by_step(cfg, steps):
 
 def test_no_cooldown_keeps_the_lr_past_total_steps_and_a_cooldown_stops_it():
     kwargs = dict(warmup_steps=1, weight_decay=1.0, total_steps=4)
-    off = muon_decay_by_step(small_config(**kwargs), 8)
+    off = muon_decay_by_step(small_config(cooldown_frac=0.0, **kwargs), 8)
     on = muon_decay_by_step(small_config(cooldown_frac=0.5, **kwargs), 8)
     assert np.all(off < 0)
     assert np.all(on[:2] < 0) and np.all(on[4:] == 0)
