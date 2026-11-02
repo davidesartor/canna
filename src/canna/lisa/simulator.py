@@ -29,6 +29,8 @@ from .problem import (
 
 # the log-uniform window centres sample_window resamples by the visible prior
 VISIBLE_WINDOWS = 64
+# the share of windows left log-uniform over the band, so training also sees the empty ones
+UNIFORM_WINDOWS = 0.1
 
 
 def source_segments(
@@ -98,10 +100,10 @@ def sample_physical(
 def sample_window(problem: LisaGB, key: Key[Array, ""]) -> Float[Array, ""]:
     """The window's centre, by about the visible prior's f0, p(f0) P(snr >= visible_snr | f0); the sources stay the catalogue's.
 
-    Log-uniform candidates are resampled by p(f0) over their density times P(snr >= visible_snr | f0, sky, orientation),
+    A UNIFORM_WINDOWS share is log-uniform over the band instead. Otherwise log-uniform candidates are resampled by p(f0) over their density times P(snr >= visible_snr | f0, sky, orientation),
     one prior sky and orientation each, alone in the window centred on it.
     """
-    key_f0, key_sky, key_psi, key_iota, key_pick = jr.split(key, 5)
+    key_f0, key_sky, key_psi, key_iota, key_pick, key_mix = jr.split(key, 6)
     shape = (VISIBLE_WINDOWS, 1)
     log_f0 = jr.uniform(
         key_f0,
@@ -126,7 +128,9 @@ def sample_window(problem: LisaGB, key: Key[Array, ""]) -> Float[Array, ""]:
     log10_cut = jnp.log10(problem.visible_snr * unit[:, 0] / unit_snr)
     cut = (log10_cut - log10_amplitude_mean(f0[:, 0])) / AMP_STD
     log_p = -0.5 * (log_f0[:, 0] - SOURCE_MEAN[0]) ** 2 / SOURCE_COVARIANCE[0, 0]
-    return f[jr.categorical(key_pick, log_p + log_ndtr(-cut))]
+    # candidate 0 is a plain log-uniform draw
+    visible = jr.categorical(key_pick, log_p + log_ndtr(-cut))
+    return f[jnp.where(jr.uniform(key_mix) < UNIFORM_WINDOWS, 0, visible)]
 
 
 def sample_observation(
