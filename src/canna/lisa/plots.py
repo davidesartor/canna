@@ -210,7 +210,10 @@ def corner_data(eval_dir: Path) -> tuple[dict, bytes]:
     problem = LisaGB(**config["problem"])
     d = load_samples(eval_dir / "draws.npz")
     reference = load_reference(problem, config["seed"])
-    if reference is not None and not np.allclose(reference["truth"], d["truth"]):
+    if reference is not None and (
+        reference["truth"].shape != d["truth"].shape
+        or not np.allclose(reference["truth"], d["truth"])
+    ):
         print(
             f"[plots] {eval_dir}: the MCMC reference's truths differ, left out",
             file=sys.stderr,
@@ -819,6 +822,9 @@ def significant(values, digits: int = 4) -> list:
     return np.where(finite, rounded, v).tolist()
 
 
+# the page's heatmaps carry this many epochs at most, to keep it a few MB
+RUN_BINNED_EPOCHS = 64
+
 RUN_PAGE = r"""<!doctype html>
 <html lang="en">
 <head>
@@ -913,18 +919,19 @@ window.onerror = (message, source, line) => {
     <div class="grid" id="losses"></div>
   </div>
   <div class="card">
-    <h2>Frame per SNR</h2>
-    <div class="stack" style="max-width: 360px"><div class="seg" id="frame-mode" style="--cols: 3"></div></div>
-    <div class="stack" style="max-width: 360px"><div class="seg" id="frame-group" style="--cols: 2"></div></div>
+    <h2>Frame per window f₀ and SNR</h2>
+    <div class="stack" style="max-width: 520px"><div class="seg" id="frame-mode" style="--cols: 3"></div></div>
+    <div class="stack" style="max-width: 360px"><div class="seg" id="frame-group" style="--cols: 5"></div></div>
     <p class="note" id="frame-note"></p>
     <div class="legend" id="frame-legend"></div>
     <div class="slider"><label for="frame-epoch">epoch</label><input type="range" id="frame-epoch" min="0" step="1"><output id="frame-epoch-out"></output></div>
     <div class="grid" id="frame"></div>
   </div>
   <div class="card">
-    <h2>Flow per flow time</h2>
-    <div class="stack" style="max-width: 360px"><div class="seg" id="flow-mode" style="--cols: 2"></div></div>
-    <div class="stack" style="max-width: 360px"><div class="seg" id="flow-group" style="--cols: 2"></div></div>
+    <h2>Flow per flow time and SNR or window f₀</h2>
+    <div class="stack" style="max-width: 520px"><div class="seg" id="flow-mode" style="--cols: 2"></div></div>
+    <div class="stack" style="max-width: 360px"><div class="seg" id="flow-by" style="--cols: 2"></div></div>
+    <div class="stack" style="max-width: 360px"><div class="seg" id="flow-group" style="--cols: 5"></div></div>
     <p class="note" id="flow-note"></p>
     <div class="legend" id="flow-legend"></div>
     <div class="slider"><label for="flow-epoch">epoch</label><input type="range" id="flow-epoch" min="0" step="1"><output id="flow-epoch-out"></output></div>
@@ -934,9 +941,9 @@ window.onerror = (message, source, line) => {
     <details>
       <summary>What the curves are</summary>
       <ul>
-        <li><b>frame</b>: the frame's Gaussian NLL of x₁, k² + 2 log(σ/σ<sub>prior</sub>) with k = (x₁ − μ)/σ. Once per observation, the data stream sets a frame (μ, σ) per source coordinate, a zoom on the prior's mean and width; the training loss weights it by sg(σ/σ<sub>prior</sub>) and adds a 10⁻³ ridge on the zoom, unweighted, which floors σ near 0.005 σ<sub>prior</sub>. <b>flow</b>: the flow's Gaussian NLL of z₁ = k, the truth in the frame; the sampler steps along (m − z<sub>t</sub>) / (1 − t) and returns μ + σ z₁. Both negative once σ &lt; 1. <b>grad norm</b>: before clipping.</li>
-        <li><b>Frame per SNR</b>: each eval-catalog source in the bin of its own true SNR, per coordinate group (f₀, ḟ, sky, z₊, z₋). Zoom: mean log₁₀ σ/σ<sub>prior</sub>. k²: the mean squared k, 1 where the frame's σ is calibrated, above it where too narrow. f₀ ÷ Fisher: mean log₁₀ of f₀'s σ over the monochromatic Fisher width √3/(π SNR T); 0 at the Fisher width.</li>
-        <li><b>Flow per flow time</b>: each injection once in each bin of log₁₀(1 − t), 1 − t the flow time left. Zoom: mean log₁₀ σ<sub>z</sub>, the flow's predicted width of z₁; k²: the mean squared z error, 1 where σ<sub>z</sub> is calibrated.</li>
+        <li><b>frame</b>: the frame's Gaussian NLL of x₁, (x₁ − μ)²/σ² + 2 log(σ/σ<sub>prior</sub>). Once per observation, the data stream sets a frame (μ, σ) per source coordinate, a zoom on the prior's mean and width; the training loss weights it by sg(σ/σ<sub>prior</sub>) and adds a 10⁻³ ridge on the zoom, unweighted, which floors σ near 0.005 σ<sub>prior</sub>. <b>flow</b>: the flow's Gaussian NLL of z₁ = (x₁ − μ)/σ, the truth in the frame; the sampler steps along (m − z<sub>t</sub>) / (1 − t) and returns μ + σ z₁. Both negative once σ &lt; 1. <b>grad norm</b>: before clipping.</li>
+        <li><b>Frame per window f₀ and SNR</b>: each eval-catalog source in the bin of its window's f₀ and its own true SNR, per coordinate group (f₀, ḟ, sky, z₊, z₋). Width ÷ prior: mean log₁₀ σ/σ<sub>prior</sub>. χ²/dof: the mean (x₁ − μ)²/σ², 1 where the frame's σ is calibrated, above it where too narrow. f₀ width ÷ Fisher: mean log₁₀ of f₀'s σ over the monochromatic Fisher width √3/(π SNR T); 0 at the Fisher width.</li>
+        <li><b>Flow per flow time and SNR or window f₀</b>: each source once in each bin of log₁₀(1 − t), 1 − t the flow time left, and in the bin of its true SNR; per window f₀, each injection, the mean over its sources. Width ÷ frame: mean log₁₀ σ<sub>z</sub>, the flow's predicted width of z₁ in units of the frame's σ; χ²/dof: the mean (z₁ − m)²/σ<sub>z</sub>², 1 where σ<sub>z</sub> is calibrated.</li>
       </ul>
     </details>
   </div>
@@ -954,7 +961,8 @@ window.onerror = (message, source, line) => {
 const META = DATA.meta, E = META.epochs, G = META.groups;
 const LOSSES = {frame: "frame loss", flow: "flow loss", grad_norm: "grad norm"};
 const CATALOG = {w_rms: "backbone weight RMS"};
-const S = {epoch: E - 1, frame: {mode: "zoom", group: "groups"}, flow: {mode: "zoom", group: "groups"}};
+const PICKED = DATA.binned_epochs, K = PICKED.length;
+const S = {k: K - 1, frame: {mode: "width", group: G[0]}, flow: {mode: "width", group: G[0], by: "snr"}};
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 function rgba(name, alpha) {
@@ -1169,31 +1177,36 @@ function optimizer() {
   }
 }
 
-// the binned views: per [epoch][bin][group] (or [epoch][bin] for a single series) in the card's chosen mode
-const COLOURS = ["--s1", "--s2", "--s3", "--s4", "--s5"];
-const GROUP_TEXT = {f0: "f₀", fdot: "ḟ", sky: "sky", "z+": "z₊", "z-": "z₋", avg: "mean"};
-const centres = edges => edges.slice(0, -1).map((e, k) => 10 ** ((e + edges[k + 1]) / 2));
-const span = (edges, b) => `[${sig(10 ** edges[b])}, ${sig(10 ** edges[b + 1])}]`;
+// the binned views: per [picked epoch][x bin][y bin][group] (or no group for a single series) in the card's chosen mode
+const GROUP_TEXT = {f0: "f₀", fdot: "ḟ", sky: "sky", "z+": "z₊", "z-": "z₋"};
+// f0_edges are log₁₀ Hz, shown in mHz
+const AXES = {
+  snr: {edges: META.snr_edges, label: "SNR", unit: ""},
+  f0: {edges: META.f0_edges.map(e => e + 3), label: "window f₀ (mHz)", unit: " mHz"},
+  time: {edges: META.time_edges, label: "1 − t (flow time left)", unit: ""},
+};
+const span = (axis, b) => `[${sig(10 ** axis.edges[b])}, ${sig(10 ** axis.edges[b + 1])}]${axis.unit}`;
+const BIN_TEXT = {snr: "SNR", f0: "f₀", time: "1 − t"};
 const CALIBRATED = "1 where σ is calibrated, above it where σ is too narrow.";
 const CARDS = {
   frame: {
-    edges: META.snr_edges, x: "SNR", over: "SNR", bin: b => `SNR ∈ ${span(META.snr_edges, b)}`,
+    axes: () => ["f0", "snr"],
     modes: [
-      {v: "zoom", html: "zoom", y: "log₁₀ σ ÷ σ_prior", data: DATA.frame.zoom,
-       note: "Mean log₁₀ of the frame's σ over the prior's, per bin of the source's true SNR: how far the data stream zooms in, darker where narrower."},
-      {v: "calibration", html: "k²", y: "mean k²", log: true, ref: 1, data: DATA.frame.calibration,
-       note: `Mean squared k = (x₁ − μ)/σ of the truth in the frame, per bin of the source's true SNR; ${CALIBRATED} Red where too narrow, blue where too wide.`},
-      {v: "fisher", html: "f₀ ÷ Fisher", y: "log₁₀ σ_f₀ ÷ Fisher width", ref: 0, flip: true, data: DATA.frame.f0_fisher, single: true,
-       note: "Mean log₁₀ of f₀'s frame σ over the monochromatic Fisher width √3/(π SNR T), per bin of the source's true SNR; 0 at the Fisher width, red below it, blue above."},
+      {v: "width", html: "width ÷ prior", y: "log₁₀ σ ÷ σ_prior", data: () => DATA.frame.width,
+       note: "Mean log₁₀ of the frame's σ over the prior's, per bin of the window's f₀ and the source's true SNR: darker where narrower."},
+      {v: "calibration", html: "χ²/dof", y: "χ²/dof = mean (error ÷ σ)²", log: true, ref: 1, data: () => DATA.frame.calibration,
+       note: `Mean of (x₁ − μ)²/σ², the frame's squared error in units of its own σ, per bin of the window's f₀ and the source's true SNR; ${CALIBRATED} Red where too narrow, blue where too wide.`},
+      {v: "fisher", html: "f₀ width ÷ Fisher", y: "log₁₀ σ_f₀ ÷ Fisher width", ref: 0, flip: true, data: () => DATA.frame.f0_fisher, single: true,
+       note: "Mean log₁₀ of f₀'s frame σ over the monochromatic Fisher width √3/(π SNR T), per bin of the window's f₀ and the source's true SNR; 0 at the Fisher width, red below it, blue above."},
     ],
   },
   flow: {
-    edges: META.time_edges, x: "1 − t (flow time left)", over: "flow time", bin: b => `1 − t ∈ ${span(META.time_edges, b)}`,
+    axes: () => ["time", S.flow.by],
     modes: [
-      {v: "zoom", html: "zoom", y: "log₁₀ σ_z", data: DATA.flow.zoom,
-       note: "Mean log₁₀ σ_z, the flow's predicted width of z₁ in the frame, per log-spaced bin of flow time: below 0 where the flow resolves beyond the frame, darker where narrower."},
-      {v: "calibration", html: "k²", y: "mean z error²", log: true, ref: 1, data: DATA.flow.calibration,
-       note: `Mean squared z error (z₁ − m)/σ_z, per log-spaced bin of flow time; ${CALIBRATED} Red where too narrow, blue where too wide.`},
+      {v: "width", html: "width ÷ frame", y: "log₁₀ σ_z", data: () => DATA.flow.width[S.flow.by],
+       note: "Mean log₁₀ σ_z, the flow's predicted width of z₁ in the frame, per log-spaced bin of flow time and the source's SNR or the window's f₀: below 0 where the flow resolves beyond the frame, darker where narrower."},
+      {v: "calibration", html: "χ²/dof", y: "χ²/dof = mean (error ÷ σ_z)²", log: true, ref: 1, data: () => DATA.flow.calibration[S.flow.by],
+       note: `Mean of (z₁ − m)²/σ_z², the flow's squared error in units of its own σ_z, per log-spaced bin of flow time and the source's SNR or the window's f₀; ${CALIBRATED} Red where too narrow, blue where too wide.`},
     ],
   },
 };
@@ -1227,34 +1240,42 @@ function scaleOf(m, plotted) {
   return {colour: v => ramp(RAMPS.div[theme()], t(v)), t, lo: centre - half, hi: centre + half};
 }
 
-// one heatmap: bins along the log₁₀ edges, one row per series; hover a cell for its value
+// one heatmap over two log₁₀ axes, values[x bin][y bin]; hover a cell for its value
 function heat(host, o) {
-  const rows = o.rows.length, W = host.clientWidth || 400, H = 8 + 30 * rows + 34, L = 52, R = 10, T = 8, B = 34;
+  const W = host.clientWidth || 400, H = clamp(Math.round(W * 0.55), 240, 420), L = 52, R = 10, T = 8, B = 40;
   const [cv, g] = canvasIn(host, W, H);
-  const xe = o.xEdges, nx = xe.length - 1, x0 = xe[0], x1 = xe[nx], rowH = (H - T - B) / rows;
-  const X = t => L + (t - x0) / (x1 - x0) * (W - L - R);
-  for (let r = 0; r < rows; r++) for (let b = 0; b < nx; b++) {
-    const v = o.values[r][b];
+  const xe = o.x.edges, ye = o.y.edges, nx = xe.length - 1, ny = ye.length - 1;
+  const X = v => L + (v - xe[0]) / (xe[nx] - xe[0]) * (W - L - R), Y = v => H - B - (v - ye[0]) / (ye[ny] - ye[0]) * (H - T - B);
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+    const v = o.values[i][j];
     if (!Number.isFinite(v)) continue;
     g.fillStyle = o.colour(v);
-    // a 2px surface gap between cells
-    g.fillRect(X(xe[b]) + 1, T + r * rowH + 1, X(xe[b + 1]) - X(xe[b]) - 2, rowH - 2);
+    // a 1px surface gap between cells
+    g.fillRect(X(xe[i]) + 0.5, Y(ye[j + 1]) + 0.5, X(xe[i + 1]) - X(xe[i]) - 1, Y(ye[j]) - Y(ye[j + 1]) - 1);
   }
-  g.fillStyle = css("--ink-2"); g.textAlign = "right"; g.textBaseline = "middle";
-  o.rows.forEach((name, r) => g.fillText(name, L - 6, T + (r + 0.5) * rowH));
   g.fillStyle = css("--muted"); g.strokeStyle = css("--axis"); g.lineWidth = 1; g.textAlign = "center"; g.textBaseline = "top";
   let right = -Infinity;
-  for (const t of axisTicks(x0, x1, true, 5)) {
+  for (const t of axisTicks(xe[0], xe[nx], true, 5)) {
     const x = X(t.at), half = g.measureText(t.text).width / 2;
     g.beginPath(); g.moveTo(x + 0.5, H - B); g.lineTo(x + 0.5, H - B + 4); g.stroke();
     if (x - half > right + 4) { g.fillText(t.text, x, H - B + 6); right = x + half; }
   }
-  g.fillStyle = css("--ink-2"); g.font = "12px system-ui, sans-serif"; g.fillText(o.xLabel, (L + W - R) / 2, H - 16);
+  g.textAlign = "right"; g.textBaseline = "middle";
+  let top = Infinity;
+  for (const t of axisTicks(ye[0], ye[ny], true, 5)) {
+    const y = Y(t.at);
+    g.beginPath(); g.moveTo(L - 4, y + 0.5); g.lineTo(L, y + 0.5); g.stroke();
+    if (y + 7 < top) { g.fillText(t.text, L - 6, y); top = y - 7; }
+  }
+  g.fillStyle = css("--ink-2"); g.font = "12px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "top";
+  g.fillText(o.x.label, (L + W - R) / 2, H - 18);
+  g.save(); g.translate(12, (T + H - B) / 2); g.rotate(-Math.PI / 2); g.textBaseline = "middle"; g.fillText(o.y.label, 0, 0); g.restore();
   cv.onmousemove = ev => {
     const rect = cv.getBoundingClientRect(), px = ev.clientX - rect.left, py = ev.clientY - rect.top;
     if (px < L || px > W - R || py < T || py > H - B) { hideTip(); return; }
-    const tx = x0 + (px - L) / (W - L - R) * (x1 - x0);
-    showTip(ev, o.hover(clamp(Math.floor((py - T) / rowH), 0, rows - 1), clamp(xe.findIndex(v => v > tx) - 1, 0, nx - 1)));
+    const tx = xe[0] + (px - L) / (W - L - R) * (xe[nx] - xe[0]), ty = ye[0] + (H - B - py) / (H - T - B) * (ye[ny] - ye[0]);
+    const find = (edges, n, v) => clamp(edges.findIndex(e => e > v) - 1, 0, n - 1);
+    showTip(ev, o.hover(find(xe, nx, tx), find(ye, ny, ty)));
   };
   cv.onmouseleave = hideTip;
   cv.style.cursor = "crosshair";
@@ -1262,29 +1283,30 @@ function heat(host, o) {
 
 function binned(id) {
   const card = CARDS[id], m = modeOf(id), st = S[id], parent = document.getElementById(id), step = DATA.epoch_step;
-  const bins = [...Array(card.edges.length - 1).keys()];
-  const mean = a => { const f = a.filter(Number.isFinite); return f.length ? f.reduce((s, v) => s + v, 0) / f.length : null; };
-  const series = m.single ? ["f0"] : st.group === "avg" ? ["avg"] : G;
-  const value = (e, b, grp) => m.single ? m.data[e][b] : grp === "avg" ? mean(m.data[e][b]) : m.data[e][b][G.indexOf(grp)];
+  const [xName, yName] = card.axes(), x = AXES[xName], y = AXES[yName], data = m.data(), gi = G.indexOf(st.group);
+  const nx = x.edges.length - 1, ny = y.edges.length - 1;
+  const value = (k, i, j) => m.single ? data[k][i][j] : data[k][i][j][gi];
   const toPlot = v => v === null || !Number.isFinite(v) ? NaN : m.log ? (v > 0 ? Math.log10(v) : NaN) : v;
-  // one colour scale over every epoch, so the slider moves the colours, not the scale
-  const scale = scaleOf(m, [...Array(E).keys()].flatMap(e => series.map(grp => bins.map(b => toPlot(value(e, b, grp))))));
-  heat(chartIn(parent, `${id}-heat`, `per ${card.over} bin, at the picked epoch`), {
-    xEdges: card.edges, xLabel: card.x, rows: series.map(grp => GROUP_TEXT[grp] || grp),
-    values: series.map(grp => bins.map(b => toPlot(value(S.epoch, b, grp)))), colour: scale.colour,
-    hover: (r, b) => `epoch ${S.epoch + 1}, ${card.bin(b)}<table>${row("", `${GROUP_TEXT[series[r]]}, ${m.y}`, sig(value(S.epoch, b, series[r])))}</table>`,
+  const grid = k => [...Array(nx).keys()].map(i => [...Array(ny).keys()].map(j => toPlot(value(k, i, j))));
+  // one colour scale over every picked epoch, so the slider moves the colours, not the scale
+  const scale = scaleOf(m, [...Array(K).keys()].flatMap(k => grid(k).flat()));
+  const epoch = PICKED[S.k], what = m.single ? m.y : `${GROUP_TEXT[st.group]}, ${m.y}`;
+  heat(chartIn(parent, `${id}-heat`, `${what}, at epoch ${epoch + 1}`), {
+    x, y, values: grid(S.k), colour: scale.colour,
+    hover: (i, j) => `epoch ${epoch + 1}<table>${row("", BIN_TEXT[xName], span(x, i))}${row("", BIN_TEXT[yName], span(y, j))}${row("", what, sig(value(S.k, i, j)))}</table>`,
   });
   seg(`${id}-mode`, card.modes, it => it.v === st.mode, it => { st.mode = it.v; });
+  if (id === "flow") seg("flow-by", [{v: "snr", html: "per SNR"}, {v: "f0", html: "per window f₀"}], it => it.v === st.by, it => { st.by = it.v; });
   document.getElementById(`${id}-group`).parentElement.hidden = !!m.single;
-  seg(`${id}-group`, [{v: "groups", html: "per group"}, {v: "avg", html: "mean of groups"}], it => it.v === st.group, it => { st.group = it.v; });
-  document.getElementById(`${id}-note`).textContent = `${m.note} The slider picks the epoch; blank cells hold no injection.`;
+  seg(`${id}-group`, G.map(grp => ({v: grp, html: GROUP_TEXT[grp] || grp})), it => it.v === st.group, it => { st.group = it.v; });
+  document.getElementById(`${id}-note`).textContent = `${m.note} The slider picks the epoch; blank cells hold no source.`;
   const stops = [...Array(11).keys()].map(k => scale.colour(scale.lo + (scale.hi - scale.lo) * k / 10));
   const ends = [scale.lo, scale.hi].map(v => m.log ? 10 ** v : v), rising = scale.t(scale.lo) <= scale.t(scale.hi);
   const [left, rightEnd] = rising ? ends : [...ends].reverse();
   document.getElementById(`${id}-legend`).innerHTML = `<span>${sig(left)}<span class="ramp" style="background:linear-gradient(to right, ${(rising ? stops : [...stops].reverse()).join(",")})"></span>${sig(rightEnd)}</span><span>${m.y}${m.ref === undefined ? "" : `, grey at ${m.ref}, clipped at the 98th percentile of the deviation`}</span>`;
   const ep = document.getElementById(`${id}-epoch`);
-  if (+ep.value !== S.epoch) ep.value = S.epoch;
-  document.getElementById(`${id}-epoch-out`).textContent = `${S.epoch + 1} of ${E}, step ${kilo(step[S.epoch])}`;
+  if (+ep.value !== S.k) ep.value = S.k;
+  document.getElementById(`${id}-epoch-out`).textContent = `${epoch + 1} of ${E}, step ${kilo(step[epoch])}`;
 }
 // drag by pointer capture: VS Code's webview drops the native range drag (clicks and keys still go native)
 function dragSlider(slider) {
@@ -1304,8 +1326,8 @@ function dragSlider(slider) {
 // set up once: writing a slider's max mid-drag drops the drag, and the hash is written on release only
 for (const id of Object.keys(CARDS)) {
   const ep = document.getElementById(`${id}-epoch`);
-  ep.max = E - 1; ep.value = S.epoch;
-  ep.addEventListener("input", () => { S.epoch = +ep.value; schedule(); });
+  ep.max = K - 1; ep.value = S.k;
+  ep.addEventListener("input", () => { S.k = +ep.value; schedule(); });
   ep.addEventListener("change", writeHash);
   dragSlider(ep);
 }
@@ -1339,14 +1361,19 @@ function render() {
 
 function readHash() {
   const h = new URLSearchParams(location.hash.slice(1));
-  if (h.has("epoch")) S.epoch = clamp(+h.get("epoch") - 1 || 0, 0, E - 1);
+  // the picked epoch nearest the hash's
+  if (h.has("epoch")) {
+    const want = (+h.get("epoch") || 1) - 1;
+    S.k = PICKED.reduce((best, e, k) => Math.abs(e - want) < Math.abs(PICKED[best] - want) ? k : best, 0);
+  }
   for (const [id, card] of Object.entries(CARDS)) {
     if (card.modes.some(m => m.v === h.get(id))) S[id].mode = h.get(id);
-    if (["groups", "avg"].includes(h.get(`${id}_group`))) S[id].group = h.get(`${id}_group`);
+    if (G.includes(h.get(`${id}_group`))) S[id].group = h.get(`${id}_group`);
   }
+  if (["snr", "f0"].includes(h.get("flow_by"))) S.flow.by = h.get("flow_by");
 }
 function writeHash() {
-  const h = new URLSearchParams({epoch: S.epoch + 1, frame: S.frame.mode, frame_group: S.frame.group, flow: S.flow.mode, flow_group: S.flow.group});
+  const h = new URLSearchParams({epoch: PICKED[S.k] + 1, frame: S.frame.mode, frame_group: S.frame.group, flow: S.flow.mode, flow_group: S.flow.group, flow_by: S.flow.by});
   history.replaceState(null, "", `#${h}`);
 }
 
@@ -1368,7 +1395,7 @@ render();
 
 
 def run_report(run_dir: Path) -> Path:
-    """run_dir/run.html: one interactive page of history.npz's losses, the frame per SNR bin and the flow per time bin."""
+    """run_dir/run.html: one interactive page of history.npz's losses, the frame per (f0, SNR) bin and the flow per time bin."""
     import yaml
 
     h = dict(np.load(run_dir / "history.npz"))
@@ -1395,6 +1422,10 @@ def run_report(run_dir: Path) -> Path:
         for path in sorted((run_dir / "eval").glob("*/eval.yaml"))
     ]
     loss_names = [str(name) for name in h["loss_names"]]
+    # the binned diagnostics at up to RUN_BINNED_EPOCHS epochs, evenly spaced from the first to the latest
+    picked = np.unique(
+        np.linspace(0, n_epochs - 1, RUN_BINNED_EPOCHS).round().astype(int)
+    )
     index = {
         "meta": {
             "run": run_dir.name,
@@ -1405,6 +1436,7 @@ def run_report(run_dir: Path) -> Path:
             "groups": [str(g) for g in h["groups"]],
             "snr_edges": significant(h["snr_edges"]),
             "time_edges": significant(h["time_edges"]),
+            "f0_edges": significant(h["f0_edges"]),
             "loss_names": loss_names,
             "evals": evals,
         },
@@ -1424,14 +1456,17 @@ def run_report(run_dir: Path) -> Path:
             for c, name in enumerate(h["catalog_names"])
         },
         "epoch_step": steps.astype(int).tolist(),
+        "binned_epochs": picked.tolist(),
         "frame": {
-            "zoom": significant(h["frame_zoom"]),
-            "calibration": significant(h["frame_calibration"]),
-            "f0_fisher": significant(h["f0_fisher"]),
+            "width": significant(h["frame_width"][picked]),
+            "calibration": significant(h["frame_calibration"][picked]),
+            "f0_fisher": significant(h["f0_fisher"][picked]),
         },
         "flow": {
-            "zoom": significant(h["flow_zoom"]),
-            "calibration": significant(h["flow_calibration"]),
+            name: {
+                by: significant(h[f"flow_{name}_{by}"][picked]) for by in ("snr", "f0")
+            }
+            for name in ("width", "calibration")
         },
     }
     page = RUN_PAGE

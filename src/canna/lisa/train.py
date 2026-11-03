@@ -26,6 +26,7 @@ from .chart import physical_to_flow
 from .config import Config
 from .injections import eval_injections
 from .network import (
+    LOSS_F0_BINS,
     LOSS_GROUPS,
     LOSS_LOG10_SNR,
     LOSS_SNR_BINS,
@@ -94,14 +95,15 @@ def paths(
 
 
 class Binned(NamedTuple):
-    """The diagnostics per bin: the frame per (snr bin, group), the flow per (time bin, group)."""
+    """The diagnostics per bin: the frame per (f0 bin, snr bin, group), the flow per (time bin, snr or f0 bin, group)."""
 
     # mean log10(sigma_A / sigma_prior) and mean k_A²
-    frame: Float[Array, "2 N G"]
+    frame: Float[Array, "2 F N G"]
     # mean log10 of f0's sigma_A over the monochromatic Fisher width sqrt(3) / (pi snr), in bins
-    f0_fisher: Float[Array, " N"]
-    # mean log10 sigma_z and mean k_z²
-    flow: Float[Array, "2 T G"]
+    f0_fisher: Float[Array, "F N"]
+    # mean log10 sigma_z and mean k_z², by the source's snr and by its window's f0
+    flow_snr: Float[Array, "2 T N G"]
+    flow_f0: Float[Array, "2 T F G"]
 
 
 def losses(
@@ -148,50 +150,55 @@ def losses(
     def binned_mean(pattern: str, bins: Array, n_bins: int, a: Array) -> Array:
         """a's mean per bin, the bin axis last; an empty bin has nothing to report."""
         one_hot = jax.nn.one_hot(bins, n_bins)
-        count = jnp.sum(one_hot, axis=(0, 1))
+        count = jnp.sum(one_hot, axis=tuple(range(bins.ndim)))
         return jnp.einsum(pattern, one_hot, a) / jnp.where(count > 0, count, jnp.nan)
 
-    # the frame per source, by its own true snr
-    snr_bins = jnp.clip(
-        (jnp.log10(snr) - LOSS_LOG10_SNR[0])
-        / (LOSS_LOG10_SNR[1] - LOSS_LOG10_SNR[0])
-        * LOSS_SNR_BINS,
-        0,
-        LOSS_SNR_BINS - 1,
-    ).astype(int)
+    def bin_of(v: Array, lo: float, hi: float, n: int) -> Array:
+        return jnp.clip((v - lo) / (hi - lo) * n, 0, n - 1).astype(int)
+
+    # the frame per source, by its window's f0 and its own true snr
+    F, N, T = LOSS_F0_BINS, LOSS_SNR_BINS, LOSS_TIME_BINS
+    snr_bins = bin_of(jnp.log10(snr), *LOSS_LOG10_SNR, N)
+    lo, hi = jax.vmap(partial(f0_window, problem))(batch.f)
+    f0_bins = bin_of(
+        0.5 * jnp.log10(lo * hi), *(math.log10(v) for v in problem.f0_range), F
+    )
+    source_bins = f0_bins[:, None] * N + snr_bins
     frame_bins = binned_mean(
         "bsn,ibsg->ign",
-        snr_bins,
-        LOSS_SNR_BINS,
+        source_bins,
+        F * N,
         jnp.stack([by_group(delta_s / math.log(10)), by_group(jnp.square(k))]),
     )
     # f0's sigma_A in bins: x_f maps log f0 onto [-1, 1] over the window's f0 range
-    lo, hi = jax.vmap(partial(f0_window, problem))(batch.f)
     half_log_span = 0.5 * jnp.log(hi / lo)[:, None]
     f0 = jnp.sqrt(lo * hi)[:, None] * jnp.exp(batch.x1[..., 0] * half_log_span)
     sigma_bins = jnp.exp(log_sigma[..., 0]) * half_log_span * f0 * problem.t_obs
     fisher = jnp.log10(sigma_bins * jnp.pi * snr / math.sqrt(3))
 
-    # the flow per draw, by its log10(1 - t)
+    # the flow per draw, by its log10(1 - t) and its source's snr, or its window's f0
     decades = jnp.log10(jnp.maximum(1 - batch.t, 1e-30))
-    time_bins = jnp.clip(
-        (decades / LOSS_TIME_DECADES + 1) * LOSS_TIME_BINS, 0, LOSS_TIME_BINS - 1
-    ).astype(int)
-    flow_bins = binned_mean(
-        "bkt,ibkg->igt",
-        time_bins,
-        LOSS_TIME_BINS,
-        jnp.stack(
-            [
-                jnp.mean(by_group(s / math.log(10)), axis=-2),
-                jnp.mean(by_group(jnp.square(k_z)), axis=-2),
-            ]
-        ),
+    time_bins = bin_of(decades, -LOSS_TIME_DECADES, 0.0, T)
+    flow_parts = jnp.stack([by_group(s / math.log(10)), by_group(jnp.square(k_z))])
+    flow_snr = binned_mean(
+        "bksn,ibksg->ign",
+        time_bins[..., None] * N + snr_bins[:, None],
+        T * N,
+        flow_parts,
+    )
+    flow_f0 = binned_mean(
+        "bkn,ibkg->ign",
+        time_bins * F + f0_bins[:, None],
+        T * F,
+        jnp.mean(flow_parts, axis=-2),
     )
     return parts, Binned(
-        frame=rearrange(frame_bins, "i g n -> i n g"),
-        f0_fisher=binned_mean("bsn,bs->n", snr_bins, LOSS_SNR_BINS, fisher),
-        flow=rearrange(flow_bins, "i g t -> i t g"),
+        frame=rearrange(frame_bins, "i g (f n) -> i f n g", f=F),
+        f0_fisher=rearrange(
+            binned_mean("bsn,bs->n", source_bins, F * N, fisher), "(f n) -> f n", f=F
+        ),
+        flow_snr=rearrange(flow_snr, "i g (t n) -> i t n g", t=T),
+        flow_f0=rearrange(flow_f0, "i g (t f) -> i t f g", t=T),
     )
 
 
@@ -329,8 +336,8 @@ def diagnostics(
 ) -> tuple[Float[Array, "3"], Binned]:
     """Frame and flow NLL on the eval catalog and the backbone weight RMS.
 
-    Also the frame per (snr bin, group) and the flow per (time bin, group) on the catalog, one draw per injection in
-    each time bin.
+    Also the frame per (f0 bin, snr bin, group) and the flow per (time bin, snr or f0 bin, group) on the catalog, one
+    draw per injection in each time bin.
     """
     key_batch, key_binned = jr.split(key)
     along = jax.vmap(partial(paths, problem), in_axes=(0, 0, 0, 0, None))
@@ -562,9 +569,17 @@ def main() -> None:
     histories = dict(
         loss_history=np.full((epochs, config.log_interval, 3), np.nan),
         catalog_history=np.full((epochs, 3), np.nan),
-        frame_history=np.full((epochs, 2, LOSS_SNR_BINS, len(LOSS_GROUPS)), np.nan),
-        fisher_history=np.full((epochs, LOSS_SNR_BINS), np.nan),
-        flow_history=np.full((epochs, 2, LOSS_TIME_BINS, len(LOSS_GROUPS)), np.nan),
+        # float32: they are checkpointed every epoch, and float64 doubles a long run's checkpoint
+        frame_history=np.full(
+            (epochs, 2, LOSS_F0_BINS, LOSS_SNR_BINS, len(LOSS_GROUPS)), np.nan, np.float32
+        ),
+        fisher_history=np.full((epochs, LOSS_F0_BINS, LOSS_SNR_BINS), np.nan, np.float32),
+        flow_snr_history=np.full(
+            (epochs, 2, LOSS_TIME_BINS, LOSS_SNR_BINS, len(LOSS_GROUPS)), np.nan, np.float32
+        ),
+        flow_f0_history=np.full(
+            (epochs, 2, LOSS_TIME_BINS, LOSS_F0_BINS, len(LOSS_GROUPS)), np.nan, np.float32
+        ),
     )
     checkpoints = checkpoint_manager(run_dir)
     best = checkpoint_manager(run_dir, folder="best")
@@ -592,10 +607,11 @@ def main() -> None:
         histories["loss_history"],
         histories["catalog_history"],
     )
-    frame_history, fisher_history, flow_history = (
+    frame_history, fisher_history, flow_snr_history, flow_f0_history = (
         histories["frame_history"],
         histories["fisher_history"],
-        histories["flow_history"],
+        histories["flow_snr_history"],
+        histories["flow_f0_history"],
     )
     # the saved best's catalog frame + flow NLL: a requeue can cut its save, so read its epoch, not the rows' minimum
     best_epoch = best.latest_step() or 0
@@ -624,7 +640,12 @@ def main() -> None:
         catalog_history[epoch], binned = jax.device_get(
             diagnostics(problem, state, key_catalog, catalog)
         )
-        frame_history[epoch], fisher_history[epoch], flow_history[epoch] = binned
+        (
+            frame_history[epoch],
+            fisher_history[epoch],
+            flow_snr_history[epoch],
+            flow_f0_history[epoch],
+        ) = binned
         seconds = time.perf_counter() - started  # the first epoch includes the compile
 
         # a non-finite loss has poisoned the weights: stop before saving over the last checkpoint
@@ -670,13 +691,16 @@ def main() -> None:
             loss_names=np.array(["frame", "flow", "grad_norm"]),
             catalog=catalog_history[:done],
             catalog_names=np.array(["frame", "flow", "w_rms"]),
-            frame_zoom=frame_history[:done, 0],
+            frame_width=frame_history[:done, 0],
             frame_calibration=frame_history[:done, 1],
             f0_fisher=fisher_history[:done],
-            flow_zoom=flow_history[:done, 0],
-            flow_calibration=flow_history[:done, 1],
+            flow_width_snr=flow_snr_history[:done, 0],
+            flow_calibration_snr=flow_snr_history[:done, 1],
+            flow_width_f0=flow_f0_history[:done, 0],
+            flow_calibration_f0=flow_f0_history[:done, 1],
             groups=np.array(["f0", "fdot", "sky", "z+", "z-"]),
             snr_edges=np.linspace(*LOSS_LOG10_SNR, LOSS_SNR_BINS + 1),
+            f0_edges=np.linspace(*np.log10(problem.f0_range), LOSS_F0_BINS + 1),
             time_edges=LOSS_TIME_DECADES
             * (np.arange(LOSS_TIME_BINS + 1) / LOSS_TIME_BINS - 1),
         )

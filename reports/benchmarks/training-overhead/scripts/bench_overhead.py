@@ -32,6 +32,7 @@ import numpy as np
 
 from canna.lisa import config
 from canna.lisa.network import (
+    LOSS_F0_BINS,
     LOSS_GROUPS,
     LOSS_LOG10_SNR,
     LOSS_SNR_BINS,
@@ -90,13 +91,16 @@ def write_history(
         loss_names=np.array(["frame", "flow", "grad_norm"]),
         catalog=histories["catalog_history"],
         catalog_names=np.array(["frame", "flow", "w_rms"]),
-        frame_zoom=histories["frame_history"][:, 0],
+        frame_width=histories["frame_history"][:, 0],
         frame_calibration=histories["frame_history"][:, 1],
         f0_fisher=histories["fisher_history"],
-        flow_zoom=histories["flow_history"][:, 0],
-        flow_calibration=histories["flow_history"][:, 1],
+        flow_width_snr=histories["flow_snr_history"][:, 0],
+        flow_calibration_snr=histories["flow_snr_history"][:, 1],
+        flow_width_f0=histories["flow_f0_history"][:, 0],
+        flow_calibration_f0=histories["flow_f0_history"][:, 1],
         groups=np.array(["f0", "fdot", "sky", "z+", "z-"]),
         snr_edges=np.linspace(*LOSS_LOG10_SNR, LOSS_SNR_BINS + 1),
+        f0_edges=np.linspace(-4, -2, LOSS_F0_BINS + 1),
         time_edges=LOSS_TIME_DECADES
         * (np.arange(LOSS_TIME_BINS + 1) / LOSS_TIME_BINS - 1),
     )
@@ -109,9 +113,16 @@ def full_histories(total_steps: int, interval: int) -> dict[str, np.ndarray]:
     return dict(
         loss_history=np.full((epochs, interval, 3), 0.5),
         catalog_history=np.full((epochs, 3), 0.5),
-        frame_history=np.full((epochs, 2, LOSS_SNR_BINS, len(LOSS_GROUPS)), 0.5),
-        fisher_history=np.full((epochs, LOSS_SNR_BINS), 0.5),
-        flow_history=np.full((epochs, 2, LOSS_TIME_BINS, len(LOSS_GROUPS)), 0.5),
+        frame_history=np.full(
+            (epochs, 2, LOSS_F0_BINS, LOSS_SNR_BINS, len(LOSS_GROUPS)), 0.5, np.float32
+        ),
+        fisher_history=np.full((epochs, LOSS_F0_BINS, LOSS_SNR_BINS), 0.5, np.float32),
+        flow_snr_history=np.full(
+            (epochs, 2, LOSS_TIME_BINS, LOSS_SNR_BINS, len(LOSS_GROUPS)), 0.5, np.float32
+        ),
+        flow_f0_history=np.full(
+            (epochs, 2, LOSS_TIME_BINS, LOSS_F0_BINS, len(LOSS_GROUPS)), 0.5, np.float32
+        ),
     )
 
 

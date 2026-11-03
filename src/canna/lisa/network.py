@@ -27,9 +27,10 @@ HARMONICS = 6
 HELICITY = (slice(4, 6), slice(6, 8))
 # the finest period of the frequency features (f0, a data token's lowest and highest bin), in bins
 FREQ_FINEST_PERIOD = 1 / 64
-# the training diagnostics: the frame per (log10 true snr bin on LOSS_LOG10_SNR, coordinate group),
-# the flow per (log10(1 - t) bin on [-LOSS_TIME_DECADES, 0], coordinate group)
-LOSS_SNR_BINS, LOSS_LOG10_SNR = 16, (-1.0, 3.0)
+# the training diagnostics, per coordinate group: the frame per (log10 window f0 bin over the band, log10 true snr bin
+# on LOSS_LOG10_SNR), the flow per (log10(1 - t) bin on [-LOSS_TIME_DECADES, 0], snr or f0 bin)
+LOSS_SNR_BINS, LOSS_LOG10_SNR = 4, (-1.0, 3.0)
+LOSS_F0_BINS = 8
 LOSS_TIME_BINS, LOSS_TIME_DECADES = 16, 6.0
 LOSS_GROUPS = (slice(0, 1), slice(1, 2), SKY) + HELICITY
 
