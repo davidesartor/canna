@@ -1,4 +1,4 @@
-# canna.lisa takeaways (current state, 2026-11-02, F65)
+# canna.lisa takeaways (current state, 2026-11-03, F66)
 
 One `0<nn>-<slug>.md` per finding F<nn>, outcome first. The literature lives in
 [../literature/](../literature/): [GW and cosmology
@@ -7,6 +7,10 @@ schedules](../literature/optimizers-schedules/000-takeaways.md), [diffusion and 
 matching](../literature/diffusion-flow-matching/000-takeaways.md) and the others; the findings
 keep only its consequences for our code.
 
+- **The source-count runs are launched** ([F66](066-source-count-runs-launched.md)): narrow-2/4/8 and
+  full-4/8/16 at 90735b9, 16 snapshots each (32 h narrow, 64 h full), one GPU per band in
+  source-count order, forks and evals on the third through a manager job that skips unhealthy
+  parents. Epochs take 65–108 s per 1000 steps, rising with the source count. Done ~12 Nov.
 - **The frame alone diverges like full-B; its sky output turns into a per-window constant** ([F65](065-frame-alone-diverges-sky-frame-per-window.md)):
   with the flow's gradient off, full-B's frame still blows up from epoch ~45 (NaN at epoch 151).
   On the fixed catalog, galactic b (then l), not f₀, goes wrong: μ_b stops depending on the
