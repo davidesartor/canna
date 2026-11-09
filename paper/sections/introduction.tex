@@ -1,6 +1,9 @@
 % =======================================================================================
 \section{Introduction}
 \label{sec:introduction}
+% updated 2026-11-09 (stale facts only): "the four sources ..., 32 parameters" -> "the S sources ...,
+% 8S parameters"; "the narrow band below 3 mHz" -> "1-3 mHz". The contributions still cite the old
+% section names through kept labels (sec:method-chart is now in sec:gw, sec:validation in sec:inversion).
 % =======================================================================================
 
 \Ac{lisa} will observe millions of \acp{gb} in the Milky Way, quasi-monochromatic sources
@@ -18,7 +21,7 @@ two ordered sources in a narrow band, or a factorised set of toy signals
 \citep{korsakova2024neural,houba2025slotflow,delmond2026neural} (\cref{tab:related-closest}).
 
 We bring the amortised route to the global fit's unit of work: the joint posterior of the
-\RelatedWorkSourcesWord{} sources in a frequency window, \RelatedWorkParameters{} parameters under
+$S$ sources in a frequency window, $8S$ parameters under
 the full instrument response, for windows anywhere in the band, drawn by conditional flow
 matching \citep{lipman2023flow,liu2023flow,albergo2023building,dax2023flow} with no likelihood
 evaluation. Three difficulties stand in the way. The posterior is multimodal by symmetry: each
@@ -48,7 +51,7 @@ checks pass flows that are plainly wrong.
     catch, and a ladder of mock posteriors run through the whole evaluation
     (\cref{sec:validation}).
 \end{itemize}
-We train on two bands, the narrow band below \qty{\PriorsNarrowHighMhz}{\milli\hertz} with windows
+We train on two bands, the narrow band, \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, with windows
 of \PriorsNarrowW{} bins and the full band up to \qty{\PriorsFullHighMhz}{\milli\hertz} with windows
 of \PriorsFullW{} bins, and compare against joint and per-source \ac{mcmc} chains
 (\cref{sec:results}). \Cref{app:related} covers the related work.

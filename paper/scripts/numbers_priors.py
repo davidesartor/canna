@@ -20,6 +20,7 @@ from canna.lisa.physics import (
     galactic_to_equatorial,
 )
 from canna.lisa.problem import WINDOW_RESPONSES, WINDOW_STRIDE, LisaGB
+from canna.lisa.simulator import UNIFORM_WINDOWS
 
 BANDS = ("narrow", "full")
 PLANE_DEG = 10
@@ -61,7 +62,7 @@ for band in BANDS:
 narrow, full = problems["narrow"], problems["full"]
 for name in ("n_sources", "t_obs"):
     assert getattr(narrow, name) == getattr(full, name)
-assert narrow.f0_range[0] == full.f0_range[0]
+assert narrow.f0_range[0] >= full.f0_range[0] and narrow.f0_range[1] <= full.f0_range[1]
 n_sources = full.n_sources
 assert np.allclose(prior["mean"], SOURCE_MEAN) and np.allclose(
     prior["cov"], SOURCE_COVARIANCE
@@ -91,6 +92,7 @@ for band, problem in problems.items():
     numbers |= {
         f"Priors{Band}R": f"{R}",
         f"Priors{Band}W": f"{problem.window_bins}",
+        f"Priors{Band}LowMhz": f"{problem.f0_range[0] * 1e3:.3g}",
         f"Priors{Band}HighMhz": f"{problem.f0_range[1] * 1e3:.3g}",
         f"Priors{Band}Windows": f"{hi - lo + 1}",
         f"Priors{Band}CatalogueShare": percent(band_mass / cut_mass),
@@ -176,6 +178,7 @@ numbers |= {
     "PriorsStride": f"{WINDOW_STRIDE}",
     "PriorsInteriorResponses": f"{WINDOW_RESPONSES - 1}",
     "PriorsBandLowMhz": f"{full.f0_range[0] * 1e3:.1f}",
+    "PriorsUniformWindowsPercent": f"{100 * UNIFORM_WINDOWS:.0f}",
     "PriorsTobsYears": f"{full.t_obs / (365.25 * 86400):.0f}",
     "PriorsBulgeScales": ", ".join(f"{x:.2g}" for x in BULGE_SCALES),
     "PriorsThickScales": ", ".join(f"{x:.2g}" for x in THICK_DISK_SCALES),

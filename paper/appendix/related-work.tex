@@ -9,8 +9,9 @@ resolvable sources with the likelihood: it is the reference for what the data su
 is run again for every new stretch of data. Amortised estimators learn the posterior once and
 then draw from it in seconds, but so far for one source, two ordered ones in a narrow band, or a
 factorised set of toy signals. This work is the amortised route at the global fit's unit of
-work: the joint posterior of the \RelatedWorkSourcesWord{} sources of a frequency window,
-\RelatedWorkParameters{} parameters with the full instrument response, for windows anywhere in
+work: the joint posterior of the $S$ sources of a frequency window, $S$ from
+\ResultsNarrowCounts{} on the narrow band to \ResultsFullCounts{} on the full band, $8S$ parameters with
+the full instrument response, for windows anywhere in
 \qtyrange{\RelatedWorkFzeroLow}{\RelatedWorkFzeroHigh}{\milli\hertz}, drawn by conditional flow matching from the
 prior with no likelihood evaluation. \Cref{tab:related-closest} places it among the \ac{gb}
 methods; the paragraphs below cover the wider literature it draws on.
@@ -63,7 +64,7 @@ SlotFlow \citep{houba2025slotflow}, \acs*{nsf} per slot
   & \acs*{rjmcmc} \\
 \midrule
 this work, flow matching
-  & \RelatedWorkSources{}, ordered in $f_0$
+  & 2 to 16, fixed per run, ordered in $f_0$
   & \rwyes & \rwyes & \rwno
   & full response; $A$, $E$, $T$; $\Tobs=\qty{\RelatedWorkTobs}{\year}$; $(f_0, \fdot, \Amp)$ from a
     Galactic catalogue over \qtyrange{\RelatedWorkFzeroLow}{\RelatedWorkFzeroHigh}{\milli\hertz}; most sources
@@ -97,8 +98,8 @@ among the \RelatedWorkSourcesWord{} sources of a window, over \RelatedWorkCrowdi
 training windows per band (\cref{eq:priors-window}), in each analysis's own bins of $1/\Tobs$
 (\qty{\RelatedWorkDelmondTobs}{\year} for \citet{delmond2026neural}, \qty{\RelatedWorkTobs}{\year} here). Vertical lines: the two source pairs of
 \citet{delmond2026neural}, \RelatedWorkDelmondEasiest{} bins apart (close to \ac{mcmc}) and
-\RelatedWorkDelmondHardest{} (broad, sometimes biased). In the narrow band most windows hold a
-pair closer than their hardest one; in the full band few do.}
+\RelatedWorkDelmondHardest{} (broad, sometimes biased). In the narrow band \qty{\RelatedWorkCloserNarrow}{\percent} of
+windows hold a pair closer than their hardest one, in the full band \qty{\RelatedWorkCloserFull}{\percent}.}
 \label{fig:related-crowding}
 \end{figure}
 
@@ -114,7 +115,11 @@ components with a classifier and gives each a slot of a shared flow trained with
 matching; its posterior factorises over the slots given a shared context, which cannot carry
 correlations between close sources, and on sinusoid mixtures its frequency widths are two to
 three times those of \ac{rjmcmc}. Population properties of the \acp{gb} can be inferred without any
-per-source posterior \citep{srinivasan2025simulation,desanti2026inferring}.
+per-source posterior \citep{srinivasan2025simulation,desanti2026inferring}. SlotFlow was presented
+as a step towards \ac{lisa} at the AI for Gravitational Waves workshop (CERN, May 2026), where the
+\ac{lisa} global fit was also discussed as a target for scalable simulation-based inference; none of
+the amortised \ac{gb} works above has, to our knowledge, been extended to a joint posterior over more
+than two sources under the \ac{lisa} response.
 
 Our sources are not placed by hand but drawn from the prior, and \cref{fig:related-crowding}
 shows what that implies. In the narrow band the closest two sources of a window are a median
@@ -124,8 +129,8 @@ full band, whose windows are wider, the median is \RelatedWorkClosestFull{} bins
 \qty{\RelatedWorkCloserFull}{\percent} of windows are that crowded. Among the Galaxy's resolvable
 sources overlap is rarer: fewer than \qty{1}{\percent} of pairs above \ac{snr} 7 have a match above
 one half after a year \citep{littenberg2020global}.
-\textcolor{red}{TODO(new runs): width ratio to the per-source \ac{mcmc} against closest-pair
-separation, narrow-B and full-B.}
+\textcolor{red}{TODO(analysis): width ratio to the joint \ac{mcmc} against closest-pair separation,
+for the runs of \cref{app:results}.}
 
 \paragraph{Neural posterior estimation for gravitational waves.}
 Amortised posteriors are established for ground-based detectors
@@ -199,16 +204,112 @@ data as another, short-time Fourier tokens of \RelatedWorkPatch{} bins on a freq
 shared through rotary embeddings \citep{su2024roformer}. Its attention is one-way: the data
 never attend to the sources, so the data stream is encoded once per observation and reused for
 every posterior draw in training and every step of the sampler. Frame registers and attention sinks
-\citep{xiao2024efficient,darcet2024vision} and a schedule-free \citep{defazio2024road} Muon optimiser
-\citep{jordan2024muon,liu2025muon,li2025normuon}, close to SF-NorMuon \citep{apte2026anytime}
-(\cref{app:training}) complete it.
+\citep{xiao2024efficient,darcet2024vision} and a Muon optimiser \citep{jordan2024muon,liu2025muon}
+with a warmup--stable--decay schedule \citep{hu2024minicpm,hagele2024scaling} (\cref{app:training})
+complete it.
+
+\subsection*{Recent Work, 2025--2026}
+\label{app:related-recent}
+% From the 2026-11-09 survey (DINGO line, the Korsakova group and LISA machine learning, and the
+% AI for Gravitational Waves workshop at CERN, indico 1640502). Each claim below follows the
+% paper's abstract as the survey read it; check before moving any of it to the main text.
+
+\paragraph{The DINGO line.}
+Since flow matching \citep{dax2023flow} and Dingo-T1 \citep{kofler2026flexible}, the DINGO authors
+have amortised over whole catalogues: Dingo-Pop \citep{leyde2026end} embeds each event as a token
+and a transformer returns the population posterior from 25 to 1000 events, the closest DINGO
+precedent for a transformer over a variable set of inputs, though its output is a posterior over
+hyperparameters, not a joint posterior over the sources. Earlier work adapted the network to
+shifts of the noise distribution \citep{wildberger2023adapting}, which our fixed-\ac{psd} simulator
+does not need yet (\cref{app:forward-model-limits}); DINGO-IS reaches next-generation ground-based
+networks \citep{santoliquido2025fast}, and DINGO for \ac{lisa}'s massive black-hole binaries
+\citep{spadaro2026accurate} remains its only space-based application. \citet{dax2026introduction}
+give a tutorial on Bayesian and frequentist simulation-based inference with machine learning.
+
+\paragraph{Amortised inference becomes tooling.}
+On ground-based data, neural posterior estimation now runs in production alerts
+\citep{marx2026likelihood} and in user-facing packages \citep{pinchbeck2026bilbyflow}; labrador
+\citep{roulet2026domain} heterodynes the data against a reference waveform and folds the parameter
+space to remove multimodality, close in spirit to our frame and our folded phases, though its
+reference comes from a per-event optimisation and our frame from the network. \citet{kolmus2024tuning}
+find that the accuracy of neural posterior estimation follows how densely the training prior covers
+each region, which bears on our catalogue prior, where loud sources are rare
+(\cref{app:priors}). Likelihood-based samplers on GPUs are closing the gap for single sources: a
+GPU nested sampler returns binary-neutron-star posteriors from the prior in minutes
+\citep{yallup2026abinitio}. For one source, speed alone is a weakening argument for amortisation;
+the joint posterior of many overlapping sources, whose chains take hours
+(\cref{app:mcmc-cost}), is where it still pays.
+
+\paragraph{Flow matching, diffusion and consistency models.}
+Outside the DINGO authors' work, flow matching for gravitational-wave posteriors appears for single
+sources only: intermediate-mass black-hole binaries \citep{raymond2025simulation}, pulsar-timing
+backgrounds \citep{liang2026accelerating}, and extreme mass-ratio inspirals, as an \ac{mcmc} proposal
+\citep{liang2026toward}, besides \citet{liang2026fluxmc} and \citet{mao2025robust}. The one diffusion
+model for gravitational-wave parameter estimation we found learns the noise, not the posterior
+\citep{legin2025gravitational}. Consistency models \citep{schmitt2024consistency} would cut our
+\FlowMatchingOdeSteps{} sampler steps to a few; we have not tried them.
+
+\paragraph{Overlapping signals and label switching.}
+For the Einstein Telescope, \citet{papalini2025can} feed a transformer encoder of the strain to a
+normalising flow for pairs of overlapping binary black holes, the closest work to ours in spirit; it
+uses a discrete flow, a fixed pair and neither a per-source frame nor ordered slots. Joint
+likelihood-based analyses of such overlaps come with criteria for when the joint treatment is needed
+\citep{baka2025overlapping}. For \ac{lisa}'s \acp{gb}, \citet{johnson2025global} relabel the global
+fit's samples after the fact to build a catalogue, the post-hoc counterpart of our frequency-ordered
+slots, which avoid label switching by construction. In machine learning, optimal transport relieves
+label switching \citep{monteiller2019alleviating}, and mixed neural posterior estimation handles
+discrete and continuous parameters together \citep{boelts2026mixed}, the natural route to a
+source-count posterior, though its authors leave an unknown number of exchangeable components open.
+
+\paragraph{Machine learning for \ac{lisa}.}
+At APC, the group behind the trans-dimensional sampler Eryn \citep{karnesis2023eryn} and the
+flow-based proposals of \citet{korsakova2024neural} now separate transients from glitches ahead of
+the global fit \citep{rao2026pipeline} and detect massive black-hole binaries before merger from
+short-time Fourier features \citep{nobili2026fast}; their amortised \ac{gb} posteriors are those of
+\citet{delmond2026neural}. Around the \ac{gb} problem, autoencoders learn the confusion foreground
+\citep{cain2026manifold,cain2026global}, classifiers sort binaries by type \citep{tay2026disentangling},
+an astrophysical $(f_0,\fdot)$ prior sharpens iterative searches \citep{zhao2026improving}, a
+time-frequency likelihood handles non-stationary noise \citep{du2025enhancing}, Gaussian processes
+accelerate single-source inference \citep{elgammal2025accelerating}, and fast templates in the
+Wilson--Daubechies--Meyer wavelet domain \citep{cornish2026time,vajpeyi2026explicit} could replace our heterodyned simulator for the
+time-frequency input. A continuous-time trans-dimensional sampler targets the global fit
+\citep{astorino2026samsara}, and sequential inference is enough where sources couple weakly, as
+extreme mass-ratio inspirals and massive black-hole binaries do \citep{agrawal2026untangling}, unlike
+overlapping \acp{gb}. Gaps and glitches, which our simulator leaves out, have machine-learning
+treatments \citep{houba2024detection,mao2025novel,houba2025robust}, and conditional variational
+autoencoders narrow the priors of massive black-hole-binary samplers \citep{sun2025accelerating}.
+
+\paragraph{Time-frequency inputs and transformers.}
+Normalising flows have been conditioned on spectrograms through image networks
+\citep{lanchares2026assessment,iwanaga2025enhancing}, and transformers read gravitational-wave time
+series for point estimates \citep{benedikt2026gravibert} or as pre-trained audio models
+\citep{chatterjee2024pretrained}. We found no posterior estimator that reads wavelet or
+short-time Fourier tokens of \ac{lisa} data with a transformer.
+
+\paragraph{Validating amortised posteriors.}
+Gravitational-wave papers mostly validate amortised posteriors with P--P plots. Recent work studies
+the calibration of flow-matching posterior estimation, with circular phases and seed-to-seed spread
+\citep{luo2026artifact}, finds amortised posteriors calibrated at moderate \ac{snr} but degraded at high
+\ac{snr} under transient noise \citep{liu2026assessing}, the regime where our full-band widths fail
+(\cref{app:results}), argues for distributional rather than pointwise metrics on multimodal inverse
+problems \citep{baattrup2026pointwise}, and tests calibration and misspecification with deep ensembles
+\citep{alvey2026simulation} and local distortions \citep{anaumontel2025tests}. Our protocol
+(\cref{app:evaluation}) adds known-answer mocks and data-space ranks, and its lesson that coverage
+does not see excess width is borne out by the runs.
+
+\paragraph{Pulsar timing and reviews.}
+Normalising flows \citep{shih2024fast} and variational inference \citep{vallisneri2025rapid} speed up
+pulsar-timing analyses. \citet{liang2025recent} and \citet{thiele2026machine} review simulation-based
+inference for gravitational waves and astrophysics, next to \citet{cuoco2025applications} and
+\citet{zhao2025dawning}.
 
 \paragraph{What this work adds.}
 \begin{itemize}\setlength{\itemsep}{1pt}
-  \item A joint, non-factorised posterior over \RelatedWorkSourcesWord{} overlapping \acp{gb} per
-        window with the full instrument response, from the flow alone: twice the sources of the
-        largest joint amortised posterior with the \ac{lisa} response we found
-        \citep{delmond2026neural}.
+  \item A joint, non-factorised posterior over up to eight (narrow band) and sixteen (full band)
+        overlapping \acp{gb} per window with the full instrument response, from the flow alone,
+        against two in the largest joint amortised posterior with the \ac{lisa} response we found
+        \citep{delmond2026neural}, and how its accuracy against joint \ac{mcmc} changes with that number
+        (\cref{app:results}).
   \item An astrophysical prior: $(f_0, \fdot, \Amp)$ from a Gaussian fitted to a Galactic
         double-white-dwarf catalogue over \qtyrange{\RelatedWorkFzeroLow}{\RelatedWorkFzeroHigh}{\milli\hertz},
         with the windows centred where the sources can be seen. Most sources lie
@@ -220,6 +321,8 @@ every posterior draw in training and every step of the sampler. Frame registers 
         transports order-one widths for loud and quiet sources alike.
   \item A one-way transformer whose data encoding is computed once per observation, which makes
         many posterior draws per simulation cheap in training.
-  \item \textcolor{red}{TODO(new runs): narrow-B and full-B widths against \ac{mcmc} and Fisher,
-        and their calibration.}
+  \item With two sources per narrow-band window, widths within
+        \ResultsNarrowTwoWidthLo--\ResultsNarrowTwoWidthHi{} of joint \ac{mcmc} at $\snr=7$--40; with
+        more sources and on the full band, wider posteriors whose coverage still looks nominal, which
+        only the reference chains expose (\cref{app:results}).
 \end{itemize}

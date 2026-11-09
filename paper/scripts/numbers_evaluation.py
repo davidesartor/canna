@@ -9,7 +9,7 @@ import numpy as np
 import style
 
 from canna.lisa import config, scorecard, validate
-from canna.lisa.injections import N_FISHER_DRAWS, N_PER_WINDOW, N_POSTERIOR, N_WINDOWS
+from canna.lisa.injections import N_FISHER_DRAWS, N_INJECTIONS, N_POSTERIOR
 from canna.lisa.mcmc import FDOT_SIGMAS
 from canna.lisa.physics import FDOT_STD, log10_fdot_mean
 
@@ -28,7 +28,7 @@ SNR_QUANTILE = 0.9999
 prior_snr = np.load(style.REPO / "reports/prior/f0-fdot-amplitude/data/full.npz")["snr"]
 snr_lo, snr_hi = 7.0, float(np.quantile(prior_snr, SNR_QUANTILE))
 ideal = lambda snr: math.sqrt(3) / (math.pi * snr)
-windows = N_WINDOWS * N_PER_WINDOW + cfg.n_random
+windows = N_INJECTIONS + cfg.n_random
 
 # the narrow band's largest chirp drift over the mission, in bins: top f0, fdot at the prior's ceiling
 f0_top = narrow.problem["f0_range"][1]
@@ -211,9 +211,7 @@ for name, value in ladder.items():
 exponent = math.floor(math.log10(ideal(snr_hi)))
 numbers = {
     # the eval injections
-    "EvaluationFrequenciesWord": WORDS[N_WINDOWS],
-    "EvaluationPerFrequencyWord": WORDS[N_PER_WINDOW],
-    "EvaluationInjections": f"{N_WINDOWS * N_PER_WINDOW}",
+    "EvaluationInjections": f"{N_INJECTIONS}",
     "EvaluationSourcesBoth": f"{len(source_snr)}",
     "EvaluationNarrowSnrLo": f"{window_snr['narrow'][0]:.0f}",
     "EvaluationNarrowSnrHi": f"{window_snr['narrow'][1]:.0f}",

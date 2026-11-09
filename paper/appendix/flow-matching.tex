@@ -95,7 +95,7 @@ The frame is trained on the Gaussian negative log-likelihood of $X_1$, up to a c
 factor of two, with a weight and a ridge,
 \begin{equation}
   \mathcal L_{\rm frame} = \E\;\frac{1}{8S}\sum_{k=1}^{S}\sum_{i=1}^{8}
-  \operatorname{sg}\bigl(e^{\delta_{s,ki}}\bigr)\Bigl[\kappa_{ki}^2 + 2\delta_{s,ki}
+  \Bigl[\operatorname{sg}\bigl(e^{\delta_{s,ki}}\bigr)\bigl(\kappa_{ki}^2 + 2\delta_{s,ki}\bigr)
   + \lambda\bigl(\delta_{\mu,ki}^2 + \delta_{s,ki}^2\bigr)\Bigr],\qquad
   \kappa = \frac{X_1-\mu}{\sigma},
   \label{eq:fm-frame-loss}
@@ -107,8 +107,13 @@ $\sigma^2 = \Var(X_1\mid y,\fw)$, the posterior's marginal moments. What the wei
 balance across observations. The gradient of $\kappa^2$ in $\delta_\mu$ is $-2\kappa\,e^{-\delta_s}$,
 which grows as the frame narrows: a loud source, whose frame is many decades narrower than the
 prior, would dominate the batch. With the weight it is $-2\kappa$, the same for every source in
-standardised units. The ridge keeps $\delta$ finite where the batch holds no information, and is
-small against the likelihood wherever it does.
+standardised units. The curvature in $\delta_\mu$ is still $2e^{-\delta_s}$, so a loud source's
+term is far stiffer than a quiet one's, and the optimiser's steps, the same size for every source,
+can throw it many widths off. The ridge sits outside the weight and bounds that: as
+$e^{\delta_s}\to 0$ its pull on $\delta_s$ stays $2\lambda\delta_s$ while the likelihood's fades, so
+the frame's width settles no lower than $\sigma \approx \lambda\ln(1/\lambda)$ prior widths, about
+$5\times10^{-3}$. A loud source's frame is then wider than its posterior and the flow narrows the
+rest in $z_1$; a quiet source's is unchanged, the ridge being small against its likelihood.
 
 \paragraph{Why a frame.}
 The posterior widths span many decades, from the prior for a quiet source to a small fraction of a

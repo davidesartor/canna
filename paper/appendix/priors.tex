@@ -3,8 +3,10 @@
 \label{app:priors}
 % =======================================================================================
 
-The flow learns $p(X\mid y, \fw)$ for the $S=\PriorsSources{}$ sources of one frequency window,
-so its prior is a prior over windows: where the window sits, and what its sources are given the
+The flow learns $p(X\mid y, \fw)$ for the $S$ sources of one frequency window, with $S$ fixed
+per run: $S={}$\ResultsNarrowCounts{} on the narrow band and \ResultsFullCounts{} on the full band in
+the runs of \cref{app:results}, and $S=\PriorsSources{}$ in the default configuration, which the
+examples below use. Its prior is therefore a prior over windows: where the window sits, and what its sources are given the
 window. This appendix states both, the exact symmetries of the likelihood they leave, and the
 stream of simulated windows the network trains on. \Cref{fig:priors} shows the prior;
 \cref{tab:priors-bands} collects what differs between the two bands.
@@ -34,7 +36,9 @@ alone in the window centred on it at the conditional mean $\fdot$, and one is pi
 the product of the catalogue's $f_0$ marginal (\cref{eq:priors-source}) and the chance that $\log_{10}\Amp$,
 given $f_0$ (\cref{eq:priors-conditional}), exceeds $\log_{10}\Amp_k^{(m)}$, the amplitude at which that
 candidate reaches $\snr=k$. The window is the one on the even grid nearest the pick, where $j_{\rm lo}$ and $j_{\rm hi}$ are the first and last windows
-whose interior reaches the band. Within the window each $f_0$ follows the catalogue marginal
+whose interior reaches the band. A share of \qty{\PriorsUniformWindowsPercent}{\percent} of the
+windows skips the weights and is centred log-uniformly over the band, so training also sees the
+empty windows that most of the band holds. Within the window each $f_0$ follows the catalogue marginal
 truncated to \cref{eq:priors-interior}, and the other parameters their catalogue priors
 (\cref{app:priors-sources}). The prior given the window is therefore the catalogue's; the
 weights only choose which windows training sees, so the posterior the flow learns for a window
@@ -47,17 +51,17 @@ which holds most of the visible sources, would get \qty{\PriorsFullTopShare}{\pe
 \qty{\PriorsFullWithVisible}{\percent} would hold a visible source. Centred by
 \cref{eq:priors-window}, \qty{\PriorsFullTrainingTopShare}{\percent} of the full band's windows sit in
 its upper half and \qty{\PriorsFullTrainingWithVisible}{\percent} hold a visible source
-(\cref{fig:priors}d). The narrow band, below \qty{\PriorsNarrowHighMhz}{\milli\hertz}, has few
-sources that can reach $k$: there the share rises only from \qty{\PriorsNarrowWithVisible}{\percent} to
-\qty{\PriorsNarrowTrainingWithVisible}{\percent}. The weights are approximate, since each candidate
+(\cref{fig:priors}d). In the narrow band, \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, where
+the sources are louder to begin with, the share rises from \qty{\PriorsNarrowWithVisible}{\percent} to \qty{\PriorsNarrowTrainingWithVisible}{\percent}. The weights are approximate, since each candidate
 scores one sky and orientation alone in its window; they move the windows, not the target.
 
 \begin{table}[t]
 \caption{The two bands. Every other prior is shared. Source and window shares are over
 \num{\PriorsPriorWindows} windows per band centred on the catalogue's $f_0$ marginal, and
 \num{\PriorsCutWindows} centred by \cref{eq:priors-window} (training); a source is visible at
-$\snr\ge\PriorsVisibleSnr$ alone in its window. Training figures are for one run of the B network
-at the batch of \cref{app:priors-training}; the simulation share is the time spent drawing a batch
+$\snr\ge\PriorsVisibleSnr$ alone in its window. Training figures are for the default configuration of the
+B network at the batch of \cref{app:priors-training}; the runs of \cref{app:results} set their own
+step counts (\cref{tab:results-runs}); the simulation share is the time spent drawing a batch
 inside one training step on an \PriorsStepChip{}. \textcolor{red}{TODO(new bench): the full-band
 step and draw times were measured at $R=1024$ and the previous prior; rerun
 reports/benchmarks/step-time-memory at $R=\PriorsFullR$.}}
@@ -68,7 +72,7 @@ reports/benchmarks/step-time-memory at $R=\PriorsFullR$.}}
 \toprule
  & narrow & full \\
 \midrule
-band & \qtyrange{\PriorsBandLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz} & \qtyrange{\PriorsBandLowMhz}{\PriorsFullHighMhz}{\milli\hertz} \\
+band & \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz} & \qtyrange{\PriorsFullLowMhz}{\PriorsFullHighMhz}{\milli\hertz} \\
 response $R$ / window $4R$ [bins] & \num{\PriorsNarrowR} / \num{\PriorsNarrowW} & \num{\PriorsFullR} / \num{\PriorsFullW} \\
 distinct windows & \num{\PriorsNarrowWindows} & \num{\PriorsFullWindows} \\
 catalogue above \qty{\PriorsCatalogueCutMhz}{\milli\hertz} in the band & \qty{\PriorsNarrowCatalogueShare}{\percent} & \qty{\PriorsFullCatalogueShare}{\percent} \\
@@ -197,11 +201,28 @@ sources are the loud tail of the top of the band. Where the data say nothing, th
 is the prior, which the flow must return as faithfully as a narrow posterior.
 
 \paragraph{A fixed number of sources.}
-Every window holds exactly $S$ sources of the population. A real window holds a variable number,
-most of them below any detection threshold, and a global fit infers that number with a
-trans-dimensional sampler \citep{littenberg2020global}. Our flow answers the narrower question
-``given that the window holds $S$ sources of the population, where are they?'', and the rest of
-the population is not simulated.
+Every window holds exactly $S$ sources of the population, with $S$ set per run. A real window holds
+a variable number, most of them below any detection threshold, and a global fit infers that number
+with a trans-dimensional sampler \citep{littenberg2020global}. Our flow answers the narrower
+question ``given that the window holds $S$ sources of the population, where are they?'', and the
+rest of the population is not simulated.
+
+\paragraph{How many sources a window holds.}
+The simulated Galaxy behind the prior holds \num{\RatesCatalogue} double white dwarfs in the band
+\textcolor{red}{TODO(cite): catalogue}. A window of $w$ bins centred at $f$ holds each of them with
+the prior's share $p(f, w)$ of $f_0$ in it, so it holds $K\sim\operatorname{Bin}(N, p)$ sources, and
+the sources reaching $\snr\ge\RatesVisibleSnr$ alone in the window follow the same law with $p$
+thinned by $P(\snr\ge\RatesVisibleSnr\mid f_0)$, the amplitude integrated out in closed form
+(reports/prior/source-count). \qty{\RatesVisibleShare}{\percent} of the catalogue's sources are
+visible in this sense. A narrow-band window of \RatesNarrowWindow{} bins holds on average
+\numrange{\RatesNarrowAllLo}{\RatesNarrowAllHi} sources and \numrange{\RatesNarrowVisibleLo}{\RatesNarrowVisibleMax}
+visible ones, the most at \qty{\RatesNarrowBusiestMhz}{\milli\hertz}, \RatesNarrowVisibleTop{} at the
+band's top; a full-band window of \RatesFullWindow{} bins holds up to \num{\RatesFullAllHi} sources and
+\RatesFullVisibleMax{} visible ones, near \qty{\RatesFullBusiestMhz}{\milli\hertz}. The $S\le16$ slots
+of our runs are therefore far below the source count of a real window at a few millihertz: what
+they test is how a joint amortised posterior scales with the number of overlapping sources
+(\cref{app:results}), not a complete model of the Galactic foreground, which a real analysis must
+subtract or model as confusion noise \citep{karnesis2021characterization}.
 
 \subsection{Exact Symmetries}
 \label{app:priors-symmetries}

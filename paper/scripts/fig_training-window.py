@@ -6,7 +6,7 @@ import numpy as np
 
 import style
 from canna.lisa import config
-from canna.lisa.injections import sort_by_snr
+from canna.lisa.injections import sort_by_f0
 from canna.lisa.problem import LisaGB, window_power
 from canna.lisa.simulator import (
     clean_signal,
@@ -23,10 +23,10 @@ VISIBLE_SNR = 7.0
 
 
 def draw_window(problem: LisaGB, seed: int):
-    """Centre frequency, sources (loudest first), data and clean signal of the window drawn from one seed."""
+    """Centre frequency, sources (by f0), data and clean signal of the window drawn from one seed."""
     key_f, key_p, key_n = jr.split(jr.key(seed), 3)
     f = sample_window(problem, key_f)
-    p = sort_by_snr(problem, sample_physical(problem, key_p, f), f)
+    p = sort_by_f0(sample_physical(problem, key_p, f))
     return f, p, sample_observation(problem, key_n, p, f), clean_signal(problem, p, f)
 
 

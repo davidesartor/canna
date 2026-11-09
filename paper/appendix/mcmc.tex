@@ -61,8 +61,15 @@ it skips the search, and burn-in and tempering remove the start. Each of the \Mc
 eval injections runs \McmcSeeds{} seeds, \McmcChains{} chains in all
 (\cref{tab:mcmc-settings}); their cold draws, pooled over the seeds, are subsampled to
 \McmcKeepDraws{} per injection for the evaluation.
-\textcolor{red}{TODO(new runs): the \McmcChains{} reference chains of the eval injections, and
-full-band chains (responses of \McmcResponsePointsFull{} bins).}
+Every band and source count of \cref{app:results} has its own reference: the joint chains of the
+\EvaluationInjections{} eval injections of that problem, two seeds each, over all $8S$ parameters,
+with responses of \PriorsNarrowR{} bins on the narrow band and \PriorsFullR{} on the full
+band. Over the five references in use, the largest $\hat R$ is \ResultsMcmcRhatMax{}
+(\ResultsMcmcRhatNarrowMax{} on the narrow band) and the smallest effective sample size
+\ResultsMcmcEssMin{}; the full-band chains thus sit above the usual $\hat R<1.01$ for their worst
+parameter, which the comparison of \cref{app:results} has to bear in mind. The chains' own
+coverage of the true $f_0$ at the \qty{68}{\percent} level is
+\ResultsMcmcFzeroCoverLo--\ResultsMcmcFzeroCoverHi.
 \textcolor{red}{TODO(new chains): every number and figure below comes from earlier joint chains on
 \McmcJointWindows{} eval injections of a previous catalogue (\McmcJointWindowList), run under the
 previous prior, with $\ln\Mc$ in place of $\ln\fdot$ (at fixed $f_0$ a rescaled $\ln\fdot$, here
@@ -217,4 +224,4 @@ per injection and seed, against a fraction of a second for the flow (\cref{app:f
 chains also scale with the band, a full-band response being \McmcResponsePointsFull{} bins against
 \McmcResponsePoints. This cost is why the full-band chains are still missing.
 
-\textcolor{red}{TODO(new runs): narrow-B and full-B flows against these chains, in \cref{app:results}.}
+The flows of every band and source count against these chains are in \cref{app:results}.

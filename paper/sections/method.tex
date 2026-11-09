@@ -1,22 +1,10 @@
 % =======================================================================================
-\section{Method}
+\section{Flow Matching and the Network}
 \label{sec:method}
 % =======================================================================================
-
-\subsection{Flow Coordinates}
-\label{sec:method-chart}
-
-The flow transports points of $\R^{8S}$, one chart image per source (\cref{eq:chart}). Frequency
-is scaled to the window, $\log\fdot$ standardised given $f_0$, and the sky taken in galactic
-coordinates scaled by the prior's widths. Amplitude, inclination, polarisation and phase enter
-as the two helicity amplitudes
-$\zeta_\pm\propto\Amp\,(1\mp\cos\iota)^2\,e^{\ii(\phi_0\pm2\psi)}/4$, in units of the noise, with
-their radius warped by $\operatorname{asinh}$. The signal is linear in $\zeta_\pm$
-(\cref{eq:forward-model-helicity}), so the four copies of a source in $(\psi,\phi_0)$ map to one
-point, and at high \ac{snr} the likelihood in $\zeta_\pm$ is close to Gaussian
-(\cref{app:chart-helicity}). The chart is flat, so the flow's paths are straight lines
-(\cref{app:chart-flat}). The sources are slots in order of $f_0$, so each mode of the posterior
-has one copy instead of $S!$, one per labelling (\cref{app:chart-slots}).
+% Moved 2026-11-09 from the former sections/method.tex: Flow Matching, Network and Training stay
+% here; Flow Coordinates (the chart) and the data tokens moved to sec:gw. New material in the
+% appendices: app:fm, app:network, app:training (snapshots and cooldown forks, app:training-loop).
 
 \subsection{Flow Matching}
 \label{sec:method-fm}
@@ -43,10 +31,8 @@ velocity and are mapped back with $X = \mu+\sigma Z$ (\cref{app:fm-sampling}).
 \label{sec:method-network}
 
 The network is a two-stream transformer \citep{peebles2023scalable,esser2024scaling} with a data
-stream and a source stream (\cref{fig:network-architecture}). The data stream reads the window as
-a short-time Fourier transform, \NetworkPatch{} bins per token, each token holding its band's time
-samples in the three channels (\cref{eq:network-stft}): \NetworkTokensNarrow{} tokens in the
-narrow band, \NetworkTokensFull{} in the full band. One frame register per slot runs with the
+stream and a source stream (\cref{fig:network-architecture}). The data stream reads the window's
+tokens (\cref{sec:gw-tokens}). One frame register per slot runs with the
 data stream and gives that slot's frame (\cref{app:network-frame}). The source stream holds one
 token per slot, embedded from its coordinates in the frame and in the chart and from the frame
 itself, together with attention sinks \citep{xiao2024efficient,darcet2024vision}. Attention is
@@ -57,15 +43,20 @@ attends to everything and is conditioned on the time. Rotary embeddings in frequ
 \citep{su2024roformer} place each source at its $f_0$ and each data token at its centre bin.
 \Cref{app:network} gives the embeddings and \cref{tab:network-sizes} the sizes; all results use
 size B, \num{\NetworkBTotalFull} parameters.
+% moved to sec:gw-tokens: "The data stream reads the window as a short-time Fourier transform, ..."
 
 \subsection{Training}
 \label{sec:method-training}
 
 Every batch is simulated on the device: \TrainingObservations{} windows, each with
 \TrainingDraws{} draws of time and base point sharing its cached data stream, so no observation is
-seen twice (\cref{app:training-batch}). The optimiser is schedule-free
-\citep{defazio2024road} around Muon \citep{jordan2024muon,li2025normuon} for the hidden weight
-matrices and AdamW for the rest, and evaluation uses the averaged weights
-(\cref{app:training}). The narrow band trains for \num{\TrainingStepsNarrow} steps and the full
-band for \num{\TrainingStepsFull}, \qty{\TrainingComputeNarrowBHours}{\hour} and
-\qty{\TrainingComputeFullBHours}{\hour} on one A100 (\cref{app:training-compute}).
+seen twice (\cref{app:training-batch}). The optimiser is Muon \citep{jordan2024muon,liu2025muon}
+for the hidden weight matrices and AdamW for the rest, with a linear warmup, a constant learning
+rate and a cooldown to zero \citep{hagele2024scaling} (\cref{app:training}). Each run trains for a
+fixed wall-time budget, \ResultsNarrowHours\,h on the narrow band and \ResultsFullHours\,h on the full
+band on one A100 (\cref{tab:results-runs}), and is evaluated at the checkpoint with the lowest
+eval-catalog loss (\cref{app:evaluation-weights}).
+% updated 2026-11-09 (stale facts): was "evaluation uses the last weights" and "The narrow band
+% trains for \TrainingStepsNarrow steps and the full band for \TrainingStepsFull,
+% \TrainingComputeNarrowBHours h and \TrainingComputeFullBHours h on one A100", the config
+% defaults, not what the source-count runs used.
