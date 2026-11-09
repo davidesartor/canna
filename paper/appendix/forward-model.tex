@@ -312,11 +312,25 @@ every response inside the window: sources are drawn with
   \label{eq:forward-model-window-interior}
 \end{equation}
 an interior of $\ForwardModelInteriorResponses{}R$ bins, and since a response spans $q\pm R/2$ it ends
-at the window's edge at most. The centre is drawn by sampling $f_c$ from the prior's $f_0$
-marginal truncated to $[f_{\min}, f_{\max}]$, snapping it to the grid of
-\cref{eq:forward-model-window-start} and clipping the window index to the range whose interiors
-just cover $[f_{\min}, f_{\max}]$, so windows follow the frequency prior (\cref{app:priors}) up to
-the snapping and the clipped ends.
+at the window's edge at most. The centre $f_c$ is drawn as in \cref{app:priors-window}, mostly where
+the catalogue's sources can be seen and in a share of the windows log-uniformly over the band, snapped
+to the grid of \cref{eq:forward-model-window-start}, and the window index clipped to the range whose
+interiors just cover $[f_{\min}, f_{\max}]$.
+
+\paragraph{Why the band can be sliced.}
+Stationary noise is independent across frequency bins and, in $A$, $E$, $T$, across channels
+(\cref{app:noise-likelihood}), so the log-likelihood of the whole band is a sum over bins
+(\cref{eq:loglik}). A \ac{gb}'s heterodyned response has compact support, $R$ bins around $f_0\Tobs$
+(\cref{app:forward-model-heterodyne}), so a source changes only the terms of the bins it covers, and
+the likelihood factorises into windows: given the sources whose responses fall in a window, the
+window's bins are independent of the rest of the band. The posterior of a window's sources then
+depends on the data only through that window, which is what lets one network, conditioned on $\fw$,
+serve every window of the band, and lets windows be analysed in parallel. The factorisation is exact
+only when no response crosses a window's edge. Our windows enforce it by construction, drawing every
+$f_0$ in the interior (\cref{eq:forward-model-window-interior}); in real data, sources near an edge
+and the wings of loud neighbours outside the window break it, and a global fit handles them with
+overlapping segments updated in turn \citep{littenberg2020global}, which windows of a flow would have
+to imitate (\cref{app:forward-model-limits}).
 
 \Cref{fig:forward-model-window} shows one window of each band as the network receives it. Per
 bin, the sources are mostly below the noise: a source's \acs{snr} accumulates over its whole
@@ -337,8 +351,9 @@ spread over tens of bins.
 \end{figure}
 
 \paragraph{Bands.}
-The problem comes in two bands that share every prior and the window layout and differ only in
-$f_{\max}$, and with it $R$ (\cref{tab:forward-model-bands}). On the full band, at
+The problem comes in two bands that share every prior and the window layout and differ in their
+range of $f_0$, \qtyrange{\ForwardModelNarrowLow}{\ForwardModelNarrowTop}{\milli\hertz} and up to
+\qty{\ForwardModelFullTop}{\milli\hertz}, and with it $R$ (\cref{tab:forward-model-bands}). On the full band, at
 \qty{\ForwardModelFullTop}{\milli\hertz} the Doppler sideband is \ForwardModelFullDoppler{} bins, the mean
 chirp \ForwardModelFullChirp{} and the antenna sidebands \ForwardModelAntennaBins{}, so
 $n_{\rm span} = \ForwardModelFullSpan{}$ at the mean $\fdot$, against $R = \ForwardModelFullR{}$: the
@@ -346,11 +361,13 @@ few sources there lose their outermost bins above the noise. The narrow band sto
 \qty{\ForwardModelNarrowTop}{\milli\hertz}, where the Doppler sideband is \ForwardModelNarrowDoppler{} bins
 and the mean chirp \ForwardModelNarrowChirp{}, so $n_{\rm span} = \ForwardModelNarrowSpan{}$ against
 $R = \ForwardModelNarrowR{}$, which keeps all the power above the noise of \qty{99.9}{\percent} of its
-sources, the \qty{\ForwardModelNarrowSpanShare}{\percent} of the full band's that lie below its top.
+sources. \textcolor{red}{TODO(check): \ForwardModelNarrowSpanShare\,\% is the share of the full
+band's sources below the narrow band's top, which now starts at \qty{\ForwardModelNarrowLow}{\milli\hertz}
+too; reword or restrict the script to the narrow band's range.}
 
 \begin{table}[h]
-\caption{The two bands. They share the priors, the \ForwardModelSourcesWord{} sources per window
-and the window layout; $R$, the window and the number of distinct windows differ. The band
+\caption{The two bands. They share the priors, the default of \ForwardModelSourcesWord{} sources per
+window (the runs of \cref{app:results} set $S$ per run) and the window layout; $R$, the window and the number of distinct windows differ. The band
 fraction is of $\log f_0$ over \qtyrange{\ForwardModelBandLow}{\ForwardModelBandHigh}{\milli\hertz}.}
 \label{tab:forward-model-bands}
 \centering

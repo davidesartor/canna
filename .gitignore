@@ -28,3 +28,7 @@ reports/architecture/data-tokens/data/
 reports/architecture/frequency-rope/data/
 reports/architecture/source-pairing/data/
 reports/posterior-eval/mock-flows/data/
+
+# local LaTeX: the paper (tracked files stay tracked) and the presentation
+paper/
+presentation/

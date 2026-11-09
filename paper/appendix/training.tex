@@ -33,7 +33,7 @@ AdamW (everything else) & peak learning rate & \num{\TrainingAdamRate} \\
 Schedule & gradient clipping & global norm \TrainingClipNorm{} \\
 & warmup & linear from zero, \num{\TrainingWarmupNarrow} (narrow), \num{\TrainingWarmupFull} (full) steps \\
 & after warmup & constant, then $1-\sqrt{\cdot}$ to zero over the last \qty{\TrainingCooldownPercent}{\percent} \\
-& total steps & \num{\TrainingStepsNarrow} (narrow), \num{\TrainingStepsFull} (full) \\
+& total steps & per run, from a wall-time budget (\cref{tab:results-runs}); default \num{\TrainingStepsNarrow} (narrow), \num{\TrainingStepsFull} (full) \\
 & epoch & \TrainingEpochSteps{} steps, one checkpoint each \\
 \addlinespace
 Batch & samples per step & \TrainingBatch{} $=$ \TrainingObservations{} observations $\times$ \TrainingDraws{} draws of $(Z_0, t)$ \\
@@ -92,7 +92,12 @@ parameters of full-XS, \qty{\TrainingMuonShareB}{\percent} of full-B and \qty{\T
 The peak rates, \num{\TrainingMuonRate} for Muon and \num{\TrainingAdamRate} for AdamW, were not tuned
 by a sweep on this network, and neither was the batch. Muon's matches AdamW's because its update
 RMS does \citep{liu2025muon}.
-\textcolor{red}{TODO(new runs): are these rates stable, and not too low, on narrow-B and full-B?}
+At these rates five of the six runs of \cref{app:results} trained to their end with every loss
+finite. Full-band $S=4$ did not: from a few epochs before, isolated single steps sent the frame's
+loss and the gradient norm up by many decades while the epoch medians stayed flat, and at epoch
+\ResultsFullFourDivergedEpoch, just before its cooldown, a loss turned non-finite
+(\cref{app:results-runs}). The same run's forks, cooled from earlier snapshots, are unaffected. No
+rate was swept, so whether lower rates avoid such spikes, or higher ones train faster, is open.
 
 \paragraph{Strength of the evidence.}
 Muon \citep{jordan2024muon}, its decay and update scale \citep{liu2025muon} and the
@@ -114,7 +119,14 @@ it had been planned that long.
 The step counts are a wall-time budget, not a convergence criterion: size B trains in about a day
 on one A100 with the bfloat16 backbone, \qty{\TrainingComputeNarrowBHours}{\hour} of steps on the narrow
 band and \qty{\TrainingComputeFullBHours}{\hour} on the full band (\cref{fig:training-compute}a).
-\textcolor{red}{TODO(new runs): narrow-B and full-B eval-catalog loss at the last epoch, and whether it still falls.}
+The runs of \cref{app:results} were sized the same way, from the epoch time of a
+\qty{30}{\minute} smoke test of each band and source count, to \ResultsEpochs{} epochs: about
+\ResultsNarrowHours\,h on the narrow band and \ResultsFullHours\,h on the full band (A100 hours of
+steps, without restarts). A later cooldown ends lower (\cref{tab:results-forks}): from forks at epoch 4
+to epoch 32 the eval-catalog loss falls in every configuration, except full-band $S=4$ at epoch 16,
+whose snapshot caught a noisy epoch. Cooling at the planned epoch, after \ResultsEpochs{} epochs, still
+gains on narrow $S=4$ and full $S=8$, which are therefore not converged, but not on narrow $S=2$ and
+$S=8$, where the fork from epoch 32 ends below the main run.
 
 \subsection{Batch}
 \label{app:training-batch}
@@ -199,7 +211,21 @@ cooldown extends the run (\cref{app:training-schedules}). With the default epoch
 \TrainingCheckpointNarrowBBestInterval{} and \TrainingCheckpointFullBBestInterval{} steps, would
 lose \qty{\TrainingCheckpointNarrowBBestLostPercent}{\percent} and \qty{\TrainingCheckpointFullBBestLostPercent}{\percent}
 (\cref{fig:training-overhead}c).
-\textcolor{red}{TODO(new runs): narrow-B and full-B wall time, jobs, requeues and step time on the training cluster.}
+\paragraph{Snapshots and cooldown forks.}
+Every \ResultsSnapshotEvery{} epochs a run also keeps a snapshot of its whole state, which the
+rolling checkpoint overwrites. A fork restarts from the snapshot at epoch $k$ with the total cut to
+$k/(1-c)$ epochs, $c$ the cooldown fraction, so it cools down at once, over $ck/(1-c)$ epochs, as a run
+planned that long from the start would have; the schedule before the cooldown depends only on the
+warmup, which every fork shares with its parent. Forks from epochs \ResultsForkEpochs{} of each run
+give, at the cost of the cooldowns alone, the loss and the posteriors of four shorter runs
+(\cref{tab:results-forks}).
+
+\paragraph{The runs on the cluster.}
+The runs of \cref{app:results} ran on single A100s of a shared cluster, the narrow and the full band
+each on its own GPU, their source counts one after another, while a third GPU ran the forks and
+evaluations as their snapshots appeared. Jobs of \TrainingJobHours{}\,h requeued themselves and
+resumed as above.
+\textcolor{red}{TODO(runs): measured wall time and requeues per run, from the slurm logs.}
 
 \subsection{Precision}
 \label{app:training-precision}

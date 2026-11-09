@@ -34,10 +34,12 @@ toy with an exact posterior for the size and power of the validation tests
 \subsection{Weights and Sampler}
 \label{app:evaluation-weights}
 
-Every pass evaluates the run's last checkpoint, at the end of the cooldown (\cref{app:training-schedules}).
-The checkpoint with the lowest eval-catalog loss is kept too (\cref{app:training-loop}), as a
-fallback for a run that degrades late; it is chosen on the eval injections, so its results on
-them would be optimistic. The flow predicts the
+By default every pass evaluates the run's last checkpoint, at the end of the cooldown
+(\cref{app:training-schedules}). The checkpoint with the lowest eval-catalog loss is kept too
+(\cref{app:training-loop}), as a fallback for a run that degrades late; it is chosen on the eval
+injections, so its results on them are optimistic. The runs of \cref{app:results} were evaluated at
+that checkpoint, which in the finished runs falls in the cooldown, at most a few epochs before the end
+(\cref{tab:results-runs}), and is the only usable one of the full-band run with $S=4$, which diverged. The flow predicts the
 endpoint $Z_1$ in the frame (\cref{app:fm}), and the sampler takes \EvaluationOdeSteps{} midpoint
 steps toward the predicted mean, each exact if the prediction were constant along the step. On a uniform grid the last
 step cannot resolve posteriors much narrower than $s_0/2K_t$ (\cref{fig:fm-sensitivity}b), so
@@ -49,7 +51,7 @@ standard normal in the frame, which the network encodes from the data (\cref{app
 
 The eval injections sit at \EvaluationInjections{} centre frequencies $\fw$, one log-uniform draw
 in each of \EvaluationInjections{} equal bins of $\log f_0$, so they cover the whole band, empty
-windows included. Each holds one prior draw of \EvaluationNSources{} sources (\cref{app:priors}),
+windows included. Each holds one prior draw of the run's $S$ sources (\cref{app:priors}),
 ordered by $f_0$. They span window \acp{snr} \EvaluationNarrowSnrLo--\EvaluationNarrowSnrHi{} in the
 narrow band and \EvaluationFullSnrLo--\EvaluationFullSnrHi{} in the full band, and source
 \acp{snr} \EvaluationSourceSnrLo--\EvaluationSourceSnrHi. Injections and noise are fixed by the
@@ -446,7 +448,7 @@ offsets and \ac{crps} are compared with the finest log-spaced grid.
 \textcolor{red}{TODO(new runs): the step count at which narrow-B and full-B widths settle, and
 whether \EvaluationOdeSteps{} steps are past it.}
 
-The flow is trained on one noise \ac{psd}, a fixed prior and exactly \EvaluationNSources{} sources
+The flow is trained on one noise \ac{psd}, a fixed prior and exactly $S$ sources
 per window. Each robustness case changes one of these on the eval injections, keeping the
 window, truth and noise: the \ac{psd} halved and doubled; the loudest source's $f_0$, $\fdot$ or
 amplitude past the prior's bulk; the quietest source's amplitude below it; one source removed or
@@ -454,4 +456,6 @@ added; and an empty window. Each source is compared with itself in distribution.
 \textcolor{red}{TODO(new runs): whether narrow-B and full-B widen or return confident wrong
 answers out of distribution.}
 
-\textcolor{red}{TODO(new runs): scorecard and validation tables for narrow-B and full-B, in \cref{app:results}.}
+The eval pass of every run is in \cref{app:results}, scored against the joint chains and, with the
+truth, for detection and coverage. \textcolor{red}{TODO(runs): the scorecard and validation passes
+(rank tests, \acs{tarp}, proper scores) of these runs are queued on the cluster after the last run.}
