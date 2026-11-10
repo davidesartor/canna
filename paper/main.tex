@@ -40,6 +40,7 @@
 \input{numbers/mcmc}
 \input{numbers/rates}
 \input{numbers/results}
+\input{numbers/prior-corner}
 
 % figure-heavy appendices: let tall floats sit on text pages instead of piling up at the end
 \renewcommand{\topfraction}{0.9}
@@ -126,13 +127,21 @@
 \input{sections/experiments}
 \input{sections/conclusions}
 
-% Acknowledgements should only appear in the accepted version: uncomment for camera-ready.
-% \section*{Acknowledgements}
+% Acknowledgements should only appear in the accepted version: the names stay commented until
+% camera-ready (blind review); the heading is kept so the draft shows the section.
+\section*{Acknowledgements}
+\textcolor{red}{TODO(camera-ready): uncomment the acknowledgements.}
 % We thank Coen Rondeel, Iuliu Cuceu and Matteo Barbon for useful discussions.
 
 \section*{Software and Data}
 The code is at \url{https://github.com/davidesartor/canna}: the simulator, network, training
 and evaluation, and the scripts that make every number, figure and table in this paper.
+\textcolor{red}{TODO(submission): anonymise this link (and the author block, \texttt{[preprint]} $\to$
+blind) for review.}
+It is written in JAX \citep{bradbury2018jax} with Equinox \citep{kidger2021equinox}, Optax
+\citep{deepmind2020jax} and Orbax \citep{gaffney2026orbax}. The \ac{gb} response is JaxGB's
+\citep{jaxgb} on the orbits of LISA Orbits \citep{lisaorbits,martens2021trajectory}, and the
+reference chains run on jexplore \citep{jexplore}.
 
 \section*{Impact Statement}
 
@@ -159,5 +168,65 @@ specifically highlighted here.
 \input{appendix/evaluation}
 \input{appendix/mcmc}
 \input{appendix/results}
+
+% =======================================================================================
+% Draft only: the general to-do list. The specific gaps are red TODOs where they occur in the text;
+% this list is what has to be done, improved or checked across the paper. Delete before submission.
+% =======================================================================================
+\clearpage
+\section*{\textcolor{red}{Open Items (draft only, delete before submission)}}
+\label{app:open-items}
+{\color{red}
+\paragraph{Runs and data.}
+\begin{itemize}
+  \item Fetch the full-band $S=16$ run, its forks and its eval from TREX once it finishes (about
+    11 November), re-run \texttt{scripts/import\_runs.py}, \texttt{numbers\_results.py} and
+    \texttt{fig\_results.py}, and fill its rows in \cref{app:results}.
+  \item Fetch the scorecard and validation passes of every run (rank tests, \acs{tarp}, proper scores)
+    and write the calibration results; today only coverage after relabelling is reported, which the
+    mocks show cannot see excess width.
+  \item Run the sampler-step sweep, the robustness probes and a float32 evaluation on the best
+    checkpoints (\cref{app:evaluation-sampler,app:network}).
+  \item Rerun the reference \acs{mcmc} convergence study under the catalogue prior and rebuild
+    reports/mcmc: \texttt{numbers/mcmc.tex} and the figures of \cref{app:mcmc} still come from the
+    old chains and the old prior.
+  \item Rerun the step-time and memory benchmark at the full band's current $R$ on an A100
+    (\cref{tab:priors-bands}), and take the wall time and requeues of each run from the slurm logs.
+  \item One seed per configuration: the run-to-run spread is unmeasured, so differences of a few
+    hundredths of a nat between forks are not significant. Consider a second seed of one cheap
+    configuration (narrow, $S=2$) if compute allows.
+\end{itemize}
+
+\paragraph{Analysis.}
+\begin{itemize}
+  \item The full band misses loud sources above about \qty{10}{\milli\hertz}: find whether the frame
+    or the flow is too wide there (needs the checkpoints), and decide how the paper frames this
+    weakness.
+  \item The narrow band with $S=8$ is too wide even on faint sources in $f_0$: check the overlap
+    explanation proposed in \cref{app:results}.
+  \item Make the corner plot of flow, joint \acs{mcmc} and Fisher draws on one crowded window, and
+    save its draws beside it.
+\end{itemize}
+
+\paragraph{Writing.}
+\begin{itemize}
+  \item Decide what moves from the appendices into the main text: the abstract's results sentence,
+    \cref{sec:results-main}, the conclusions' summary of where the flow is wider than the chains, and
+    the frequency-domain factorisation (\cref{sec:gw-factorisation}). The main text ends on page 4 of
+    the 8 allowed.
+  \item Review every \texttt{\% updated 2026-11-09} marker (stale facts fixed in moved text) and
+    keep or revert each.
+  \item Settle the prior catalogue's provenance and permission (\cref{app:priors}): the
+    catalogue's own reference, and clearance if it is a Mojito input.
+  \item Check the references marked ``from memory, not yet checked'' in \texttt{references.bib}
+    (the method references of the training recipe) against arXiv, like the rest.
+  \item Rewrite the Impact Statement, still the template's text.
+  \item Before submission: blind mode, anonymised code link, self-citations in the third person;
+    at camera-ready, uncomment the acknowledgements.
+  \item Consistency pass: notation against \cref{app:notation}, sky frames (equatorial in the
+    tables, galactic in the chart), British spelling, and the bands' names (narrow and full band,
+    not XS and B).
+\end{itemize}
+}
 
 \end{document}

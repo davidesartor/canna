@@ -35,7 +35,7 @@ toy with an exact posterior for the size and power of the validation tests
 \label{app:evaluation-weights}
 
 By default every pass evaluates the run's last checkpoint, at the end of the cooldown
-(\cref{app:training-schedules}). The checkpoint with the lowest eval-catalog loss is kept too
+(\cref{app:training-schedules}). The checkpoint with the lowest eval-catalogue loss is kept too
 (\cref{app:training-loop}), as a fallback for a run that degrades late; it is chosen on the eval
 injections, so its results on them are optimistic. The runs of \cref{app:results} were evaluated at
 that checkpoint, which in the finished runs falls in the cooldown, at most a few epochs before the end

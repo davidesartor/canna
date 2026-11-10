@@ -51,5 +51,6 @@ puts `main.pdf` and every build product in `build/` (ignored).
 | `references.bib` | checked against arXiv and INSPIRE-HEP; the 2026-11-09 survey (DINGO line, Korsakova group, AI for GW workshop) is in `notes/literature-2026-11-09/` |
 | `scripts/import_runs.py` | collects the source-count runs (`outputs/runs/261103-*`) into `data/runs/source-count.json` (local); run from a checkout at cc93fb2 with its `src` on `PYTHONPATH` |
 | `scripts/numbers_results.py`, `fig_results.py` | `appendix/results.tex` from `data/runs/source-count.json` |
+| `scripts/fig_prior-corner.py` | `figures/prior-corner.pdf` and `numbers/prior-corner.tex` (Section 4.1): the per-source prior of each band; its draws are cached in `data/prior-corner/` (local) |
 | `scripts/numbers_rates.py` | sources per window (`appendix/priors.tex`), from `reports/prior/source-count/data` |
 | `icml2026.*`, `algorithm*.sty`, `fancyhdr.sty`, `siunitx*` | style files: ICML's, and siunitx 3.3.10 vendored |

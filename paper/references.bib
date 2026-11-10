@@ -146,7 +146,8 @@
   volume  = {107},
   pages   = {063004},
   year    = {2023},
-  doi     = {10.1103/PhysRevD.107.063004}
+  doi     = {10.1103/PhysRevD.107.063004},
+  eprint  = {2301.03673}
 }
 
 @article{katz2024efficient,
@@ -156,7 +157,8 @@
   volume  = {111},
   pages   = {024060},
   year    = {2025},
-  doi     = {10.1103/PhysRevD.111.024060}
+  doi     = {10.1103/PhysRevD.111.024060},
+  eprint  = {2405.04690}
 }
 
 @article{strub2024global,
@@ -522,7 +524,8 @@
   eprint        = {2108.01167},
   archiveprefix = {arXiv},
   primaryclass  = {astro-ph.IM},
-  note          = {arXiv:2108.01167}
+  version       = {2},
+  note          = {LISA Consortium Technical Note LISA-LCST-SGS-TN-001, Issue 1.1 (2021-12-16); arXiv:2108.01167v2}
 }
 
 @article{robson2019construction,
@@ -1078,9 +1081,10 @@
 
 @misc{bradbury2018jax,
   title        = {{JAX}: composable transformations of {P}ython+{N}um{P}y programs},
-  author       = {Bradbury, James and Frostig, Roy and Hawkins, Peter and Johnson, Matthew James and Leary, Chris and Maclaurin, Dougal and Necula, George and Paszke, Adam and VanderPlas, Jake and Wanderman-Milne, Skye and Zhang, Qiao},
+  author       = {Bradbury, James and Frostig, Roy and Hawkins, Peter and Johnson, Matthew James and Katariya, Yash and Leary, Chris and Maclaurin, Dougal and Necula, George and Paszke, Adam and VanderPlas, Jake and Wanderman-Milne, Skye and Zhang, Qiao},
   year         = {2018},
-  howpublished = {\url{http://github.com/jax-ml/jax}}
+  howpublished = {\url{http://github.com/jax-ml/jax}},
+  note         = {Version 0.11.1}
 }
 
 @misc{kidger2021equinox,
@@ -1097,13 +1101,16 @@
   title        = {{JaxGB}: fast {LISA} response for {G}alactic binaries using {JAX}},
   author       = {Bayle, Jean-Baptiste and Le Jeune, Maude and Menu, Jonathan},
   year         = {2025},
+  doi          = {10.5281/zenodo.18343478},
+  howpublished = {\url{https://pypi.org/project/jaxgb/}},
   note         = {Python package, version 0.2.2}
 }
 
 @misc{lisaorbits,
   title        = {{LISA} Orbits},
-  author       = {Bayle, Jean-Baptiste},
+  author       = {Bayle, Jean-Baptiste and Hees, Aur\'elien and Lilley, Marc and Le Poncin-Lafitte, Christophe and Martens, Waldemar and Joffre, Eric},
   year         = {2025},
+  doi          = {10.5281/zenodo.6412991},
   howpublished = {\url{https://gitlab.in2p3.fr/lisa-simulation/orbits}},
   note         = {Python package, version 3.1.0}
 }
@@ -1938,4 +1945,563 @@
   doi     = {10.1103/PhysRevD.111.083013},
   eprint = {2412.15100},
   archivePrefix = {arXiv}
+}
+
+% =======================================================================================
+% Global fits, Galactic DWD populations (Lamberts group and collaborators), noise references and
+% software; checked 2026-11-09 against INSPIRE, arXiv, Crossref, PyPI, Zenodo and the repositories
+% (paper/notes/literature-2026-11-09/globalfit-catalogues-software.md).
+% =======================================================================================
+% New entries only (none of these keys exist in paper/references.bib or selected.bib).
+% Compiled 2026-11-09. Published entries checked against Crossref (title, authors, journal,
+% volume, issue/article number, year) and INSPIRE-HEP or the arXiv API (eprint, journal-ref);
+% software entries against PyPI, Zenodo and the code repository. Notes on each entry are in
+% globalfit-catalogues-software.md. Where an author list is long, the first authors are given
+% then "others"; "others" is never a guess at a missing name.
+
+% ---------------------------------------------------------------------------------------
+% 1. Global fits and Galactic-binary catalogue recovery
+% ---------------------------------------------------------------------------------------
+@article{lackeos2023lisa,
+  title         = {The {LISA} Data Challenge {R}adler analysis and time-dependent ultra-compact binary catalogues},
+  author        = {Lackeos, Kristen and Littenberg, Tyson B. and Cornish, Neil J. and Thorpe, James I.},
+  journal       = {Astronomy \& Astrophysics},
+  volume        = {678},
+  pages         = {A123},
+  year          = {2023},
+  doi           = {10.1051/0004-6361/202347222},
+  eprint        = {2308.12827},
+  archiveprefix = {arXiv}
+}
+
+@article{rosati2025prototype,
+  title         = {Prototype stochastic gravitational wave background recovery in the {LISA} global fit residual},
+  author        = {Rosati, Robert and Littenberg, Tyson B.},
+  journal       = {Physical Review D},
+  volume        = {112},
+  pages         = {084060},
+  year          = {2025},
+  doi           = {10.1103/g48w-lblc},
+  eprint        = {2410.17180},
+  archiveprefix = {arXiv}
+}
+
+@article{cornish2025fast,
+  title         = {Fast time delay interferometry: {TDI} on the fly},
+  author        = {Cornish, Neil J. and Littenberg, Tyson B.},
+  journal       = {Physical Review D},
+  volume        = {112},
+  pages         = {102007},
+  year          = {2025},
+  doi           = {10.1103/y718-c1xl},
+  eprint        = {2506.08093},
+  archiveprefix = {arXiv}
+}
+
+@misc{criswell2026foundation,
+  title         = {A Foundation for Gravitational-Wave Population Inference within the {LISA} Global Fit},
+  author        = {Criswell, Alexander W. and Banagiri, Sharan and Delfavero, Vera and Bustamante-Rosell, Maria Jose and Taylor, Stephen R. and Rosati, Robert},
+  year          = {2026},
+  eprint        = {2604.03390},
+  archiveprefix = {arXiv},
+  primaryclass  = {astro-ph.IM},
+  note          = {arXiv:2604.03390}
+}
+
+@article{toubiana2026framework,
+  title         = {A framework for {LISA} population inference},
+  author        = {Toubiana, Alexandre and Gair, Jonathan R.},
+  journal       = {Journal of Cosmology and Astroparticle Physics},
+  volume        = {2026},
+  number        = {07},
+  pages         = {025},
+  year          = {2026},
+  doi           = {10.1088/1475-7516/2026/07/025},
+  eprint        = {2601.04168},
+  archiveprefix = {arXiv}
+}
+
+@article{zhang2021resolving,
+  title         = {Resolving {G}alactic binaries in {LISA} data using particle swarm optimization and cross-validation},
+  author        = {Zhang, Xue-Hao and Mohanty, Soumya D. and Zou, Xiao-Bo and Liu, Yu-Xiao},
+  journal       = {Physical Review D},
+  volume        = {104},
+  pages         = {024023},
+  year          = {2021},
+  doi           = {10.1103/PhysRevD.104.024023},
+  eprint        = {2103.09391},
+  archiveprefix = {arXiv}
+}
+
+@article{gao2023fast,
+  title         = {Fast resolution of {G}alactic binaries in {LISA} data},
+  author        = {Gao, Pin and Fan, Xi-Long and Cao, Zhou-Jian and Zhang, Xue-Hao},
+  journal       = {Physical Review D},
+  volume        = {107},
+  pages         = {123029},
+  year          = {2023},
+  doi           = {10.1103/PhysRevD.107.123029},
+  eprint        = {2309.06037},
+  archiveprefix = {arXiv}
+}
+
+@article{gao2025simultaneous,
+  title         = {Simultaneous search for multi-target {G}alactic binary gravitational waves},
+  author        = {Gao, Pin and Fan, Xi-Long and Cao, Zhou-Jian},
+  journal       = {Physical Review D},
+  volume        = {112},
+  pages         = {104038},
+  year          = {2025},
+  doi           = {10.1103/r851-4721},
+  eprint        = {2401.09300},
+  archiveprefix = {arXiv}
+}
+
+% Optional: the MBHB search of the APC (Deng et al.) global fit, the basis of the GeeMoo MBHB block
+@article{deng2025fast,
+  title         = {Fast detection and reconstruction of merging massive black hole binary signals},
+  author        = {Deng, Senwen and Babak, Stanislav and Marsat, Sylvain},
+  journal       = {Physical Review D},
+  volume        = {112},
+  pages         = {043010},
+  year          = {2025},
+  doi           = {10.1103/jyr7-fcgp},
+  eprint        = {2504.11322},
+  archiveprefix = {arXiv}
+}
+
+% The common prior definitions of the two LISA DDPC global fits (Erebor and Gee-Moo) on Mojito Light
+@misc{lisapriors,
+  title        = {{LISA} Priors: prior distributions used in {LISA} data analysis (Mojito Light runs, {E}rebor and {G}ee-{M}oo)},
+  author       = {{LISA Consortium DDPC CU L2D/L3C}},
+  year         = {2026},
+  howpublished = {\url{https://gitlab.com/lisamission/lisa-priors}},
+  note         = {Documentation at \url{https://lisamission.gitlab.io/lisa-priors}; accessed 2026-11-09}
+}
+
+% ---------------------------------------------------------------------------------------
+% 2. Galactic DWD / GB populations (Lamberts and collaborators; population synthesis)
+% ---------------------------------------------------------------------------------------
+@article{lamberts2018predicting,
+  title         = {Predicting the binary black hole population of the {M}ilky {W}ay with cosmological simulations},
+  author        = {Lamberts, Astrid and Garrison-Kimmel, Shea and Hopkins, Philip F. and Quataert, Eliot and Bullock, James S. and Faucher-Gigu{\`e}re, Claude-Andr{\'e} and Wetzel, Andrew and Kere{\v{s}}, Du{\v{s}}an and others},
+  journal       = {Monthly Notices of the Royal Astronomical Society},
+  volume        = {480},
+  number        = {2},
+  pages         = {2704--2718},
+  year          = {2018},
+  doi           = {10.1093/mnras/sty2035},
+  eprint        = {1801.03099},
+  archiveprefix = {arXiv}
+}
+
+@article{lamberts2019predicting,
+  title         = {Predicting the {LISA} white dwarf binary population in the {M}ilky {W}ay with cosmological simulations},
+  author        = {Lamberts, Astrid and Blunt, Sarah and Littenberg, Tyson B. and Garrison-Kimmel, Shea and Kupfer, Thomas and Sanderson, Robyn E.},
+  journal       = {Monthly Notices of the Royal Astronomical Society},
+  volume        = {490},
+  number        = {4},
+  pages         = {5888--5903},
+  year          = {2019},
+  doi           = {10.1093/mnras/stz2834},
+  eprint        = {1907.00014},
+  archiveprefix = {arXiv}
+}
+
+@article{toubiana2024interacting,
+  title         = {The interacting double white dwarf population with {LISA}: Stochastic foreground and resolved sources},
+  author        = {Toubiana, Alexandre and Karnesis, Nikolaos and Lamberts, Astrid and Miller, M. Coleman},
+  journal       = {Astronomy \& Astrophysics},
+  volume        = {692},
+  pages         = {A165},
+  year          = {2024},
+  doi           = {10.1051/0004-6361/202450174},
+  eprint        = {2403.16867},
+  archiveprefix = {arXiv}
+}
+
+@article{perego2025towards,
+  title         = {Towards systematic searches for {LISA} white dwarf binaries with multiband photometry},
+  author        = {Perego, Alice and Lamberts, Astrid and Schultheis, Mathias and Christensen, Nelson},
+  journal       = {Astronomy \& Astrophysics},
+  volume        = {701},
+  pages         = {L6},
+  year          = {2025},
+  doi           = {10.1051/0004-6361/202556494},
+  eprint        = {2509.09348},
+  archiveprefix = {arXiv}
+}
+
+@article{boileau2025gravitational,
+  title         = {Gravitational-wave background from extragalactic double white dwarfs for {LISA}},
+  author        = {Boileau, Guillaume and Bruel, Tristan and Toubiana, Alexandre and Lamberts, Astrid and Christensen, Nelson},
+  journal       = {Astronomy \& Astrophysics},
+  volume        = {702},
+  pages         = {A246},
+  year          = {2025},
+  doi           = {10.1051/0004-6361/202556052},
+  eprint        = {2506.18390},
+  archiveprefix = {arXiv},
+  note          = {Corrigenda: Astron. Astrophys. 712, C1 and C3 (2026)}
+}
+
+@article{tang2024predicting,
+  title         = {Predicting gravitational wave signals from {BPASS} white dwarf binary and black hole binary populations of a {M}ilky {W}ay-like galaxy model for {LISA}},
+  author        = {Tang, Petra and Eldridge, Jan J. and Meyer, Renate and Lamberts, Astrid and Boileau, Guillaume and van Zeist, Wouter G. J.},
+  journal       = {Monthly Notices of the Royal Astronomical Society},
+  volume        = {534},
+  number        = {3},
+  pages         = {1707--1728},
+  year          = {2024},
+  doi           = {10.1093/mnras/stae2154},
+  eprint        = {2405.20484},
+  archiveprefix = {arXiv}
+}
+
+@article{breivik2020cosmic,
+  title         = {{COSMIC} Variance in Binary Population Synthesis},
+  author        = {Breivik, Katelyn and Coughlin, Scott and Zevin, Michael and Rodriguez, Carl L. and Kremer, Kyle and Ye, Claire S. and Andrews, Jeff J. and Kurkowski, Michael and Digman, Matthew C. and Larson, Shane L. and Rasio, Frederic A.},
+  journal       = {The Astrophysical Journal},
+  volume        = {898},
+  number        = {1},
+  pages         = {71},
+  year          = {2020},
+  doi           = {10.3847/1538-4357/ab9d85},
+  eprint        = {1911.00903},
+  archiveprefix = {arXiv}
+}
+
+% The variable common-envelope binding-energy (lambda) prescription that COSMIC uses when lambdaf = 0
+@article{claeys2014theoretical,
+  title   = {Theoretical uncertainties of the {T}ype {I}a supernova rate},
+  author  = {Claeys, J. S. W. and Pols, O. R. and Izzard, R. G. and Vink, J. and Verbunt, F. W. M.},
+  journal = {Astronomy \& Astrophysics},
+  volume  = {563},
+  pages   = {A83},
+  year    = {2014},
+  doi     = {10.1051/0004-6361/201322714}
+}
+
+@article{toonen2012supernova,
+  title         = {Supernova {T}ype {I}a progenitors from merging double white dwarfs: Using a new population synthesis model},
+  author        = {Toonen, Silvia and Nelemans, Gijs and Portegies Zwart, Simon},
+  journal       = {Astronomy \& Astrophysics},
+  volume        = {546},
+  pages         = {A70},
+  year          = {2012},
+  doi           = {10.1051/0004-6361/201218966},
+  eprint        = {1208.6446},
+  archiveprefix = {arXiv}
+}
+
+@article{korol2020populations,
+  title         = {Populations of double white dwarfs in {M}ilky {W}ay satellites and their detectability with {LISA}},
+  author        = {Korol, Valeriya and Toonen, Silvia and Klein, Antoine and Belokurov, Vasily and Vincenzo, Fiorenzo and Buscicchio, Riccardo and Gerosa, Davide and Moore, Christopher J. and Roebber, Elinore and Rossi, Elena M. and Vecchio, Alberto},
+  journal       = {Astronomy \& Astrophysics},
+  volume        = {638},
+  pages         = {A153},
+  year          = {2020},
+  doi           = {10.1051/0004-6361/202037764},
+  eprint        = {2002.10462},
+  archiveprefix = {arXiv}
+}
+
+@article{georgousi2022gravitational,
+  title         = {Gravitational waves from double white dwarfs as probes of the {M}ilky {W}ay},
+  author        = {Georgousi, Maria and Karnesis, Nikolaos and Korol, Valeriya and Pieroni, Mauro and Stergioulas, Nikolaos},
+  journal       = {Monthly Notices of the Royal Astronomical Society},
+  volume        = {519},
+  number        = {2},
+  pages         = {2552--2566},
+  year          = {2022},
+  doi           = {10.1093/mnras/stac3686},
+  eprint        = {2204.07349},
+  archiveprefix = {arXiv}
+}
+
+@article{thiele2023applying,
+  title         = {Applying the Metallicity-dependent Binary Fraction to Double White Dwarf Formation: Implications for {LISA}},
+  author        = {Thiele, Sarah and Breivik, Katelyn and Sanderson, Robyn E. and Luger, Rodrigo},
+  journal       = {The Astrophysical Journal},
+  volume        = {945},
+  number        = {2},
+  pages         = {162},
+  year          = {2023},
+  doi           = {10.3847/1538-4357/aca7be},
+  eprint        = {2111.13700},
+  archiveprefix = {arXiv}
+}
+
+@article{delfavero2025recovering,
+  title         = {Recovering Injected Astrophysics from the {LISA} Double White Dwarf Binaries},
+  author        = {Delfavero, Vera and Breivik, Katelyn and Thiele, Sarah and O'Shaughnessy, Richard and Baker, John G.},
+  journal       = {The Astrophysical Journal},
+  volume        = {981},
+  number        = {1},
+  pages         = {66},
+  year          = {2025},
+  doi           = {10.3847/1538-4357/ada9e2},
+  eprint        = {2409.15230},
+  archiveprefix = {arXiv}
+}
+
+@article{wagg2022legwork,
+  title         = {{LEGWORK}: A Python Package for Computing the Evolution and Detectability of Stellar-origin Gravitational-wave Sources with Space-based Detectors},
+  author        = {Wagg, Tom and Breivik, Katelyn and de Mink, Selma E.},
+  journal       = {The Astrophysical Journal Supplement Series},
+  volume        = {260},
+  number        = {2},
+  pages         = {52},
+  year          = {2022},
+  doi           = {10.3847/1538-4365/ac5c52},
+  eprint        = {2111.08717},
+  archiveprefix = {arXiv}
+}
+
+@article{biscoveanu2023probing,
+  title         = {Probing the Efficiency of Tidal Synchronization in Outspiralling Double White Dwarf Binaries with {LISA}},
+  author        = {Biscoveanu, Sylvia and Kremer, Kyle and Thrane, Eric},
+  journal       = {The Astrophysical Journal},
+  volume        = {949},
+  number        = {2},
+  pages         = {95},
+  year          = {2023},
+  doi           = {10.3847/1538-4357/acc585},
+  eprint        = {2206.15390},
+  archiveprefix = {arXiv}
+}
+
+@article{fiacco2024uncovering,
+  title         = {Uncovering stealth bias in {LISA} observations of double white dwarf binaries due to tidal coupling},
+  author        = {Fiacco, Grace and Cornish, Neil J. and Yu, Hang},
+  journal       = {Physical Review D},
+  volume        = {110},
+  pages         = {083009},
+  year          = {2024},
+  doi           = {10.1103/PhysRevD.110.083009},
+  eprint        = {2405.10396},
+  archiveprefix = {arXiv}
+}
+
+@article{vanzeist2025comparing,
+  title         = {Comparing population synthesis models of compact double white dwarfs to electromagnetic observations},
+  author        = {van Zeist, Wouter G. J. and van Roestel, Jan and Nelemans, Gijs and Eldridge, Jan J. and Korol, Valeriya and Toonen, Silvia},
+  journal       = {Astronomy \& Astrophysics},
+  volume        = {699},
+  pages         = {A172},
+  year          = {2025},
+  doi           = {10.1051/0004-6361/202554302},
+  eprint        = {2505.20953},
+  archiveprefix = {arXiv}
+}
+
+@article{rajamuthukumar2025role,
+  title         = {The role of triple evolution in the formation of {LISA} double white dwarfs},
+  author        = {Rajamuthukumar, Abinaya Swaruba and Korol, Valeriya and Stegmann, Jakob and Preece, Holly and Pakmor, R{\"u}diger and Justham, Stephen and Toonen, Silvia and de Mink, Selma E.},
+  journal       = {Astronomy \& Astrophysics},
+  volume        = {704},
+  pages         = {A156},
+  year          = {2025},
+  doi           = {10.1051/0004-6361/202554277},
+  eprint        = {2502.09607},
+  archiveprefix = {arXiv}
+}
+
+@article{mcmillan2026population,
+  title         = {Population synthesis predictions of the {G}alactic compact binary gravitational wave foreground detectable by {LISA}},
+  author        = {McMillan, Jake and Ingram, Adam and Dashwood Brown, Cordelia and Igoshev, Andrei and Middleton, Matthew and Wiktorowicz, Grzegorz and Scaringi, Simone},
+  journal       = {Monthly Notices of the Royal Astronomical Society},
+  volume        = {546},
+  number        = {4},
+  pages         = {stag117},
+  year          = {2026},
+  doi           = {10.1093/mnras/stag117},
+  eprint        = {2602.11765},
+  archiveprefix = {arXiv}
+}
+
+@article{kremer2026diverse,
+  title         = {The Diverse Outcomes of Binary White Dwarf Mergers and Connections to {G}alactic {LISA} Sources},
+  author        = {Kremer, Kyle and Breivik, Katelyn and Ye, Claire S.},
+  journal       = {The Astrophysical Journal},
+  volume        = {1007},
+  number        = {2},
+  pages         = {171},
+  year          = {2026},
+  doi           = {10.3847/1538-4357/ae8af2},
+  eprint        = {2605.05308},
+  archiveprefix = {arXiv}
+}
+
+@misc{alexis2026lisa,
+  title         = {{LISA}'s view of the {G}alactic Halo: forecasts for the {G}alactic double white dwarf population using {G}aia data},
+  author        = {Alexis, Ann-Marsha and Breivik, Katelyn},
+  year          = {2026},
+  eprint        = {2607.09980},
+  archiveprefix = {arXiv},
+  primaryclass  = {astro-ph.SR},
+  note          = {arXiv:2607.09980}
+}
+
+% ---------------------------------------------------------------------------------------
+% 4. Instrument noise, requirements, instrument model, conventions
+% ---------------------------------------------------------------------------------------
+@misc{lisasst2018lisa,
+  title        = {{LISA} Science Requirements Document},
+  author       = {{LISA Science Study Team}},
+  year         = {2018},
+  howpublished = {\url{https://www.cosmos.esa.int/documents/678316/1700384/SciRD.pdf}},
+  note         = {ESA, ESA-L3-EST-SCI-RS-001, Issue 1, Revision 0, 14 May 2018}
+}
+
+@article{bayle2023unified,
+  title         = {Unified model for the {LISA} measurements and instrument simulations},
+  author        = {Bayle, Jean-Baptiste and Hartwig, Olaf},
+  journal       = {Physical Review D},
+  volume        = {107},
+  pages         = {083019},
+  year          = {2023},
+  doi           = {10.1103/PhysRevD.107.083019},
+  eprint        = {2212.05351},
+  archiveprefix = {arXiv}
+}
+
+@article{quangnam2023time,
+  title         = {Time-delay interferometry noise transfer functions for {LISA}},
+  author        = {Quang Nam, Dam and Martino, Joseph and Lemi{\`e}re, Yves and Petiteau, Antoine and Bayle, Jean-Baptiste and Hartwig, Olaf and Staab, Martin},
+  journal       = {Physical Review D},
+  volume        = {108},
+  pages         = {082004},
+  year          = {2023},
+  doi           = {10.1103/PhysRevD.108.082004},
+  eprint        = {2211.02539},
+  archiveprefix = {arXiv}
+}
+
+@misc{bayle2023end,
+  title         = {End-to-end simulation and analysis pipeline for {LISA}},
+  author        = {Bayle, Jean-Baptiste and Hartwig, Olaf and Lilley, Marc and Hees, Aur{\'e}lien and Chapman-Bird, Christian and Woan, Graham and Wolf, Peter},
+  year          = {2023},
+  eprint        = {2305.09702},
+  archiveprefix = {arXiv},
+  primaryclass  = {astro-ph.IM},
+  note          = {Moriond Gravitation 2023 proceedings; arXiv:2305.09702}
+}
+
+@misc{baghi2026lisa,
+  title         = {{LISA} science ground segment conventions},
+  author        = {Baghi, Quentin and Babak, Stanislas and Barack, Leor and Bayle, Jean-Baptiste and Burke, Ollie and Enficiaud, Raffi and Estelles, Hector and Garc{\'i}a Quir{\'o}s, Cecilio and others},
+  year          = {2026},
+  eprint        = {2603.22377},
+  archiveprefix = {arXiv},
+  primaryclass  = {astro-ph.IM},
+  note          = {arXiv:2603.22377}
+}
+
+% Companion paper of LISA Orbits (the ESA trajectories it reads)
+@article{martens2021trajectory,
+  title   = {Trajectory Design for the {ESA} {LISA} Mission},
+  author  = {Martens, Waldemar and Joffre, Eric},
+  journal = {The Journal of the Astronautical Sciences},
+  volume  = {68},
+  number  = {2},
+  pages   = {402--443},
+  year    = {2021},
+  doi     = {10.1007/s40295-021-00263-2}
+}
+
+% Companion paper of LISA Glitch (the LISA Pathfinder glitch model and catalogue)
+@article{baghi2022detection,
+  title         = {Detection and characterization of instrumental transients in {LISA} {P}athfinder and their projection to {LISA}},
+  author        = {Baghi, Quentin and Korsakova, Natalia and Slutsky, Jacob and Castelli, Eleonora and Karnesis, Nikolaos and Bayle, Jean-Baptiste},
+  journal       = {Physical Review D},
+  volume        = {105},
+  pages         = {042002},
+  year          = {2022},
+  doi           = {10.1103/PhysRevD.105.042002},
+  eprint        = {2112.07490},
+  archiveprefix = {arXiv}
+}
+
+% ---------------------------------------------------------------------------------------
+% 5. Software
+% ---------------------------------------------------------------------------------------
+@misc{lisainstrument,
+  title        = {{LISA} Instrument},
+  author       = {Bayle, Jean-Baptiste and Hartwig, Olaf and Staab, Martin},
+  year         = {2026},
+  doi          = {10.5281/zenodo.6447389},
+  howpublished = {\url{https://gitlab.in2p3.fr/lisa-simulation/instrument}},
+  note         = {Python package, version 2.3.0 (PyPI); Zenodo concept DOI, latest archived version 1.7.1}
+}
+
+@misc{pytdi,
+  title        = {{PyTDI}},
+  author       = {Staab, Martin and Bayle, Jean-Baptiste and Hartwig, Olaf},
+  year         = {2026},
+  doi          = {10.5281/zenodo.21805140},
+  howpublished = {\url{https://gitlab.in2p3.fr/LISA/LDPG/wg6_inrep/pytdi}},
+  note         = {Python package, version 2.2.1}
+}
+
+@misc{lisaglitch,
+  title        = {{LISA} Glitch},
+  author       = {Bayle, Jean-Baptiste and Castelli, Eleonora and Korsakova, Natalia},
+  year         = {2025},
+  doi          = {10.5281/zenodo.6452903},
+  howpublished = {\url{https://gitlab.in2p3.fr/lisa-simulation/glitch}},
+  note         = {Python package, version 2.0.0 (PyPI); Zenodo concept DOI, latest archived version 1.1}
+}
+
+@misc{lisaconstants,
+  title        = {{LISA} Constants},
+  author       = {Bayle, Jean-Baptiste and Le Jeune, Maude and Hees, Aur{\'e}lien},
+  year         = {2026},
+  doi          = {10.5281/zenodo.18267404},
+  howpublished = {\url{https://gitlab.esa.int/lisa-sgs/commons/lisa-constants}},
+  note         = {Python package, version 2.0.2}
+}
+
+% Authors are not stated in the package metadata; only the GitHub organisation is. Fill in before use.
+@misc{jaxglitches,
+  title        = {jaxglitches: {JAX}-based {LISA} glitch waveforms, {TDI} responses and parameter-estimation utilities},
+  author       = {Mentasti, Giorgio and Vajpeyi, Avi},
+  year         = {2026},
+  howpublished = {\url{https://github.com/jaxglitches/jaxglitches}},
+  note         = {Python package, version 0.1.0}
+}
+
+@misc{wdmtransform,
+  title        = {wdm\_transform},
+  author       = {Vajpeyi, Avi and Mentasti, Giorgio and Baghi, Quentin and Burke, Ollie and Speri, Lorenzo},
+  year         = {2026},
+  doi          = {10.5281/zenodo.20740881},
+  howpublished = {\url{https://github.com/pywavelet/wdm_transform}},
+  note         = {Python package, version 0.5.0; companion paper arXiv:2606.20269}
+}
+
+@misc{jexplore,
+  title        = {jexplore: a {JAX} compatible {MCMC} ensemble sampler},
+  author       = {{LISA APC}},
+  year         = {2026},
+  howpublished = {\url{https://gitlab.in2p3.fr/lisa-apc/jexplore}},
+  note         = {Python package, version 0.0.3 (PyPI); maintainers A. Sartirana, M. Le Jeune}
+}
+
+@misc{deepmind2020jax,
+  title        = {The {D}eep{M}ind {JAX} {E}cosystem},
+  author       = {DeepMind and Babuschkin, Igor and Baumli, Kate and Bell, Alison and Bhupatiraju, Surya and Bruce, Jake and Buchlovsky, Peter and Budden, David and Cai, Trevor and Clark, Aidan and Danihelka, Ivo and Dedieu, Antoine and Fantacci, Claudio and Godwin, Jonathan and Jones, Chris and Hemsley, Ross and Hennigan, Tom and Hessel, Matteo and Hou, Shaobo and Kapturowski, Steven and Keck, Thomas and Kemaev, Iurii and King, Michael and Kunesch, Markus and Martens, Lena and Merzic, Hamza and Mikulik, Vladimir and Norman, Tamara and Papamakarios, George and Quan, John and Ring, Roman and Ruiz, Francisco and Sanchez, Alvaro and Sartran, Laurent and Schneider, Rosalia and Sezener, Eren and Spencer, Stephen and Srinivasan, Srivatsan and Stanojevi{\'c}, Milo{\v{s}} and Stokowiec, Wojciech and Wang, Luyu and Zhou, Guangyao and Viola, Fabio},
+  year         = {2020},
+  howpublished = {\url{http://github.com/google-deepmind}},
+  note         = {Citation requested for Optax; Optax version 0.2.8}
+}
+
+@misc{gaffney2026orbax,
+  title         = {Orbax: Distributed Checkpointing with {JAX}},
+  author        = {Gaffney, Colin and Li, Shutong and Ng, Daniel and Petrushkina, Anastasia and Kumar, Niket and Cogdell, Adam and Sahu, Mridul and Liang, Yaning and Bansal, Nikhil and Pan, Justin and Mau, Angel and Agrawal, Abhishek and Berlot, Marco and Sang, Ruoxin and Sodhia, Kiranbir and Iyer, Rakesh},
+  year          = {2026},
+  eprint        = {2605.23066},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.DC},
+  note          = {arXiv:2605.23066}
 }

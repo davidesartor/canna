@@ -90,6 +90,26 @@ joint \ac{mcmc} over all \McmcJointDim{} parameters of each eval injection, and 
 the injection. An amortised window posterior could in turn serve a global fit as a
 proposal or as the initial state of its chains.
 
+\paragraph{Global-fit results.}
+Four pipelines have analysed the year of the \ac{lisa} Data Challenge's Sangria set, with its
+Galaxy of \acp{gb}, massive black-hole binaries and noise. GLASS, the NASA pipeline of Littenberg and
+Cornish, ran it on \num{7488} CPUs \citep{littenberg2023prototype}; its \ac{gb} sampler had resolved
+as many as ten thousand binaries of the earlier Radler Galaxy after a year \citep{lackeos2023lisa},
+and its residuals have since been searched for a stochastic background \citep{rosati2025prototype}.
+Erebor, on GPUs, returned about \num{12000} \acp{gb}, \num{8000} of them with high confidence, and
+every massive black-hole binary, in about a week on four A100s \citep{katz2024efficient}. The ETH
+pipeline recovered about \num{5100} \acp{gb} from half a year of data, \qty{85}{\percent} of them
+matched to injections, at about \num{700} CPU core hours for the full year \citep{strub2024global}.
+The APC pipeline split the band into \num{4663} narrow segments and identified \num{7620} of the
+\num{9542} \acp{gb} above \ac{snr} 6 in about \qty{20}{\hour} on \num{1000} cores
+\citep{deng2025modular}; the APC group's Gee-Moo pipeline now runs beside Erebor on the consortium's newer
+Mojito Light data with shared priors and at most five \acp{gb} per segment, where Erebor allows
+fifteen to twenty \citep{lisapriors}. Search pipelines without posteriors resolve similar numbers
+on the earlier Radler data \citep{zhang2021resolving,gao2023fast,gao2025simultaneous}. Downstream,
+global-fit draws are turned into catalogues \citep{johnson2025global} and into population
+inference \citep{criswell2026foundation,toubiana2026framework}, and response templates computed
+on the fly for generic orbits cut their cost \citep{cornish2025fast}.
+
 \begin{figure}[t]
 \centering
 \includegraphics[width=3.25in]{figures/crowding.pdf}
@@ -129,8 +149,14 @@ full band, whose windows are wider, the median is \RelatedWorkClosestFull{} bins
 \qty{\RelatedWorkCloserFull}{\percent} of windows are that crowded. Among the Galaxy's resolvable
 sources overlap is rarer: fewer than \qty{1}{\percent} of pairs above \ac{snr} 7 have a match above
 one half after a year \citep{littenberg2020global}.
-\textcolor{red}{TODO(analysis): width ratio to the joint \ac{mcmc} against closest-pair separation,
-for the runs of \cref{app:results}.}
+Overlap costs the flow width. On the narrow band, sources at $\snr\ge7$ whose nearest injected
+neighbour is more than \ResultsSepFarBins{} bins away have $f_0$ posteriors \ResultsNarrowFourSepFar{}
+($S=4$) and \ResultsNarrowEightSepFar{} ($S=8$) times the joint \ac{mcmc}'s width; within
+\ResultsSepCloseBins{} bins, \ResultsNarrowFourSepClose{} and \ResultsNarrowEightSepClose{} times
+(\ResultsNarrowFourSepCloseN{} and \ResultsNarrowEightSepCloseN{} sources; models of
+\cref{tab:results-widths}). The chains resolve such pairs, so the excess is the flow's. On the full band
+the separation is mixed up with frequency, since the loud sources the flow misses sit at high $f_0$
+(\cref{app:results-mcmc}).
 
 \paragraph{Neural posterior estimation for gravitational waves.}
 Amortised posteriors are established for ground-based detectors
@@ -212,7 +238,9 @@ complete it.
 \label{app:related-recent}
 % From the 2026-11-09 survey (DINGO line, the Korsakova group and LISA machine learning, and the
 % AI for Gravitational Waves workshop at CERN, indico 1640502). Each claim below follows the
-% paper's abstract as the survey read it; check before moving any of it to the main text.
+% paper's abstract as the survey read it.
+\textcolor{red}{TODO(check): each claim in this subsection follows the paper's abstract; read the
+papers before moving any of it to the main text.}
 
 \paragraph{The DINGO line.}
 Since flow matching \citep{dax2023flow} and Dingo-T1 \citep{kofler2026flexible}, the DINGO authors
