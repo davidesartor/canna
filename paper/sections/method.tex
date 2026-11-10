@@ -2,8 +2,8 @@
 \section{Flow Matching and the Network}
 \label{sec:method}
 % =======================================================================================
-% Moved 2026-11-09 from the former sections/method.tex: Flow Matching, Network and Training stay
-% here; Flow Coordinates (the chart) and the data tokens moved to sec:gw. New material in the
+% Moved 2026-11-09 from the former sections/method.tex: Flow Matching, Flow Coordinates, Network and
+% Training stay here; the data tokens moved to sec:gw-tokens. New material in the
 % appendices: app:fm, app:network, app:training (snapshots and cooldown forks, app:training-loop).
 
 \subsection{Flow Matching}
@@ -26,6 +26,21 @@ every e-fold of excess width, relative to each source's own width. The same mode
 uniform sampler grid run on the prior's scale collapses the narrowest posteriors, and that in a
 frame of the posterior's width it does not; draws use \FlowMatchingOdeSteps{} midpoint steps of the
 velocity and are mapped back with $X = \mu+\sigma Z$ (\cref{app:fm-sampling}).
+
+\subsection{Flow Coordinates}
+\label{sec:method-chart}\label{sec:gw-chart}
+
+The flow transports points of $\R^{8S}$, one chart image per source (\cref{eq:chart}). Frequency
+is scaled to the window, $\log\fdot$ standardised given $f_0$, and the sky taken in galactic
+coordinates scaled by the prior's widths. Amplitude, inclination, polarisation and phase enter
+as the two helicity amplitudes
+$\zeta_\pm\propto\Amp\,(1\mp\cos\iota)^2\,e^{\ii(\phi_0\pm2\psi)}/4$, in units of the noise, with
+their radius warped by $\operatorname{asinh}$. The signal is linear in $\zeta_\pm$
+(\cref{eq:forward-model-helicity}), so the four copies of a source in $(\psi,\phi_0)$ map to one
+point, and at high \ac{snr} the likelihood in $\zeta_\pm$ is close to Gaussian
+(\cref{app:chart-helicity}). The chart is flat, so the flow's paths are straight lines
+(\cref{app:chart-flat}). The sources are slots in order of $f_0$, so each mode of the posterior
+has one copy instead of $S!$, one per labelling (\cref{app:chart-slots}).
 
 \subsection{Network}
 \label{sec:method-network}
@@ -55,7 +70,7 @@ for the hidden weight matrices and AdamW for the rest, with a linear warmup, a c
 rate and a cooldown to zero \citep{hagele2024scaling} (\cref{app:training}). Each run trains for a
 fixed wall-time budget, \ResultsNarrowHours\,h on the narrow band and \ResultsFullHours\,h on the full
 band on one A100 (\cref{tab:results-runs}), and is evaluated at the checkpoint with the lowest
-eval-catalog loss (\cref{app:evaluation-weights}).
+eval-catalogue loss (\cref{app:evaluation-weights}).
 % updated 2026-11-09 (stale facts): was "evaluation uses the last weights" and "The narrow band
 % trains for \TrainingStepsNarrow steps and the full band for \TrainingStepsFull,
 % \TrainingComputeNarrowBHours h and \TrainingComputeFullBHours h on one A100", the config

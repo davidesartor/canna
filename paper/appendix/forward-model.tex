@@ -18,22 +18,10 @@ coordinates in \cref{app:chart}.
 A detached compact binary in the Galaxy, most often a pair of white dwarfs, emits a
 quasi-monochromatic \ac{gw} at twice its orbital frequency, which drifts slowly through
 radiation reaction \citep{nelemans2001gravitational,korol2017prospects}. The
-transverse-traceless strain of the plane wave is
-\begin{equation}
-  h_{ij}(\xi) = h_+(\xi)\,e^+_{ij} + h_\times(\xi)\,e^\times_{ij},\qquad
-  \xi = t - \frac{\hat{\mathbf k}\cdot\mathbf x(t)}{c},
-  \label{eq:forward-model-xi}
-\end{equation}
-with $\hat{\mathbf k}$ the direction of propagation, $\mathbf x$ the position of the observer and
+transverse-traceless strain of the plane wave is \cref{eq:forward-model-xi}, with $\hat{\mathbf k}$ the direction of propagation, $\mathbf x$ the position of the observer and
 $e^{+,\times}_{ij}$ the polarisation tensors of the source frame. For a circular binary with a
-small, constant frequency derivative,
-\begin{equation}
-  h_+(\xi) = -\Amp\,\bigl(1+\cos^2\iota\bigr)\cos\Psi(\xi),\qquad
-  h_\times(\xi) = -2\Amp\cos\iota\,\sin\Psi(\xi),\qquad
-  \Psi(\xi) = -\phi_0 + 2\pi f_0\,\xi + \pi\fdot\,\xi^2,
-  \label{eq:forward-model-waveform}
-\end{equation}
-with strain amplitude $\Amp$, frequency $f_0$, frequency derivative $\fdot$ and phase $\phi_0$, all
+small, constant frequency derivative the polarisations are those of
+\cref{eq:forward-model-waveform}, with strain amplitude $\Amp$, frequency $f_0$, frequency derivative $\fdot$ and phase $\phi_0$, all
 at the start of the observation, $t=0$. The inclination $\iota\in[0,\pi]$ is the angle between
 the orbital angular momentum and the line of sight ($\iota=0$ face-on, $\pi/2$ edge-on, $\pi$
 face-off); an isotropic orientation has $\cos\iota$ uniform (\cref{app:priors}).
@@ -81,12 +69,7 @@ mid-observation and the modulus compressed.
 
 \paragraph{Frequency derivative.}
 For a circular binary driven by gravitational radiation alone, the frequency derivative is
-fixed by the chirp mass $\Mc$,
-\begin{equation}
-  \fdot = \frac{96}{5}\,\pi^{8/3}\left(\frac{G\Mc}{c^3}\right)^{5/3} f_0^{11/3}.
-  \label{eq:forward-model-fdot}
-\end{equation}
-The simulator does not impose this relation: each source is parametrised by
+fixed by the chirp mass $\Mc$ (\cref{eq:forward-model-fdot}). The simulator does not impose this relation: each source is parametrised by
 $\theta = (f_0, \fdot, \Amp, \alpha, \delta, \psi, \iota, \phi_0)$, with $\fdot$ and the amplitude
 free parameters rather than functions of $\Mc$, $f_0$ and the distance. Their prior, joint with
 $f_0$, is fitted to a catalogue of Galactic binaries (\cref{app:priors}); on average it has
@@ -285,11 +268,7 @@ the other way round, $(1-D^2)\bigl[(y_{13}-y_{12}) + D\,(y_{31}-y_{21})\bigr]$; 
 $(1-D^2)(1-D)\bigl[(y_{13}-y_{31}) - (y_{12}-y_{21})\bigr]$, which is of higher order in $x$.
 On the same link responses the difference indeed grows as $f_0^3$, to at most \num{\NoiseTdiMax}
 at the top of the band (\cref{app:noise-validation}, \cref{fig:forward-model-checks}a). The channels are
-the quasi-orthogonal combinations \citep{prince2002lisa}
-\begin{equation}
-  A = \frac{Z-X}{\sqrt2},\qquad E = \frac{X-2Y+Z}{\sqrt6},\qquad T = \frac{X+Y+Z}{\sqrt3},
-  \label{eq:forward-model-aet}
-\end{equation}
+the quasi-orthogonal combinations of \cref{eq:forward-model-aet} \citep{prince2002lisa},
 whose noises are uncorrelated for equal arms (\cref{app:noise}).
 
 \subsection{Frequency Windows}
@@ -361,9 +340,8 @@ few sources there lose their outermost bins above the noise. The narrow band sto
 \qty{\ForwardModelNarrowTop}{\milli\hertz}, where the Doppler sideband is \ForwardModelNarrowDoppler{} bins
 and the mean chirp \ForwardModelNarrowChirp{}, so $n_{\rm span} = \ForwardModelNarrowSpan{}$ against
 $R = \ForwardModelNarrowR{}$, which keeps all the power above the noise of \qty{99.9}{\percent} of its
-sources. \textcolor{red}{TODO(check): \ForwardModelNarrowSpanShare\,\% is the share of the full
-band's sources below the narrow band's top, which now starts at \qty{\ForwardModelNarrowLow}{\milli\hertz}
-too; reword or restrict the script to the narrow band's range.}
+sources. Those sources, $f_0$ in \qtyrange{\ForwardModelNarrowLow}{\ForwardModelNarrowTop}{\milli\hertz},
+are \qty{\ForwardModelNarrowSpanShare}{\percent} of the full band's sources above the noise.
 
 \begin{table}[h]
 \caption{The two bands. They share the priors, the default of \ForwardModelSourcesWord{} sources per

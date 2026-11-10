@@ -24,7 +24,7 @@ over the chains, median over the sources of a band of source \ac{snr}.
 \caption{The six runs. Steps and warmup are set per run from the epoch time of a
 \qty{30}{\minute} smoke test, so that each run has \ResultsEpochs{} epochs; the hours are those epochs
 at the smoke test's A100 step time, without restarts. A cooldown over the last
-\qty{\ResultsCooldownPercent}{\percent} closes each run. The last column is the lowest eval-catalog
+\qty{\ResultsCooldownPercent}{\percent} closes each run. The last column is the lowest eval-catalogue
 negative log-likelihood, frame plus flow (\cref{app:training-loop}), and its epoch.}
 \label{tab:results-runs}
 \small
@@ -53,7 +53,7 @@ forks and comparison follow.}
 \begin{table*}[t]
 \centering
 \caption{Flow over joint-\ac{mcmc} width per parameter, median over the sources of each band of
-source \ac{snr} ($n$ sources), for the model of each band and source count with the lowest eval-catalog
+source \ac{snr} ($n$ sources), for the model of each band and source count with the lowest eval-catalogue
 loss among the main run and its four cooldown forks (\cref{tab:results-forks}). Found: share of the
 sources with an $f_0$ width below one bin. Coverage: share of true flow coordinates inside the
 central \qty{68}{\percent} and \qty{95}{\percent} intervals, over the eight coordinates and the sources
@@ -77,7 +77,7 @@ model & \acs{snr} & $n$ & $f_0$ & $\log\fdot$ & $\log\Amp$ & $\alpha$ & $\delta$
 \includegraphics[width=\textwidth]{figures/results.pdf}
 \caption{(a), (b)~Flow over joint-\ac{mcmc} width of $f_0$ and of the right ascension against the
 source \ac{snr}, for the models of \cref{tab:results-widths}; narrow band solid, full band dashed. (c)~The
-eval-catalog loss of the cooldown forks against the epoch at which their cooldown starts, and of the
+eval-catalogue loss of the cooldown forks against the epoch at which their cooldown starts, and of the
 main runs at theirs; the full band with $S=4$ has no cooled main run.}
 \label{fig:results}
 \end{figure*}
@@ -120,9 +120,19 @@ $\log\fdot$ \ResultsFullFourFdotLoud{} and \ResultsFullEightFdotLoud{} times and
 chains' peak, against \qty{\ResultsFullFourMcmcOff}{\percent} and \qty{\ResultsFullEightMcmcOff}{\percent}
 of the chains' own. The loud sources of the full band are those whose posteriors are narrowest against
 the prior and whose responses span the most bins (\cref{app:forward-model}), the regime the per-source
-frame is meant for (\cref{app:fm-sensitivity}); the full-band models do not resolve them yet. \textcolor{red}{TODO(analysis): where in frequency the unfound loud
-sources sit (most above \qty{10}{\milli\hertz} in a first look at full $S=4$), and whether the frame or
-the flow is the wide part.}
+frame is meant for (\cref{app:fm-sensitivity}); the full-band models do not resolve them yet.
+The misses sit at high frequency. Above \qty{\ResultsFullSplitMhz}{\milli\hertz} lie
+\qty{\ResultsFullFourLoudHighShare}{\percent} ($S=4$) and \qty{\ResultsFullEightLoudHighShare}{\percent}
+($S=8$) of the sources at $\snr\ge40$, but \qty{\ResultsFullFourUnfoundHighShare}{\percent} and
+\qty{\ResultsFullEightUnfoundHighShare}{\percent} of those not found. Below
+\qty{\ResultsFullSplitMhz}{\milli\hertz} the models find \qty{\ResultsFullFourFoundLowBand}{\percent} and
+\qty{\ResultsFullEightFoundLowBand}{\percent} of the loud sources, with $f_0$ widths
+\ResultsFullFourFzeroLowBand{} and \ResultsFullEightFzeroLowBand{} times the chains'; above it,
+\qty{\ResultsFullFourFoundHigh}{\percent} and \qty{\ResultsFullEightFoundHigh}{\percent}, at
+\ResultsFullFourFzeroHigh{} and \ResultsFullEightFzeroHigh{} times. There the Doppler shift and the
+chirp spread a source over the most bins (\cref{app:forward-model}).
+\textcolor{red}{TODO(analysis, needs the checkpoints): whether the frame or the flow is the wide part on
+these sources.}
 
 \paragraph{Calibration.}
 Every eval, main runs and forks, \ResultsEvals{} in all, covers
@@ -139,7 +149,7 @@ sees the truth, once the scorecards are back.}
 
 \begin{table}[h]
 \centering
-\caption{Eval-catalog loss / flow over joint-\ac{mcmc} $f_0$ width at $\snr=15$--40, for the forks that
+\caption{Eval-catalogue loss / flow over joint-\ac{mcmc} $f_0$ width at $\snr=15$--40, for the forks that
 start their cooldown at epochs 4 to 32, and for the main run, which starts it at the planned
 \qty{80}{\percent} of its \ResultsEpochs{} epochs (full $S=4$: its best, uncooled, checkpoint).}
 \label{tab:results-forks}
@@ -154,7 +164,7 @@ start their cooldown at epochs 4 to 32, and for the main run, which starts it at
 \end{table}
 
 The forks give the same configuration trained for 5, 10, 20 and 40 epochs (\cref{app:training-loop}).
-Their eval-catalog loss falls with the training length (\cref{tab:results-forks}, \cref{fig:results}c):
+Their eval-catalogue loss falls with the training length (\cref{tab:results-forks}, \cref{fig:results}c):
 by \ResultsNarrowTwoForkGain{} nats from epoch 4 to 32 on the narrow band with $S=2$ and by
 \ResultsFullFourForkGain{} on the full band with $S=4$, and the $f_0$ widths shrink toward the chains'
 with it. The cooldown matters most on the full band: the diverged full-band run with $S=4$, never cooled,

@@ -138,7 +138,10 @@ need = lambda x, y, rows=slice(None): pow2(
     quantile(width[rows, keep.index(x)], w[rows], y)
 )
 assert need(0.99, 0.99) == need(1.0, 0.999) == full.response_points
-narrow = np.repeat(z["f0"] < span["narrow_f0_max"], draws)
+# the narrow band's own sources, f0 in its range (it starts at 1 mHz, not at the full band's bottom)
+narrow = np.repeat(
+    (z["f0"] >= problems["narrow"].f0_range[0]) & (z["f0"] < span["narrow_f0_max"]), draws
+)
 assert need(1.0, 0.999, narrow) <= problems["narrow"].response_points
 
 # the lowest f0 bin from which keeping 99% for 99% of its sources needs more than full-B's R

@@ -91,94 +91,45 @@ simulation share of a step & \qty{\PriorsNarrowDrawShare}{\percent} (\qty{\Prior
 \label{app:priors-sources}
 
 Given the window, the $S$ sources are drawn independently from the per-source prior of
-\cref{tab:priors-source}, so they are exchangeable and the prior over a window is invariant under
-their relabellings,
-\begin{equation}
-  \pi_w(\theta_{1:S}) = \prod_{s=1}^{S}\pi_w(\theta_s).
-  \label{eq:priors-window-prior}
-\end{equation}
-Only $f_0$ depends on the window directly; $\fdot$ and $\Amp$ depend on it through $f_0$.
+\cref{tab:priors-source}, so they are exchangeable and the prior over a window, \cref{eq:priors-window-prior}, is invariant
+under their relabellings. Only $f_0$ depends on the window directly; $\fdot$ and $\Amp$ depend on it through $f_0$.
 
-\begin{table}[t]
-\caption{Prior of one source $\theta = (f_0, \fdot, \Amp, \alpha, \delta, \psi, \iota, \phi_0)$ in
-window $w$.}
-\label{tab:priors-source}
-\centering
-\small
-\begin{tabular}{lll}
-\toprule
-parameter & prior & support \\
-\midrule
-$(f_0, \fdot, \Amp)$ & catalogue Gaussian in their logarithms, \cref{eq:priors-source} & \\
-\quad $f_0$ & its marginal, truncated to \cref{eq:priors-interior} & $\PriorsInteriorResponses{}R$ bins at most \\
-\quad $(\fdot, \Amp)\mid f_0$ & its conditional, \cref{eq:priors-conditional} & $(0, \infty)^2$, uncut \\
-$(\alpha, \delta)$ & bulge, two disks and a floor in galactic $(l, \sin b)$, \cref{eq:priors-sky} & sphere \\
-$\psi$ & $\Unif(0, 2\pi)$ & \\
-$\iota$ & $\cos\iota\sim\Unif(-1, 1)$ & $[0, \pi]$ \\
-$\phi_0$ & $\Unif(0, 2\pi)$ & \\
-\bottomrule
-\end{tabular}
-\end{table}
 
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/priors.pdf}
-  \caption{The prior over a window; lines are closed forms, filled steps and dots are
-  \num{\PriorsPriorWindows} windows per band centred on the catalogue's $f_0$ marginal. (a)~$\log_{10}f_0$ of the drawn
-  sources (filled) against the catalogue marginal truncated to each band (lines), and of the
-  full band's visible sources, $\snr\ge\PriorsVisibleSnr$ (dashed). (b)~Sky, \cref{eq:priors-sky}, in the
-  equal-area galactic $(l, \sin b)$: shading is the log density per steradian, contours enclose
-  the marked share of the sources. (c)~Chirp drift over the observation, in frequency bins, in
-  the full band: a sample of the sources (light), every visible one (dark), and the conditional
-  mean of \cref{eq:priors-conditional} with its $\pm1\sigma$ residual (grey). Dashed: the narrow
-  band's top and one bin. (d)~Where the window centres fall: on the catalogue's
-  $f_0$ marginal (dashed) and by \cref{eq:priors-window} as in training (solid), per band. (e)~Amplitude, as in (c); dashed is the amplitude at which a
-  source of mean-square sky and orientation reaches $\snr=\PriorsVisibleSnr$. (f)~\ac{snr} of each
-  source alone in its window, per band; dashed at $\snr=\PriorsVisibleSnr$.}
-  \label{fig:priors}
-\end{figure*}
 
 \paragraph{Frequency, drift and amplitude.}
 $(\log_{10}f_0, \log_{10}\fdot, \log_{10}\Amp)$ is one Gaussian, fitted by maximum likelihood to
 the double white dwarfs above \qty{\PriorsCatalogueCutMhz}{\milli\hertz} of a simulated Galactic
-catalogue \textcolor{red}{TODO(cite): wdwd\_cat\_lam\_0p0\_alpha\_1p0\_zerotides\_MultiCGalaxy},
-truncated at that cut:
-\begin{equation}
-  \begin{pmatrix}\log_{10}f_0\\ \log_{10}\fdot\\ \log_{10}\Amp\end{pmatrix}
-  \sim \Normal(\mu, \Sigma),\qquad
-  \mu = \begin{pmatrix}\PriorsMeanF\\ \PriorsMeanFdot\\ \PriorsMeanAmp\end{pmatrix},
-  \label{eq:priors-source}
-\end{equation}
-with $f_0$ in \unit{\hertz} and $\fdot$ in \unit{\hertz\per\second}, standard deviations
+catalogue, binary population synthesis in a multi-component Milky Way of the kind built by Lamberts
+and collaborators \citep{lamberts2019predicting,toubiana2024interacting,perego2025towards} with
+COSMIC \citep{breivik2020cosmic},
+\textcolor{red}{TODO(confirm with the catalogue's provider): its own reference and its settings
+(the file is wdwd\_cat\_lam\_0p0\_alpha\_1p0\_zerotides\_MultiCGalaxy, most likely a common-envelope
+efficiency of one with the variable binding energy of \citet{claeys2014theoretical}, no tides after
+the white dwarfs form, and a bulge, disc and halo Galaxy), and whether it may be published: its format
+is that of the consortium's Mojito catalogues, which are not yet cleared for publication},
+truncated at that cut (\cref{eq:priors-source}), with $f_0$ in \unit{\hertz} and $\fdot$ in \unit{\hertz\per\second}, standard deviations
 $(\PriorsStdF, \PriorsStdFdot, \PriorsStdAmp)$ and correlations $\PriorsCorrFFdot$
 ($f_0$, $\fdot$), $\PriorsCorrFAmp$ ($f_0$, $\Amp$) and $\PriorsCorrFdotAmp$ ($\fdot$, $\Amp$). The
 window truncates $f_0$ (\cref{eq:priors-interior}); the full band holds
 \qty{\PriorsFullCatalogueShare}{\percent} of the catalogue above its cut, the narrow band
 \qty{\PriorsNarrowCatalogueShare}{\percent}. Given $f_0$, the drift and amplitude are Gaussian with
-means linear in $\log_{10}f_0$,
-\begin{equation}
-  \log_{10}\fdot \mid f_0 \sim \Normal\bigl(\PriorsInterceptFdot + \PriorsSlopeFdot\log_{10}f_0,\ \PriorsResidualFdot^2\bigr),\qquad
-  \log_{10}\Amp \mid f_0 \sim \Normal\bigl(\PriorsInterceptAmp + \PriorsSlopeAmp\log_{10}f_0,\ \PriorsResidualAmp^2\bigr),
-  \label{eq:priors-conditional}
-\end{equation}
-with residual correlation $\PriorsResidualCorr$. The drift slope is close to the $11/3$ of a chirp
+means linear in $\log_{10}f_0$ (\cref{eq:priors-conditional}), with residual correlation $\PriorsResidualCorr$. The drift slope is close to the $11/3$ of a chirp
 driven by gravitational radiation, $\fdot\propto\Mc^{5/3}f_0^{11/3}$ (\cref{eq:forward-model-fdot}),
 and the \PriorsResidualFdot~dex around it is the population's spread in chirp mass. $\fdot$ is a
 free parameter of the source, not derived from a chirp mass, and the sampler does not cut it. Most
 sources barely drift: the full band's median drift over the observation is
 \PriorsFullDriftMedian{} of a bin, and \qty{\PriorsFullDriftOver}{\percent} of its sources drift
 by more than one (\cref{fig:priors}c).
+Population models of the Galaxy's double white dwarfs
+\citep{nelemans2001gravitational,toonen2012supernova,korol2017prospects,lamberts2019predicting,korol2020populations,georgousi2022gravitational,thiele2023applying,tang2024predicting}
+differ in their common-envelope and tidal physics
+\citep{biscoveanu2023probing,fiacco2024uncovering,toubiana2024interacting,boileau2025gravitational,delfavero2025recovering,vanzeist2025comparing};
+the Gaussian of \cref{eq:priors-source} is the best fit to one of them, and refitting it to another
+changes only $\mu$ and $\Sigma$.
 
 \paragraph{Sky.}
 The sky prior is a mixture in galactic longitude $l$ and $\sin b$, the coordinates in which
-$\dd l\,\dd\!\sin b$ is the solid angle:
-\begin{equation}
-  \pi(l, \sin b) = w_{\rm b}\,\Normal(l; 0, \sigma_l^2)\,\Normal(\sin b; 0, \sigma_b^2)
-  + \sum_{d\in\{\rm thick, thin\}} w_d\,\mathcal{L}_{\pi}(l; \lambda_{l,d})\,\mathcal{L}_{1}(\sin b; \lambda_{b,d})
-  + \frac{w_{\rm f}}{4\pi},
-  \label{eq:priors-sky}
-\end{equation}
-where $\mathcal{L}_{c}(x; \lambda) \propto e^{-|x|/\lambda}$ is a Laplace density truncated to
+$\dd l\,\dd\!\sin b$ is the solid angle (\cref{eq:priors-sky}), where $\mathcal{L}_{c}(x; \lambda) \propto e^{-|x|/\lambda}$ is a Laplace density truncated to
 $|x|\le c$. The bulge (widths $\PriorsBulgeScales{}$) holds \qty{\PriorsBulgeWeight}{\percent} of the weight,
 the thick and thin disks (scales $\PriorsThickScales{}$ and $\PriorsThinScales{}$) hold
 \qty{\PriorsThickWeight}{\percent} and \qty{\PriorsThinWeight}{\percent}, and the isotropic floor the remaining
@@ -208,9 +159,9 @@ question ``given that the window holds $S$ sources of the population, where are 
 rest of the population is not simulated.
 
 \paragraph{How many sources a window holds.}
-The simulated Galaxy behind the prior holds \num{\RatesCatalogue} double white dwarfs in the band
-\textcolor{red}{TODO(cite): catalogue}. A window of $w$ bins centred at $f$ holds each of them with
-the prior's share $p(f, w)$ of $f_0$ in it, so it holds $K\sim\operatorname{Bin}(N, p)$ sources, and
+The simulated Galaxy behind the prior (\cref{eq:priors-source}) holds \num{\RatesCatalogue} double
+white dwarfs in the band. A window of $w$ bins centred at $f$ holds each of them with
+the prior's share $p(f, w)$ of $f_0$ in it, so it holds $n\sim\operatorname{Bin}(N, p)$ sources (\cref{eq:gw-rates}), and
 the sources reaching $\snr\ge\RatesVisibleSnr$ alone in the window follow the same law with $p$
 thinned by $P(\snr\ge\RatesVisibleSnr\mid f_0)$, the amplitude integrated out in closed form
 (reports/prior/source-count). \qty{\RatesVisibleShare}{\percent} of the catalogue's sources are
@@ -258,9 +209,12 @@ Amplitude trades against inclination, a distant face-on source against a nearer 
 for a nearly face-on source one helicity dominates and the phase of the other is barely
 constrained (\cref{app:chart-helicity}). At low frequency the chirp drift $\fdot\Tobs^2$ is a
 small fraction of a bin (\cref{fig:priors}c, \cref{tab:priors-bands}) and $\fdot$ stays close to
-its prior. \textcolor{red}{TODO(new chains): the median Fisher precision of $\log_{10}\fdot$ over
-its prior per loudness rank, narrow against full band, from the evaluation injections under this
-prior.}
+its prior. In the joint chains of the eval injections (\cref{app:mcmc}) the posterior width of
+$\log_{10}\fdot$ is a median \ResultsNarrowFdotPriorLow{} of the prior's conditional width at
+$\snr=7$--15 and still \ResultsNarrowFdotPriorLoud{} above $\snr=40$ on the narrow band
+(\ResultsNarrowFdotPriorLoudN{} sources); on the full band it falls from \ResultsFullFdotPriorLow{} to
+\ResultsFullFdotPriorMid{} at $\snr=15$--40 and \ResultsFullFdotPriorLoud{} above 40. Below
+$\snr=7$ it is \ResultsNarrowFdotPriorFaint{} and \ResultsFullFdotPriorFaint.
 
 \subsection{The Training Distribution}
 \label{app:priors-training}

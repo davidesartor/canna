@@ -123,7 +123,7 @@ The runs of \cref{app:results} were sized the same way, from the epoch time of a
 \qty{30}{\minute} smoke test of each band and source count, to \ResultsEpochs{} epochs: about
 \ResultsNarrowHours\,h on the narrow band and \ResultsFullHours\,h on the full band (A100 hours of
 steps, without restarts). A later cooldown ends lower (\cref{tab:results-forks}): from forks at epoch 4
-to epoch 32 the eval-catalog loss falls in every configuration, except full-band $S=4$ at epoch 16,
+to epoch 32 the eval-catalogue loss falls in every configuration, except full-band $S=4$ at epoch 16,
 whose snapshot caught a noisy epoch. Cooling at the planned epoch, after \ResultsEpochs{} epochs, still
 gains on narrow $S=4$ and full $S=8$, which are therefore not converged, but not on narrow $S=2$ and
 $S=8$, where the fork from epoch 32 ends below the main run.
@@ -178,7 +178,7 @@ An epoch is \TrainingEpochSteps{} steps (\TrainingEpochsNarrow{} epochs on the n
 \TrainingEpochsFull{} on the full band) compiled as one program: the simulator, the loss, the
 gradient and the optimiser update of all its steps run in one loop on the device.
 
-\paragraph{Eval-catalog loss.}
+\paragraph{Eval-catalogue loss.}
 After every epoch, the \EvaluationInjections{} eval injections with their noise
 (\cref{app:evaluation-injections}), each at the midpoints of \FlowMatchingLossBins{} equal steps
 in $s$, give the frame's and the flow's negative log-likelihoods; the same
@@ -194,7 +194,7 @@ of the epoch is not finite, so the last checkpoint is always finite.
 \paragraph{Checkpoints and resume.}
 Every epoch saves, in the background while the next epoch trains, the weights, the optimisers'
 moments, the random key and the loss histories, keeping only the latest. A second checkpoint keeps
-the epoch with the lowest sum of the eval-catalog frame and flow negative log-likelihoods
+the epoch with the lowest sum of the eval-catalogue frame and flow negative log-likelihoods
 (\cref{app:evaluation-weights}). A checkpoint is \qty{\TrainingCheckpointNarrowBGib}{\gibi\byte} on narrow-B and \qty{\TrainingCheckpointFullBGib}{\gibi\byte} on full-B, and
 the save blocks training for \qty{\TrainingCheckpointNarrowBBlock}{\second} on narrow-B and
 \qty{\TrainingCheckpointFullBBlock}{\second} on full-B. A job runs for at most \qty{\TrainingJobHours}{\hour} and
@@ -253,7 +253,7 @@ at the default batch, on an A100 (\qty{80}{\giga\byte}) and an L40S. The narrow 
 network's. The full band simulates its observations at many more frequency points (\cref{app:forward-model}), a fixed cost per batch
 that weighs most on the small sizes (\cref{fig:training-overhead}a) and sets a memory floor
 (\cref{fig:training-compute}c). In the step benchmark every size fits unsplit on the A100, and
-full-XL needs two micro-batches on the L40S; with the trainer's eval-catalog pass and checkpointing
+full-XL needs two micro-batches on the L40S; with the trainer's eval-catalogue pass and checkpointing
 alongside, narrow-XL on the L40S and full-XL on the A100 (\qty{80}{\giga\byte}) need a split
 too, and full-XL does not fit the L40S even split.
 

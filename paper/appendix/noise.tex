@@ -11,7 +11,9 @@ simulator against published references. The waveform and the \ac{tdi} response a
 \subsection{Instrument Noise}
 \label{app:noise-psd}
 
-The noise is the instrument noise of the \ac{lisa} science requirements \citep{babak2021lisa}: an
+The noise is the instrument noise of the \ac{lisa} science requirements \citep{lisasst2018lisa}, in
+the single-link form of the consortium's technical note \citep[Issue~1.1]{babak2021lisa}, whose
+equation numbers we quote: an
 \ac{oms} displacement noise and a test-mass acceleration noise on each link (their eqs.~9 and 11),
 \begin{align}
   P_{\rm oms}(f) &= \bigl(\qty{\NoiseOms}{\pico\metre}\bigr)^2
@@ -64,20 +66,8 @@ visible failure. \Cref{app:noise-validation} checks the unit directly.
 
 The noise is instrumental only: no Galactic confusion foreground (the $S_c$ term of
 \citealt[eq.~1]{robson2019construction}; \citealt{karnesis2021characterization}), no gaps or
-glitches, and the \acs{psd} is stationary, known and the same for every window.
+glitches \citep{baghi2022detection,lisaglitch,jaxglitches}, and the \acs{psd} is stationary, known and the same for every window.
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/noise.pdf}
-  \caption{The noise and the amplitude unit built on it. (a) Amplitude spectral densities
-    $\sqrt{S_c}$ of \cref{eq:noise-psd}, with the \acs{oms} and acceleration terms of $S_A$
-    alone: acceleration noise dominates below a few \unit{\milli\hertz}, and $T$ is orders of
-    magnitude quieter there. Shading marks the narrow and full bands. (b) The sky-averaged
-    constant $C$ of \cref{app:noise-snr}, measured with our \acs{snr} for an isotropic and a
-    Galactic sky ($\pm$ one standard error): flat at low frequency, rising at the top of the full
-    band, where $1+0.6(f/f_\star)^2$ only approximates the response.}
-  \label{fig:noise-psd}
-\end{figure}
 
 \subsection{Data Model and Likelihood}
 \label{app:noise-likelihood}
@@ -87,13 +77,7 @@ The observation lasts $\Tobs = \qty{\NoiseTobsYears}{\year}$ and sources have $f
 \qtyrange{\NoiseBandLow}{\NoiseBandHigh}{\milli\hertz} (full band). A window is $K$ consecutive
 Fourier bins $f_k = (k_0 + k)/\Tobs$, $k = 0,\dots,K-1$, with $K = \NoiseKNarrow{}$ in the
 narrow band and \NoiseKFull{} in the full band (\cref{app:forward-model-windows}). The data are
-the sum of the \NoiseSourcesWord{} source responses and Gaussian noise,
-\begin{equation}
-  \tilde d_{k,c} = \sum_{s=1}^{S}\tilde h_c(f_k;\theta_s) + \tilde n_{k,c},\qquad
-  \tilde n_{k,c} \sim \CN\!\bigl(0,\ P_c(f_k)\bigr),\qquad
-  P_c(f) = \tfrac12\,S_c(f)\,\Tobs,
-  \label{eq:noise-data}
-\end{equation}
+the sum of the $S$ source responses and Gaussian noise (\cref{eq:noise-data}),
 independent across bins $k$ and channels $c\in\{A,E,T\}$; the real and imaginary parts each
 have variance $P_c/2$. $P_c$ is evaluated at each bin's own frequency, so the noise level
 changes across a window as it does across the band.
@@ -108,21 +92,8 @@ every \ac{snr} and likelihood ratio. An \ac{snr} that changes with the sampling 
 therefore a unit error, which is how we test it.
 
 With the noise-weighted inner product, the discrete form of $4\,\mathrm{Re}\int a\,b^*/S\,\dd f$
-with $\dd f = 1/\Tobs$ \citep{cutler1994gravitational},
-\begin{equation}
-  \inner{a}{b} = 4\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{S_c(f_k)\,\Tobs}
-  = 2\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{P_c(f_k)},
-  \label{eq:inner}
-\end{equation}
-the log-likelihood of a window is the Whittle likelihood of \cref{eq:noise-data},
-\begin{equation}
-  \log p(d\mid\theta_{1:S}) = -\tfrac12\inner{d-h}{d-h} + \text{const}
-  = -\sum_{k,c}\frac{\bigl|\tilde d_{k,c}-\tilde h_{k,c}(\theta_{1:S})\bigr|^2}{P_c(f_k)}
-  + \text{const},\qquad
-  \tilde h_{k,c}(\theta_{1:S}) = \sum_{s}\tilde h_c(f_k;\theta_s).
-  \label{eq:loglik}
-\end{equation}
-The data are simulated from exactly this model, so the likelihood is exact for them: the noise
+with $\dd f = 1/\Tobs$ \citep{cutler1994gravitational}, \cref{eq:inner}, the log-likelihood of
+a window is the Whittle likelihood of \cref{eq:noise-data}, \cref{eq:loglik}. The data are simulated from exactly this model, so the likelihood is exact for them: the noise
 the data carry is the noise the posterior assumes. It is the likelihood of the window alone and
 knows nothing of sources outside it (\cref{app:priors}).
 
