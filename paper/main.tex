@@ -179,19 +179,15 @@ specifically highlighted here.
 {\color{red}
 \paragraph{Runs and data.}
 \begin{itemize}
-  \item Fetch the full-band $S=16$ run, its forks and its eval from TREX once it finishes (about
-    11 November), re-run \texttt{scripts/import\_runs.py}, \texttt{numbers\_results.py} and
-    \texttt{fig\_results.py}, and fill its rows in \cref{app:results}.
-  \item Fetch the scorecard and validation passes of every run (rank tests, \acs{tarp}, proper scores)
-    and write the calibration results; today only coverage after relabelling is reported, which the
-    mocks show cannot see excess width.
+  \item Put a null beside the validation table (\cref{tab:results-validation}): the Gaussian mock's
+    log-likelihood rank offset on the same strata, and the energy scores against it.
   \item Run the sampler-step sweep, the robustness probes and a float32 evaluation on the best
     checkpoints (\cref{app:evaluation-sampler,app:network}).
   \item Rerun the reference \acs{mcmc} convergence study under the catalogue prior and rebuild
     reports/mcmc: \texttt{numbers/mcmc.tex} and the figures of \cref{app:mcmc} still come from the
     old chains and the old prior.
   \item Rerun the step-time and memory benchmark at the full band's current $R$ on an A100
-    (\cref{tab:priors-bands}), and take the wall time and requeues of each run from the slurm logs.
+    (\cref{tab:priors-bands}).
   \item One seed per configuration: the run-to-run spread is unmeasured, so differences of a few
     hundredths of a nat between forks are not significant. Consider a second seed of one cheap
     configuration (narrow, $S=2$) if compute allows.
@@ -204,6 +200,8 @@ specifically highlighted here.
     weakness.
   \item The narrow band with $S=8$ is too wide even on faint sources in $f_0$: check the overlap
     explanation proposed in \cref{app:results}.
+  \item The full band with $S=16$ is too wide on faint $f_0$ (2$\times$) and narrower than the chains on
+    the faint sky, whose chains are the least converged ($\hat R$ up to 1.04): check the chains first.
   \item Make the corner plot of flow, joint \acs{mcmc} and Fisher draws on one crowded window, and
     save its draws beside it.
 \end{itemize}

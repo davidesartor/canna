@@ -39,13 +39,13 @@ band & $S$ & steps [M] & epochs & warmup & hours & outcome & best NLL (epoch) \\
 
 \Cref{tab:results-runs} lists the runs. The narrow band ran its three source counts one after the
 other on one GPU, and the full band on another; a third GPU cooled down forks from each run's
-snapshots and evaluated every finished run and fork (\cref{app:training-loop}). Four runs trained to
+snapshots and evaluated every finished run and fork (\cref{app:training-loop}). Five runs trained to
 their end with every loss finite. The full-band run with $S=4$ diverged at epoch
 \ResultsFullFourDivergedEpoch, just before its cooldown, after isolated single-step spikes of the
 frame's loss (\cref{app:training-optimiser}); it is evaluated at its best checkpoint, epoch
 \ResultsFullFourBestEpoch, which never cooled down, and its fork from epoch 32 stands for it below.
-\textcolor{red}{TODO(run): the full band with $S=16$ is training until about 11 November; its row,
-forks and comparison follow.}
+The full-band run with $S=16$, the last of its chain, trained cleanly: its worst single-step frame
+loss stayed below 2, and its eval-catalogue loss was still falling at its last epoch.
 
 \subsection{Widths Against the Joint \acs{mcmc}}
 \label{app:results-mcmc}
@@ -87,7 +87,11 @@ Below $\snr=7$ the target is close to the prior, and the flow returns it: every 
 per cent of the chains' (\cref{tab:results-widths}). The exception is the narrow band with $S=8$, whose
 faint sources come out \ResultsNarrowEightFaintFzero{} times wider in $f_0$ than the chains'. A likely cause, not yet checked, is that with eight sources in
 \PriorsNarrowW{} bins faint neighbours overlap within their prior widths, where the frequency order of
-the slots no longer tells them apart.
+the slots no longer tells them apart. The full band with $S=16$ shows the same, more mildly: $f_0$
+\ResultsFullSixteenFaintFzero{} times the chains' width, and a sky
+\ResultsFullSixteenFaintSkyLo--\ResultsFullSixteenFaintSkyHi{} times it, narrower than the chains'.
+Its chains are the least converged of the six ($\hat R$ up to \ResultsFullSixteenMcmcRhat, \cref{app:mcmc}),
+and a faint sky is multimodal, so the narrower flow may be the chains' fault as much as the flow's.
 
 \paragraph{The narrow band.}
 With two sources per window the flow matches the chains: at $\snr=7$--40 every width ratio is
@@ -110,26 +114,35 @@ band has only a handful of sources.
 
 \paragraph{The full band.}
 On the full band the flow is close to the chains only for faint sources. At $\snr=15$--40 its $f_0$
-widths are \ResultsFullFourFzeroMid{} ($S=4$) and \ResultsFullEightFzeroMid{} ($S=8$) times the chains',
-and above $\snr=40$ they are \ResultsFullFourFzeroLoud{} and \ResultsFullEightFzeroLoud{} times, with
-$\log\fdot$ \ResultsFullFourFdotLoud{} and \ResultsFullEightFdotLoud{} times and the right ascension
-\ResultsFullFourSkyLoud{} and \ResultsFullEightSkyLoud{} times; amplitude and inclination stay within
-\ResultsFullFourAmpLoud{} and \ResultsFullEightAmpLoud. Only \qty{\ResultsFullFourFoundLoud}{\percent} and
-\qty{\ResultsFullEightFoundLoud}{\percent} of the loud sources are found, and
-\qty{\ResultsFullFourOff}{\percent} and \qty{\ResultsFullEightOff}{\percent} of their draws fall off the
-chains' peak, against \qty{\ResultsFullFourMcmcOff}{\percent} and \qty{\ResultsFullEightMcmcOff}{\percent}
-of the chains' own. The loud sources of the full band are those whose posteriors are narrowest against
+widths are \ResultsFullFourFzeroMid{} ($S=4$), \ResultsFullEightFzeroMid{} ($S=8$) and
+\ResultsFullSixteenFzeroMid{} ($S=16$) times the chains', and above $\snr=40$ they are
+\ResultsFullFourFzeroLoud, \ResultsFullEightFzeroLoud{} and \ResultsFullSixteenFzeroLoud{} times, with
+$\log\fdot$ \ResultsFullFourFdotLoud, \ResultsFullEightFdotLoud{} and \ResultsFullSixteenFdotLoud{} times
+and the right ascension \ResultsFullFourSkyLoud, \ResultsFullEightSkyLoud{} and
+\ResultsFullSixteenSkyLoud{} times; amplitude and inclination stay within \ResultsFullFourAmpLoud,
+\ResultsFullEightAmpLoud{} and \ResultsFullSixteenAmpLoud. Only \qty{\ResultsFullFourFoundLoud}{\percent},
+\qty{\ResultsFullEightFoundLoud}{\percent} and \qty{\ResultsFullSixteenFoundLoud}{\percent} of the loud
+sources are found, and \qty{\ResultsFullFourOff}{\percent}, \qty{\ResultsFullEightOff}{\percent} and
+\qty{\ResultsFullSixteenOff}{\percent} of their draws fall off the chains' peak, against
+\qty{\ResultsFullFourMcmcOff}{\percent}, \qty{\ResultsFullEightMcmcOff}{\percent} and
+\qty{\ResultsFullSixteenMcmcOff}{\percent} of the chains' own. From $S=4$ to 8 the loud widths grow by 10 to 40 per cent; from 8 to 16 that
+of $f_0$ more than doubles, and those of $\log\fdot$ and the sky grow by about half. The loud sources of the full band are those whose posteriors are narrowest against
 the prior and whose responses span the most bins (\cref{app:forward-model}), the regime the per-source
 frame is meant for (\cref{app:fm-sensitivity}); the full-band models do not resolve them yet.
 The misses sit at high frequency. Above \qty{\ResultsFullSplitMhz}{\milli\hertz} lie
-\qty{\ResultsFullFourLoudHighShare}{\percent} ($S=4$) and \qty{\ResultsFullEightLoudHighShare}{\percent}
-($S=8$) of the sources at $\snr\ge40$, but \qty{\ResultsFullFourUnfoundHighShare}{\percent} and
-\qty{\ResultsFullEightUnfoundHighShare}{\percent} of those not found. Below
-\qty{\ResultsFullSplitMhz}{\milli\hertz} the models find \qty{\ResultsFullFourFoundLowBand}{\percent} and
-\qty{\ResultsFullEightFoundLowBand}{\percent} of the loud sources, with $f_0$ widths
-\ResultsFullFourFzeroLowBand{} and \ResultsFullEightFzeroLowBand{} times the chains'; above it,
-\qty{\ResultsFullFourFoundHigh}{\percent} and \qty{\ResultsFullEightFoundHigh}{\percent}, at
-\ResultsFullFourFzeroHigh{} and \ResultsFullEightFzeroHigh{} times. There the Doppler shift and the
+\qty{\ResultsFullFourLoudHighShare}{\percent} ($S=4$), \qty{\ResultsFullEightLoudHighShare}{\percent}
+($S=8$) and \qty{\ResultsFullSixteenLoudHighShare}{\percent} ($S=16$) of the sources at $\snr\ge40$, but
+\qty{\ResultsFullFourUnfoundHighShare}{\percent}, \qty{\ResultsFullEightUnfoundHighShare}{\percent} and
+\qty{\ResultsFullSixteenUnfoundHighShare}{\percent} of those not found. Below
+\qty{\ResultsFullSplitMhz}{\milli\hertz} the models find \qty{\ResultsFullFourFoundLowBand}{\percent},
+\qty{\ResultsFullEightFoundLowBand}{\percent} and \qty{\ResultsFullSixteenFoundLowBand}{\percent} of the
+loud sources, with $f_0$ widths \ResultsFullFourFzeroLowBand, \ResultsFullEightFzeroLowBand{} and
+\ResultsFullSixteenFzeroLowBand{} times the chains'; above it, \qty{\ResultsFullFourFoundHigh}{\percent},
+\qty{\ResultsFullEightFoundHigh}{\percent} and \qty{\ResultsFullSixteenFoundHigh}{\percent}, at
+\ResultsFullFourFzeroHigh, \ResultsFullEightFzeroHigh{} and \ResultsFullSixteenFzeroHigh{} times. The source count costs most above
+\qty{\ResultsFullSplitMhz}{\milli\hertz}: from $S=4$ to 16 the share found there falls from
+\qty{\ResultsFullFourFoundHigh}{\percent} to \qty{\ResultsFullSixteenFoundHigh}{\percent}, and below it
+only from \qty{\ResultsFullFourFoundLowBand}{\percent} to \qty{\ResultsFullSixteenFoundLowBand}{\percent}. There the Doppler shift and the
 chirp spread a source over the most bins (\cref{app:forward-model}).
 \textcolor{red}{TODO(analysis, needs the checkpoints): whether the frame or the flow is the wide part on
 these sources.}
@@ -140,9 +153,51 @@ Every eval, main runs and forks, \ResultsEvals{} in all, covers
 \qty{68}{\percent} level and \ResultsCoverNinetyFiveLo--\ResultsCoverNinetyFiveHi{} at
 \qty{95}{\percent}, pooled over coordinates and sources, including the full-band models that are an
 order of magnitude too wide on loud sources. As the mocks predicted (\cref{app:evaluation-mocks}),
-coverage after relabelling does not see excess width: only the comparison with the chains does.
-\textcolor{red}{TODO(runs): rank tests, \acs{tarp} and proper scores of the validation pass, which never
-sees the truth, once the scorecards are back.}
+coverage after relabelling does not see excess width: the comparison with the chains does, and so do
+the data-space ranks of the validation pass (\cref{app:results-validation}).
+
+\subsection{Validation Without the Truth}
+\label{app:results-validation}
+
+\begin{table*}[t]
+\centering
+\caption{The validation pass of the models of \cref{tab:results-widths}: \ResultsValidationInjections{}
+prior injections per model, \ResultsValidationDraws{} draws each, ranks of the truth among the draws
+(\cref{app:evaluation}), $p$-values of the \acs{ecdf} $\gamma$ test. Strata are by the draws' median own
+\ac{snr}, a function of the data alone; $n$ is the number of sources in the stratum. Coordinates: the
+smallest $p$ of the eight flow coordinates. \acs{tarp} per source and joint over the window. Overlap and
+own \ac{snr} per source, log-likelihood per window. The last two columns read the log-likelihood ranks:
+the mean rank over the number of draws minus one half ($+0.5$: the truth fits the data better than every
+draw) and the share of ranks in the middle half (one half for a calibrated posterior).}
+\label{tab:results-validation}
+\small
+\begin{tabular}{@{}llrcccccccc@{}}
+\toprule
+& & & \multicolumn{6}{c}{$p$-value} & \multicolumn{2}{c}{log-lik.\ rank} \\
+\cmidrule(lr){4-9}\cmidrule(l){10-11}
+model & $\widehat{\snr}$ & $n$ & coord. & \acs{tarp} & \acs{tarp} joint & overlap & own \acs{snr} & log-lik. & offset & middle \\
+\midrule
+\ResultsValidationRows
+\bottomrule
+\end{tabular}
+\end{table*}
+
+The validation pass draws every model on prior injections and ranks the truth among the draws, so it
+needs neither chains nor relabelling (\cref{app:evaluation}). \Cref{tab:results-validation} reads like
+the mocks of \cref{tab:evaluation-mocks}. The parameter ranks pass or fail at the per-cent level, as
+the Gaussian mock does: a correct posterior that is wider or narrower by tens of per cent on a few
+sources does not show there. The data-space ranks reject every model at $p<0.001$, and always in one
+direction: the true signal overlaps the data more than the drawn signals do, and the truth's
+log-likelihood is above nearly every draw's. The size of that offset follows the comparison with the
+chains. The narrow band with $S=2$, within a few per cent of the chains, has the smallest offset and
+keeps more than a quarter of its ranks in the middle half; every other model, wider than the chains on
+some parameters (\cref{tab:results-widths}), puts the truth above all draws on most windows. Over $8S$ parameters a modest excess
+width in each adds up to a large loss of likelihood, which is what the data-space ranks are built to
+see. The Gaussian mock is rejected by the same test (\cref{tab:evaluation-mocks}), so the $p$-value
+alone does not say the flow is wrong; the offset's growth with $S$ and band, matched to the width
+ratios, does.
+\textcolor{red}{TODO(analysis): the Gaussian mock's offset on the same strata, to put a null next to
+these; the energy scores against it.}
 
 \subsection{Longer Runs}
 \label{app:results-forks}
@@ -169,7 +224,7 @@ by \ResultsNarrowTwoForkGain{} nats from epoch 4 to 32 on the narrow band with $
 \ResultsFullFourForkGain{} on the full band with $S=4$, and the $f_0$ widths shrink toward the chains'
 with it. The cooldown matters most on the full band: the diverged full-band run with $S=4$, never cooled,
 has loud $f_0$ widths \ResultsFullFourMainLoud{} times the chains', against \ResultsFullFourForkLoud{}
-for its fork from epoch 32. Beyond epoch 32 the main runs gain on two configurations and lose on two
+for its fork from epoch 32. Beyond epoch 32 the main runs gain on two configurations and lose on three
 (\cref{app:training-schedules}); with one seed per configuration, differences of a few hundredths of a
 nat are within the run-to-run spread we have not measured.
 
@@ -177,9 +232,8 @@ nat are within the run-to-run spread we have not measured.
 \label{app:results-pending}
 
 \begin{itemize}
-  \item \textcolor{red}{TODO(runs): full band, $S=16$: row, forks, widths.}
-  \item \textcolor{red}{TODO(runs): validation table, $\gamma$ $p$-values and energy scores per test
-    quantity; rank \acs{ecdf} minus uniform with the simultaneous band.}
+  \item \textcolor{red}{TODO(figure): rank \acs{ecdf} minus uniform with the simultaneous band, for the
+    log-likelihood and overlap ranks of \cref{tab:results-validation}.}
   \item \textcolor{red}{TODO(runs): sampler steps at which the widths settle (\cref{app:evaluation-sampler})
     and the robustness probes.}
   \item \textcolor{red}{TODO(figure): corner plot of flow, joint \acs{mcmc} and Fisher draws on one

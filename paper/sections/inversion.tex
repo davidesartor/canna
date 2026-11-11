@@ -1,0 +1,22 @@
+% =======================================================================================
+\section{The Bayesian Inversion Problem}
+\label{sec:inversion}\label{sec:problem}
+% =======================================================================================
+% Moved 2026-11-09 from the former sections/problem.tex (posterior, symmetries) and
+% sections/validation.tex (introduction, toy). New material goes to the appendices first:
+% app:related-recent (recent amortised-inference work), app:evaluation (the protocol).
+
+\paragraph{Prior and posterior.}
+% from problem.tex; the GW-specific prior moved to sec:gw-priors
+The target is the joint posterior
+\begin{equation}
+  p(\theta_1,\dots,\theta_S \mid y) \propto p(y\mid\theta_1,\dots,\theta_S)\,\pi(\theta_1,\dots,\theta_S\mid\fw),
+\end{equation}
+with the Gaussian likelihood of \cref{eq:loglik}, for every $\fw$ in the band, from one network.
+
+\paragraph{Symmetries.} The likelihood is invariant under $(\psi,\phi_0)\to(\psi+\pi/2,\phi_0+\pi)$
+and its shifts, four copies of each source in the usual angles (\cref{eq:psi-phi-symmetry}), and
+under the $S!$ permutations of the sources. A flow on the raw parameters must
+place mass on every copy and every labelling, and evaluating it needs the copies matched
+\citep{stephens2000dealing,jasra2005markov,buscicchio2019label}.
+% updated 2026-11-09: S! was \PriorsPermutations (S = 4), S now varies per run
