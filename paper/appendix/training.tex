@@ -225,7 +225,10 @@ The runs of \cref{app:results} ran on single A100s of a shared cluster, the narr
 each on its own GPU, their source counts one after another, while a third GPU ran the forks and
 evaluations as their snapshots appeared. Jobs of \TrainingJobHours{}\,h requeued themselves and
 resumed as above.
-\textcolor{red}{TODO(runs): measured wall time and requeues per run, from the slurm logs.}
+Measured on the cluster, the narrow-band runs took \ResultsWallNarrow{}\,h of wall time with
+\ResultsRequeuesNarrow{} requeue each, and the full-band runs that finished \ResultsWallFull{}\,h with
+\ResultsRequeuesFull{}; the full-band run with $S=4$ diverged after \ResultsWallFullFour{}\,h
+(\cref{app:results-runs}).
 
 \subsection{Precision}
 \label{app:training-precision}
