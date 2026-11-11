@@ -1,4 +1,4 @@
-# canna.lisa takeaways (current state, 2026-11-03, F66)
+# canna.lisa takeaways (current state, 2026-11-11, F67)
 
 One `0<nn>-<slug>.md` per finding F<nn>, outcome first. The literature lives in
 [../literature/](../literature/): [GW and cosmology
@@ -7,10 +7,19 @@ schedules](../literature/optimizers-schedules/000-takeaways.md), [diffusion and 
 matching](../literature/diffusion-flow-matching/000-takeaways.md) and the others; the findings
 keep only its consequences for our code.
 
-- **The source-count runs are launched** ([F66](066-source-count-runs-launched.md)): narrow-2/4/8 and
+- **The source-count runs are in** ([F67](067-source-count-results.md)): narrow-2 matches the joint
+  MCMC (every width 1.00–1.17× at SNR 7–40, 92% found at 7–15); each doubling of S widens the flow
+  (narrow-8 f₀ 1.4–2.1×). The full band is close only below SNR 15: loud f₀ 9.7 / 10.7 / 23.6× the
+  MCMC for S = 4 / 8 / 16, found 80 / 66 / 50%, the misses above 10 mHz (found there 63% → 6% from
+  S=4 to 16). Coverage after relabelling is nominal everywhere (0.66–0.69 / 0.94–0.95); the
+  validation pass's overlap and log-likelihood ranks reject every model (p < 0.001, truth above the
+  draws), with an offset that grows with S and band like the width ratios (+0.31 narrow-2, +0.42 to
+  +0.48 the rest). Cooldown forks from later snapshots are better; full-4 diverged at epoch 51
+  before its cooldown.
+- **The source-count runs were launched** ([F66](066-source-count-runs-launched.md)): narrow-2/4/8 and
   full-4/8/16 at 90735b9, 16 snapshots each (32 h narrow, 64 h full), one GPU per band in
   source-count order, forks and evals on the third through a manager job that skips unhealthy
-  parents. Epochs take 65–108 s per 1000 steps, rising with the source count. Done ~12 Nov.
+  parents.
 - **The frame alone diverges like full-B; its sky output turns into a per-window constant** ([F65](065-frame-alone-diverges-sky-frame-per-window.md)):
   with the flow's gradient off, full-B's frame still blows up from epoch ~45 (NaN at epoch 151).
   On the fixed catalog, galactic b (then l), not f₀, goes wrong: μ_b stops depending on the
@@ -89,11 +98,20 @@ keep only its consequences for our code.
 | XS | XS-rope | loud f₀ 0.0106 bins, 11.4× MCMC; 687 found (F43) |
 | narrow | narrow-S (oneshot), 650k | all parameters 0.8–3.3× MCMC at SNR 15–100; loud f₀ 0.021 bins, 31×; 779 of 840 found (F59) |
 | full | full-B (oneshot), 240k | sky, A, ψ, ι ≤ 2.7× below SNR 300; f₀ 0.41–0.57 bins (38–164× MCMC), φ₀ 36–70× (F59) |
+| narrow | narrow-B S=2, fork e32 (source-count) | every parameter 1.00–1.17× the joint MCMC at SNR 7–40; 7% loud f₀ draws off-peak (MCMC 5%) (F67) |
+| narrow | narrow-B S=4, main | f₀ 1.17–1.23×, sky 1.32× at SNR 7–40 (F67) |
+| full | full-B S=4, fork e32 | f₀ 1.5× at SNR 15–40 but 9.7× at SNR ≥ 40; 80% of loud found (F67) |
 
 No model is biased: the MCMC median is inside the flow's 95% in 123–127 of 128 pairs on XS
 ([F27](027-flow-vs-mcmc-xs-windows.md), F43) and 48 of 48 for B-rope at mid SNR (F45).
 
 ## Still broken
+
+- **Full band, loud sources above 10 mHz** (F67): at SNR ≥ 40, f₀ 10–24× and sky 7–15× the joint
+  MCMC, worse with S; above 10 mHz 6–63% are found. Whether the frame or the flow is the wide part
+  is not known yet (needs the checkpoints on TREX).
+- **Crowding on the narrow band** (F67): narrow-8's faint f₀ is 5.6× the MCMC and 29% of loud f₀
+  draws fall off the MCMC peak (MCMC 5%).
 
 - **full-B's f₀ (oneshot):** 0.41–0.57 bins at every SNR and every f₀, ~1.5 × 10⁻⁴ of its
   3072-bin window, against B-stft-h's 0.033–0.13; φ₀ widens with it. Suspects: learning rates
