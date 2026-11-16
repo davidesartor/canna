@@ -11,12 +11,15 @@ The simulator is a simplified \ac{lisa}: equal, constant arms, stationary Gaussi
 detectable sources per window (\cref{app:forward-model-limits}). A real analysis needs the number
 of sources inferred, the noise estimated with them, and windows stitched across their edges, as a
 global fit does. The flow is checked on data from its own prior; out-of-distribution windows are
-probed in \cref{app:evaluation-sampler} \textcolor{red}{TODO(new runs): outcome}. The sampler's
+probed in \cref{app:evaluation-sampler}: the flow tolerates sources past its prior but turns confident and
+wrong when the noise is louder than its own \ac{psd}.
+% updated 2026-11-13: robustness outcome (narrow band, S = 4). The sampler's
 uniform grid collapses posteriors much narrower than the frame (\cref{fig:fm-sensitivity}), so a
 frame far too wide would show as widths that change with the number of steps; they are read where
 they no longer do. Our validation tests are necessary
-conditions; the Gaussian mock fails some of them, and only the reference chains give widths, for
-a few windows. \textcolor{red}{TODO(move from \cref{app:results}): where the flow stays wider than the
+% updated 2026-11-16 (stale fact): the mock fails every test at 1000 injections (app:results-validation)
+conditions; at a thousand injections the Gaussian mock fails all of them, and only the reference chains
+give widths, for a few windows. \textcolor{red}{TODO(move from \cref{app:results}): where the flow stays wider than the
 \acs{mcmc}: loud full-band sources and the sky.}
 
 We have shown that conditional flow matching returns joint posteriors of overlapping \acp{gb}

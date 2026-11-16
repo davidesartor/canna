@@ -320,27 +320,126 @@ P = lambda p: "--" if p is None else (f"{p:.3f}" if p >= 0.001 else "$<$0.001")
 VALIDATION_TESTS = [("coords_min", None), ("tarp", None), ("joint_tarp", None), ("overlap", None),
                     ("own_snr", None), ("joint_log_likelihood", None)]
 validation_rows = []
+MOCK_DATA = style.PAPER / "data/runs/mock-validation.json"  # 261103-validation.py on the Gaussian mock, CONFIGS order
+mock = dict(zip(CONFIGS, json.loads(MOCK_DATA.read_text()))) if MOCK_DATA.is_file() else {}
+
+
+def validation_row(lead: str, tex: str, cell: dict) -> str:
+    ps = [cell["coords_min"]] + [cell[t]["p"] if cell[t] else None for t, _ in VALIDATION_TESTS[1:]]
+    ov, ll = cell["overlap"], cell["joint_log_likelihood"]
+    return (rf"{lead} & {tex} & {cell['n_sources']} & " + " & ".join(P(p) for p in ps)
+            + (rf" & {ov['bias']:+.2f}" if ov else " & --")
+            + (rf" & {ll['bias']:+.2f} & {ll['middle']:.2f}" if ll else r" & -- & --") + r" \\")
+
+
 for band, n in CONFIGS:
     if not family(band, n):
         continue
     r = selected(band, n)
-    ev = r["evals"][-1]
-    v = ev.get("validation")
+    v = r["evals"][-1].get("validation")
     if not v:
         continue
     for stratum, tex in (("all", "all"), ("15-40", "15--40"), ("40-100", "40--100")):
-        cell = v[stratum]
-        ps = [cell["coords_min"]] + [cell[t]["p"] if cell[t] else None for t, _ in VALIDATION_TESTS[1:]]
-        ll = cell["joint_log_likelihood"]
-        lead = rf"{band}-{n}, {label(r)}" if stratum == "all" else ""
-        validation_rows.append(
-            rf"{lead} & {tex} & {cell['n_sources']} & " + " & ".join(P(p) for p in ps)
-            + (rf" & {ll['bias']:+.2f} & {ll['middle']:.2f}" if ll else r" & -- & --") + r" \\"
-        )
+        validation_rows.append(validation_row(rf"{band}-{n}, {label(r)}" if stratum == "all" else "", tex, v[stratum]))
+        if stratum == "all" and (band, n) in mock:
+            validation_rows.append(validation_row(r"\quad Gaussian mock", "all", mock[band, n]["strata"]["all"]))
     validation_rows.append(r"\addlinespace")
 numbers["ResultsValidationRows"] = "\n".join(validation_rows[:-1])
 vals = [selected(b, n)["evals"][-1]["validation"] for b, n in CONFIGS if family(b, n) and selected(b, n)["evals"][-1].get("validation")]
 numbers["ResultsValidationInjections"] = str(selected("narrow", 2)["evals"][-1]["validation_injections"])
 numbers["ResultsValidationDraws"] = "127"
+if mock:
+    off = lambda c, k: c["strata"]["all"][k]["bias"]
+    flows = {k: selected(*k)["evals"][-1]["validation"]["all"] for k in mock}
+    numbers["ResultsMockLikeOffsetLo"] = f"{min(off(m, 'joint_log_likelihood') for m in mock.values()):+.2f}"
+    numbers["ResultsMockLikeOffsetHi"] = f"{max(off(m, 'joint_log_likelihood') for m in mock.values()):+.2f}"
+    numbers["ResultsMockOverlapOffsetLo"] = f"{min(off(m, 'overlap') for m in mock.values()):+.2f}"
+    numbers["ResultsMockOverlapOffsetHi"] = f"{max(off(m, 'overlap') for m in mock.values()):+.2f}"
+    numbers["ResultsFlowOverlapOffsetLo"] = f"{min(f['overlap']['bias'] for f in flows.values()):+.2f}"
+    numbers["ResultsFlowOverlapOffsetHi"] = f"{max(f['overlap']['bias'] for f in flows.values()):+.2f}"
+    excess = [flows[k]["joint_log_likelihood"]["bias"] - off(mock[k], "joint_log_likelihood") for k in mock]
+    numbers["ResultsLikeExcessLo"] = f"{min(excess):+.2f}"
+    numbers["ResultsLikeExcessHi"] = f"{max(excess):+.2f}"
+
+# ---- faint sources against the prior (import_faint.py): below SNR 3 the posterior is the prior ----------------------
+FAINT_DATA = style.PAPER / "data/runs/faint-prior.json"
+if FAINT_DATA.is_file():
+    fp = json.loads(FAINT_DATA.read_text())
+    numbers["ResultsInvisibleSnr"] = f"{fp['invisible_snr']:g}"
+    by = {(c["band"], c["n_sources"]): c for c in fp["configs"]}
+    for (band, n), word in (((b, k), f"{b.title()}{WORDS[k].title()}") for b, k in CONFIGS):
+        numbers[f"Results{word}FaintFlowPrior"] = f"{by[band, n]['flow_over_prior']:.2f}"
+        numbers[f"Results{word}FaintMcmcPrior"] = f"{by[band, n]['mcmc_over_prior']:.2f}"
+    others = [by[k] for k in by if k not in (("narrow", 8), ("full", 16))]
+    numbers["ResultsFaintFlowPriorLo"] = f"{min(min(c['flow_over_prior'], c['mcmc_over_prior']) for c in others):.2f}"
+    numbers["ResultsFaintFlowPriorHi"] = f"{max(max(c['flow_over_prior'], c['mcmc_over_prior']) for c in others):.2f}"
+
+# ---- frame or flow (import_frame.py): f0 widths of the data-only frame and of the flow, against the chains ------------
+FRAME_DATA = style.PAPER / "data/runs/frame-vs-flow.json"
+if FRAME_DATA.is_file():
+    fr = json.loads(FRAME_DATA.read_text())
+    for tag, word in (("f4", "Four"), ("f8", "Eight"), ("f16", "Sixteen")):
+        if tag not in fr:
+            continue
+        for group, gword in (("ge40_lo", "Low"), ("ge40_hi", "High")):
+            g = fr[tag][group]
+            numbers[f"ResultsFull{word}Frame{gword}"] = f"{g['frame_over_mcmc']:.0f}"
+            numbers[f"ResultsFull{word}Contract{gword}"] = f"{1 / g['flow_over_frame']:.0f}"
+    for tag, word in (("n4", "Four"), ("f8", "Eight")):
+        if f"{tag}-fp32" in fr:
+            band = "Narrow" if tag[0] == "n" else "Full"
+            for group, gword in (("15-40", "Mid"), ("ge40_lo", "Loud")):
+                if group in fr[tag] and group in fr[f"{tag}-fp32"]:
+                    numbers[f"Results{band}{word}FpBf{gword}"] = f"{fr[tag][group]['flow_over_mcmc']:.2f}"
+                    numbers[f"Results{band}{word}FpThirtyTwo{gword}"] = f"{fr[tag + '-fp32'][group]['flow_over_mcmc']:.2f}"
+                    numbers[f"Results{band}{word}FpBfCover{gword}"] = f"{fr[tag][group]['flow_within_1']:.2f}"
+                    numbers[f"Results{band}{word}FpThirtyTwoCover{gword}"] = f"{fr[tag + '-fp32'][group]['flow_within_1']:.2f}"
+
+# ---- sampler steps and robustness (import_probes.py; laptop GPU, 2026-11-13) ------------------------------------------
+PROBE_DATA = style.PAPER / "data/runs/probes.json"
+if PROBE_DATA.is_file():
+    pr = json.loads(PROBE_DATA.read_text())
+    STEP_WORDS = {8: "Eight", 16: "Sixteen", 32: "ThirtyTwo", 64: "SixtyFour"}
+    for cfg, band in (("n4", "Narrow"), ("f8", "Full")):
+        if cfg not in pr["sampler"]:
+            continue
+        sp = pr["sampler"][cfg]
+        numbers[f"ResultsSampler{band}Max"] = str(sp["max_steps"])
+        for row in sp["rows"]:
+            if row["steps"] in STEP_WORDS and row["width_over_max_loud"] is not None:
+                numbers[f"ResultsSampler{band}{STEP_WORDS[row['steps']]}"] = f"{row['width_over_max_loud']:.2f}"
+    if "n4" in pr["robustness"]:
+        rb = pr["robustness"]["n4"]
+        numbers["ResultsRobustInjections"] = str(rb["injections"] if not isinstance(rb["injections"], list) else len(rb["injections"]))
+        numbers["ResultsRobustDraws"] = str(rb["draws"])
+        c, b = rb["cases"]["noise ×2"], rb["cases"]["baseline"]
+        numbers["ResultsRobustNoiseFaintWidth"] = f"{c['faint']['width_over_baseline']:.2f}"
+        numbers["ResultsRobustNoiseFaintOffset"] = f"{c['faint']['offset_over_width']:.1f}"
+        numbers["ResultsRobustNoiseFaintOffsetBase"] = f"{b['faint']['offset_over_width']:.1f}"
+        numbers["ResultsRobustNoiseFaintWithin"] = f"{100 * c['faint']['within_one']:.0f}"
+        numbers["ResultsRobustBaseFaintWithin"] = f"{100 * b['faint']['within_one']:.0f}"
+        numbers["ResultsRobustNoiseLoudWidth"] = f"{c['loud']['width_over_baseline']:.2f}"
+        numbers["ResultsRobustNoiseLoudWithin"] = f"{100 * c['loud']['within_one']:.0f}"
+        numbers["ResultsRobustBaseLoudWithin"] = f"{100 * b['loud']['within_one']:.0f}"
+        numbers["ResultsRobustNoiseSlotSnr"] = f"{c['claimed_slot_snr']:.1f}"
+        numbers["ResultsRobustBaseSlotSnr"] = f"{b['claimed_slot_snr']:.1f}"
+        numbers["ResultsRobustMoreFaintFound"] = f"{100 * rb['cases']['one source more']['faint']['found']:.0f}"
+        numbers["ResultsRobustEmptySlotSnr"] = f"{rb['cases']['empty window']['claimed_slot_snr']:.1f}"
+        others = [rb["cases"][k]["loud"]["within_one"] for k in ("noise ×0.5", "f0 past the edge", "fdot above the prior", "SNR above the prior")]
+        numbers["ResultsRobustOtherWithinLo"] = f"{100 * min(others):.0f}"
+        numbers["ResultsRobustOtherWithinHi"] = f"{100 * max(others):.0f}"
+    if "f8" in pr["robustness"]:
+        rf = pr["robustness"]["f8"]["cases"]
+        c, b = rf["noise ×2"], rf["baseline"]
+        numbers["ResultsRobustFullNoiseLoudWidth"] = f"{c['loud']['width_over_baseline']:.2f}"
+        numbers["ResultsRobustFullNoiseLoudOffset"] = f"{c['loud']['offset_over_width']:.1f}"
+        numbers["ResultsRobustFullNoiseLoudOffsetBase"] = f"{b['loud']['offset_over_width']:.1f}"
+        numbers["ResultsRobustFullNoiseLoudWithin"] = f"{100 * c['loud']['within_one']:.0f}"
+        numbers["ResultsRobustFullBaseLoudWithin"] = f"{100 * b['loud']['within_one']:.0f}"
+        numbers["ResultsRobustFullNoiseSlotSnr"] = f"{c['claimed_slot_snr']:.1f}"
+        numbers["ResultsRobustFullBaseSlotSnr"] = f"{b['claimed_slot_snr']:.1f}"
+        others = [rf[k]["loud"]["within_one"] for k in ("noise ×0.5", "f0 past the edge", "fdot above the prior", "SNR above the prior")]
+        numbers["ResultsRobustFullOtherWithinLo"] = f"{100 * min(others):.0f}"
+        numbers["ResultsRobustFullOtherWithinHi"] = f"{100 * max(others):.0f}"
 
 style.save_numbers("results", numbers)

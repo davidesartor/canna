@@ -376,8 +376,7 @@ but \FlowMatchingWidthNarrowWeak{} of it at the narrow band's ideal width for \a
 $w = s_0$, it returns \FlowMatchingWidthFrame{} of it with \FlowMatchingOdeSteps{} steps: the frame
 removes the collapse, as long as it is not decades wider than the posterior. A trained frame and
 flow are not exact, so the widths of trained models have to be measured.
-\textcolor{red}{TODO(new runs): narrow-B/full-B $f_0$, $\fdot$ widths and calibration against the
-number of steps.}
+For the trained models the widths settle by 32 to 64 steps (\cref{app:evaluation-sampler}).
 
 \begin{algorithm}[t]
   \caption{One training step, written for one observation; the batch holds

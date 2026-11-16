@@ -1,4 +1,4 @@
-# canna.lisa takeaways (current state, 2026-11-11, F67)
+# canna.lisa takeaways (current state, 2026-11-16, F68)
 
 One `0<nn>-<slug>.md` per finding F<nn>, outcome first. The literature lives in
 [../literature/](../literature/): [GW and cosmology
@@ -7,6 +7,18 @@ schedules](../literature/optimizers-schedules/000-takeaways.md), [diffusion and 
 matching](../literature/diffusion-flow-matching/000-takeaways.md) and the others; the findings
 keep only its consequences for our code.
 
+- **The crowded references are stuck, the full band's high-f misses are the flow's refinement, and the
+  Gaussian mock is the validation null** ([F68](068-reference-stuck-frame-refinement-mock-null.md)):
+  below SNR 3 the flow's f0 width is 0.84–0.99× the prior's everywhere, but the narrow-8 and full-16
+  joint chains' only 0.19× and 0.60× (walkers never leave their Fisher start), so F67's faint ratios for
+  those two measured the reference. Above 10 mHz the flow narrows its frame only 2–5-fold (15–24-fold
+  below). The Gaussian mock fails every γ test at 1000 injections and its log-likelihood offset grows
+  with S (+0.14 → +0.41), so only the excess over it (+0.07 to +0.20) and the overlap offset (mock
+  +0.05, flows +0.15 to +0.22, narrow-2 included) mean anything. Long chains (2026-11-16), read
+  label-free (the f0-sorted traces swap ranks when a faint source crosses a loud one): the references
+  hold from SNR 7 up (narrow-8 prior-start 1.11x, narrow-4 0.93x, every loud source found); at SNR
+  3-7 the Fisher start (found 0.90-1.00) and the prior start (0.17-0.29, still rising at 400k)
+  bracket the answer without reaching it, so prior-started references would not help.
 - **The source-count runs are in** ([F67](067-source-count-results.md)): narrow-2 matches the joint
   MCMC (every width 1.00–1.17× at SNR 7–40, 92% found at 7–15); each doubling of S widens the flow
   (narrow-8 f₀ 1.4–2.1×). The full band is close only below SNR 15: loud f₀ 9.7 / 10.7 / 23.6× the

@@ -65,9 +65,11 @@ the Gaussian mock's on the same injections; proper score skill. Coverage after r
 \cref{app:results-mcmc}.}
 % updated 2026-11-11: the validation pass of the source-count runs is back (app:results-validation).
 
-\paragraph{Joint posteriors.} \textcolor{red}{TODO(new runs): a corner plot of flow, joint
-\acs{mcmc} and Fisher draws on one crowded window; a close pair of similar
-\acs{snr}, whose draws, in order of $f_0$, are relabelled to the injections only for display.}
+\paragraph{Joint posteriors.} \textcolor{red}{TODO(move from \cref{app:results-corners}): one of the six
+corner plots of flow, joint \acs{mcmc} and Fisher draws on a close pair of similar \acs{snr}
+(\cref{fig:corner-narrow-4}, say), whose draws, in order of $f_0$, are relabelled to the injections only
+for display.}
+% updated 2026-11-13: the corner plots exist (app:results-corners).
 
 \paragraph{Cost.} \FlowMatchingCostDraws{} draws of a window take
 \qty{\FlowMatchingCostNarrow}{\second} on one GPU in the narrow band and
@@ -75,4 +77,5 @@ the Gaussian mock's on the same injections; proper score skill. Coverage after r
 chain of a narrow-band eval injection takes \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} on
 \McmcJointCores{} CPU cores (\cref{app:mcmc-cost}).
 % updated 2026-11-09: References paragraph, "all \RelatedWorkParameters{} parameters" (S = 4) -> "all 8S".
-\textcolor{red}{TODO(new runs): sampler steps at which the widths settle, and the cost there.}
+The widths settle by 32 to 64 steps (\cref{app:evaluation-sampler}).
+% updated 2026-11-13: sampler sweep on the source-count runs.

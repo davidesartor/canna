@@ -322,9 +322,11 @@ a linear-Gaussian model and approximately calibrated here. The ladder perturbs i
 \EvaluationMockScorecardSources{} scorecard sources, \EvaluationMockInjections{} validation
 injections and \EvaluationMockReferenceSources{} sources with per-source reference chains; the
 full band, with \EvaluationMockInjectionsFull{} validation injections, agrees.
-\textcolor{red}{TODO(new runs): the mock ladder, the Fisher forecast and the robustness probe ran on
-injections from the previous prior, whose second flow coordinate was $x_{\Mc}$; rerun them on
-catalogue-prior injections.}
+The Gaussian mock has been rerun on the catalogue prior for each source-count problem, as the null of the
+runs' validation table (\cref{tab:results-validation}).
+\textcolor{red}{TODO(new runs): the rest of the ladder and the Fisher forecast ran on injections from the
+previous prior, whose second flow coordinate was $x_{\Mc}$; rerun them on catalogue-prior injections, or
+cut this table down to the Gaussian mock.}
 
 \begin{table*}[t]
   \centering
@@ -445,16 +447,40 @@ and a collapse only narrows, so widths are read at a step count past which they 
 Each trained flow is resampled on its eval injections at 4 to 256 steps on uniform, power and
 log-spaced grids in $1-s$, with the midpoint rule and with Euler, and its per-source widths,
 offsets and \ac{crps} are compared with the finest log-spaced grid.
-\textcolor{red}{TODO(new runs): the step count at which narrow-B and full-B widths settle, and
-whether \EvaluationOdeSteps{} steps are past it.}
+On the source-count runs (narrow band, $S=4$, and full band, $S=8$, main runs; uniform grid,
+midpoint rule, 8 to \ResultsSamplerNarrowMax{} steps, 128 draws per window) the median $f_0$ width of the
+sources at $\snr\ge15$, over its width at \ResultsSamplerNarrowMax{} steps, is \ResultsSamplerNarrowEight,
+\ResultsSamplerNarrowSixteen, \ResultsSamplerNarrowThirtyTwo{} and \ResultsSamplerNarrowSixtyFour{} at 8, 16,
+32 and 64 steps on the narrow band, and \ResultsSamplerFullEight{} already at 8 steps on the full band: \EvaluationOdeSteps{} steps are within
+\qty{2}{\percent} of converged, and the widths grow, never shrink, with more steps.
+\textcolor{red}{TODO(runs): the power and log grids and Euler on these runs; only the uniform midpoint
+grid was rerun.}
 
 The flow is trained on one noise \ac{psd}, a fixed prior and exactly $S$ sources
 per window. Each robustness case changes one of these on the eval injections, keeping the
 window, truth and noise: the \ac{psd} halved and doubled; the loudest source's $f_0$, $\fdot$ or
 amplitude past the prior's bulk; the quietest source's amplitude below it; one source removed or
 added; and an empty window. Each source is compared with itself in distribution.
-\textcolor{red}{TODO(new runs): whether narrow-B and full-B widen or return confident wrong
-answers out of distribution.}
+On the narrow band with $S=4$ (\ResultsRobustInjections{} eval windows, \ResultsRobustDraws{} draws) the
+flow is robust to its prior's edges and fragile to its noise model. With the loudest source's $f_0$, $\fdot$
+or amplitude past the prior, or the noise halved, the share of sources at $\snr\ge7$ whose truth lies within
+one flow width of its median is \ResultsRobustOtherWithinLo{} to \qty{\ResultsRobustOtherWithinHi}{\percent},
+against \qty{\ResultsRobustBaseLoudWithin}{\percent} in distribution. With the noise doubled the flow,
+which whitens by its own \ac{psd}, reads noise as signal: its slots claim a median \ac{snr} of
+\ResultsRobustNoiseSlotSnr{} instead of \ResultsRobustBaseSlotSnr, the faint sources' $f_0$ widths shrink
+to \ResultsRobustNoiseFaintWidth{} of their in-distribution widths while their offsets double
+(\ResultsRobustNoiseFaintOffsetBase{} to \ResultsRobustNoiseFaintOffset{} widths), and only
+\qty{\ResultsRobustNoiseFaintWithin}{\percent} of them cover the truth within one width
+(\qty{\ResultsRobustBaseFaintWithin}{\percent} in distribution): confident and wrong. A fifth source in a
+four-slot model costs the faint sources (\qty{\ResultsRobustMoreFaintFound}{\percent} still matched), and
+an empty window gets slots of median \ac{snr} \ResultsRobustEmptySlotSnr.
+The full band with $S=8$ shows the same with its loud sources: with the noise doubled their widths grow
+only to \ResultsRobustFullNoiseLoudWidth{} of the in-distribution widths while their offsets go from
+\ResultsRobustFullNoiseLoudOffsetBase{} to \ResultsRobustFullNoiseLoudOffset{} widths, so
+\qty{\ResultsRobustFullNoiseLoudWithin}{\percent} cover the truth within one width
+(\qty{\ResultsRobustFullBaseLoudWithin}{\percent} in distribution), and the slots claim a median \ac{snr}
+of \ResultsRobustFullNoiseSlotSnr{} instead of \ResultsRobustFullBaseSlotSnr; the other cases keep
+\ResultsRobustFullOtherWithinLo{} to \qty{\ResultsRobustFullOtherWithinHi}{\percent}.
 
 The eval pass of every run is in \cref{app:results}, scored against the joint chains and, with the
 truth, for detection and coverage, and its validation pass, which never sees the truth, is in

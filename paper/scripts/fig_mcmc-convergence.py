@@ -8,7 +8,7 @@ from matplotlib.ticker import FuncFormatter, NullFormatter
 import style
 from style import plt
 
-DATA = style.REPO / "reports/mcmc/data/convergence"
+DATA = style.REPO / "reports/mcmc/data/convergence-261113"  # updated 2026-11-16: narrow-4 long chains, catalogue prior
 ITERATIONS = FuncFormatter(lambda x, _: f"{x / 1000:g}k" if x else "0")
 
 summary = json.loads((DATA / "summary.json").read_text())

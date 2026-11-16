@@ -70,7 +70,10 @@ band. Over the six references in use, the largest $\hat R$ is \ResultsMcmcRhatMa
 parameter, which the comparison of \cref{app:results} has to bear in mind. The chains' own
 coverage of the true $f_0$ at the \qty{68}{\percent} level is
 \ResultsMcmcFzeroCoverLo--\ResultsMcmcFzeroCoverHi.
-\textcolor{red}{TODO(new chains): every number and figure below comes from earlier joint chains on
+% updated 2026-11-16: the convergence study (app:mcmc-convergence) now uses long chains on the narrow S=4 problem
+% under the catalogue prior; the TODO covers the rest of the appendix.
+\textcolor{red}{TODO(new chains): apart from the convergence study of \cref{app:mcmc-convergence}, which
+uses long chains of the current narrow-band reference, every number and figure below comes from earlier joint chains on
 \McmcJointWindows{} eval injections of a previous catalogue (\McmcJointWindowList), run under the
 previous prior, with $\ln\Mc$ in place of $\ln\fdot$ (at fixed $f_0$ a rescaled $\ln\fdot$, here
 called the drift coordinate), amplitudes log-uniform in $\snr_s$, and starts with chirp masses
@@ -156,28 +159,36 @@ length passes when every parameter has $\acs{ess}\ge\McmcConvEssCrit$ per seed (
 a width to a few per cent), $\hat R<\McmcConvRhatCrit$ across seeds, and the same drift
 tolerances.
 
-\Cref{fig:mcmc-convergence} shows the result. At the paper's setting the kept draws pass on every
-injection: $\tau_{\max}$ is \McmcConvTauLo--\McmcConvTauHi{} iterations, the \ac{ess} at least
-\McmcConvEssLo{} per seed, $\hat R\le\McmcConvRhatHi$, and the pooled drift at most
-\McmcConvDriftMedianHi{} in the median and \McmcConvDriftWidthHi{} in the width. The strict
-burn-in test holds only on injections \McmcConvPassing, which settle after
-\McmcConvPassingBurns{} iterations. Of injections \McmcConvFailing, the first fails narrowly, its
-worst later segment at \McmcConvMildAfter{} times the tolerance in \McmcConvMildParam. The second
-never settles: in one seed \McmcConvWorstParam{} (\ac{snr} \McmcConvWorstSnr) hops between sky
-modes, from \McmcConvWorstFirst{} times the tolerance in the first segment to
-\McmcConvWorstAfter{} times it after the burn-in. Pooled over the kept length and the seeds these
-excursions average out, so that injection's reference for that parameter is a mixture of modes
-with unpinned weights: fair for widths, weak for the shape of that marginal.
+% updated 2026-11-16: long chains of the narrow S=4 reference (catalogue prior), read label-free
+The long chains here are those of the narrow band with four sources, on injections \McmcConvRuns.
+\Cref{fig:mcmc-convergence} shows the result. Over the paper's kept draws $\tau_{\max}$ is
+\McmcConvTauLo--\McmcConvTauHi{} iterations, the \ac{ess} at least \McmcConvEssLo{} per seed and
+$\hat R\le\McmcConvRhatHi$, but the drift test fails on every injection, for most marginals and at
+every burn-in: at worst \McmcConvWorstAfter{} times the tolerance, in \McmcConvWorstParam{} (\ac{snr}
+\McmcConvWorstSnr). That failure is mostly bookkeeping. Each draw lists its sources by $f_0$, so when a
+faint source wanders past a loud one their ranks swap and the loud source's rank marginal picks up
+the faint one's draws. Read without labels, the loud sources are settled: taking, in each draw, the
+source nearest a loud source's true $f_0$ ($\snr\ge7$), its width moves by a factor
+\McmcConvLoudDriftLo--\McmcConvLoudDriftHi{} between the first and last quarter of the chain and ends
+\McmcConvLoudChainRef{} times the reference's. Two things do drift, both below $\snr=7$. Sources under
+$\snr=3$ spread from \McmcConvFaintPriorFirst{} to \McmcConvFaintPriorLast{} times the prior's $f_0$
+width (of the $f_0$-ordered sources), where the reference holds them at \McmcConvFaintRefPrior{}
+and the flow at \McmcConvFaintFlowPrior. Sources at $\snr=3$--7 are slowly lost: the share of draws
+with some source within \McmcLabelFreeFoundBins{} bins of the true $f_0$ falls from
+\McmcConvMidFoundFirst{} to \McmcConvMidFoundLast{} over the four injections (reference
+\McmcConvMidFoundRef, flow \McmcConvMidFoundFlow). The reference is therefore sound at $\snr\ge7$,
+somewhat narrow for invisible sources, and an upper bound on how often a source at $\snr=3$--7 is
+localised.
 
 \begin{figure}[!htbp]
   \centering
   \includegraphics[width=\textwidth]{figures/mcmc-convergence.pdf}
-  \caption{Convergence of the reference chains, one line per injection. (a) Worst drift of any
-  marginal in each segment, in units of the tolerance, against the segment's start; injections
-  \McmcConvPassing{} drop below one before the burn-in used, injections \McmcConvFailing{} do not:
-  the first hovers near it, and the second, with a source hopping between sky modes, stays above.
-  (b) Smallest \acs{ess} per seed and (c) largest $|\hat R - 1|$ against the kept length; at the
-  length used every injection clears both thresholds (horizontal lines).}
+  % updated 2026-11-16
+  \caption{Convergence of the narrow-band reference chains with four sources, one line per
+  injection. (a) Worst drift of any marginal in each segment, in units of the tolerance, against the
+  segment's start. No injection drops below one: faint sources crossing loud ones in $f_0$ swap their
+  ranks, and sources below $\snr=7$ keep drifting (text). (b) Smallest \acs{ess} per seed and (c)
+  largest $|\hat R - 1|$ against the kept length, with the thresholds as horizontal lines.}
   \label{fig:mcmc-convergence}
 \end{figure}
 

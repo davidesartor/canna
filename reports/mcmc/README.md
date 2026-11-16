@@ -35,6 +35,12 @@
 - **Cost.** A 400 000-iteration joint chain takes 4.4–5.1 h on 2 CPUs and needs 16 GB: jexplore
   leaks about 64 MB per 2000-iteration chunk, so 8 GB runs out of memory.
 
+> 2026-11-16: `data/convergence-261113/` holds the convergence study of the current narrow-band reference
+> with four sources (problem `cc4b9e9aa0`, injections 16/48/80/112, 4 seeds x 400 000 iterations) and
+> the label-free reading of it and of the prior-started narrow S=8 chains
+> (`scripts/label_free_widths.py`, F68). The paper's convergence section reads it; the page below
+> still shows `data/convergence/`.
+
 ## What the page shows
 
 The takeaways above are the record of the 2026-10-24 chains (the old 10-window catalogue:

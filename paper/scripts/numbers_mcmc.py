@@ -16,7 +16,7 @@ from canna.lisa.problem import LisaGB
 
 REPORTS = style.REPO / "reports"
 JOINT = REPORTS / "mcmc"
-CONVERGENCE = REPORTS / "mcmc/data/convergence"
+CONVERGENCE = REPORTS / "mcmc/data/convergence-261113"  # updated 2026-11-16: narrow-4 long chains, catalogue prior
 FISHER_BAND = (0.8, 1.25)
 HIGH_SNR, LOW_SNR = 100.0, 40.0
 SEED_TOL = 0.03
@@ -215,6 +215,71 @@ print(
     f"posterior injection {POSTERIOR_INJECTION}: faint source {faint}, {far.mean():.3f} of f0 draws > 1 bin off"
 )
 
+# updated 2026-11-16: label-free reading of the long chains (reports/mcmc/scripts/label_free_widths.py, run on TREX).
+# The traces are f0-sorted per draw, so a faint source crossing a loud one mixes their ranks; a loud source (SNR >= 7)
+# takes the slot nearest its true f0 instead, and "found" is the share of draws with any slot within found_bins of
+# the true f0. Narrow S=4: the Fisher-started convergence chains; narrow S=8: chains with every SNR < 7 source started
+# from the prior (windows 66, 81, 51, 57).
+def labelfree(name: str) -> dict:
+    r = json.loads((CONVERGENCE / f"labelfree-{name}.json").read_text())
+    groups = {}
+    for rec in r["injections"]:
+        snr = np.array(rec["snr"])
+        for g, sel in (("faint", snr < r["faint_snr"]), ("mid", (snr >= r["faint_snr"]) & (snr < r["loud_snr"])),
+                       ("loud", snr >= r["loud_snr"])):
+            if not sel.any():
+                continue
+            d = groups.setdefault(g, {k: [] for k in ("q1", "q4", "ref", "flow", "prior", "fq1", "fq4", "fref", "fflow", "fprior")})
+            q, fq = np.array(rec["chain_quarters"]), np.array(rec["found_chain_quarters"])
+            for k, v in (("q1", q[0]), ("q4", q[3]), ("ref", rec["reference"]), ("flow", rec["flow"]), ("prior", rec["prior"])):
+                d[k] += list(np.asarray(v)[sel])
+            # found shares per window (median over the window's sources of the group)
+            for k, v in (("fq1", fq[0]), ("fq4", fq[3]), ("fref", rec["found_reference"]), ("fflow", rec["found_flow"]),
+                         ("fprior", rec["found_prior"])):
+                d[k].append(float(np.median(np.asarray(v)[sel])))
+    groups = {g: {k: np.asarray(v) for k, v in d.items()} for g, d in groups.items()}
+    return dict(found_bins=r["found_bins"], **groups)
+
+
+lf4, lf8 = labelfree("long-narrow-4"), labelfree("prior-narrow-8")
+med = lambda a: float(np.median(a))
+rng = lambda a, f="{:.2f}": (f.format(np.min(a)), f.format(np.max(a)))
+print(f"label-free narrow-4: loud chain/ref {med(lf4['loud']['q4'] / lf4['loud']['ref']):.2f}, faint chain/prior "
+      f"{med(lf4['faint']['q1'] / lf4['faint']['prior']):.2f} -> {med(lf4['faint']['q4'] / lf4['faint']['prior']):.2f}, "
+      f"mid found {lf4['mid']['fq1']} -> {lf4['mid']['fq4']}")
+print(f"label-free narrow-8: loud chain/ref {med(lf8['loud']['q4'] / lf8['loud']['ref']):.2f}, mid found "
+      f"{lf8['mid']['fq1']} -> {lf8['mid']['fq4']}, ref {lf8['mid']['fref']}, flow {lf8['mid']['fflow']}")
+labelfree_numbers = {
+    "McmcLabelFreeFoundBins": f"{lf4['found_bins']:g}",
+    # narrow S=4, Fisher start
+    "McmcConvLoudChainRef": f"{med(lf4['loud']['q4'] / lf4['loud']['ref']):.2f}",
+    "McmcConvLoudDriftLo": rng(lf4["loud"]["q4"] / lf4["loud"]["q1"])[0],
+    "McmcConvLoudDriftHi": rng(lf4["loud"]["q4"] / lf4["loud"]["q1"])[1],
+    "McmcConvFaintPriorFirst": f"{med(lf4['faint']['q1'] / lf4['faint']['prior']):.2f}",
+    "McmcConvFaintPriorLast": f"{med(lf4['faint']['q4'] / lf4['faint']['prior']):.2f}",
+    "McmcConvFaintRefPrior": f"{med(lf4['faint']['ref'] / lf4['faint']['prior']):.2f}",
+    "McmcConvFaintFlowPrior": f"{med(lf4['faint']['flow'] / lf4['faint']['prior']):.2f}",
+    "McmcConvMidFoundFirst": ", ".join(f"{x:.2f}" for x in lf4["mid"]["fq1"]),
+    "McmcConvMidFoundLast": ", ".join(f"{x:.2f}" for x in lf4["mid"]["fq4"]),
+    "McmcConvMidFoundRef": ", ".join(f"{x:.2f}" for x in lf4["mid"]["fref"]),
+    "McmcConvMidFoundFlow": ", ".join(f"{x:.2f}" for x in lf4["mid"]["fflow"]),
+    # narrow S=8, prior start for every SNR < 7 source
+    "McmcPriorStartLoudChainRef": f"{med(lf8['loud']['q4'] / lf8['loud']['ref']):.2f}",
+    "McmcPriorStartLoudFlowChain": f"{med(lf8['loud']['flow'] / lf8['loud']['q4']):.2f}",
+    "McmcPriorStartFaintChainPrior": f"{med(lf8['faint']['q4'] / lf8['faint']['prior']):.2f}",
+    "McmcPriorStartFaintRefPrior": f"{med(lf8['faint']['ref'] / lf8['faint']['prior']):.2f}",
+    "McmcPriorStartFaintFlowPrior": f"{med(lf8['faint']['flow'] / lf8['faint']['prior']):.2f}",
+    "McmcPriorStartMidFoundFirstLo": rng(lf8["mid"]["fq1"])[0],
+    "McmcPriorStartMidFoundFirstHi": rng(lf8["mid"]["fq1"])[1],
+    "McmcPriorStartMidFoundLastLo": rng(lf8["mid"]["fq4"])[0],
+    "McmcPriorStartMidFoundLastHi": rng(lf8["mid"]["fq4"])[1],
+    "McmcPriorStartMidFoundRefLo": rng(lf8["mid"]["fref"])[0],
+    "McmcPriorStartMidFoundRefHi": rng(lf8["mid"]["fref"])[1],
+    "McmcPriorStartMidFoundFlowLo": rng(lf8["mid"]["fflow"])[0],
+    "McmcPriorStartMidFoundFlowHi": rng(lf8["mid"]["fflow"])[1],
+    "McmcPriorStartChance": f"{med(lf8['mid']['fprior']):.2f}",
+}
+
 style.save_numbers(
     "mcmc",
     {
@@ -310,5 +375,6 @@ style.save_numbers(
         # cost
         "McmcCostJointLo": f"{joint_hours.min():.1f}",
         "McmcCostJointHi": f"{joint_hours.max():.1f}",
+        **labelfree_numbers,
     },
 )

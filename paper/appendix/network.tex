@@ -294,4 +294,10 @@ samples reach \NetworkSnrTop{}. The source stream's attention logits are compute
 bfloat16 inputs; it has only \NetworkSourcesWord{} source and \NetworkSinksWord{} sink queries
 per draw. In bfloat16 on Ampere or newer GPUs the data stream's self-attention runs as a fused
 flash-attention kernel \citep{dao2022flashattention}, so its logits are never materialised.
-\textcolor{red}{TODO(new runs): narrow-B/full-B scorecard with a float32 backbone at evaluation.}
+A float32 backbone at evaluation barely changes the trained models: the median $f_0$ width over the
+joint chains' at $\snr=15$--40 goes from \ResultsNarrowFourFpBfMid{} to \ResultsNarrowFourFpThirtyTwoMid{}
+(narrow band, $S=4$) and from \ResultsFullEightFpBfMid{} to \ResultsFullEightFpThirtyTwoMid{} (full band,
+$S=8$), and on loud full-band sources below \qty{10}{\milli\hertz} from \ResultsFullEightFpBfLoud{} to
+\ResultsFullEightFpThirtyTwoLoud; the share of sources within one width of the truth moves by at most three
+points (256 draws per eval window, \texttt{outputs/runs/261103-frame-vs-flow.py} with
+\texttt{LISA\_BF16=none}). bfloat16 is not what keeps the loud sources wide.

@@ -59,8 +59,10 @@ sources with an $f_0$ width below one bin. Coverage: share of true flow coordina
 central \qty{68}{\percent} and \qty{95}{\percent} intervals, over the eight coordinates and the sources
 of the band, after relabelling to the truth (optimistic, \cref{app:evaluation-matching}). $\alpha$ and
 $\delta$ are equatorial. Below $\snr=7$ (not shown) the ratios are
-\ResultsFaintWidthLo--\ResultsFaintWidthHi{} for every parameter and model but narrow $S=8$, whose $f_0$
-ratio is \ResultsNarrowEightFaintFzero.}
+\ResultsFaintWidthLo--\ResultsFaintWidthHi{} for every parameter of the other four models. For narrow
+$S=8$ ($f_0$ ratio \ResultsNarrowEightFaintFzero) and full $S=16$ ($f_0$ \ResultsFullSixteenFaintFzero)
+the chains are stuck at their Fisher start there and the ratios measure the reference, not the flow
+(\cref{app:results-mcmc}).}
 \label{tab:results-widths}
 \small
 \begin{tabular}{@{}llrrrrrrrrrr@{}}
@@ -85,13 +87,43 @@ main runs at theirs; the full band with $S=4$ has no cooled main run.}
 \paragraph{Faint sources.}
 Below $\snr=7$ the target is close to the prior, and the flow returns it: every width is within a few
 per cent of the chains' (\cref{tab:results-widths}). The exception is the narrow band with $S=8$, whose
-faint sources come out \ResultsNarrowEightFaintFzero{} times wider in $f_0$ than the chains'. A likely cause, not yet checked, is that with eight sources in
-\PriorsNarrowW{} bins faint neighbours overlap within their prior widths, where the frequency order of
-the slots no longer tells them apart. The full band with $S=16$ shows the same, more mildly: $f_0$
-\ResultsFullSixteenFaintFzero{} times the chains' width, and a sky
-\ResultsFullSixteenFaintSkyLo--\ResultsFullSixteenFaintSkyHi{} times it, narrower than the chains'.
-Its chains are the least converged of the six ($\hat R$ up to \ResultsFullSixteenMcmcRhat, \cref{app:mcmc}),
-and a faint sky is multimodal, so the narrower flow may be the chains' fault as much as the flow's.
+faint sources come out \ResultsNarrowEightFaintFzero{} times wider in $f_0$ than the chains', and the full band
+with $S=16$, whose $f_0$ is \ResultsFullSixteenFaintFzero{} times the chains' width and whose sky is
+\ResultsFullSixteenFaintSkyLo--\ResultsFullSixteenFaintSkyHi{} times it. In $f_0$ the chains, not the flow, are
+wrong, and the sky is measured against the same chains.
+Below $\snr=\ResultsInvisibleSnr$ the posterior is the prior, and the prior's own $f_0$ width (of the
+$f_0$-ordered sources) is the reference. The flow's is \ResultsNarrowEightFaintFlowPrior{} ($S=8$) and
+\ResultsFullSixteenFaintFlowPrior{} ($S=16$) times it, the chains' only \ResultsNarrowEightFaintMcmcPrior{} and
+\ResultsFullSixteenFaintMcmcPrior; for the other four problems both lie within
+\ResultsFaintFlowPriorLo--\ResultsFaintFlowPriorHi. The chains start from Fisher draws (\cref{app:mcmc}),
+which give even an $\snr=2$ source an $f_0$ width of a fraction of a bin, and with 64 or 128 parameters the
+ensemble never leaves that start for the faint sources. The faint-source ratios of narrow $S=8$ and full
+$S=16$ in \cref{tab:results-widths} therefore measure the reference. Separation from the nearest neighbour
+does not matter: narrow $S=8$'s.faint $f_0$ ratio is the same within one bin of a neighbour and ten to
+thirty bins away.
+% updated 2026-11-16: the prior-started long chains of narrow S=8 (the full S=16 ones ran out of memory)
+To check the rest of that reference we reran four injections of narrow $S=8$ (two seeds,
+\num{400000} iterations) with every source below $\snr=7$ started from the prior, and read the
+chains without labels (\cref{app:mcmc-convergence}). At $\snr\ge7$ the reference stands: the
+prior-started chains find every loud source, their $f_0$ widths are \McmcPriorStartLoudChainRef{}
+times the reference's, and the flow's \McmcPriorStartLoudFlowChain{} times theirs, so the rows of
+\cref{tab:results-widths} from $\snr=7$ up hold. Below $\snr=3$ the prior-started chains reach
+\McmcPriorStartFaintChainPrior{} of the prior's $f_0$ width, the flow \McmcPriorStartFaintFlowPrior{}
+and the reference \McmcPriorStartFaintRefPrior; none finds these sources more often than chance.
+Between $\snr=3$ and 7 the two starts bracket the answer from opposite sides. The share of draws with
+a source within \McmcLabelFreeFoundBins{} bins of the true $f_0$ is
+\McmcPriorStartMidFoundRefLo--\McmcPriorStartMidFoundRefHi{} per injection in the Fisher-started
+reference, but only \McmcPriorStartMidFoundLastLo--\McmcPriorStartMidFoundLastHi{} in the
+prior-started chains, still rising from \McmcPriorStartMidFoundFirstLo--\McmcPriorStartMidFoundFirstHi{}
+after \num{400000} iterations (chance: \McmcPriorStartChance). The flow's share,
+\McmcPriorStartMidFoundFlowLo--\McmcPriorStartMidFoundFlowHi, lies inside that bracket on three
+injections and below it on one. Switching between finding such a source and not is the slowest
+move of the sampler, and neither start reaches the balance in \num{400000} iterations, so a
+prior-started reference would be no better: below $\snr=7$ we score against the prior
+($\snr<3$) and report the bracket ($\snr=3$--7) instead. The long chains of narrow $S=4$ show the
+same drift from the Fisher start (\cref{app:mcmc-convergence}), much smaller with four sources.
+The prior-started chains of full $S=16$ ran out of memory and were not rerun; we take its reference to
+behave as narrow $S=8$'s.
 
 \paragraph{The narrow band.}
 With two sources per window the flow matches the chains: at $\snr=7$--40 every width ratio is
@@ -144,8 +176,16 @@ loud sources, with $f_0$ widths \ResultsFullFourFzeroLowBand, \ResultsFullEightF
 \qty{\ResultsFullFourFoundHigh}{\percent} to \qty{\ResultsFullSixteenFoundHigh}{\percent}, and below it
 only from \qty{\ResultsFullFourFoundLowBand}{\percent} to \qty{\ResultsFullSixteenFoundLowBand}{\percent}. There the Doppler shift and the
 chirp spread a source over the most bins (\cref{app:forward-model}).
-\textcolor{red}{TODO(analysis, needs the checkpoints): whether the frame or the flow is the wide part on
-these sources.}
+The wide part is mostly the flow's refinement. The frame, computed from the data alone
+(\cref{app:network}), is wide by design on loud sources: on those below
+\qty{\ResultsFullSplitMhz}{\milli\hertz} its $f_0$ width is \ResultsFullFourFrameLow,
+\ResultsFullEightFrameLow{} and \ResultsFullSixteenFrameLow{} times the chains' ($S=4$, 8, 16), and the flow
+narrows it \ResultsFullFourContractLow, \ResultsFullEightContractLow{} and
+\ResultsFullSixteenContractLow-fold. Above \qty{\ResultsFullSplitMhz}{\milli\hertz} the frame is about twice
+as wide again (\ResultsFullFourFrameHigh, \ResultsFullEightFrameHigh{} and \ResultsFullSixteenFrameHigh{}
+times), but the flow narrows it only \ResultsFullFourContractHigh, \ResultsFullEightContractHigh{} and
+\ResultsFullSixteenContractHigh-fold. (Selected models' eval windows, 256 draws per window, $f_0$ widths in bins;
+\texttt{outputs/runs/261103-frame-vs-flow.py}.)
 
 \paragraph{Calibration.}
 Every eval, main runs and forks, \ResultsEvals{} in all, covers
@@ -166,16 +206,17 @@ prior injections per model, \ResultsValidationDraws{} draws each, ranks of the t
 (\cref{app:evaluation}), $p$-values of the \acs{ecdf} $\gamma$ test. Strata are by the draws' median own
 \ac{snr}, a function of the data alone; $n$ is the number of sources in the stratum. Coordinates: the
 smallest $p$ of the eight flow coordinates. \acs{tarp} per source and joint over the window. Overlap and
-own \ac{snr} per source, log-likelihood per window. The last two columns read the log-likelihood ranks:
-the mean rank over the number of draws minus one half ($+0.5$: the truth fits the data better than every
-draw) and the share of ranks in the middle half (one half for a calibrated posterior).}
+own \ac{snr} per source, log-likelihood per window. Offset: the mean rank over the number of draws minus
+one half ($+0.5$: the truth's overlap or log-likelihood beats every draw's); middle: the share of
+log-likelihood ranks in the middle half (one half for a calibrated posterior). Under each model's first
+row, the Gaussian mock of \cref{app:evaluation-mocks} on the same problem and injections.}
 \label{tab:results-validation}
 \small
-\begin{tabular}{@{}llrcccccccc@{}}
+\begin{tabular}{@{}llrccccccccc@{}}
 \toprule
-& & & \multicolumn{6}{c}{$p$-value} & \multicolumn{2}{c}{log-lik.\ rank} \\
-\cmidrule(lr){4-9}\cmidrule(l){10-11}
-model & $\widehat{\snr}$ & $n$ & coord. & \acs{tarp} & \acs{tarp} joint & overlap & own \acs{snr} & log-lik. & offset & middle \\
+& & & \multicolumn{6}{c}{$p$-value} & overlap & \multicolumn{2}{c}{log-lik.\ rank} \\
+\cmidrule(lr){4-9}\cmidrule(lr){10-10}\cmidrule(l){11-12}
+model & $\widehat{\snr}$ & $n$ & coord. & \acs{tarp} & \acs{tarp} joint & overlap & own \acs{snr} & log-lik. & offset & offset & middle \\
 \midrule
 \ResultsValidationRows
 \bottomrule
@@ -183,21 +224,120 @@ model & $\widehat{\snr}$ & $n$ & coord. & \acs{tarp} & \acs{tarp} joint & overla
 \end{table*}
 
 The validation pass draws every model on prior injections and ranks the truth among the draws, so it
-needs neither chains nor relabelling (\cref{app:evaluation}). \Cref{tab:results-validation} reads like
-the mocks of \cref{tab:evaluation-mocks}. The parameter ranks pass or fail at the per-cent level, as
-the Gaussian mock does: a correct posterior that is wider or narrower by tens of per cent on a few
-sources does not show there. The data-space ranks reject every model at $p<0.001$, and always in one
-direction: the true signal overlaps the data more than the drawn signals do, and the truth's
-log-likelihood is above nearly every draw's. The size of that offset follows the comparison with the
-chains. The narrow band with $S=2$, within a few per cent of the chains, has the smallest offset and
-keeps more than a quarter of its ranks in the middle half; every other model, wider than the chains on
-some parameters (\cref{tab:results-widths}), puts the truth above all draws on most windows. Over $8S$ parameters a modest excess
-width in each adds up to a large loss of likelihood, which is what the data-space ranks are built to
-see. The Gaussian mock is rejected by the same test (\cref{tab:evaluation-mocks}), so the $p$-value
-alone does not say the flow is wrong; the offset's growth with $S$ and band, matched to the width
-ratios, does.
-\textcolor{red}{TODO(analysis): the Gaussian mock's offset on the same strata, to put a null next to
-these; the energy scores against it.}
+needs neither chains nor relabelling (\cref{app:evaluation}). Each model sits in
+\cref{tab:results-validation} above the Gaussian mock of the same problem, the linearised posterior of
+\cref{app:evaluation-mocks}, which is close to calibrated in its flow coordinates. With
+\ResultsValidationInjections{} injections the mock is rejected by every test, coordinates and \acs{tarp}
+included, so the $p$-values here no longer separate a good posterior from a bad one; the offsets do. The
+log-likelihood offset grows with the number of parameters for the mock as well
+(\ResultsMockLikeOffsetLo{} to \ResultsMockLikeOffsetHi{} from narrow $S=2$ to full $S=16$): over $8S$
+coordinates a near-Gaussian approximation of a non-Gaussian posterior already loses likelihood against the
+truth. Every flow is above its mock, by \ResultsLikeExcessLo{} to \ResultsLikeExcessHi{}
+(\cref{fig:results-rank-ecdf}, top). The overlap rank is the clearer signal (\cref{fig:results-rank-ecdf},
+bottom). The mock's offset is \ResultsMockOverlapOffsetLo{} to \ResultsMockOverlapOffsetHi{} on
+every problem, the flows' \ResultsFlowOverlapOffsetLo{} to \ResultsFlowOverlapOffsetHi, narrow $S=2$
+included, whose widths match the chains' (\cref{tab:results-widths}): its drawn signals overlap the data
+less than the truth's although their marginals have the right widths, which points at a parameter the width
+table leaves out, most likely the phases.
+\textcolor{red}{TODO(analysis): the overlap offset per coordinate group (phases fixed to the truth, then
+the sky), to find which parameter the narrow-band flow gets wrong.}
+
+% updated 2026-11-16: the rank-ECDF figure (scripts/import_ranks.py, fig_rank-ecdf.py)
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/rank-ecdf.pdf}
+  \caption{\acs{ecdf} of the truth's rank among the \ResultsValidationDraws{} draws, minus the uniform
+  \acs{ecdf}, for the joint log-likelihood (top, one rank per window) and the overlap (bottom, one rank per
+  source) of the validation pass of \cref{tab:results-validation}: each band and source count's model
+  (solid) and its Gaussian mock on the same injections (dashed), with the simultaneous
+  \qty{95}{\percent} band of the $\gamma$ test for uniform ranks (shaded). Below zero, the ranks pile up
+  high: the true signal fits the data better than the drawn ones. Every curve leaves the band, the mock's
+  too; the flows' log-likelihood curves run below their mocks', and their overlap curves well below.}
+  \label{fig:results-rank-ecdf}
+\end{figure*}
+
+\subsection{Joint Posteriors on Crowded Windows}
+\label{app:results-corners}
+
+\Cref{fig:corner-narrow-2,fig:corner-narrow-4,fig:corner-narrow-8,fig:corner-full-4,fig:corner-full-8,fig:corner-full-16}
+show, for the model of each band and source count in \cref{tab:results-widths}, one eval window: its closest
+pair of sources at $\snr\ge15$ with \acp{snr} within a factor two (the closest pair at $\snr\ge7$ if there is
+none), with $f_0$, $\ln\mathcal{A}$ and right ascension of both. The draws are offsets from the truth, the
+sources taken in $f_0$ order and folded in $(\psi,\phi_0)$ as everywhere in this appendix; the axes span the
+central \qty{96}{\percent} of the flow and the chains together, so a few far-tail draws fall outside. The
+draws behind each figure are saved beside it (\texttt{data/corners}, from \texttt{scripts/import\_corners.py}).
+
+They show in single windows what the tables average. On the narrow band with $S=2$ the flow
+and the chains coincide, Fisher close by; the pair is 35 bins apart, since that problem has no close loud
+pair. With $S=4$ the pair, 4.6 bins apart, keeps its cores, and a few per cent of the flow's $f_0$ draws of
+the lower source sit on its neighbour, the off-peak share of \cref{app:results-mcmc}. With $S=8$ and two
+sources 0.7 bins apart the flow is wider than the chains in every parameter and its amplitudes have long
+tails. On the full band at $S=4$ the flow's $f_0$ peaks on the chains' but its tails reach several bins in
+$f_0$ and a tenth of a radian in the sky; at $S=8$ its posterior is multimodal where the chains
+have one mode; at $S=16$, on two sources at $\snr$ 68 and 51 only 0.02 bins apart, the flow is offset from
+the truth by about a bin in $f_0$ and \qty{0.3}{\radian} in the sky, where the chains sit on it.
+\textcolor{red}{TODO(text): pick one of these for the main text (\cref{sec:results-main}); the windows
+were chosen by the rule above, not by eye.}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/corner-narrow-2.pdf}
+\caption{Flow (orange), joint \ac{mcmc} (blue, filled) and Fisher (grey, dashed) on one eval window of the
+narrow band, $S=2$: \qty{68}{\percent} and \qty{95}{\percent} contours of two sources' $f_0$, $\ln\mathcal{A}$ and right
+ascension, offsets from the truth (\cref{app:results-corners}). The legend names the window, the two
+sources' \acp{snr} and their separation.}
+\label{fig:corner-narrow-2}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/corner-narrow-4.pdf}
+\caption{Flow (orange), joint \ac{mcmc} (blue, filled) and Fisher (grey, dashed) on one eval window of the
+narrow band, $S=4$: \qty{68}{\percent} and \qty{95}{\percent} contours of two sources' $f_0$, $\ln\mathcal{A}$ and right
+ascension, offsets from the truth (\cref{app:results-corners}). The legend names the window, the two
+sources' \acp{snr} and their separation.}
+\label{fig:corner-narrow-4}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/corner-narrow-8.pdf}
+\caption{Flow (orange), joint \ac{mcmc} (blue, filled) and Fisher (grey, dashed) on one eval window of the
+narrow band, $S=8$: \qty{68}{\percent} and \qty{95}{\percent} contours of two sources' $f_0$, $\ln\mathcal{A}$ and right
+ascension, offsets from the truth (\cref{app:results-corners}). The legend names the window, the two
+sources' \acp{snr} and their separation.}
+\label{fig:corner-narrow-8}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/corner-full-4.pdf}
+\caption{Flow (orange), joint \ac{mcmc} (blue, filled) and Fisher (grey, dashed) on one eval window of the
+full band, $S=4$: \qty{68}{\percent} and \qty{95}{\percent} contours of two sources' $f_0$, $\ln\mathcal{A}$ and right
+ascension, offsets from the truth (\cref{app:results-corners}). The legend names the window, the two
+sources' \acp{snr} and their separation.}
+\label{fig:corner-full-4}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/corner-full-8.pdf}
+\caption{Flow (orange), joint \ac{mcmc} (blue, filled) and Fisher (grey, dashed) on one eval window of the
+full band, $S=8$: \qty{68}{\percent} and \qty{95}{\percent} contours of two sources' $f_0$, $\ln\mathcal{A}$ and right
+ascension, offsets from the truth (\cref{app:results-corners}). The legend names the window, the two
+sources' \acp{snr} and their separation.}
+\label{fig:corner-full-8}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/corner-full-16.pdf}
+\caption{Flow (orange), joint \ac{mcmc} (blue, filled) and Fisher (grey, dashed) on one eval window of the
+full band, $S=16$: \qty{68}{\percent} and \qty{95}{\percent} contours of two sources' $f_0$, $\ln\mathcal{A}$ and right
+ascension, offsets from the truth (\cref{app:results-corners}). The legend names the window, the two
+sources' \acp{snr} and their separation.}
+\label{fig:corner-full-16}
+\end{figure*}
 
 \subsection{Longer Runs}
 \label{app:results-forks}
@@ -227,15 +367,5 @@ has loud $f_0$ widths \ResultsFullFourMainLoud{} times the chains', against \Res
 for its fork from epoch 32. Beyond epoch 32 the main runs gain on two configurations and lose on three
 (\cref{app:training-schedules}); with one seed per configuration, differences of a few hundredths of a
 nat are within the run-to-run spread we have not measured.
-
-\subsection{Not Yet Run}
-\label{app:results-pending}
-
-\begin{itemize}
-  \item \textcolor{red}{TODO(figure): rank \acs{ecdf} minus uniform with the simultaneous band, for the
-    log-likelihood and overlap ranks of \cref{tab:results-validation}.}
-  \item \textcolor{red}{TODO(runs): sampler steps at which the widths settle (\cref{app:evaluation-sampler})
-    and the robustness probes.}
-  \item \textcolor{red}{TODO(figure): corner plot of flow, joint \acs{mcmc} and Fisher draws on one
-    crowded eval window, from the runs' corner pages.}
-\end{itemize}
+\textcolor{red}{TODO(run, expensive, not launched): a second seed of the narrow band with $S=2$, about
+32 GPU hours on an A100, to measure that spread.}
