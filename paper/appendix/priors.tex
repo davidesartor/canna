@@ -99,19 +99,10 @@ under their relabellings. Only $f_0$ depends on the window directly; $\fdot$ and
 \paragraph{Frequency, drift and amplitude.}
 $(\log_{10}f_0, \log_{10}\fdot, \log_{10}\Amp)$ is one Gaussian, fitted by maximum likelihood to
 the double white dwarfs above \qty{\PriorsCatalogueCutMhz}{\milli\hertz} of a simulated Galactic
-catalogue: the Milky Way population of double white dwarfs of \citet{perego2025towards}, binary
-population synthesis with COSMIC \citep{breivik2020cosmic}
-\textcolor{red}{TODO(check): COSMIC cited as arXiv:1911.00903 (Breivik et al.\ 2020), the code
-\citet{perego2025towards} use; check the reference against arXiv and against their citation} at its default settings (common-envelope
-efficiency $\alpha=1$ with the variable binding energy of \citet{claeys2014theoretical}, no tides after
-the white dwarfs form) in a Galaxy of bulge, disc and halo whose star formation follows
-\citet{lamberts2019predicting} (see also \citealp{toubiana2024interacting})
-% updated 2026-11-17: provenance from the file name and the papers' setups; not Mojito, not protected (user)
-\textcolor{red}{TODO(reference, from memory, not yet checked): the file
-(wdwd\_cat\_lam\_0p0\_alpha\_1p0\_zerotides\_MultiCGalaxy) matches the setup of \citet{perego2025towards}
-by its name ($\lambda=0$, COSMIC's variable binding energy; $\alpha=1$; no tides; multi-component Galaxy),
-and its sibling with $\lambda=0.5$ the constant-$\lambda$ variant of \citet{boileau2025gravitational};
-no public release was found. Confirm the paper and the data release with the catalogue's provider.},
+catalogue: the Milky Way population of double white dwarfs of \citet{perego2025towards}, from binary
+population synthesis with COSMIC \citep{breivik2020cosmic},
+% updated 2026-11-17: citations confirmed by A. Perego (user); the setup details inferred from the file
+% name (alpha, lambda, tides, Galaxy model) and both red TODOs removed.
 truncated at that cut (\cref{eq:priors-source}), with $f_0$ in \unit{\hertz} and $\fdot$ in \unit{\hertz\per\second}, standard deviations
 $(\PriorsStdF, \PriorsStdFdot, \PriorsStdAmp)$ and correlations $\PriorsCorrFFdot$
 ($f_0$, $\fdot$), $\PriorsCorrFAmp$ ($f_0$, $\Amp$) and $\PriorsCorrFdotAmp$ ($\fdot$, $\Amp$). The
