@@ -195,14 +195,14 @@ specifically highlighted here.
 \paragraph{Analysis.}
 \begin{itemize}
   \item The full band misses loud sources above about \qty{10}{\milli\hertz}, mostly because the flow
-    refines the frame only 2--5-fold there (\cref{app:results-mcmc}): decide how the paper frames this
-    weakness.
+    refines the frame only 2--5-fold there (\cref{app:results-mcmc}). Framed (2026-11-17): the prior
+    produces few such sources for training; the cure is left to a follow-up.
   \item The joint-MCMC references of narrow $S=8$ and full $S=16$ never left their Fisher start for
     faint sources (\cref{app:results-mcmc}). The prior-started chains (2026-11-16) confirm the
     references from $\snr=7$ up, and bracket $\snr=3$--7 without settling it, so rerunning the
     references with prior starts would not help; the appendix now scores $\snr<3$ against the prior and
-    reports the bracket at $\snr=3$--7. Decide whether that goes in the main text (\cref{sec:results-main}).
-    Full $S=16$'s prior-started chains ran out of memory and were not rerun.
+    reports the bracket at $\snr=3$--7 (not in the main text for now). Full $S=16$'s prior-started
+    chains ran out of memory; rerun on TREX 2026-11-17 with 96 GB, then read label-free like narrow $S=8$.
 
 \end{itemize}
 

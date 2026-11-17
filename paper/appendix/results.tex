@@ -122,8 +122,8 @@ move of the sampler, and neither start reaches the balance in \num{400000} itera
 prior-started reference would be no better: below $\snr=7$ we score against the prior
 ($\snr<3$) and report the bracket ($\snr=3$--7) instead. The long chains of narrow $S=4$ show the
 same drift from the Fisher start (\cref{app:mcmc-convergence}), much smaller with four sources.
-The prior-started chains of full $S=16$ ran out of memory and were not rerun; we take its reference to
-behave as narrow $S=8$'s.
+\textcolor{red}{TODO(runs): the prior-started chains of full $S=16$ ran out of memory; rerun on TREX
+(2026-11-17), to be read like narrow $S=8$'s.}
 
 \paragraph{The narrow band.}
 With two sources per window the flow matches the chains: at $\snr=7$--40 every width ratio is
@@ -186,6 +186,10 @@ as wide again (\ResultsFullFourFrameHigh, \ResultsFullEightFrameHigh{} and \Resu
 times), but the flow narrows it only \ResultsFullFourContractHigh, \ResultsFullEightContractHigh{} and
 \ResultsFullSixteenContractHigh-fold. (Selected models' eval windows, 256 draws per window, $f_0$ widths in bins;
 \texttt{outputs/runs/261103-frame-vs-flow.py}.)
+% updated 2026-11-17: the cause of the >10 mHz misses, as the authors read it
+These sources are seen poorly because the prior produces few sources like them, so the training set holds
+few examples of loud sources above \qty{\ResultsFullSplitMhz}{\milli\hertz}. We leave to a follow-up how to
+cure this.
 
 \paragraph{Calibration.}
 Every eval, main runs and forks, \ResultsEvals{} in all, covers
