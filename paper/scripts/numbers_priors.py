@@ -169,8 +169,10 @@ for band, cfg in cfgs.items():
         f"Priors{Band}StepMs": f"{1e3 * step['step_s']:.0f}",
         f"Priors{Band}DrawMs": f"{float(f'{1e3 * step["draw_s"]:.2g}'):g}",
         f"Priors{Band}DrawShare": f"{100 * step['draw_s'] / step['step_s']:.0f}",
+        # the bands were benchmarked on different A100 boards (full band rerun at R = 128 on TREX, 2026-11-17)
+        f"Priors{Band}StepChip": step["chip"].removeprefix("NVIDIA "),
     }
-numbers["PriorsStepChip"] = step["chip"].removeprefix("NVIDIA ")
+numbers["PriorsStepChip"] = numbers["PriorsNarrowStepChip"]
 
 numbers |= {
     "PriorsSources": f"{n_sources}",

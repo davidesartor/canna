@@ -13,8 +13,8 @@ REPORT = Path(__file__).parents[1]
 def settings() -> list[dict]:
     """Every data/<setting>.json, runs first, then mocks by band and mock."""
     out = [json.loads(p.read_text()) for p in sorted((REPORT / "data").glob("*.json"))]
-    # records from before the (f0, fdot, A) chart hold 10 eval injections (40 sources): no run eval of the current layout yet
-    out = [d for d in out if d["n_eval"] == 256]
+    # the current eval catalogue: 128 windows (512 sources at S = 4); older records (10 or 64 windows) are left out
+    out = [d for d in out if d["n_eval"] == 512]
     return sorted(out, key=lambda d: (d["group"] != "run", d["setting"]))
 
 

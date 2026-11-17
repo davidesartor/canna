@@ -361,6 +361,34 @@ if mock:
     numbers["ResultsLikeExcessLo"] = f"{min(excess):+.2f}"
     numbers["ResultsLikeExcessHi"] = f"{max(excess):+.2f}"
 
+# ---- the overlap rank per flow-coordinate group (import_overlap.py; TREX 2026-11-18) -------------------------------
+OVERLAP_DATA = style.PAPER / "data/runs/overlap-groups.json"
+if OVERLAP_DATA.is_file():
+    og = json.loads(OVERLAP_DATA.read_text())
+    signed = lambda v: f"{v:+.2f}".replace("-0.00", "+0.00")
+    rng = lambda vals: (signed(min(vals)), signed(max(vals)))
+    g = lambda lab, grp, st="all": [c[lab]["groups"][grp][st] for c in og.values()]
+    d = lambda lab, grp, st="all": [c[lab]["groups"][grp][st] - c[lab]["groups"]["drawn"][st] for c in og.values()]
+    single = ("frequency", "sky", "phases")
+    pairs = {
+        # the flow's offset with one of frequency, sky or phases set to the truth, and its rise over the drawn offset
+        "ResultsOverlapFixFlow": [v for grp in single for v in g("flow", grp)],
+        "ResultsOverlapFixFlowRise": [v for grp in single for v in d("flow", grp)],
+        # the mock's change with frequency or sky set to the truth, and with the phases
+        "ResultsOverlapFixMockFreqSky": [v for grp in ("frequency", "sky") for v in d("mock", grp)],
+        "ResultsOverlapFixMockPhases": d("mock", "phases"),
+        # frequency and phases set together, the flow
+        "ResultsOverlapFreqPhasesFlow": g("flow", "frequency+phases"),
+        # the moduli |z+-| set to the truth, change of the offset below snr_hat 7
+        "ResultsOverlapModuliFaintFlow": d("flow", "moduli", "snr<7"),
+        "ResultsOverlapModuliFaintMock": d("mock", "moduli", "snr<7"),
+        # the flow's own rank offsets of |z+-| and of the own SNR, every stratum
+        "ResultsOverlapAbsZFlow": [c["flow"]["ranks"][k][st] for c in og.values() for k in ("abs_zp", "abs_zm") for st in ("snr<7", "snr>=7")],
+        "ResultsOverlapOwnSnrFlow": [c["flow"]["ranks"]["own_snr"][st] for c in og.values() for st in ("snr<7", "snr>=7")],
+    }
+    for name, vals in pairs.items():
+        numbers[f"{name}Lo"], numbers[f"{name}Hi"] = rng(vals)
+
 # ---- faint sources against the prior (import_faint.py): below SNR 3 the posterior is the prior ----------------------
 FAINT_DATA = style.PAPER / "data/runs/faint-prior.json"
 if FAINT_DATA.is_file():
@@ -408,6 +436,21 @@ if PROBE_DATA.is_file():
         for row in sp["rows"]:
             if row["steps"] in STEP_WORDS and row["width_over_max_loud"] is not None:
                 numbers[f"ResultsSampler{band}{STEP_WORDS[row['steps']]}"] = f"{row['width_over_max_loud']:.2f}"
+    if pr.get("grids"):
+        # midpoint on the power-2 and log grids from GRID_FROM steps up, both bands: the range of the width ratio
+        GRID_FROM = 16
+        mid = [row["width_over_uniform_loud"] for g in pr["grids"].values() for row in g["rows"]
+               if row["rule"] == "midpoint" and row["steps"] >= GRID_FROM]
+        numbers["ResultsSamplerGridFrom"] = str(GRID_FROM)
+        numbers["ResultsSamplerGridLo"] = f"{min(mid):.2f}"
+        numbers["ResultsSamplerGridHi"] = f"{max(mid):.2f}"
+        for cfg, band in (("n4", "Narrow"), ("f8", "Full")):
+            for row in pr["grids"].get(cfg, {}).get("rows", []):
+                if row["rule"] == "euler" and row["schedule"] == "uniform" and row["steps"] in (32, 128):
+                    word = "ThirtyTwo" if row["steps"] == 32 else "Max"
+                    numbers[f"ResultsSamplerEuler{band}{word}"] = f"{row['width_over_uniform_loud']:.2f}"
+                if row["rule"] == "euler" and row["schedule"] == "log" and row["steps"] == 128:
+                    numbers[f"ResultsSamplerEulerLog{band}Max"] = f"{row['width_over_uniform_loud']:.2f}"
     if "n4" in pr["robustness"]:
         rb = pr["robustness"]["n4"]
         numbers["ResultsRobustInjections"] = str(rb["injections"] if not isinstance(rb["injections"], list) else len(rb["injections"]))

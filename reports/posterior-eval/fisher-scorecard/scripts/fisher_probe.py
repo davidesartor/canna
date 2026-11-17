@@ -75,7 +75,7 @@ def fisher_part(draws_path: Path) -> dict:
     from canna.lisa.samples import load as load_samples
 
     d = load_samples(draws_path)
-    flow_width = np.stack([robust_width(wrapped(m, t), 0) for m, t in zip(d["matched"], d["truth"])])
+    flow_width = np.stack([robust_width(wrapped(m, t), 0) for m, t in zip(d["draws"], d["truth"])])
     fisher_width = np.stack([robust_width(wrapped(m, t), 0) for m, t in zip(d["fisher"], d["truth"])])
     ratio = flow_width / fisher_width
     snr = d["source_snr"]

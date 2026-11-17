@@ -241,10 +241,27 @@ truth. Every flow is above its mock, by \ResultsLikeExcessLo{} to \ResultsLikeEx
 bottom). The mock's offset is \ResultsMockOverlapOffsetLo{} to \ResultsMockOverlapOffsetHi{} on
 every problem, the flows' \ResultsFlowOverlapOffsetLo{} to \ResultsFlowOverlapOffsetHi, narrow $S=2$
 included, whose widths match the chains' (\cref{tab:results-widths}): its drawn signals overlap the data
-less than the truth's although their marginals have the right widths, which points at a parameter the width
-table leaves out, most likely the phases.
-\textcolor{red}{TODO(analysis): the overlap offset per coordinate group (phases fixed to the truth, then
-the sky), to find which parameter the narrow-band flow gets wrong.}
+less than the truth's although their marginals have the right widths, which points at what the width
+table leaves out: how the parameters of one draw go together.
+% updated 2026-11-18: the overlap rank per flow-coordinate group, flows and Gaussian mocks (TREX 18078029)
+To find the parameter, every draw of the validation pass had one group of its flow coordinates set to the
+truth's (the frequencies $x_f, x_{\fdot}$; the sky $l, b$; the phases $\arg z_\pm$; the moduli $|z_\pm|$) before
+its overlap was ranked again, for each model and for its Gaussian mock on the same injections. No group
+is the one. Setting the frequencies or the sky to the truth leaves the mock's offset where it was
+(\ResultsOverlapFixMockFreqSkyLo{} to \ResultsOverlapFixMockFreqSkyHi), but raises the flow's, to
+\ResultsOverlapFixFlowLo--\ResultsOverlapFixFlowHi{} with the frequencies, the sky or the phases
+(\ResultsOverlapFixFlowRiseLo{} to \ResultsOverlapFixFlowRiseHi{} over the drawn offset; the phases raise
+the mock's too, by \ResultsOverlapFixMockPhasesLo{} to \ResultsOverlapFixMockPhasesHi). Setting the
+frequencies and the phases together raises it less than either alone
+(\ResultsOverlapFreqPhasesFlowLo--\ResultsOverlapFreqPhasesFlowHi): a drawn source with the wrong $f_0$ carries
+a phase that partly makes up for it, so each draw is a coherent fit, displaced from the truth along a
+direction that mixes the groups. The amplitudes are right: the ranks of $|z_\pm|$ are off by
+\ResultsOverlapAbsZFlowLo{} to \ResultsOverlapAbsZFlowHi{} and the own \ac{snr} by
+\ResultsOverlapOwnSnrFlowLo{} to \ResultsOverlapOwnSnrFlowHi, so the drawn signals are as loud as the truth's
+and fit the data less well. Only below $\hat\snr=7$ does one group help: the moduli, whose ratio is the
+inclination, take \ResultsOverlapModuliFaintFlowLo{} to \ResultsOverlapModuliFaintFlowHi{} off the flow's
+offset where the mock's moves by \ResultsOverlapModuliFaintMockLo{} to \ResultsOverlapModuliFaintMockHi{};
+part of what the flow gets wrong on faint sources is their polarisation.
 
 % updated 2026-11-16: the rank-ECDF figure (scripts/import_ranks.py, fig_rank-ecdf.py)
 \begin{figure*}[t]

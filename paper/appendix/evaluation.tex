@@ -307,7 +307,7 @@ validation injections of the narrow-B or full-B configuration, and goes through 
 and reference comparison as a trained flow. The base mock is a linearised Gaussian in flow
 coordinates, with precision the expected Fisher matrix at the truth plus the Gaussian prior
 precision, centred on the linearised maximum a posteriori of the noisy data; it is calibrated in
-a linear-Gaussian model and approximately calibrated here. The ladder perturbs it:
+a linear-Gaussian model, and only roughly so here, where most sources are faint (below). The ladder perturbs it:
 \begin{itemize}
   \item \emph{wide} and \emph{narrow}: every width times \EvaluationMockWide{} and
     \EvaluationMockNarrow, centre and correlations kept;
@@ -318,25 +318,28 @@ a linear-Gaussian model and approximately calibrated here. The ladder perturbs i
     $w^\star$ reaches \EvaluationMockFloorBins{} bins, capped at the prior width: quiet sources exact,
     loud ones too wide.
 \end{itemize}
-\Cref{tab:evaluation-mocks} gives each mock's reading on the narrow band, over
-\EvaluationMockScorecardSources{} scorecard sources, \EvaluationMockInjections{} validation
-injections and \EvaluationMockReferenceSources{} sources with per-source reference chains; the
-full band, with \EvaluationMockInjectionsFull{} validation injections, agrees.
-The Gaussian mock has been rerun on the catalogue prior for each source-count problem, as the null of the
-runs' validation table (\cref{tab:results-validation}).
-\textcolor{red}{TODO(new runs): the rest of the ladder and the Fisher forecast ran on injections from the
-previous prior, whose second flow coordinate was $x_{\Mc}$; rerun them on catalogue-prior injections, or
-cut this table down to the Gaussian mock.}
+% updated 2026-11-18: the whole ladder rerun on catalogue-prior injections (narrow-B and full-B, S = 4; TREX
+% 18032973/18077399), the reference column against the joint chains from SNR 7 up, the width column from SNR 40 up.
+\Cref{tab:evaluation-mocks} gives each mock's reading on the narrow band with four sources per window, on
+injections from the catalogue prior: \EvaluationMockScorecardSources{} scorecard sources,
+\EvaluationMockInjections{} validation injections, and the \EvaluationMockReferenceSources{} eval sources
+at $\snr\ge\EvaluationMockReferenceSnr$ whose joint reference chains are a reference (\cref{app:results-mcmc}).
+The full band, with \EvaluationMockInjectionsFull{} validation injections, gives the same readings.
+The Gaussian mock has also been run on each source-count problem, as the null of the runs' validation
+table (\cref{tab:results-validation}).
+\textcolor{red}{TODO(new runs): the Fisher forecast (\cref{app:evaluation-fisher}) still ran on injections from the
+previous prior, whose second flow coordinate was $x_{\Mc}$.}
 
 \begin{table*}[t]
   \centering
   \caption{The mock ladder on the narrow band. Width over the ideal width
-  (\cref{eq:evaluation-ideal-width}): median over sources with $\snr\ge\EvaluationBandThree$.
+  (\cref{eq:evaluation-ideal-width}): median over the \EvaluationMockLoudSources{} scorecard sources with
+  $\snr\ge\EvaluationMockLoudSnr$.
   Coverage: share of sources inside the central \qty{68}{\percent} interval after relabelling.
   Validation $p$-values: the smallest over the eight coordinate ranks, \acs{tarp}, and the overlap
   and log-likelihood ranks. Energy score: over the Gaussian mock's. Flow over \acs{mcmc}: range over
-  the eight physical parameters of the median width ratio against the per-source chains
-  (\cref{app:mcmc}).}
+  the eight physical parameters of the median width ratio against the joint reference chains, over the
+  eval sources with $\snr\ge\EvaluationMockReferenceSnr$ (\cref{app:results-mcmc}).}
   \label{tab:evaluation-mocks}
   \small
   \begin{tabular}{@{}lcccccccc@{}}
@@ -358,13 +361,15 @@ cut this table down to the Gaussian mock.}
 
 Four readings follow, and each shapes how the results are read.
 \begin{itemize}
-  \item \emph{Marginal calibration proves nothing alone.} The prior mock passes every coordinate
-    rank and \ac{tarp}, as the toy predicts; the overlap and log-likelihood ranks reject it. Coverage
+  \item \emph{Marginal calibration proves nothing alone.} The prior mock passes \ac{tarp} and, as the
+    toy predicts, the coordinate ranks (the smallest of the eight $p$-values, \EvaluationMockPriorCoord,
+    is what eight tests give by chance); the overlap and log-likelihood ranks reject it. Coverage
     after relabelling reads it as conservative, not as failed.
-  \item \emph{The Gaussian mock is not a clean null.} The second coordinate ($x_{\Mc}$ in these runs), the radii $|z_\pm|$,
-    \ac{tarp}, the own \ac{snr} and the log-likelihood reject it, since these are non-Gaussian or nonlinear in
-    the flow coordinates; $f_0$, the sky, the $z_\pm$ components and the overlap pass. A flow's
-    $p$-value is compared with the Gaussian mock's on the same test, not with
+  \item \emph{The Gaussian mock is not a null.} Under the catalogue prior most sources are faint, where
+    the linearisation fails: every test rejects it, the coordinate ranks, \ac{tarp}, the overlap and the
+    log-likelihood alike, and next to the chains it is too narrow in the amplitude, the inclination and the
+    phases even from $\snr=\EvaluationMockReferenceSnr$ up. A flow's $p$-value or rank offset is compared
+    with the Gaussian mock's on the same test and injections, not with
     \qty{\EvaluationPowerAlpha}{\percent}.
   \item \emph{Proper scores are weak against small errors.} The narrow mock scores only a factor
     \EvaluationMockNarrowEnergy{} above the Gaussian mock, and the biased one
@@ -372,9 +377,10 @@ Four readings follow, and each shapes how the results are read.
     sees. Only the width ratio separates too wide from too narrow.
   \item \emph{Coverage hides a width floor.} The loud-floor mock covers \EvaluationMockFloorCoverQuiet{}
     of sources below \ac{snr} \EvaluationBandTwo{} and \EvaluationMockFloorCoverLoud{} above, so it
-    reads conservative; the coordinate ranks in the strata from \ac{snr} \EvaluationBandTwo{} up
-    reject it (every coordinate at $p$ \EvaluationMockFloorLoudP), and the width ratio
-    gives its size.
+    reads conservative. Under the catalogue prior too few validation sources reach \ac{snr}
+    \EvaluationBandTwo{} for the coordinate ranks of those strata, so only the width ratio sees the floor
+    (\EvaluationMockFloorIdeal{} times the ideal, against \EvaluationMockFisherIdeal{} for the Gaussian
+    mock).
 \end{itemize}
 
 \subsection{Fisher Forecast}
@@ -453,8 +459,14 @@ sources at $\snr\ge15$, over its width at \ResultsSamplerNarrowMax{} steps, is \
 \ResultsSamplerNarrowSixteen, \ResultsSamplerNarrowThirtyTwo{} and \ResultsSamplerNarrowSixtyFour{} at 8, 16,
 32 and 64 steps on the narrow band, and \ResultsSamplerFullEight{} already at 8 steps on the full band: \EvaluationOdeSteps{} steps are within
 \qty{2}{\percent} of converged, and the widths grow, never shrink, with more steps.
-\textcolor{red}{TODO(runs): the power and log grids and Euler on these runs; only the uniform midpoint
-grid was rerun.}
+% updated 2026-11-18: power-2/log grids and Euler on the same runs and sources (TREX 18032972)
+The converged width does not depend on the grid: with the midpoint rule, the power-2 and log grids give
+\ResultsSamplerGridLo--\ResultsSamplerGridHi{} times the uniform grid's converged width from
+\ResultsSamplerGridFrom{} steps up, on both bands. Euler converges from below, as a first-order rule that
+collapses late in the path should: at \EvaluationOdeSteps{} uniform steps it gives
+\ResultsSamplerEulerNarrowThirtyTwo{} (narrow) and \ResultsSamplerEulerFullThirtyTwo{} (full) of the
+converged width, and \ResultsSamplerEulerNarrowMax{} and \ResultsSamplerEulerFullMax{} at
+\ResultsSamplerNarrowMax, so every width in this paper is read with the midpoint rule.
 
 The flow is trained on one noise \ac{psd}, a fixed prior and exactly $S$ sources
 per window. Each robustness case changes one of these on the eval injections, keeping the

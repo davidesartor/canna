@@ -180,15 +180,12 @@ specifically highlighted here.
 {\color{red}
 \paragraph{Runs and data.}
 \begin{itemize}
-  \item The power/log grids and Euler in the sampler sweep (\cref{app:evaluation-sampler}); a noise
-    \acs{psd} estimated with the sources, since a louder noise than the flow's own makes it confident and
-    wrong (\cref{app:evaluation-sampler}).
+  \item A noise \acs{psd} estimated with the sources, since a louder noise than the flow's own makes it
+    confident and wrong (\cref{app:evaluation-sampler}). (The power/log grids and Euler are in, 2026-11-18.)
 \item Rebuild reports/mcmc under the catalogue prior: the convergence study of \cref{app:mcmc} is
     now the narrow $S=4$ long chains (2026-11-16), but the other numbers and figures of
     \cref{app:mcmc} (Fisher against MCMC, the posterior figure, the joint-chain statistics) still come
     from the old chains and the old prior.
-  \item Rerun the step-time and memory benchmark at the full band's current $R$ on an A100
-    (\cref{tab:priors-bands}).
   \item One seed per configuration: the run-to-run spread is unmeasured, so differences of a few
     hundredths of a nat between forks are not significant. TODO(run, expensive, deliberately not
     launched 2026-11-13): a second seed of narrow $S=2$, about 32 A100 hours.

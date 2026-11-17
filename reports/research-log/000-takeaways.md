@@ -1,4 +1,4 @@
-# canna.lisa takeaways (current state, 2026-11-16, F68)
+# canna.lisa takeaways (current state, 2026-11-18, F69)
 
 One `0<nn>-<slug>.md` per finding F<nn>, outcome first. The literature lives in
 [../literature/](../literature/): [GW and cosmology
@@ -7,6 +7,14 @@ schedules](../literature/optimizers-schedules/000-takeaways.md), [diffusion and 
 matching](../literature/diffusion-flow-matching/000-takeaways.md) and the others; the findings
 keep only its consequences for our code.
 
+- **The flows' overlap offset is no single parameter** ([F69](069-overlap-groups-ladder-grids-bench.md)):
+  fixing the frequencies, sky or phases of every draw to the truth (flow coordinates) RAISES the flows'
+  offset to +0.24–0.30 while the Gaussian mock's frequencies/sky leave it unchanged; frequencies and phases
+  together hurt less than either, so draws trade f0 against phase, coherent fits displaced from the truth.
+  Amplitudes are calibrated (|z±| ranks within 0.02); only the faint sources' inclination helps (−0.01 to
+  −0.06). Mock ladder rerun on the catalogue prior: the Gaussian mock fails every test and is 0.5–0.65× the
+  chains in A, iota, psi, phi0 even at SNR >= 7. Sampler: power-2/log grids agree with uniform within 3%
+  from 16 steps; Euler converges from below. Full-band step at R = 128: 73 ms, draw 3%.
 - **The crowded references are stuck, the full band's high-f misses are the flow's refinement, and the
   Gaussian mock is the validation null** ([F68](068-reference-stuck-frame-refinement-mock-null.md)):
   below SNR 3 the flow's f0 width is 0.84–0.99× the prior's everywhere, but the narrow-8 and full-16

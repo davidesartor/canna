@@ -141,16 +141,22 @@ ratio_text = lambda r: (
     if r >= 1000
     else f"{r:.2f}" if r < 10 else f"{r:.1f}" if r < 100 else f"{r:.0f}"
 )
-# the loudest band's width over the ideal; "--" where no source reached it (the mocks ran with visible_snr = 0)
+# the loud sources' width over the ideal, from the SNR band edge LOUD_SNR up (under the catalogue prior the narrow
+# band has a single scorecard source at SNR >= 100); "--" where no source reached it
 MISSING = "--"
-loud = lambda bands, text: next(
-    (
-        text(b["ratio"])
-        for b in bands
-        if b["subset"] == "all" and b["lo"] == scorecard.SNR_BANDS[3][0]
-    ),
-    MISSING,
-)
+LOUD_SNR = scorecard.SNR_BANDS[2][0]
+# the reference comparison counts sources from REFERENCE_SNR up, where the joint chains are a reference (app:results-mcmc)
+REFERENCE_SNR = 7
+
+
+def loud_rows(rows: dict) -> np.ndarray:
+    snr, width = np.array(rows["snr"]), np.array(rows["width"])
+    return (snr >= LOUD_SNR) & (width > 0)
+
+
+def loud(rows: dict, text) -> str:
+    m = loud_rows(rows)
+    return text(float(np.median(np.array(rows["width"])[m] / np.array(rows["ideal"])[m]))) if m.any() else MISSING
 dataspace = {
     band: {c["name"]: c for c in read(f"data-space-checks/data/mocks-{band}.json")["cases"]}
     for band in ("narrow", "full")
@@ -162,11 +168,12 @@ for key, mock in MOCKS.items():
     tests = dataspace["narrow"][mock]["ladder"]
     reference = read(f"reference-comparison/data/mock-{mock}.json")
     assert reference["config"] == "narrow-B"
-    # median flow/MCMC width per parameter over the per-source chains, over the eight physical parameters
-    sources = reference["widths"]["sources"]
+    # median flow/MCMC width per parameter against the joint reference of the eval injections, over the sources from
+    # REFERENCE_SNR up, then the range over the eight physical parameters
+    sources = [s for s in reference["widths"]["sources"] if s["snr"] >= REFERENCE_SNR]
     medians = [np.median([s["flow"][j] / s["mcmc"][j] for s in sources]) for j in range(8)]
     ladder |= {
-        f"EvaluationMock{key}Ideal": loud(card["bands"], ratio_text),
+        f"EvaluationMock{key}Ideal": loud(card["rows"], ratio_text),
         f"EvaluationMock{key}Cover": f"{np.mean(card['rows']['in68']):.2f}",
         f"EvaluationMock{key}Coord": p_value(tests["coords_min"]),
         f"EvaluationMock{key}Tarp": p_value(tests["tarp"]),
@@ -199,7 +206,10 @@ ladder |= {
     "EvaluationMockInjectionsFull": f"{dataspace['full']['fisher']['n']}",
     "EvaluationMockScorecardSources": f"{card['n_rows']}",
     "EvaluationMockReferenceSources": f"{len(sources)}",
-    "EvaluationMockFisherIdealFull": loud(read('fisher-scorecard/data/mock-full-fisher.json')['bands'], "{:.2f}".format),
+    "EvaluationMockReferenceSnr": f"{REFERENCE_SNR}",
+    "EvaluationMockLoudSnr": f"{LOUD_SNR:g}",
+    "EvaluationMockLoudSources": f"{int(loud_rows(card['rows']).sum())}",
+    "EvaluationMockFisherIdealFull": loud(read('fisher-scorecard/data/mock-full-fisher.json')['rows'], "{:.2f}".format),
     "EvaluationMockPriorCoverFull": f"{np.mean(read('fisher-scorecard/data/mock-full-prior.json')['rows']['in68']):.2f}",
     "EvaluationMockFloorCoverQuiet": f"{floor_in68[quiet].mean():.2f}",
     "EvaluationMockFloorCoverLoud": f"{floor_in68[~quiet].mean():.2f}" if (~quiet).any() else MISSING,

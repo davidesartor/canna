@@ -1,7 +1,8 @@
 """Summaries of the robustness probe and the sampler sweep (reports/posterior-eval/{robustness,sampler-convergence} at
 cc93fb2; laptop GPU, 2026-11-13; outputs/runs/261103-analysis/{robustness,sampler}-<cfg>.json) into data/runs/probes.json.
 
-Sampler: per step count, the median over sources (SNR >= 15, and all) of each source's f0 width over its width at the most
+Grids: the same for the power-2 and log grids and Euler (TREX, 2026-11-17; grids-<cfg>.json), over the uniform
+sweep's width at its most steps. Sampler: per step count, the median over sources (SNR >= 15, and all) of each source's f0 width over its width at the most
 steps run, and the median |offset| / width. Robustness: per case, the perturbed sources' and the others' median f0 width
 over the same source's baseline width, the median |offset| / width in f0 (a confident wrong answer: large, with the width
 not grown), and the share found. numpy only."""
@@ -30,6 +31,27 @@ for path in sorted(DATA.glob("sampler-*.json")):
                          offset_over_width_loud=float(np.median((off / w)[snr >= 15])) if (snr >= 15).any() else None))
     out["sampler"][cfg] = dict(run=r["run"], max_steps=cells[-1]["steps"], eval_steps=r["eval_ode_steps"], rows=rows)
     print(cfg, [(x["steps"], round(x["width_over_max_loud"] or np.nan, 3)) for x in rows])
+
+# sampler grids (TREX 18032972, 2026-11-17): power-2 and log grids with the midpoint rule, Euler on uniform and log,
+# on the same sources as the uniform sweep; widths over that sweep's width at its most steps
+out["grids"] = {}
+for path in sorted(DATA.glob("grids-*.json")):
+    r = json.loads(path.read_text())
+    cfg = path.stem.removeprefix("grids-")
+    base = json.loads((DATA / f"sampler-{cfg}.json").read_text())
+    assert [(s["injection"], s["slot"]) for s in r["sources"]] == [(s["injection"], s["slot"]) for s in base["sources"]], cfg
+    snr = np.array([s["snr"] for s in r["sources"]])
+    cells = sorted(base["cells"] + [base["eval_cell"] | {"steps": base["eval_ode_steps"]}], key=lambda c: c["steps"])
+    ref = np.array(cells[-1]["width"])[:, 0]
+    rows = []
+    for c in r["cells"]:
+        w, off = np.array(c["width"])[:, 0], np.abs(np.array(c["offset"])[:, 0])
+        rows.append(dict(rule=c["rule"], schedule=c["schedule"], steps=c["steps"],
+                         width_over_uniform_loud=float(np.median((w / ref)[snr >= 15])),
+                         width_over_uniform_all=float(np.median(w / ref)),
+                         offset_over_width_loud=float(np.median((off / w)[snr >= 15]))))
+    out["grids"][cfg] = dict(run=r["run"], reference_steps=cells[-1]["steps"], rows=rows)
+    print(cfg, [(x["rule"], x["schedule"], x["steps"], round(x["width_over_uniform_loud"], 3)) for x in rows])
 
 for path in sorted(DATA.glob("robustness-*.json")):
     r = json.loads(path.read_text())

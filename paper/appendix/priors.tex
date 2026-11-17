@@ -62,9 +62,9 @@ scores one sky and orientation alone in its window; they move the windows, not t
 $\snr\ge\PriorsVisibleSnr$ alone in its window. Training figures are for the default configuration of the
 B network at the batch of \cref{app:priors-training}; the runs of \cref{app:results} set their own
 step counts (\cref{tab:results-runs}); the simulation share is the time spent drawing a batch
-inside one training step on an \PriorsStepChip{}. \textcolor{red}{TODO(new bench): the full-band
-step and draw times were measured at $R=1024$ and the previous prior; rerun
-reports/benchmarks/step-time-memory at $R=\PriorsFullR$.}}
+inside one training step on an \PriorsNarrowStepChip{} (narrow band) and an \PriorsFullStepChip{} (full band).}
+% updated 2026-11-18: full-band step and draw times rerun at R = 128 (TREX 18033011); the R = 1024 records are kept
+% beside them in reports/benchmarks/step-time-memory/data/a100-bf16backbone-full.R1024.jsonl
 \label{tab:priors-bands}
 \centering
 \small
@@ -233,4 +233,3 @@ windows (\cref{tab:priors-bands}): overfitting is not a concern, and every compa
 is one of optimisation, not of generalisation. The simulation is cheap next to the network,
 \qty{\PriorsNarrowDrawShare}{\percent} of a step in the narrow band and \qty{\PriorsFullDrawShare}{\percent} in the full band, where each response
 spans \num{\PriorsFullR} bins instead of \num{\PriorsNarrowR} (\cref{app:training}).
-\textcolor{red}{TODO(new bench): full-band share at $R=\PriorsFullR$.}
