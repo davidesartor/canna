@@ -58,11 +58,13 @@ a chain leave the mode it starts in. The walkers start from the injection's Fish
 (\cref{app:evaluation-fisher}), with $\fdot$ redrawn from its prior at each draw's $f_0$, clipped
 into the box and under the $\fdot$ cut. Starting near the truth suits a reference, not inference:
 it skips the search, and burn-in and tempering remove the start. Each of the \McmcInjections{}
-eval injections runs \McmcSeeds{} seeds, \McmcChains{} chains in all
-(\cref{tab:mcmc-settings}); their cold draws, pooled over the seeds, are subsampled to
-\McmcKeepDraws{} per injection for the evaluation.
-Every band and source count of \cref{app:results} has its own reference: the joint chains of the
-\EvaluationInjections{} eval injections of that problem, two seeds each, over all $8S$ parameters,
+eval injections runs \McmcSeeds{} seed, \McmcChains{} chains per problem
+(\cref{tab:mcmc-settings}); their cold draws are subsampled to \McmcKeepDraws{} per injection for the
+evaluation.
+% updated 2026-11-18: the packed references hold one seed per injection (n_seeds = 1), not two
+Every band and source count of \cref{app:results} has its own reference, \McmcChainsAll{} chains over the
+\McmcReferences: the joint chains of the \EvaluationInjections{} eval injections of that problem, one seed
+each, over all $8S$ parameters,
 with responses of \PriorsNarrowR{} bins on the narrow band and \PriorsFullR{} on the full
 band. Over the six references in use, the largest $\hat R$ is \ResultsMcmcRhatMax{}
 (\ResultsMcmcRhatNarrowMax{} on the narrow band) and the smallest effective sample size
@@ -70,20 +72,13 @@ band. Over the six references in use, the largest $\hat R$ is \ResultsMcmcRhatMa
 parameter, which the comparison of \cref{app:results} has to bear in mind. The chains' own
 coverage of the true $f_0$ at the \qty{68}{\percent} level is
 \ResultsMcmcFzeroCoverLo--\ResultsMcmcFzeroCoverHi.
-% updated 2026-11-16: the convergence study (app:mcmc-convergence) now uses long chains on the narrow S=4 problem
-% under the catalogue prior; the TODO covers the rest of the appendix.
-\textcolor{red}{TODO(new chains): apart from the convergence study of \cref{app:mcmc-convergence}, which
-uses long chains of the current narrow-band reference, every number and figure below comes from earlier joint chains on
-\McmcJointWindows{} eval injections of a previous catalogue (\McmcJointWindowList), run under the
-previous prior, with $\ln\Mc$ in place of $\ln\fdot$ (at fixed $f_0$ a rescaled $\ln\fdot$, here
-called the drift coordinate), amplitudes log-uniform in $\snr_s$, and starts with chirp masses
-drawn from that prior. Rerun the reference and convergence chains under the catalogue prior and
-rebuild reports/mcmc.}
+% updated 2026-11-18: the rest of the appendix rebuilt from the six packed references (reports/mcmc/data/eval-<pid>.npz;
+% paper/scripts/mcmc_reference.py); the old 64-window chains of a previous prior are no longer used.
 
 \begin{table}[t]
   \centering
-  \caption{Settings of the reference sampler. It stores every \McmcThin{}th cold iteration after
-  the burn-in.}
+  \caption{Settings of the reference sampler, per problem. It stores every \McmcThin{}th cold iteration
+  after the burn-in.}
   \label{tab:mcmc-settings}
   \small
   \begin{tabular}{@{}ll@{}}
@@ -111,40 +106,34 @@ symmetries of \cref{eq:psi-phi-symmetry} (the likelihood is checked to be invari
 draws), and $f_0$ is expressed in bins. Every width in this appendix is the robust
 $1.4826\,\MAD$ of the folded draws, per parameter.
 
-\Cref{fig:mcmc-posterior} shows what the reference looks like for one injection. For the louder
-sources the posterior is close to Gaussian, and the Fisher forecast follows its
-correlations: amplitude against inclination, and $\psi$ against $\phi_0$. The faintest source
-is not. It puts \qty{\McmcPosteriorFarPercent}{\percent} of its draws in a second frequency mode
-\McmcPosteriorFarBins{} bins away, and its declination is shifted by a median
-\qty{\McmcPosteriorDecShift}{\radian} from the truth; the unimodal forecast, centred on the truth, sees
-neither.
+\Cref{fig:mcmc-posterior} shows what the reference looks like for one injection of the narrow band with
+four sources. For the two louder sources the posterior is close to Gaussian, and the Fisher forecast
+follows its correlations: amplitude against inclination, and $\psi$ against $\phi_0$. The two faint ones
+are not. The faintest puts \qty{\McmcPosteriorFarPercent}{\percent} of its $f_0$ draws more than a bin
+from the truth, \qty{90}{\percent} of them within \McmcPosteriorSpreadBins{} bins, where the forecast,
+centred near the truth, stays within a bin.
 
 \begin{figure}[!htbp]
   \centering
   \includegraphics[width=\textwidth]{figures/mcmc-posterior.pdf}
-  \caption{The joint \ac{mcmc} posterior of injection \McmcPosteriorInjection{} (window \ac{snr}
-  \McmcPosteriorWindowSnr), one row per source, as offsets from the truth in four pairs of
-  parameters, against the Fisher forecast. The loud sources are near-Gaussian, and the forecast
-  matches their correlations. The faintest source (\ac{snr} \McmcPosteriorFaintSnr) has a second
-  $f_0$ mode \McmcPosteriorFarBins{} bins away holding \qty{\McmcPosteriorFarPercent}{\percent} of the draws, and
-  a declination offset the forecast cannot show. The drift coordinate (\McmcDrift{} in these
-  chains) is not measured in any row.}
+  \caption{The joint \ac{mcmc} posterior of injection \McmcPosteriorInjection{} of the narrow band with four
+  sources (window \ac{snr} \McmcPosteriorWindowSnr), one row per source, as offsets from the truth in four
+  pairs of parameters, against the Fisher forecast. The loud sources are near-Gaussian, and the forecast
+  matches their correlations. The faintest source (\ac{snr} \McmcPosteriorFaintSnr) spreads
+  \qty{\McmcPosteriorFarPercent}{\percent} of its $f_0$ draws more than a bin from the truth, which the
+  forecast cannot show.}
   \label{fig:mcmc-posterior}
 \end{figure}
 
 \subsection{Convergence}
 \label{app:mcmc-convergence}
 
-For each parameter we compute the split $\hat R$ of \citet{gelman1992inference} over
-\McmcRhatGroups{} groups of cold walkers and the integrated autocorrelation time $\tau$, with
-emcee's estimator on the walker-averaged autocorrelation and Sokal's window
-\citep{foreman2013emcee}; the \ac{ess} is walkers $\times$ kept iterations$/\tau$. Over the
-\McmcJointChains{} chains, $\hat R\le\McmcJointRhatMax$, $\tau\le\McmcJointTauMax$ and
-$\acs{ess}\ge\McmcJointEssMin$; the seeds' widths agree within
-\qty{\McmcJointSeedWidthTypical}{\percent} for \qty{\McmcJointSeedShare}{\percent} of them and within
-\qty{\McmcJointSeedWidthDev}{\percent} for all, the largest gap being the $f_0$ width of the faintest
-source. Since $\tau$ comes out at about one thinning
-interval, it is an upper bound and the \ac{ess} a lower one.
+For each parameter of each reference chain we compute the split $\hat R$ of \citet{gelman1992inference}
+over \McmcRhatGroups{} groups of cold walkers and the \ac{ess} from the integrated autocorrelation time,
+with emcee's estimator on the walker-averaged autocorrelation and Sokal's window
+\citep{foreman2013emcee}. Over the \McmcChainsAll{} chains of the six references $\hat R\le\McmcRefRhatMax$
+and $\acs{ess}\ge\McmcRefEssMin$ (\cref{app:mcmc-sampler}). With one seed per injection, the agreement
+between seeds and the burn-in are measured on the long chains below.
 
 \paragraph{Burn-in and length.}
 Agreement between walkers can hide a chain that has not settled. The sampler is therefore
@@ -198,26 +187,31 @@ localised.
 \begin{figure}[!htbp]
   \centering
   \includegraphics{figures/mcmc.pdf}
-  \caption{Fisher widths over the joint \ac{mcmc} widths, per source of the
-  \McmcJointWindows{} injections with chains, against source \ac{snr}. Lines span the seven
-  parameters other than the drift coordinate (\McmcDrift{} in these chains), dots mark their
-  median, diamonds mark the drift; the shaded band is \McmcFisherLo--\McmcFisherHi. Loud sources
-  sit in the band.}
+  \caption{Fisher widths over the joint \ac{mcmc} widths of the six references, per band (panels) and
+  source count (colours): the median over the sources in each \ac{snr} bin of the $f_0$ ratio (solid) and of
+  the median ratio of the six parameters other than $f_0$ and $\fdot$ (dashed); the shaded band is
+  \McmcFisherLo--\McmcFisherHi. From \ac{snr} \McmcFisherMidSnr{} up the forecast sits in the band.}
   \label{fig:mcmc-widths}
 \end{figure}
 
-The Fisher forecast is the cheap reference used on every injection; the chains test it
-(\cref{fig:mcmc-widths}). For the \McmcFisherHighCount{} sources with \ac{snr} at least
-\McmcFisherHighSnr, \McmcFisherInside{} of the \McmcFisherTotal{} width ratios outside the drift
-lie in \McmcFisherLo--\McmcFisherHi. The others are \McmcFisherOutliers; the $\alpha$ outlier is
-the mode-hopping source of \cref{app:mcmc-convergence}, of which the Fisher matrix sees one mode.
-For the \McmcFisherLowCount{} sources below \ac{snr} \McmcFisherLowSnr{} the ratios spread over
-\McmcFisherLowLo--\McmcFisherLowHi: near the \ac{snr} floor the likelihood is far from Gaussian.
-The \ac{mcmc} width of the drift coordinate is \McmcDriftWidthLo--\McmcDriftWidthHi{} for every
-source, whatever its \ac{snr}: the drift is not measured in these windows, and the forecast's
-Gaussian stand-in for its prior gives \McmcFisherDriftLo--\McmcFisherDriftHi{} of the \ac{mcmc}
-width. The forecast is therefore a fair proxy for the widths of loud sources outside the drift,
-and no proxy for faint sources or the drift.
+The Fisher forecast is the cheap reference used on every injection; the chains of the six references test
+it, over \McmcFisherSources{} sources (\cref{fig:mcmc-widths}). From \ac{snr} \McmcFisherHighSnr{} up
+(\McmcFisherHighCount{} sources) the forecast's median width per parameter is
+\McmcFisherHighMedianLo--\McmcFisherHighMedianHi{} times the chains', and \qty{\McmcFisherHighInside}{\percent}
+of the width ratios other than $\fdot$'s lie in \McmcFisherLo--\McmcFisherHi; at \ac{snr}
+\McmcFisherMidSnr--\McmcFisherHighSnr{} (\McmcFisherMidCount{} sources),
+\qty{\McmcFisherMidInside}{\percent} do. Below \ac{snr} \McmcFisherFaintSnr{} the chains spread a faint
+source's $f_0$ over much of the window, as the prior does (\cref{app:results-mcmc}), and the forecast does
+not: its $f_0$ width is a median \McmcFisherFaintFzero{} of the chains'. Between \ac{snr}
+\McmcFisherFaintSnr{} and \McmcFisherMidSnr{} on the full band the forecast is the wider one, by
+\McmcFisherFullMidLo--\McmcFisherFullMidHi{} in $f_0$ (median per source count) and
+\McmcFisherFullMidDrift{} in $\fdot$.
+\textcolor{red}{TODO(check): find which side is off in the full band at \ac{snr} 5--15. The forecast's
+Gaussian stand-in for the $\fdot$ prior, which also widens its $\fdot$ there, would make the forecast too
+wide; a chain held near its Fisher start (\cref{app:results-mcmc}) would make the chains too narrow. Read the
+prior-started chains of full $S=16$ (running) in this \ac{snr} range.}
+The forecast is therefore a fair proxy for the widths from \ac{snr} \McmcFisherMidSnr{} up, and no proxy
+below.
 
 \subsection{Independent Check}
 \label{app:mcmc-strub}
@@ -230,9 +224,15 @@ and its \ac{snr} gain from the observed to the maximum-likelihood value (\cref{a
 \subsection{Cost}
 \label{app:mcmc-cost}
 
-On \McmcJointCores{} CPU cores, a chain takes \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour}
-per injection and seed, against a fraction of a second for the flow (\cref{app:fm-sampling}). The
-chains also scale with the band, a full-band response being \McmcResponsePointsFull{} bins against
-\McmcResponsePoints. This cost is why the full-band chains are still missing.
+% updated 2026-11-18: wall times of our own 400 000-iteration chains on TREX (import_mcmc_cost.py)
+On \McmcJointCores{} CPU cores, a joint chain of \num{400000} iterations (burn-in and kept draws) takes
+\qtyrange{\McmcCostNarrowFourLo}{\McmcCostNarrowFourHi}{\hour} for a narrow-band window with four sources,
+\qtyrange{\McmcCostNarrowEightLo}{\McmcCostNarrowEightHi}{\hour} with eight, and about
+\qtyrange{\McmcCostFullSixteenLo}{\McmcCostFullSixteenHi}{\hour} for a full-band window with sixteen,
+against a fraction of a second for the flow (\cref{app:fm-sampling}). The cost grows with the dimension
+and with the response, \McmcResponsePointsFull{} bins per source on the full band against
+\McmcResponsePoints{} on the narrow one.
+\textcolor{red}{TODO(update): the full $S=16$ figure is extrapolated from the progress of the running
+prior-started chains (TREX 18033012); replace it with their wall times when they end.}
 
 The flows of every band and source count against these chains are in \cref{app:results}.

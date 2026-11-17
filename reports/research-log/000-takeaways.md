@@ -1,4 +1,4 @@
-# canna.lisa takeaways (current state, 2026-11-18, F69)
+# canna.lisa takeaways (current state, 2026-11-18, F70)
 
 One `0<nn>-<slug>.md` per finding F<nn>, outcome first. The literature lives in
 [../literature/](../literature/): [GW and cosmology
@@ -7,6 +7,10 @@ schedules](../literature/optimizers-schedules/000-takeaways.md), [diffusion and 
 matching](../literature/diffusion-flow-matching/000-takeaways.md) and the others; the findings
 keep only its consequences for our code.
 
+- **The MCMC appendix reads the current references** ([F70](070-mcmc-appendix-from-packed-references.md)): one
+  seed per window; Fisher fair from SNR 15 (0.89-0.96x the chains from SNR 40), no proxy below 5, and 2.2-2.5x
+  WIDER than the chains in f0 on the full band at SNR 5-15 (open which side); Fisher fdot overflows on 44% of
+  faint full-band sources. Davide's royal-ferret probes agree with ours (sampler, robustness, mock ladder).
 - **The flows' overlap offset is no single parameter** ([F69](069-overlap-groups-ladder-grids-bench.md)):
   fixing the frequencies, sky or phases of every draw to the truth (flow coordinates) RAISES the flows'
   offset to +0.24–0.30 while the Gaussian mock's frequencies/sky leave it unchanged; frequencies and phases

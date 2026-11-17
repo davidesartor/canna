@@ -327,8 +327,11 @@ at $\snr\ge\EvaluationMockReferenceSnr$ whose joint reference chains are a refer
 The full band, with \EvaluationMockInjectionsFull{} validation injections, gives the same readings.
 The Gaussian mock has also been run on each source-count problem, as the null of the runs' validation
 table (\cref{tab:results-validation}).
-\textcolor{red}{TODO(new runs): the Fisher forecast (\cref{app:evaluation-fisher}) still ran on injections from the
-previous prior, whose second flow coordinate was $x_{\Mc}$.}
+\textcolor{red}{TODO(new runs): the Hessian statistics of the Fisher forecast (\cref{app:evaluation-fisher}:
+decades of the diagonal, non-positive second diagonal, floored eigenvalues) still come from
+reports/mcmc/data/fisher-diagonal.json, run on injections of the previous prior whose second coordinate was
+$\log\Mc$; rerun it on the eval catalogue (the forecast's widths against the chains are already the current
+ones, \cref{app:mcmc-fisher}).}
 
 \begin{table*}[t]
   \centering
@@ -366,9 +369,17 @@ Four readings follow, and each shapes how the results are read.
     is what eight tests give by chance); the overlap and log-likelihood ranks reject it. Coverage
     after relabelling reads it as conservative, not as failed.
   \item \emph{The Gaussian mock is not a null.} Under the catalogue prior most sources are faint, where
-    the linearisation fails: every test rejects it, the coordinate ranks, \ac{tarp}, the overlap and the
-    log-likelihood alike, and next to the chains it is too narrow in the amplitude, the inclination and the
-    phases even from $\snr=\EvaluationMockReferenceSnr$ up. A flow's $p$-value or rank offset is compared
+    the linearisation fails: of the coordinates only $f_0$ and $\fdot$ pass (or nearly pass), and the sky,
+    the $z_\pm$ components, their radii, \ac{tarp}, the overlap and the log-likelihood reject it; next to the
+    chains it is too narrow in the amplitude, the inclination and the phases even from
+    $\snr=\EvaluationMockReferenceSnr$ up.
+    % added 2026-11-18: a second realisation (reports/posterior-eval/mock-flows/README.md, 2026-11-02) gave
+    % f0 p = 0.141 and fdot 0.422 where this one gives 0.042 and 0.255; the prior mock reproduces exactly.
+    \textcolor{red}{TODO(check): an earlier run of the same mock on the same injections (other hardware)
+    gave $p=0.14$ for $f_0$ and $0.42$ for $\fdot$ where this one gives $0.04$ and $0.26$, while the prior mock
+    reproduces to the digit: the Gaussian draws are not reproducible across machines (an eigendecomposition
+    of an ill-conditioned covariance), so its $p$-values near the threshold carry a realisation spread;
+    fix the draws or quote the spread.} A flow's $p$-value or rank offset is compared
     with the Gaussian mock's on the same test and injections, not with
     \qty{\EvaluationPowerAlpha}{\percent}.
   \item \emph{Proper scores are weak against small errors.} The narrow mock scores only a factor
@@ -420,6 +431,13 @@ diagonal of the second parameter ($\log\Mc$ in these runs) is not positive for \
 eval sources, in \EvaluationMcNegativeInjections{} of the \EvaluationFisherInjections{}
 injections. The floor binds only where the averaged Hessian is negative along an eigenvector,
 for at most \EvaluationFlooredMax{} eigenvalues, in \EvaluationFlooredInjections{} injections.
+% added 2026-11-18 from the packed references (reports/mcmc/data/eval-<pid>.npz)
+\textcolor{red}{TODO(fix): on the full band the floor does not bound $\log\fdot$ for faint sources: for
+44--\qty{45}{\percent} of the eval sources (all below \ac{snr} 4) about half the Fisher draws have
+$\fdot=\infty$ after $\exp(\log\fdot)$, and \texttt{pack} stores them with scale 1, so their $\fdot$ is lost
+(the $f_0$ draws stay finite; the narrow band is unaffected). Bound the draws in $\log\fdot$ (for instance
+at the chains' \McmcBoxSigmas{}-$\sigma$ box) and repack; check which flow-over-Fisher $\fdot$ ratios of
+\cref{app:results} include these sources.}
 
 The forecast is a reference width, not a posterior: it is unimodal, so it misses the exact
 symmetries of \cref{eq:psi-phi-symmetry}; it is Gaussian, so it cannot follow the curved

@@ -1,21 +1,20 @@
 """Figure: the joint reference MCMC posterior of every source of one eval injection, against the Fisher forecast."""
 
-import json
-
 import numpy as np
 from matplotlib.colors import to_rgba
 from scipy.ndimage import gaussian_filter
 
+import mcmc_reference
 import style
 from style import plt
 
-DRAWS = style.REPO / "reports/mcmc/data/draws.json"
-INJECTION = 2
-# columns of draws.json: f0 [bins], the drift (ln Mc in the old chains, ln fdot now), ln A, alpha, delta, psi, cos iota, phi0
+# the window drawn (narrow band, four sources; numbers_mcmc.py reads the same constants)
+BAND, INJECTION = ("narrow", 4), 101
+# columns of mcmc_reference.folded: f0 [bins], fdot, ln A, alpha, delta, psi, cos iota, phi0
 PAIRS = [(0, 1), (2, 6), (3, 4), (5, 7)]
 LABELS = [
     r"$\Delta f_0$ [bins]",
-    None,
+    r"$\Delta\dot f$ [Hz s$^{-1}$]",
     r"$\Delta\ln\mathcal{A}$",
     r"$\Delta\alpha$",
     r"$\Delta\delta$",
@@ -52,15 +51,10 @@ def contours(ax, x, y, extent, filled: bool, color: str, smooth: float) -> None:
         ax.contour(xc, yc, density, levels=levels, colors=color, linewidths=[0.6, 1.0])
 
 
-# offsets from the truth, quantised in hundredths of draws.json's scale; joint seeds pooled
-draws = json.loads(DRAWS.read_text())
-window = next(w for w in draws["windows"] if w["j"] == INJECTION)
-assert window["joint_width"], f"injection {INJECTION} has no joint chains"
-LABELS[1] = {"log Mc": r"$\Delta\ln\mathcal{M}_c$", "log fdot": r"$\Delta\ln\dot f$"}[
-    draws["columns"][1]
-]
-source_snr = np.array(window["snr"])
-unit = lambda s: np.array(window["scale"][s]) / draws["quant"]
+# updated 2026-11-18: the packed reference of the current narrow-band problem with four sources (one seed per injection)
+d = mcmc_reference.reference(*BAND)
+source_snr = d["source_snr"][INJECTION]
+offsets = lambda key, s: mcmc_reference.folded(d[key][INJECTION, :, s], d["truth"][INJECTION, s])
 
 style.setup()
 fig, axes = plt.subplots(
@@ -70,14 +64,13 @@ fig, axes = plt.subplots(
     constrained_layout=True,
 )
 for s, row in enumerate(axes):
-    mcmc_draws = np.concatenate(
-        [np.array(seed[s]).T for seed in window["draws"]["joint"]]
-    ) * unit(s)
-    fisher_draws = np.array(window["draws"]["fisher"][s]).T * unit(s)
+    mcmc_draws, fisher_draws = offsets("mcmc", s), offsets("fisher", s)
     for ax, (i, j) in zip(row, PAIRS):
-        # axis range: the central 98% of both sets, so a mode holding under 1% does not squash the plot
-        both = np.concatenate([mcmc_draws, fisher_draws])
-        lo, hi = np.percentile(both[:, [i, j]], [1, 99], axis=0)
+        # axis range: the chain's central 90% joined with the forecast's central 98%, so the draws of a faint neighbour
+        # that crossed this source in f0 order (the slots are f0-ordered) do not squash the plot
+        m_lo, m_hi = np.percentile(mcmc_draws[:, [i, j]], [5, 95], axis=0)
+        f_lo, f_hi = np.nanpercentile(fisher_draws[:, [i, j]], [1, 99], axis=0)
+        lo, hi = np.minimum(m_lo, f_lo), np.maximum(m_hi, f_hi)
         pad = 0.08 * (hi - lo)
         extent = [[lo[0] - pad[0], hi[0] + pad[0]], [lo[1] - pad[1], hi[1] + pad[1]]]
         contours(ax, mcmc_draws[:, i], mcmc_draws[:, j], extent, True, style.BLUE, 1.2)

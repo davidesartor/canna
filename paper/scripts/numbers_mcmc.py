@@ -8,6 +8,7 @@ import re
 
 import numpy as np
 
+import mcmc_reference
 import style
 from canna.lisa import config
 from canna.lisa import mcmc
@@ -18,10 +19,12 @@ REPORTS = style.REPO / "reports"
 JOINT = REPORTS / "mcmc"
 CONVERGENCE = REPORTS / "mcmc/data/convergence-261113"  # updated 2026-11-16: narrow-4 long chains, catalogue prior
 FISHER_BAND = (0.8, 1.25)
-HIGH_SNR, LOW_SNR = 100.0, 40.0
-SEED_TOL = 0.03
-# the injection drawn in fig_mcmc-posterior.py
-POSTERIOR_INJECTION = 2
+# updated 2026-11-18: Fisher against the six packed references; "high" from SNR 40, "faint" below 5, and the full band's
+# SNR 5-15 bins where the forecast is wider than the chains
+HIGH_SNR, MID_SNR, FAINT_SNR = 40.0, 15.0, 5.0
+# the window drawn in fig_mcmc-posterior.py
+POSTERIOR_BAND, POSTERIOR_INJECTION = ("narrow", 4), 101
+COST = style.PAPER / "data/runs/mcmc-cost.json"
 WORDS = (
     "zero",
     "one",
@@ -75,9 +78,6 @@ def tex_param(name: str) -> str:
 cfg = config.load("narrow-B")
 problem = LisaGB(**cfg.problem)
 full = LisaGB(**config.load("full-B").problem)
-# the current problem's chains: older problems' folders may sit beside them
-joint_dir = mcmc.cache_dir(problem, cfg.seed, JOINT / "data")
-pid = joint_dir.name.removeprefix("joint-")
 run = argparse_defaults("src/canna/lisa/mcmc.py")
 cores = int(
     re.search(
@@ -85,65 +85,32 @@ cores = int(
     )[1]
 )
 n_injections = N_INJECTIONS
-print(f"problem {pid}; sampler {run}; cores {cores}; {n_injections} eval injections")
+print(f"sampler {run}; cores {cores}; {n_injections} eval injections")
 
-# the joint chains' widths against Fisher, per source of every injection with chains; widths in units of draws.json's scale
-draws = json.loads((JOINT / "data/draws.json").read_text())
-columns = draws["columns"]
-assert len(columns) == mcmc.N_PARAMS
-injections = {w["j"]: w for w in draws["windows"] if w["joint_width"]}
-records = []
-for j, w in injections.items():
-    for s, snr_s in enumerate(w["snr"]):
-        seeds = np.array([seed[s] for seed in w["joint_width"]])
-        joint_rel = seeds.mean(axis=0)
-        records.append(
-            dict(
-                injection=j,
-                source=s,
-                snr=snr_s,
-                joint=joint_rel * np.array(w["scale"][s]),
-                fisher=np.array(w["fisher_width"][s]) / joint_rel,
-                seed=seeds[1] / seeds[0] if len(seeds) == 2 else None,
-            )
-        )
-for r in records:
-    print(
-        f"inj {r['injection']} s{r['source']} SNR {r['snr']:7.1f}  fisher/joint {np.round(r['fisher'], 2)}"
-    )
-
-collected = json.loads((joint_dir / "chains.json").read_text())
-joint_runs = collected["joint"]
-rhat_j = max(d["rhat_max"] for d in joint_runs)
-ess_j = min(d["ess_min"] for d in joint_runs)
-tau_j = max(d["tau_max"] for d in joint_runs)
-seed_dev_j = np.abs(np.array([r["seed"] for r in records if r["seed"] is not None]) - 1)
-print(
-    f"{len(joint_runs)} joint chains: R-hat max {rhat_j:.5f}, ESS min {ess_j:.0f}, tau max {tau_j:.0f}, seed width dev {seed_dev_j.max():.3f}, {np.mean(seed_dev_j <= SEED_TOL):.3f} within {SEED_TOL}"
-)
-
-# Fisher against the joint MCMC
-high = [r for r in records if r["snr"] >= HIGH_SNR]
-low = [r for r in records if r["snr"] < LOW_SNR]
-high_no_drift = np.array([np.delete(r["fisher"], 1) for r in high])
-inside = (high_no_drift >= FISHER_BAND[0]) & (high_no_drift <= FISHER_BAND[1])
-outliers = [
-    (r["snr"], columns[c], r["fisher"][c], r["injection"], r["source"])
-    for r in high
-    for c in range(8)
-    if c != 1 and not FISHER_BAND[0] <= r["fisher"][c] <= FISHER_BAND[1]
-]
-low_no_drift = np.array([np.delete(r["fisher"], 1) for r in low])
-fisher_drift = np.array([r["fisher"][1] for r in records])
-joint_drift = np.array([r["joint"][1] for r in records])
-print(
-    f"fisher: {len(high)} sources >= {HIGH_SNR}, {inside.sum()}/{inside.size} inside, outliers {outliers}"
-)
-print(
-    f"fisher below {LOW_SNR}: {len(low)} sources, {low_no_drift.min():.2f}-{low_no_drift.max():.2f}; {columns[1]} {fisher_drift.min():.2f}-{fisher_drift.max():.2f}"
-)
-print(f"{columns[1]} width: MCMC {joint_drift.min():.3f}-{joint_drift.max():.3f}")
-
+# updated 2026-11-18: the six packed references in use (mcmc_reference.py): one seed per injection, every injection with
+# chains; widths of folded draws, the drift column in fdot
+refs = {key: mcmc_reference.reference(*key) for key in mcmc_reference.PROBLEMS}
+seeds = sorted({int(s) for d in refs.values() for s in d["n_seeds"]})
+assert len(seeds) == 1, seeds
+records = [dict(r, band=band, n=n) for (band, n) in refs for r in mcmc_reference.sources(band, n)]
+snr_all = np.array([r["snr"] for r in records])
+ratio_all = np.array([r["ratio"] for r in records])
+others = [c for c in range(mcmc.N_PARAMS) if c != 1]  # every width but the drift's
+in_band = lambda r: (r >= FISHER_BAND[0]) & (r <= FISHER_BAND[1])
+high = snr_all >= HIGH_SNR
+mid = (snr_all >= MID_SNR) & ~high
+faint = snr_all < FAINT_SNR
+is_full = np.array([r["band"] == "full" for r in records])
+full_mid = is_full & (snr_all >= FAINT_SNR) & (snr_all < MID_SNR)
+print(f"{len(records)} reference sources; high {high.sum()} in band {in_band(ratio_all[high][:, others]).mean():.2f}, "
+      f"mid {mid.sum()} {in_band(ratio_all[mid][:, others]).mean():.2f}; faint f0 median {np.median(ratio_all[faint, 0]):.2f}; "
+      f"full SNR 5-15 f0 median {np.median(ratio_all[full_mid, 0]):.2f}")
+# per band, the f0 ratio by source count in the full band's SNR 5-15 bins: the range of the per-count medians
+full_mid_f0 = [np.median(ratio_all[full_mid & np.array([r["n"] == n for r in records]), 0]) for n in (4, 8, 16)]
+# the full band's mid-SNR drift: the forecast's fdot width over the chains'
+full_mid_drift = np.median(ratio_all[full_mid, 1])
+rhat_max = max(float(np.nanmax(d["rhat"])) for d in refs.values())
+ess_min = min(float(np.nanmin(d["ess"])) for d in refs.values())
 # convergence study of the long chains
 summary = json.loads((CONVERGENCE / "summary.json").read_text())
 curves = np.load(CONVERGENCE / "curves.npz")
@@ -200,21 +167,17 @@ if failing:
         "McmcConvWorstSnr": f"{long_runs[worst]['snr'][worst_slot]:.0f}",
     }
 
-# cost: the joint chains' own wall times
-joint_hours = np.array([c["seconds"] for c in joint_runs]) / 3600
-print(f"cost: joint {joint_hours.min():.1f}-{joint_hours.max():.1f} h")
 
-# the injection of the posterior figure: its faintest source puts part of its draws in another f0 mode
-posterior = injections[POSTERIOR_INJECTION]
-faint = int(np.argmin(posterior["snr"]))
-faint_offsets = np.concatenate(
-    [np.array(seed[faint]).T for seed in posterior["draws"]["joint"]]
-) * (np.array(posterior["scale"][faint]) / draws["quant"])
+# the window of the posterior figure: its two faint sources spread their f0 draws far from the truth
+post = refs[POSTERIOR_BAND]
+post_snr = post["source_snr"][POSTERIOR_INJECTION]
+faintest = int(np.argmin(post_snr))
+faint_offsets = mcmc_reference.folded(post["mcmc"][POSTERIOR_INJECTION, :, faintest], post["truth"][POSTERIOR_INJECTION, faintest])
 far = np.abs(faint_offsets[:, 0]) > 1
-print(
-    f"posterior injection {POSTERIOR_INJECTION}: faint source {faint}, {far.mean():.3f} of f0 draws > 1 bin off"
-)
-
+spread = np.percentile(np.abs(faint_offsets[:, 0]), 90)
+print(f"posterior window {POSTERIOR_INJECTION}: SNR {np.round(post_snr, 1)}, faintest {far.mean():.2f} of f0 draws > 1 bin off, 90% within {spread:.0f} bins")
+# cost: the joint chains run on TREX (import_mcmc_cost.py)
+cost = json.loads(COST.read_text())
 # updated 2026-11-16: label-free reading of the long chains (reports/mcmc/scripts/label_free_widths.py, run on TREX).
 # The traces are f0-sorted per draw, so a faint source crossing a loud one mixes their ranks; a loud source (SNR >= 7)
 # takes the slot nearest its true f0 instead, and "found" is the share of draws with any slot within found_bins of
@@ -290,9 +253,12 @@ style.save_numbers(
         "McmcBurn": thousands(run["burn"]),
         "McmcKeep": thousands(run["keep"]),
         "McmcThin": str(run["thin"]),
-        "McmcSeeds": WORDS[len(run["seeds"])],
+        # the references in use ran one seed per injection (the sampler's default lists two)
+        "McmcSeeds": WORDS[seeds[0]],
         "McmcInjections": str(n_injections),
-        "McmcChains": str(n_injections * len(run["seeds"])),
+        "McmcChains": str(n_injections * seeds[0]),
+        "McmcReferences": WORDS[len(refs)],
+        "McmcChainsAll": thousands(n_injections * seeds[0] * len(refs)),
         "McmcKeepDraws": thousands(mcmc.N_KEEP),
         "McmcSlots": WORDS[problem.n_sources],
         "McmcResponsePoints": str(problem.response_points),
@@ -302,27 +268,12 @@ style.save_numbers(
         "McmcBoxSigmas": f"{mcmc.BOX_SIGMAS:g}",
         "McmcFdotSigmas": f"{mcmc.FDOT_SIGMAS:g}",
         "McmcFdotCutMass": f"{0.5 * math.erfc(mcmc.FDOT_SIGMAS / math.sqrt(2)):.1g}",
-        # the joint chains on disk
-        "McmcDrift": TEX_NAMES[columns[1]],
-        "McmcJointWindows": (
-            WORDS[len(injections)]
-            if len(injections) < len(WORDS)
-            else str(len(injections))
-        ),
-        "McmcJointChains": str(len(joint_runs)),
-        "McmcJointWindowList": ", ".join(
-            str(j) for j in sorted(injections, reverse=True)
-        ),
-        # convergence of the joint chains
+        # the references' own diagnostics
         "McmcRhatGroups": WORDS[
             inspect.signature(mcmc.gelman_rubin).parameters["groups"].default
         ],
-        "McmcJointRhatMax": f"{rhat_j:.4f}",
-        "McmcJointEssMin": thousands(ess_j),
-        "McmcJointTauMax": f"{tau_j:.0f}",
-        "McmcJointSeedWidthTypical": f"{100 * SEED_TOL:.0f}",
-        "McmcJointSeedShare": f"{100 * np.mean(seed_dev_j <= SEED_TOL):.0f}",
-        "McmcJointSeedWidthDev": f"{100 * seed_dev_j.max():.1f}",
+        "McmcRefRhatMax": f"{rhat_max:.3f}",
+        "McmcRefEssMin": thousands(ess_min),
         # convergence study
         "McmcConvRuns": " and ".join(sorted(long_runs, key=int)),
         "McmcConvIterations": thousands(conv_chain["iterations"]),
@@ -348,33 +299,37 @@ style.save_numbers(
         **failing_numbers,
         # the joint posterior figure
         "McmcPosteriorInjection": str(POSTERIOR_INJECTION),
-        "McmcPosteriorWindowSnr": f"{posterior['window_snr']:.0f}",
-        "McmcPosteriorFaintSnr": f"{posterior['snr'][faint]:.1f}",
+        "McmcPosteriorWindowSnr": f"{post['snr'][POSTERIOR_INJECTION]:.0f}",
+        "McmcPosteriorFaintSnr": f"{post_snr[faintest]:.1f}",
         "McmcPosteriorFarPercent": f"{100 * far.mean():.0f}",
-        "McmcPosteriorFarBins": f"{np.median(faint_offsets[far, 0]):.1f}",
-        "McmcPosteriorDecShift": f"{np.median(faint_offsets[:, 4]):.1f}",
-        # Fisher against the joint MCMC
+        "McmcPosteriorSpreadBins": f"{spread:.0f}",
+        # Fisher against the joint MCMC, the six references pooled
         "McmcFisherLo": f"{FISHER_BAND[0]:g}",
         "McmcFisherHi": f"{FISHER_BAND[1]:g}",
+        "McmcFisherSources": thousands(len(records)),
         "McmcFisherHighSnr": f"{HIGH_SNR:.0f}",
-        "McmcFisherHighCount": str(len(high)),
-        "McmcFisherInside": str(int(inside.sum())),
-        "McmcFisherTotal": str(inside.size),
-        "McmcFisherOutliers": "; ".join(
-            f"{TEX_NAMES[c]} of source {s + 1} (\\acs{{snr}} {snr_:.0f}) of injection {j} ({v:.2f})"
-            for snr_, c, v, j, s in sorted(outliers, key=lambda o: o[2])
-        ),
-        "McmcFisherLowSnr": f"{LOW_SNR:.0f}",
-        "McmcFisherLowCount": str(len(low)),
-        "McmcFisherLowLo": f"{low_no_drift.min():.2f}",
-        "McmcFisherLowHi": f"{low_no_drift.max():.2f}",
-        "McmcFisherDriftLo": f"{fisher_drift.min():.2f}",
-        "McmcFisherDriftHi": f"{fisher_drift.max():.2f}",
-        "McmcDriftWidthLo": f"{joint_drift.min():.2f}",
-        "McmcDriftWidthHi": f"{joint_drift.max():.2f}",
-        # cost
-        "McmcCostJointLo": f"{joint_hours.min():.1f}",
-        "McmcCostJointHi": f"{joint_hours.max():.1f}",
+        "McmcFisherHighCount": str(int(high.sum())),
+        "McmcFisherHighInside": f"{100 * in_band(ratio_all[high][:, others]).mean():.0f}",
+        "McmcFisherHighMedianLo": f"{np.median(ratio_all[high][:, others], axis=0).min():.2f}",
+        "McmcFisherHighMedianHi": f"{np.median(ratio_all[high][:, others], axis=0).max():.2f}",
+        "McmcFisherMidSnr": f"{MID_SNR:.0f}",
+        "McmcFisherMidCount": str(int(mid.sum())),
+        "McmcFisherMidInside": f"{100 * in_band(ratio_all[mid][:, others]).mean():.0f}",
+        "McmcFisherFaintSnr": f"{FAINT_SNR:.0f}",
+        "McmcFisherFaintFzero": f"{np.median(ratio_all[faint, 0]):.2f}",
+        "McmcFisherFullMidLo": f"{min(full_mid_f0):.1f}",
+        "McmcFisherFullMidHi": f"{max(full_mid_f0):.1f}",
+        "McmcFisherFullMidDrift": f"{full_mid_drift:.1f}",
+        # cost: 400 000-iteration joint chains on TREX (import_mcmc_cost.py); the narrow-band range quoted in the main text
+        "McmcCostJointLo": f"{min(cost['narrow-4']['hours'] + cost['narrow-8']['hours']):.1f}",
+        "McmcCostJointHi": f"{max(cost['narrow-4']['hours'] + cost['narrow-8']['hours']):.1f}",
+        # cost: 400 000-iteration joint chains on TREX (import_mcmc_cost.py)
+        "McmcCostNarrowFourLo": f"{min(cost['narrow-4']['hours']):.1f}",
+        "McmcCostNarrowFourHi": f"{max(cost['narrow-4']['hours']):.1f}",
+        "McmcCostNarrowEightLo": f"{min(cost['narrow-8']['hours']):.1f}",
+        "McmcCostNarrowEightHi": f"{max(cost['narrow-8']['hours']):.1f}",
+        "McmcCostFullSixteenLo": f"{min(cost['full-16']['hours'] or cost['full-16']['extrapolated_400k_hours']):.0f}",
+        "McmcCostFullSixteenHi": f"{max(cost['full-16']['hours'] or cost['full-16']['extrapolated_400k_hours']):.0f}",
         **labelfree_numbers,
     },
 )

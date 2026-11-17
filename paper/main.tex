@@ -182,10 +182,12 @@ specifically highlighted here.
 \begin{itemize}
   \item A noise \acs{psd} estimated with the sources, since a louder noise than the flow's own makes it
     confident and wrong (\cref{app:evaluation-sampler}). (The power/log grids and Euler are in, 2026-11-18.)
-\item Rebuild reports/mcmc under the catalogue prior: the convergence study of \cref{app:mcmc} is
-    now the narrow $S=4$ long chains (2026-11-16), but the other numbers and figures of
-    \cref{app:mcmc} (Fisher against MCMC, the posterior figure, the joint-chain statistics) still come
-    from the old chains and the old prior.
+\item \cref{app:mcmc} now reads the six packed references of the eval catalogue (2026-11-18: settings,
+    one seed per injection, $\hat R$ and \acs{ess}, the posterior figure, Fisher against MCMC, cost); the
+    reports/mcmc README and page still describe the old chains, and the Hessian statistics of
+    \cref{app:evaluation-fisher} (fisher-diagonal.json) the old prior: rerun.
+  \item Fisher draws on the full band: $\fdot$ overflows to infinity for about half the draws of the faint
+    sources (\cref{app:evaluation-fisher}); bound them and repack the references.
   \item One seed per configuration: the run-to-run spread is unmeasured, so differences of a few
     hundredths of a nat between forks are not significant. TODO(run, expensive, deliberately not
     launched 2026-11-13): a second seed of narrow $S=2$, about 32 A100 hours.
@@ -193,6 +195,12 @@ specifically highlighted here.
 
 \paragraph{Analysis.}
 \begin{itemize}
+  \item Fisher against MCMC on the full band at \acs{snr} 5--15: the forecast is 2.2--2.5 times wider in
+    $f_0$ than the chains (\cref{app:mcmc-fisher}); decide which side is off with the prior-started full
+    $S=16$ chains (running).
+  \item The Gaussian mock's validation $p$-values change between machines (\cref{app:evaluation-mocks}).
+  \item The overlap offset is no single parameter group (\cref{app:results-validation}, 2026-11-18): draws
+    trade $f_0$ against phase. Whether a different chart or loss would remove that is open.
   \item The full band misses loud sources above about \qty{10}{\milli\hertz}, mostly because the flow
     refines the frame only 2--5-fold there (\cref{app:results-mcmc}). Framed (2026-11-17): the prior
     produces few such sources for training; the cure is left to a follow-up.
