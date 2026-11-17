@@ -238,14 +238,39 @@ and a source's signal-to-noise ratio $\snr_s$ is given by $\snr_s^2 = \inner{h(\
 \subsection{Frequency-Domain Factorisation}
 \label{sec:gw-factorisation}
 
-\textcolor{red}{TODO(move from \cref{app:forward-model-windows}): why the likelihood of the band
-factorises into windows.}
+Stationary noise is independent across bins and, in $A$, $E$, $T$, across channels, so the
+log-likelihood of the band is a sum over bins (\cref{eq:loglik}). A \ac{gb}'s heterodyned response
+has compact support, $R$ bins around $f_0\Tobs$ (\cref{tab:forward-model-bands}), so a source changes
+only the terms of the bins it covers. Given the sources whose responses fall in a window, the
+likelihood factorises: the window's bins are independent of the rest of the band, and the posterior
+of its sources depends on the data only through the window. One network, conditioned on the window's
+position, then serves the whole band, window by window and in parallel. The factorisation is exact
+when no response crosses a window's edge; in real data, sources at an edge and the wings of loud
+neighbours break it, and a global fit updates overlapping segments in turn
+\citep{littenberg2020global} (\cref{app:forward-model-limits}).
+% updated 2026-11-17: moved here from app:forward-model-windows ("Why the band can be sliced"), shortened.
 
 \subsection{Slicing in Frequency}
 \label{sec:gw-windows}
 
-The observation $y$ is a window of $K$ whitened bins in each channel,
-$K\times6$ real numbers, centred at $\fw$.
+The observation $y$ is a window of $K = \ForwardModelWindowResponses{}R$ consecutive whitened bins
+in each channel, $K\times6$ real numbers, with first bin and centre
+\begin{equation}
+  k_0(\fw) = \ForwardModelWindowStride{}\,\operatorname{rint}\Bigl(\frac{\fw\Tobs - K/2}{\ForwardModelWindowStride{}}\Bigr),
+  \qquad \fw = \frac{k_0 + K/2}{\Tobs}.
+  \label{eq:forward-model-window-start}
+\end{equation}
+Its $S$ sources add linearly, and a guard band of $R/2$ bins at each edge keeps every response
+inside it, so that the factorisation above is exact: in a band $[f_{\min}, f_{\max}]$, sources are
+drawn with
+\begin{equation}
+\begin{aligned}
+  f_0 &\ge \max\Bigl(\frac{k_0 + R/2}{\Tobs},\, f_{\min}\Bigr),\\
+  f_0 &\le \min\Bigl(\frac{k_0 + K - R/2}{\Tobs},\, f_{\max}\Bigr),
+\end{aligned}
+  \label{eq:forward-model-window-interior}
+\end{equation}
+an interior of $\ForwardModelInteriorResponses{}R$ bins (\cref{app:forward-model-windows}).
 We train two configurations (\cref{tab:forward-model-bands}): the narrow band, windows of
 \PriorsNarrowW{} bins with \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, where sources
 crowd the most; and the full band, windows of \PriorsFullW{} bins up to
