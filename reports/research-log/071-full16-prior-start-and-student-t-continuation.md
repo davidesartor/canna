@@ -29,3 +29,12 @@ against main/e32 gaps of 0.01-0.06, mostly in the frame part. The epoch-median t
 overfitting) puts the 64-epoch main runs ~0.02 nats ahead of e32 in 4 of 5 healthy rows (narrow-2 a tie), and
 the f0 SBC of e32 is slightly worse on narrow-4 (p ~ 0, 68% coverage 0.64 at SNR >= 7) and full-8 (mean f0
 rank 0.528 at SNR >= 7). Proposed (not yet applied in the paper): main runs in every row except full-4.
+
+**First ten epochs of t44 (45-54, read from checkpoint 54's histories).** The logged frame NLL (Gaussian, with k^2),
+flow z-NLL and their catalog sum are not comparable across the switch: the t-frame is ~0.6x narrower (catalogue
+mean 2 delta_s -0.92..-1.21 at epochs 39-44 -> -1.90..-2.15), its Gaussian k^2 is 2.2-3.2 instead of ~0.9, and the
+flow's z-NLL rose -1.0 -> -0.57 because z = (x - mu)/sigma widened with it. The model's own NLL in x, flow + 2 delta_s
+(binned, approximate), improved from -1.99..-2.16 to -2.48..-2.74. No blow-up: per-step max gradient norm 0.4-1.9e5
+through epochs 48-54 (the Gaussian run: 7e9 -> 9e17 in epochs 48-50). The best-checkpoint rule (catalog frame +
+flow) stayed at epoch 45, so the eval reads the last checkpoint instead (TREX 18162618); a frame_nu run needs the
+selection on flow + 2 delta_s.
