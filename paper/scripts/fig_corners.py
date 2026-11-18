@@ -52,6 +52,13 @@ def extent_of(sets, c):
 
 style.setup()
 for band, n in CONFIGS:
+    if not (DATA / f"{band}-{n}.npz").is_file():
+        # the e64 model has not landed (full S=4): a placeholder, so no older model's corner stays in the paper
+        fig = plt.figure(figsize=(style.FULL, 1.2))
+        fig.text(0.5, 0.5, f"{band} band, S = {n}: 64-epoch model pending", ha="center", va="center",
+                 color=style.MUTED)
+        style.save(fig, f"corner-{band}-{n}")
+        continue
     d = np.load(DATA / f"{band}-{n}.npz")
     dims = [s * 8 + c for s in (0, 1) for c in COLUMNS]
     labels = [rf"${NAMES[i]}^{{({s + 1})}}${UNITS[i]}" for s in (0, 1) for i in range(len(COLUMNS))]

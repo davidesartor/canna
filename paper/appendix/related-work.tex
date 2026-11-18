@@ -98,12 +98,12 @@ Cornish, ran it on \num{7488} CPUs \citep{littenberg2023prototype}; its \ac{gb} 
 as many as ten thousand binaries of the earlier Radler Galaxy after a year \citep{lackeos2023lisa},
 and its residuals have since been searched for a stochastic background \citep{rosati2025prototype}.
 Erebor, on GPUs, returned about \num{12000} \acp{gb}, \num{8000} of them with high confidence, and
-every massive black-hole binary, in about a week on four A100s \citep{katz2024efficient}. The ETH
-pipeline recovered about \num{5100} \acp{gb} from half a year of data, \qty{85}{\percent} of them
-matched to injections, at about \num{700} CPU core hours for the full year \citep{strub2024global}.
-The APC pipeline split the band into \num{4663} narrow segments and identified \num{7620} of the
-\num{9542} \acp{gb} above \ac{snr} 6 in about \qty{20}{\hour} on \num{1000} cores
-\citep{deng2025modular}; the APC group's Gee-Moo pipeline now runs beside Erebor on the consortium's newer
+every massive black-hole binary, in about a week on four A100s \citep{katz2024efficient}. The pipeline of \citet{strub2024global}
+recovered about \num{5100} \acp{gb} from half a year of data, \qty{85}{\percent} of them
+matched to injections, at about \num{700} CPU core hours for the full year.
+Gee-Moo split the band into \num{4663} narrow segments and detected \num{9542}
+\acp{gb} above \ac{snr} 6, \num{7620} of them identified with injected sources, in about \qty{20}{\hour} on \num{1000} cores
+\citep{deng2025modular}; it now runs beside Erebor on the consortium's newer
 Mojito Light data with shared priors and at most five \acp{gb} per segment, where Erebor allows
 fifteen to twenty \citep{lisapriors}. Search pipelines without posteriors resolve similar numbers
 on the earlier Radler data \citep{zhang2021resolving,gao2023fast,gao2025simultaneous}. Downstream,
@@ -250,7 +250,7 @@ and a transformer returns the population posterior from 25 to 1000 events, the c
 precedent for a transformer over a variable set of inputs, though its output is a posterior over
 hyperparameters, not a joint posterior over the sources. Earlier work adapted the network to
 shifts of the noise distribution \citep{wildberger2023adapting}, which our fixed-\ac{psd} simulator
-does not need yet (\cref{app:forward-model-limits}); DINGO-IS reaches next-generation ground-based
+does not need yet (\cref{sec:followups}); DINGO-IS reaches next-generation ground-based
 networks \citep{santoliquido2025fast}, and DINGO for \ac{lisa}'s massive black-hole binaries
 \citep{spadaro2026accurate} remains its only space-based application. \citet{dax2026introduction}
 give a tutorial on Bayesian and frequentist simulation-based inference with machine learning.

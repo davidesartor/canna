@@ -57,6 +57,34 @@ wider than it, and the Fisher width is the sharper reference there.
 \subsection{Results}
 \label{sec:results-main}
 
+% added 2026-11-18 (user): the 64-epoch main run (e64) of every problem; numbers_results.py from
+% data/runs/js-divergence-main.json (import_js.py main) and data/runs/sbc-main.json (import_sbc.py).
+\begin{table}[t]
+\centering
+\caption{Summary of the six problems, for the 64-epoch run of each. Windows: eval windows with
+joint \acs{mcmc} / prior windows of the \acs{sbc}. JS: Jensen--Shannon divergence in bits between the
+flow's and the chains' one-dimensional marginals (\cref{eq:evaluation-js}), averaged over the eight
+coordinates and over the sources at $\snr=7$--15 and $\snr\ge15$; 0 for equal marginals,
+\ResultsSummaryFloor{} from sampling noise alone. \acs{sbc}: share of true coordinates inside the
+central \qty{68}{\percent} of the draws, and the smallest $\gamma$-test $p$-value over the eight
+coordinates (\cref{app:results-validation}).}
+\label{tab:results-summary}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lrcrrrr@{}}
+\toprule
+ & & & \multicolumn{2}{c}{JS} & \multicolumn{2}{c}{\acs{sbc}} \\
+\cmidrule(lr){4-5}\cmidrule(l){6-7}
+problem & $S$ & windows & 7--15 & $\ge15$ & 68\% & $p_{\min}$ \\
+\midrule
+\ResultsSummaryRows
+\bottomrule
+\end{tabular}
+\end{table}
+\textcolor{red}{TODO(run): fill the n4-full row of \cref{tab:results-summary} once the eval of the
+Student-t continuation 261103-n4-full-B-t44 lands from TREX (rerun import\_js.py main,
+import\_sbc.py and numbers\_results.py).}
+
 \paragraph{Widths.} \textcolor{red}{TODO(move from \cref{app:results-mcmc}): flow over \acs{mcmc} width
 per parameter against \acs{snr}, by band and source count (\cref{tab:results-widths}, \cref{fig:results}).}
 

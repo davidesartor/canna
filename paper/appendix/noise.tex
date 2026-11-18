@@ -64,6 +64,20 @@ dividing by $L$ rather than by $c/2\pi f$, changes every $S_c$ by $4x^2$: a tilt
 rather than a constant, which would re-weight low- against high-frequency sources without any
 visible failure. \Cref{app:noise-validation} checks the unit directly.
 
+% moved 2026-11-18 from sec:gw-waveforms.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/noise.pdf}
+  \caption{The noise and the amplitude unit built on it. (a) Amplitude spectral densities
+    $\sqrt{S_c}$ of \cref{eq:noise-psd}, with the \ac{oms} and acceleration terms of $S_A$
+    alone: acceleration noise dominates below a few \unit{\milli\hertz}, and $T$ is orders of
+    magnitude quieter there. Shading marks the narrow and full bands. (b) The sky-averaged
+    constant $C$ of \cref{app:noise-snr}, measured with our \acs{snr} for an isotropic and a
+    Galactic sky ($\pm$ one standard error): flat at low frequency, rising at the top of the full
+    band, where $1+0.6(f/f_\star)^2$ only approximates the response.}
+  \label{fig:noise-psd}
+\end{figure}
+
 The noise is instrumental only: no Galactic confusion foreground (the $S_c$ term of
 \citealt[eq.~1]{robson2019construction}; \citealt{karnesis2021characterization}), no gaps or
 glitches \citep{baghi2022detection,lisaglitch,jaxglitches}, and the \acs{psd} is stationary, known and the same for every window.
@@ -134,7 +148,18 @@ not by the frequency (\cref{fig:forward-model-window}). How $y$ is cut into toke
 \subsection{Signal-to-Noise Ratio}
 \label{app:noise-snr}
 
-The optimal matched-filter \ac{snr} of a signal $h$ is $\snr = \sqrt{\inner{h}{h}}$; for
+% moved 2026-11-18 (user) from sec:gw-waveforms, where only the SNR (eq:gw-snr) stays.
+Signals are compared through the noise-weighted inner product \citep{cutler1994gravitational}
+\begin{equation}
+\begin{aligned}
+  \inner{a}{b} &= 4\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{S_c(f_k)\,\Tobs}\\
+  &= 2\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{P_c(f_k)},
+\end{aligned}
+  \label{eq:inner}
+\end{equation}
+with which the log-likelihood of \cref{eq:loglik} is $-\tfrac12\inner{d-h}{d-h}$ up to a constant.
+The optimal matched-filter \ac{snr} of a signal $h$ is $\snr = \sqrt{\inner{h}{h}}$, which for one
+source is \cref{eq:gw-snr}; for
 noiseless data $d = h$, $\snr^2$ is twice the log-likelihood gain of the true sources over no
 source. We quote two: that of one source's response alone and that of all a window's sources
 together,

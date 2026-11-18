@@ -10,6 +10,48 @@ are a point of $\R^{\ChartCoords{}S}$, and the frame and the flow's training pat
 converting between physical and flow coordinates always needs the $\fw$ of the observation.
 \Cref{fig:chart} shows what the chart does to the prior.
 
+% moved 2026-11-18 (user) from app:priors (was D.3); label unchanged.
+\subsection{Exact Symmetries}
+\label{app:priors-symmetries}
+
+The likelihood (\cref{eq:loglik}) has two groups of exact symmetries, which a posterior sampler
+must either reproduce or remove.
+
+\paragraph{Polarisation and phase.}
+A quarter turn of $\psi$ flips the sign of both polarisation tensors, and a half turn of $\phi_0$
+flips the sign of both polarisations (\cref{app:forward-model}). Together they leave the signal
+unchanged:
+\begin{equation}
+  (\psi, \phi_0) \;\mapsto\; \bigl(\psi + k\tfrac{\pi}{2},\ \phi_0 + k\pi\bigr)
+  \pmod{2\pi},\qquad k = 0,1,2,3,
+  \label{eq:psi-phi-symmetry}
+\end{equation}
+so every source's posterior has four exact copies in $(\psi,\phi_0)\in[0,2\pi)^2$. The helicity
+amplitudes of the flow coordinates depend on these angles only through $\phi_0\pm2\psi$
+(\cref{eq:chart}), which all four copies share: the chart folds them into one point.
+
+\paragraph{Exchangeable sources.}
+The sources are independent and identically distributed and enter the likelihood through their sum, so the
+likelihood is invariant under the $S! = \PriorsPermutations{}$ relabellings: the label-switching
+problem of mixture models \citep{stephens2000dealing,jasra2005markov}, which \ac{mcmc} analyses of
+gravitational-wave sources meet as well \citep{buscicchio2019label}. With
+\cref{eq:psi-phi-symmetry}, every mode of an unordered posterior has
+$\PriorsPermutations{}\times4^{\PriorsSources{}} = \num{\PriorsCopies}$ equivalent copies. The chart folds the
+phase copies, and the slots in order of $f_0$ remove the permutations (\cref{app:chart-slots}). The evaluation pairs drawn and injected sources
+before scoring (\cref{app:evaluation}).
+
+\paragraph{Approximate degeneracies.}
+Amplitude trades against inclination, a distant face-on source against a nearer inclined one;
+for a nearly face-on source one helicity dominates and the phase of the other is barely
+constrained (\cref{app:chart-helicity}). At low frequency the chirp drift $\fdot\Tobs^2$ is a
+small fraction of a bin (\cref{fig:priors}c, \cref{tab:priors-bands}) and $\fdot$ stays close to
+its prior. In the joint chains of the eval injections (\cref{app:mcmc}) the posterior width of
+$\log_{10}\fdot$ is a median \ResultsNarrowFdotPriorLow{} of the prior's conditional width at
+$\snr=7$--15 and still \ResultsNarrowFdotPriorLoud{} above $\snr=40$ on the narrow band
+(\ResultsNarrowFdotPriorLoudN{} sources); on the full band it falls from \ResultsFullFdotPriorLow{} to
+\ResultsFullFdotPriorMid{} at $\snr=15$--40 and \ResultsFullFdotPriorLoud{} above 40. Below
+$\snr=7$ it is \ResultsNarrowFdotPriorFaint{} and \ResultsFullFdotPriorFaint.
+
 \subsection{The Map}
 \label{app:chart-map}
 

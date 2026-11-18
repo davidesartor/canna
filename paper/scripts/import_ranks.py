@@ -29,10 +29,14 @@ def ecdf(r: np.ndarray, k: int) -> tuple[np.ndarray, float, np.ndarray]:
     return np.mean(r[:, None] < np.arange(1, k), 0) - z, float(p), band
 
 
+import e64  # noqa: E402
+
 save = {}
 for band, n in CONFIGS:
-    family = [r for name, r in runs.items() if name.startswith(f"261103-n{n}-{band}-B") and r["evals"]]
-    run = min(family, key=lambda r: r["evals"][-1]["catalog_at_eval"])
+    run = runs.get(e64.run_name(band, n))  # the e64 model (e64.py); was the lowest eval-catalogue loss
+    if not run or not run["evals"]:
+        print(f"{band} S={n}: {e64.run_name(band, n)} not scored yet, skipped")
+        continue
     flow = load(OUT / "runs" / run["run"] / "eval" / run["evals"][-1]["eval"] / "scorecard.npz")
     mock = load(OUT / f"analysis-261113/mocks/{band}-{n}/mock-flows/data/{band}/fisher/scorecard.npz")
     for name, s in (("flow", flow), ("mock", mock)):

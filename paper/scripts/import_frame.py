@@ -17,10 +17,17 @@ GROUPS = {
     "ge40_hi": lambda s, f: (s >= 40) & (f >= 1e-2),
 }
 
+import e64  # noqa: E402
+
 out = {}
 for path in sorted(DATA.glob("frame-vs-flow-*.npz")):
     d = np.load(path)
     tag = path.stem.removeprefix("frame-vs-flow-")
+    # only the e64 models (e64.py); the fp32 comparison runs (<cfg>-fp32) are kept as they are
+    cfg = {"n": "narrow", "f": "full"}[tag[0]], int(tag[1:].split("-")[0])
+    if not tag.endswith("-fp32") and str(d["run"]) != e64.run_name(*cfg):
+        print(f"{tag}: {d['run']} is not the e64 model, skipped")
+        continue
     snr, f0 = d["snr"].ravel(), d["f0_hz"].ravel()
     g = lambda k: d[k].ravel()
     rec = {"run": str(d["run"]), "epoch": int(d["epoch"])}

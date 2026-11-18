@@ -19,6 +19,9 @@ for col, (band, n) in enumerate(CONFIGS):
     for row, (q, label) in enumerate(ROWS):
         ax = axes[row, col]
         flow, mock = (f"{band}-{n}/{w}/{q}" for w in ("flow", "mock"))
+        if f"{flow}/k" not in DATA:  # the e64 model has not landed (full S=4): an empty panel
+            ax.text(0.5, 0.5, "pending", transform=ax.transAxes, ha="center", va="center", color=style.MUTED, fontsize=7)
+            continue
         k = int(DATA[f"{flow}/k"])
         z = np.arange(1, k) / k
         lo, hi = DATA[f"{flow}/band"]

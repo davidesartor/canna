@@ -22,14 +22,17 @@ from canna.lisa.samples import load
 PAPER = Path(__file__).resolve().parents[1]
 RUNS = PAPER.parent / "outputs/runs"
 OUT = PAPER / "data/corners"
+import e64  # noqa: E402
+
 CONFIGS = [("narrow", 2), ("narrow", 4), ("narrow", 8), ("full", 4), ("full", 8), ("full", 16)]
 
 runs = {r["run"]: r for r in json.loads((PAPER / "data/runs/source-count.json").read_text())["runs"]}
 
 
-def selected(band: str, n: int) -> dict:
-    family = [r for name, r in runs.items() if name.startswith(f"261103-n{n}-{band}-B") and r["evals"]]
-    return min(family, key=lambda r: r["evals"][-1]["catalog_at_eval"])
+def selected(band: str, n: int) -> dict | None:
+    """The e64 model (e64.py); was the lowest eval-catalogue loss among the main run and its forks."""
+    r = runs.get(e64.run_name(band, n))
+    return r if r and r["evals"] else None
 
 
 def pick(truth_bins, snr, ok):
@@ -54,11 +57,14 @@ def pick(truth_bins, snr, ok):
 OUT.mkdir(parents=True, exist_ok=True)
 for band, n in CONFIGS:
     run = selected(band, n)
+    if run is None:
+        print(f"{band} S={n}: not scored yet, skipped")
+        continue
     ev = run["evals"][-1]["eval"]
     config = yaml.safe_load((RUNS / run["run"] / "config.yaml").read_text())
     problem = LisaGB(**config["problem"])
     d = load(RUNS / run["run"] / "eval" / ev / "draws.npz")
-    ref = load_reference(problem, config["seed"])
+    ref = e64.reference_for(d["truth"])
     T = problem.t_obs
     ok = np.isfinite(ref["mcmc"]).all(axis=(1, 3))
     sep, j, k = pick(d["truth"][..., 0] * T, d["source_snr"], ok)

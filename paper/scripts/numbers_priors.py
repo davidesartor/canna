@@ -127,6 +127,10 @@ for k, name in enumerate(("Fdot", "Amp")):
         f"PriorsResidual{name}": f"{prior['residual_std'][k]:.2f}",
     }
 corr = np.asarray(prior["corr"])
+# the covariance itself, displayed in appendix/priors.tex (eq:priors-mean)
+cov = np.asarray(prior["cov"])
+for (a, b), name in {(0, 0): "FF", (1, 1): "FdotFdot", (2, 2): "AmpAmp", (0, 1): "FFdot", (0, 2): "FAmp", (1, 2): "FdotAmp"}.items():
+    numbers[f"PriorsCov{name}"] = f"{cov[a, b]:.3f}"
 numbers |= {
     "PriorsCorrFFdot": f"{corr[0, 1]:.2f}",
     "PriorsCorrFAmp": f"{corr[0, 2]:.2f}",

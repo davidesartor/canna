@@ -4,23 +4,9 @@
 % Moved 2026-11-09 from the former sections/limitations.tex. New material in the appendices: the
 % source rates of a real window (app:priors) and the results of the source-count runs (app:results).
 % updated 2026-11-09: "exactly \RelatedWorkSourcesWord{} detectable sources" -> "exactly $S$".
+% 2026-11-18 (user): the former app:forward-model-limits ("What the Simulator Leaves Out") dropped
+% and its items moved here as proposed follow-ups (label sec:followups).
 % =======================================================================================
-
-The simulator is a simplified \ac{lisa}: equal, constant arms, stationary Gaussian noise of known
-\ac{psd}, no galactic foreground, no gaps or glitches, and exactly $S$
-detectable sources per window (\cref{app:forward-model-limits}). A real analysis needs the number
-of sources inferred, the noise estimated with them, and windows stitched across their edges, as a
-global fit does. The flow is checked on data from its own prior; out-of-distribution windows are
-probed in \cref{app:evaluation-sampler}: the flow tolerates sources past its prior but turns confident and
-wrong when the noise is louder than its own \ac{psd}.
-% updated 2026-11-13: robustness outcome (narrow band, S = 4). The sampler's
-uniform grid collapses posteriors much narrower than the frame (\cref{fig:fm-sensitivity}), so a
-frame far too wide would show as widths that change with the number of steps; they are read where
-they no longer do. Our validation tests are necessary
-% updated 2026-11-16 (stale fact): the mock fails every test at 1000 injections (app:results-validation)
-conditions; at a thousand injections the Gaussian mock fails all of them, and only the reference chains
-give widths, for a few windows. \textcolor{red}{TODO(move from \cref{app:results}): where the flow stays wider than the
-\acs{mcmc}: loud full-band sources and the sky.}
 
 We have shown that conditional flow matching returns joint posteriors of overlapping \acp{gb}
 under the full instrument response, across the \ac{lisa} band, in a fraction of a second per
@@ -28,3 +14,51 @@ window. The chart, the frequency order and the frame turn a posterior multimodal
 flow on straight paths can learn, and the one-way network makes each draw cost only the source
 stream. Validation needs tests in data space and known-answer mocks: without them, flows that
 ignore the data pass.
+
+The flow is checked on data from its own prior; out-of-distribution windows are
+probed in \cref{app:evaluation-sampler}: the flow tolerates sources past its prior but turns confident and
+wrong when the noise is louder than its own \ac{psd}.
+% updated 2026-11-13: robustness outcome (narrow band, S = 4).
+The sampler's uniform grid collapses posteriors much narrower than the frame (\cref{fig:fm-sensitivity}), so a
+frame far too wide would show as widths that change with the number of steps; they are read where
+they no longer do. Our validation tests are necessary
+% updated 2026-11-16 (stale fact): the mock fails every test at 1000 injections (app:results-validation)
+conditions; at a thousand injections the Gaussian mock fails all of them, and only the reference chains
+give widths, for a few windows. \textcolor{red}{TODO(move from \cref{app:results}): where the flow stays wider than the
+\acs{mcmc}: loud full-band sources and the sky.}
+
+\paragraph{Proposed follow-ups.}
+\label{sec:followups}
+Our simulator is deliberately simpler than real \ac{lisa} data. The same simulator generates the
+training data, the test injections and the likelihood of the reference \ac{mcmc} (\cref{app:mcmc}),
+so its simplifications limit realism, not the consistency of the comparison. Lifting them, roughly
+in the order a global fit would need them, is the work that follows:
+\begin{itemize}
+  \item a variable number of sources per window, and sources that straddle a window's edge or leak
+  in from a neighbouring window: every window now holds exactly $S$ binaries, mostly below the
+  noise, and nothing else. Using the posteriors inside a global fit, which infers the number of
+  sources and updates overlapping segments in turn \citep{littenberg2020global}, needs both;
+  \item the confusion foreground of the unresolved binaries
+  \citep{timpano2006characterizing,karnesis2021characterization} and the other source classes;
+  \item gaps in the data \citep{baghi2019gravitational,dey2021effect}, and noise that is estimated
+  with the sources rather than known, non-stationary, and with glitches (\cref{app:noise});
+  \item realistic orbits in place of the equal-arm ones, with unequal, time-varying arms, the
+  emitter's position taken at emission rather than at reception, and \ac{tdi} generation 2 in place of
+  generation 1.5 (\cref{app:forward-model-tdi});
+  \item the cubic phase of $\ddot f = \tfrac{11}{3}\fdot^2/f_0$, which JaxGB drops: the frequency now
+  evolves linearly, which is negligible in the narrow band and matters most at the top of the full band;
+  \item responses longer than $R$ bins, since the widest sources of the full band now lose their
+  outermost bins above the noise (\cref{tab:forward-model-truncation}).
+\end{itemize}
+% added 2026-11-18 (user): realistic orbits and gaps next; stress the expected robustness against MCMC
+We will add realistic orbits and gaps first. \emph{We expect the network to be very robust to both,
+and this is one of the main advantages of a simulation-based approach over \ac{mcmc}.} The network
+needs only a simulator, never a likelihood: orbits, gaps and glitches enter by simulating them in the
+training data, and the network learns their effect on the posterior from examples. A sampler instead
+needs that effect written into its likelihood. Gaps break the stationarity that makes the
+frequency-domain likelihood diagonal (\cref{eq:loglik}), so an exact likelihood correlates
+frequency bins and is costly to evaluate, and any effect the likelihood leaves out or approximates
+(an orbit model, a gap's taper, an unmodelled glitch) biases the chains' posteriors
+\citep{baghi2019gravitational,dey2021effect}. As long as the training simulations contain these effects, the
+cost of the network's draws does not change, and neither does the way its posteriors are checked
+(\cref{app:evaluation}).

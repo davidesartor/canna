@@ -6,6 +6,23 @@
 % Training stay here; the data tokens moved to sec:gw-tokens. New material in the
 % appendices: app:fm, app:network, app:training (snapshots and cooldown forks, app:training-loop).
 
+\subsection{The Bayesian Inversion Problem}
+\label{sec:inversion}\label{sec:problem}
+% Moved 2026-11-18 (user) from the end of sec:gw, without its Factorisation, Windows and Symmetries
+% paragraphs (now sec:gw-slicing); written after Delmond et al. (arXiv:2606.29039), Sec. III-A.
+
+Inferring the sources of a window means estimating their posterior, \cref{eq:loglik}, in which
+the prior of \cref{eq:priors-window-prior} encodes what the Galactic population says before the
+data, and the likelihood measures how well the signal of candidate sources matches the data. The
+evidence $p(d_w) = \int p(d_w\mid\Theta_w)\,\pi_w(\Theta_w)\,\dd\Theta_w$ is intractable,
+so the posterior is usually explored by stochastic sampling, with \ac{mcmc}
+\citep{littenberg2020global,strub2022bayesian} or nested sampling \citep{skilling2006nested}. These
+methods are accurate, but they evaluate the likelihood many times for every window, and a global
+fit repeats them over every window and every new stretch of data. We instead train a conditional
+generative model of the posterior once, over all windows of a band, so that a new window costs only
+draws from it (\cref{sec:method-fm}).
+% updated 2026-11-18 (user): the posterior and likelihood equations moved to sec:gw-slicing.
+
 \subsection{Flow Matching}
 \label{sec:method-fm}
 
@@ -33,6 +50,12 @@ velocity and are mapped back with $X = \mu+\sigma Z$ (\cref{app:fm-sampling}).
 \subsection{Flow Coordinates}
 \label{sec:method-chart}\label{sec:gw-chart}
 
+% moved 2026-11-18 (user) from sec:gw-slicing.
+The likelihood is invariant under $(\psi,\phi_0)\to(\psi+\pi/2,\phi_0+\pi)$ and its shifts, four
+copies of each source for $(\psi,\phi_0)\in[0,2\pi)^2$ (\cref{eq:psi-phi-symmetry}), and under the
+$S!$ permutations of the sources. A flow on the raw parameters must place mass on every copy and
+every labelling, and evaluating it needs the copies matched
+\citep{stephens2000dealing,jasra2005markov,buscicchio2019label}. Our coordinates remove both.
 The flow transports points of $\R^{8S}$, one chart image per source (\cref{eq:chart}). Frequency
 is scaled to the window, $\log\fdot$ standardised given $f_0$, and the sky taken in galactic
 coordinates scaled by the prior's widths. Amplitude, inclination, polarisation and phase enter

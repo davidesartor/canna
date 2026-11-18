@@ -11,20 +11,27 @@ import numpy as np
 
 PAPER = Path(__file__).resolve().parents[1]
 OUT = PAPER.parent / "outputs"
-RUNS = {
-    "narrow-2": "261103-n2-narrow-B-e32/eval/40-best-32",
-    "narrow-4": "261103-n4-narrow-B/eval/62-best-32",
-    "narrow-8": "261103-n8-narrow-B-e32/eval/40-best-32",
-    "full-4": "261103-n4-full-B-e32/eval/40-best-32",
-    "full-8": "261103-n8-full-B/eval/64-best-32",
-    "full-16": "261103-n16-full-B-e32/eval/40-best-32",
-}
+import e64  # noqa: E402
+
+# the e64 models (e64.py); a config is kept only once its overlap-flow json was computed on that model's scorecard
+RUNS = {}
+for _band, _n in e64.CONFIGS:
+    _ev = e64.eval_dir(_band, _n)
+    if _ev is not None:
+        RUNS[f"{_band}-{_n}"] = f"{e64.run_name(_band, _n)}/eval/{_ev.name}"
 STRATA = {"snr<7": (0, 7), "snr>=7": (7, np.inf), "all": (0, np.inf)}
 RANKS = ("abs_zp", "abs_zm", "own_snr", "overlap")
 
 out = {}
 for cfg, run in RUNS.items():
-    groups = json.loads((OUT / f"analysis-261117/overlap-flow-{cfg}.json").read_text())["inputs"]
+    # e64 recomputations land as overlap-flow-<cfg>-e64.json; the 2026-11-18 ones hold the earlier picks
+    paths = [OUT / f"analysis-261117/overlap-flow-{cfg}{s}.json" for s in ("-e64", "")]
+    rec_runs = [(p, json.loads(p.read_text())) for p in paths if p.is_file()]
+    rec_runs = [(p, r) for p, r in rec_runs if r["run"] == run.split("/")[0]]
+    if not rec_runs:
+        print(f"{cfg}: no overlap-flow json for {run}, skipped")
+        continue
+    groups = rec_runs[0][1]["inputs"]
     band = cfg.split("-")[0]
     cards = {
         "flow": OUT / "runs" / run / "scorecard.npz",

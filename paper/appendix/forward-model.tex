@@ -237,7 +237,7 @@ and $R^{\ForwardModelFullLadderSlope{}}$ (full), close to the $R^{-1/2}$ of a $1
 responses is not small against the noise, so the data of a loud source are distinguishable from
 a full-resolution transform of the same signal. Training, the test injections and the reference
 \ac{mcmc} all use the same $R$-bin response, so the comparison between the flow and the \ac{mcmc}
-is unaffected (\cref{app:forward-model-limits}).
+is unaffected; a longer response is a proposed follow-up (\cref{sec:followups}).
 
 \begin{table}[h]
 \caption{The $R$-bin response against a \num{\ForwardModelReferencePoints}-point reference, for
@@ -330,12 +330,25 @@ A training example is one window of $K = \ForwardModelWindowResponses{}R$ consec
 $\Tobs$-long transform, identified by its centre frequency $\fw$, which every example carries with
 its data. Its first bin $k_0$ is that of \cref{eq:forward-model-window-start}
 (\cref{sec:gw-windows}), so windows start on even bins and $\fw = (k_0 + K/2)/\Tobs$ exactly for the
-centres the sampler produces. The window holds $S$ sources, whose $R$-bin responses are added at their
-offsets $k_{\min} - k_0$; overlapping sources add linearly. A guard band of $R/2$ bins at each edge
-keeps every response inside the window: sources are drawn in the interior of
-\cref{eq:forward-model-window-interior},
-an interior of $\ForwardModelInteriorResponses{}R$ bins, and since a response spans $q\pm R/2$ it ends
-at the window's edge at most. The centre $\fw$ is drawn as in \cref{app:priors-window}, mostly where
+centres the sampler produces. The window holds $S_w$ sources, whose $R$-bin responses are added at
+their offsets $k_{\min} - k_0$; overlapping sources add linearly.
+
+\paragraph{The interior.}
+% expanded 2026-11-18 (user): how eq:forward-model-window-interior follows from the response's support.
+The response of a source fills the $R$ bins $k_{\min},\dots,k_{\min}+R-1$, with $k_{\min} = q - R/2$
+and $q = \operatorname{rint}(f_0\Tobs)$ (\cref{eq:forward-model-heterodyne}); the window holds the $K$
+bins $k_0,\dots,k_0+K-1$. The response lies inside the window when its first bin is not before the
+window's first, $q - R/2 \ge k_0$, and its last bin not after the window's last,
+$q - R/2 + R - 1 \le k_0 + K - 1$, that is when
+\begin{equation}
+  k_0 + R/2 \;\le\; q \;\le\; k_0 + K - R/2 .
+  \label{eq:forward-model-interior-bins}
+\end{equation}
+Both bounds are integers and $q$ is $f_0\Tobs$ rounded, so \cref{eq:forward-model-interior-bins}
+holds whenever $k_0 + R/2 \le f_0\Tobs \le k_0 + K - R/2$; dividing by $\Tobs$ and intersecting with
+the band $[f_{\min}, f_{\max}]$ gives \cref{eq:forward-model-window-interior}. Sources are drawn in
+that interior, $K - R = \ForwardModelInteriorResponses{}R$ bins wide, and a response there ends at the
+window's edge at most: the guard band of $R/2$ bins at each edge is what keeps it inside. The centre $\fw$ is drawn as in \cref{app:priors-window}, mostly where
 the catalogue's sources can be seen and in a share of the windows log-uniformly over the band, snapped
 to the grid of \cref{eq:forward-model-window-start}, and the window index clipped to the range whose
 interiors just cover $[f_{\min}, f_{\max}]$.
@@ -343,26 +356,11 @@ interiors just cover $[f_{\min}, f_{\max}]$.
 Why the band can be sliced into windows is in \cref{sec:gw-factorisation}; the guard band makes the
 factorisation exact by construction, and overlapping windows updated in turn, as in a global fit
 \citep{littenberg2020global}, are what windows of a flow would need on real data
-(\cref{app:forward-model-limits}).
+(\cref{sec:followups}).
 % updated 2026-11-17: "Why the band can be sliced" moved to sec:gw-factorisation.
 
-\Cref{fig:forward-model-window} shows one window of each band as the network receives it. Per
-bin, the sources are mostly below the noise: a source's \acs{snr} accumulates over its whole
-span, so even a visible one stands little above the noise in the raw data, where its power is
-spread over tens of bins.
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/training-window.pdf}
-  \caption{One training window per band (\cref{app:priors-window}); the full-band one is the first
-  drawn that holds a source with $\snr\ge\PriorsVisibleSnr{}$. (a, b) The network's input in the
-  real part of channel $A$ (\cref{eq:noise-whiten}; grey) with the noiseless signal whitened the
-  same way (black); the noise has unit variance. (c, d) Each source's $A$ response alone, in
-  units of the noise's root-mean-square per bin, labelled with its \acs{snr}; shading marks the guard bands,
-  which hold no $f_0$, only the responses' wings. In both bands the Doppler and chirp terms spread a
-  response over tens of bins, most of them below the noise.}
-  \label{fig:forward-model-window}
-\end{figure}
+\Cref{fig:forward-model-window} shows one window of each band as the network receives it.
+% updated 2026-11-18: the figure and the per-bin reading moved to sec:gw-waveforms.
 
 \paragraph{Bands.}
 The problem comes in two bands that share every prior and the window layout and differ in their
@@ -394,26 +392,3 @@ full & \ForwardModelFullR{} & \ForwardModelFullK{} & \ForwardModelFullInterior{}
 \bottomrule
 \end{tabular}
 \end{table}
-
-\subsection{What the Simulator Leaves Out}
-\label{app:forward-model-limits}
-
-The training distribution is deliberately simpler than real \acs{lisa} data.
-\begin{itemize}
-  \item Every window holds exactly \ForwardModelSourcesWord{} binaries, mostly below the noise, and nothing else:
-  no confusion foreground from the unresolved binaries
-  \citep{timpano2006characterizing,karnesis2021characterization}, no other source class, and no
-  source that straddles a window edge or leaks in from a neighbouring window.
-  \item The noise is stationary, Gaussian and known (\cref{app:noise}), without gaps or glitches.
-  \item The constellation has equal, constant arms, the emitter's position is taken at
-  reception, and \acs{tdi} is the equal-arm generation 1.5.
-  \item The frequency evolves linearly, with a constant $\fdot$: no $\ddot f$.
-  \item Each source's response is cut to its $R$ bins (\cref{tab:forward-model-truncation}), and the
-  widest lose their outermost bins above the noise.
-\end{itemize}
-\textcolor{red}{TODO(Giorgio): should we add the cubic phase of $\ddot f = \tfrac{11}{3}\fdot^2/f_0$ that JaxGB drops?
-It is negligible in the narrow band and largest at the top of the full band.}
-The same simulator generates the training data, the test injections and the likelihood of the
-reference \ac{mcmc} (\cref{app:mcmc}), so these simplifications affect realism, not the consistency
-of the comparison. Using the posteriors inside a global fit would require lifting the first: a
-variable number of sources per window, and sources that straddle window edges.

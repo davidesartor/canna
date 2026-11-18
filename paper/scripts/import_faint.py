@@ -19,6 +19,8 @@ from canna.lisa.problem import LisaGB
 from canna.lisa.samples import load
 from canna.lisa.simulator import sample_physical
 
+import e64  # noqa: E402
+
 PAPER = Path(__file__).resolve().parents[1]
 RUNS = PAPER.parent / "outputs/runs"
 CONFIGS = [("narrow", 2), ("narrow", 4), ("narrow", 8), ("full", 4), ("full", 8), ("full", 16)]
@@ -28,13 +30,15 @@ mad = lambda a: 1.4826 * np.median(np.abs(a - np.median(a, 0)), 0)
 
 out = []
 for band, n in CONFIGS:
-    family = [r for name, r in runs.items() if name.startswith(f"261103-n{n}-{band}-B") and r["evals"]]
-    run = min(family, key=lambda r: r["evals"][-1]["catalog_at_eval"])
+    run = runs.get(e64.run_name(band, n))  # the e64 model (e64.py); was the lowest eval-catalogue loss
+    if not run or not run["evals"]:
+        print(f"{band} S={n}: {e64.run_name(band, n)} not scored yet, skipped")
+        continue
     config = yaml.safe_load((RUNS / run["run"] / "config.yaml").read_text())
     problem = LisaGB(**config["problem"])
     T = problem.t_obs
-    ref = load_reference(problem, config["seed"])
     d = load(RUNS / run["run"] / "eval" / run["evals"][-1]["eval"] / "draws.npz")
+    ref = e64.reference_for(d["truth"])
     draw = jax.jit(jax.vmap(partial(sample_physical, problem), in_axes=(0, None)))
     flow, mcmc, prior = [], [], []
     for j in range(0, len(d["truth"]), 4):

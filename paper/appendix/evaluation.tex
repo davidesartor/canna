@@ -463,6 +463,44 @@ built in (\cref{tab:evaluation-mocks}): \EvaluationMockFisherMcmc{} for the Gaus
 \ac{mcmc} is an evaluation reference only; no likelihood or chain output enters training or the
 flow's draws.
 
+% added 2026-11-18 (user): the Jensen-Shannon divergence of eq. 30 of delmond2026neural; results in app:results-js
+\paragraph{Jensen--Shannon divergence.}
+A width is one number per marginal. To compare the shapes of the marginals, offsets and tails included,
+we use the Jensen--Shannon divergence \citep{lin1991divergence}, as \citet{delmond2026neural} do between
+their flow and their chains. For the densities $p$ and $q$ of one coordinate, with the
+Kullback--Leibler divergence \citep{kullback1951information}
+\begin{equation}
+  D_{\mathrm{KL}}(p\,\|\,q) = \int p(x)\,\log_2\frac{p(x)}{q(x)}\,\dd x ,
+  \label{eq:evaluation-kl}
+\end{equation}
+it is
+\begin{equation}
+  D_{\mathrm{JS}}(p\,\|\,q) = \tfrac12\,D_{\mathrm{KL}}(p\,\|\,m) + \tfrac12\,D_{\mathrm{KL}}(q\,\|\,m),
+  \qquad m = \tfrac12\,(p+q).
+  \label{eq:evaluation-js}
+\end{equation}
+Unlike $D_{\mathrm{KL}}$ it is symmetric and finite when one density vanishes where the other does
+not, and with base-2 logarithms it lies in $[0,1]$: 0 for equal densities, 1 for disjoint ones. It is
+unchanged by any one-to-one map of the coordinate, so $\ln\Amp$ or $\Amp$, $\sin\iota$ or $\iota$ give
+the same value. We estimate it per source and coordinate from the flow's and the chain's
+\ResultsJsDraws{} draws each, relabelled and folded as above, on $B=\ResultsJsBins$ bins whose edges
+are quantiles of the pooled draws, so that each bin holds the same share of the pooled draws:
+\begin{equation}
+  \hat D_{\mathrm{JS}} = \frac12\sum_{b=1}^{B}\hat p_b\log_2\frac{\hat p_b}{\hat m_b}
+  + \frac12\sum_{b=1}^{B}\hat q_b\log_2\frac{\hat q_b}{\hat m_b},
+  \qquad \hat m_b = \tfrac12\,(\hat p_b+\hat q_b),
+  \label{eq:evaluation-js-hat}
+\end{equation}
+with $\hat p_b$ and $\hat q_b$ the shares of the flow's and the chain's draws in bin $b$. The bins
+depend only on the ranks of the draws, so for two independent samples of one continuous distribution
+the estimate does not depend on that distribution. In that case its median is
+\ResultsJsFloorMedian{} and its 95th percentile \ResultsJsFloorHigh{}, the floor of the
+comparison (\num{2000} simulated pairs). For scale, \cref{eq:evaluation-js} between two Gaussians is
+\ResultsJsGaussWidthOneHalf, \ResultsJsGaussWidthTwo, \ResultsJsGaussWidthThree{} and
+\ResultsJsGaussWidthTen{} when one is $1.5$, 2, 3 and 10 times wider than the other, and
+\ResultsJsGaussOffsetHalf, \ResultsJsGaussOffsetOne{} and \ResultsJsGaussOffsetTwo{} when equal widths
+are offset by a half, one and two widths. \Cref{app:results-js} gives the results.
+
 \subsection{Sampler Steps and Robustness}
 \label{app:evaluation-sampler}
 

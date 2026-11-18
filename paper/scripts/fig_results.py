@@ -29,7 +29,7 @@ x = np.arange(len(BANDS))
 
 for ax, column, title in ((axes[0], "f0 [bins]", "$f_0$"), (axes[1], "lon", r"$\alpha$")):
     for (band, n), (color, ls, name) in CONFIG_STYLE.items():
-        if not nr.family(band, n):
+        if nr.selected(band, n) is None:  # e64 not landed (full S=4)
             continue
         ev = nr.selected(band, n)["evals"][-1]
         y = [nr.row(ev, b, "vs_mcmc")["width_ratio"][column] if nr.row(ev, b, "vs_mcmc") else np.nan for b in BANDS]

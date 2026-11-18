@@ -90,6 +90,20 @@ simulation share of a step & \qty{\PriorsNarrowDrawShare}{\percent} (\qty{\Prior
 \subsection{The Sources of a Window}
 \label{app:priors-sources}
 
+% moved 2026-11-18 (user) from sec:gw-priors.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.62\textwidth]{figures/prior-corner.pdf}
+  \caption{The per-source prior over each band (\cref{eq:priors-source,eq:priors-conditional,eq:priors-sky}):
+  amplitude, frequency and drift in $\log_{10}$, and the equatorial sky $(\alpha, \delta)$, from
+  \num{\PriorCornerDraws} draws per band with $f_0$ truncated to the band. Contours enclose
+  \qty{\PriorCornerInner}{\percent} and \qty{\PriorCornerOuter}{\percent} of the draws (one and two standard deviations in two
+  dimensions); diagonals are normalised marginals. The sky is drawn independently of the band, so its
+  panels coincide; it is concentrated toward the galactic centre at
+  (\ang{\PriorsCentreRa}, \ang{\PriorsCentreDec}) and along the plane.}
+  \label{fig:prior-corner}
+\end{figure*}
+
 Given the window, the $S$ sources are drawn independently from the per-source prior of
 \cref{tab:priors-source}, so they are exchangeable and the prior over a window, \cref{eq:priors-window-prior}, is invariant
 under their relabellings. Only $f_0$ depends on the window directly; $\fdot$ and $\Amp$ depend on it through $f_0$.
@@ -103,7 +117,18 @@ catalogue: the Milky Way population of double white dwarfs of \citet{perego2025t
 population synthesis with COSMIC \citep{breivik2020cosmic},
 % updated 2026-11-17: citations confirmed by A. Perego (user); the setup details inferred from the file
 % name (alpha, lambda, tides, Galaxy model) and both red TODOs removed.
-truncated at that cut (\cref{eq:priors-source}), with $f_0$ in \unit{\hertz} and $\fdot$ in \unit{\hertz\per\second}, standard deviations
+truncated at that cut (\cref{eq:priors-source}), with $f_0$ in \unit{\hertz} and $\fdot$ in \unit{\hertz\per\second}, mean and covariance
+% moved 2026-11-18 (user) from eq:priors-source in sec:gw-priors.
+\begin{equation}
+  \mu_\pi = \begin{pmatrix}\PriorsMeanF\\ \PriorsMeanFdot\\ \PriorsMeanAmp\end{pmatrix},\qquad
+  \Sigma_\pi = \begin{pmatrix}
+    \PriorsCovFF & \PriorsCovFFdot & \PriorsCovFAmp\\
+    \PriorsCovFFdot & \PriorsCovFdotFdot & \PriorsCovFdotAmp\\
+    \PriorsCovFAmp & \PriorsCovFdotAmp & \PriorsCovAmpAmp
+  \end{pmatrix},
+  \label{eq:priors-mean}
+\end{equation}
+that is standard deviations
 $(\PriorsStdF, \PriorsStdFdot, \PriorsStdAmp)$ and correlations $\PriorsCorrFFdot$
 ($f_0$, $\fdot$), $\PriorsCorrFAmp$ ($f_0$, $\Amp$) and $\PriorsCorrFdotAmp$ ($\fdot$, $\Amp$). The
 window truncates $f_0$ (\cref{eq:priors-interior}); the full band holds
@@ -170,47 +195,6 @@ of our runs are therefore far below the source count of a real window at a few m
 they test is how a joint amortised posterior scales with the number of overlapping sources
 (\cref{app:results}), not a complete model of the Galactic foreground, which a real analysis must
 subtract or model as confusion noise \citep{karnesis2021characterization}.
-
-\subsection{Exact Symmetries}
-\label{app:priors-symmetries}
-
-The likelihood (\cref{eq:loglik}) has two groups of exact symmetries, which a posterior sampler
-must either reproduce or remove.
-
-\paragraph{Polarisation and phase.}
-A quarter turn of $\psi$ flips the sign of both polarisation tensors, and a half turn of $\phi_0$
-flips the sign of both polarisations (\cref{app:forward-model}). Together they leave the signal
-unchanged:
-\begin{equation}
-  (\psi, \phi_0) \;\mapsto\; \bigl(\psi + k\tfrac{\pi}{2},\ \phi_0 + k\pi\bigr)
-  \pmod{2\pi},\qquad k = 0,1,2,3,
-  \label{eq:psi-phi-symmetry}
-\end{equation}
-so every source's posterior has four exact copies in $(\psi,\phi_0)\in[0,2\pi)^2$. The helicity
-amplitudes of the flow coordinates depend on these angles only through $\phi_0\pm2\psi$
-(\cref{eq:chart}), which all four copies share: the chart folds them into one point.
-
-\paragraph{Exchangeable sources.}
-The sources are independent and identically distributed and enter the likelihood through their sum, so the
-likelihood is invariant under the $S! = \PriorsPermutations{}$ relabellings: the label-switching
-problem of mixture models \citep{stephens2000dealing,jasra2005markov}, which \ac{mcmc} analyses of
-gravitational-wave sources meet as well \citep{buscicchio2019label}. With
-\cref{eq:psi-phi-symmetry}, every mode of an unordered posterior has
-$\PriorsPermutations{}\times4^{\PriorsSources{}} = \num{\PriorsCopies}$ equivalent copies. The chart folds the
-phase copies, and the slots in order of $f_0$ remove the permutations (\cref{app:chart-slots}). The evaluation pairs drawn and injected sources
-before scoring (\cref{app:evaluation}).
-
-\paragraph{Approximate degeneracies.}
-Amplitude trades against inclination, a distant face-on source against a nearer inclined one;
-for a nearly face-on source one helicity dominates and the phase of the other is barely
-constrained (\cref{app:chart-helicity}). At low frequency the chirp drift $\fdot\Tobs^2$ is a
-small fraction of a bin (\cref{fig:priors}c, \cref{tab:priors-bands}) and $\fdot$ stays close to
-its prior. In the joint chains of the eval injections (\cref{app:mcmc}) the posterior width of
-$\log_{10}\fdot$ is a median \ResultsNarrowFdotPriorLow{} of the prior's conditional width at
-$\snr=7$--15 and still \ResultsNarrowFdotPriorLoud{} above $\snr=40$ on the narrow band
-(\ResultsNarrowFdotPriorLoudN{} sources); on the full band it falls from \ResultsFullFdotPriorLow{} to
-\ResultsFullFdotPriorMid{} at $\snr=15$--40 and \ResultsFullFdotPriorLoud{} above 40. Below
-$\snr=7$ it is \ResultsNarrowFdotPriorFaint{} and \ResultsFullFdotPriorFaint.
 
 \subsection{The Training Distribution}
 \label{app:priors-training}
