@@ -122,8 +122,22 @@ move of the sampler, and neither start reaches the balance in \num{400000} itera
 prior-started reference would be no better: below $\snr=7$ we score against the prior
 ($\snr<3$) and report the bracket ($\snr=3$--7) instead. The long chains of narrow $S=4$ show the
 same drift from the Fisher start (\cref{app:mcmc-convergence}), much smaller with four sources.
-\textcolor{red}{TODO(runs): the prior-started chains of full $S=16$ ran out of memory; rerun on TREX
-(2026-11-17), to be read like narrow $S=8$'s.}
+% updated 2026-11-18: full S=16's prior-started chains (TREX 18033012, read label-free by 18033013)
+Full $S=16$'s prior-started chains (four injections, two of them with only $\snr<3$ sources, two seeds,
+\num{200000} iterations) agree below $\snr=7$: below $\snr=3$ they reach
+\McmcPriorStartSixteenFaintChainPrior{} of the prior's $f_0$ width, the flow
+\McmcPriorStartSixteenFaintFlowPrior{} and the reference \McmcPriorStartSixteenFaintRefPrior; between
+$\snr=3$ and 7 they find a source in \McmcPriorStartSixteenMidFoundLastLo--\McmcPriorStartSixteenMidFoundLastHi{}
+of their draws, the reference in \McmcPriorStartSixteenMidFoundRefLo--\McmcPriorStartSixteenMidFoundRefHi{}
+and the flow in \McmcPriorStartSixteenMidFoundFlowLo--\McmcPriorStartSixteenMidFoundFlowHi. At $\snr\ge7$
+they find every loud source, but their $f_0$ widths are
+\McmcPriorStartSixteenLoudChainRefLo--\McmcPriorStartSixteenLoudChainRefHi{} times the reference's
+(median \McmcPriorStartSixteenLoudChainRef, against \McmcPriorStartLoudChainRef{} on narrow $S=8$), and
+for \McmcPriorStartSixteenLoudGrowing{} of the \McmcPriorStartSixteenLoudN{} sources still growing at
+the chains' end. With sixteen sources the full band's reference is therefore likely too narrow from
+$\snr=7$ to about 20, and the full $S=16$ ratios there are upper bounds on the flow's excess width; the
+flow's own widths are \McmcPriorStartSixteenLoudFlowRefLo--\McmcPriorStartSixteenLoudFlowRefHi{} times
+the reference's on these sources.
 
 \paragraph{The narrow band.}
 With two sources per window the flow matches the chains: at $\snr=7$--40 every width ratio is

@@ -231,8 +231,8 @@ On \McmcJointCores{} CPU cores, a joint chain of \num{400000} iterations (burn-i
 \qtyrange{\McmcCostFullSixteenLo}{\McmcCostFullSixteenHi}{\hour} for a full-band window with sixteen,
 against a fraction of a second for the flow (\cref{app:fm-sampling}). The cost grows with the dimension
 and with the response, \McmcResponsePointsFull{} bins per source on the full band against
-\McmcResponsePoints{} on the narrow one.
-\textcolor{red}{TODO(update): the full $S=16$ figure is extrapolated from the progress of the running
-prior-started chains (TREX 18033012); replace it with their wall times when they end.}
+\McmcResponsePoints{} on the narrow one. The full $S=16$ figure doubles the measured wall times of its
+prior-started chains, which ran \num{200000} iterations.
+% updated 2026-11-18: full S=16 from the eight completed 200 000-iteration chains (TREX 18033012), doubled
 
 The flows of every band and source count against these chains are in \cref{app:results}.

@@ -1,4 +1,4 @@
-# canna.lisa takeaways (current state, 2026-11-18, F70)
+# canna.lisa takeaways (current state, 2026-11-18, F71)
 
 One `0<nn>-<slug>.md` per finding F<nn>, outcome first. The literature lives in
 [../literature/](../literature/): [GW and cosmology
@@ -7,6 +7,10 @@ schedules](../literature/optimizers-schedules/000-takeaways.md), [diffusion and 
 matching](../literature/diffusion-flow-matching/000-takeaways.md) and the others; the findings
 keep only its consequences for our code.
 
+- **Full S=16's reference is likely too narrow at SNR 7-20** ([F71](071-full16-prior-start-and-student-t-continuation.md)):
+  its prior-started chains find every loud source but end 1.2-1.7x wider than the reference, still widening; below
+  SNR 7 they repeat narrow S=8 (prior below 3, bracket at 3-7). Full-4 continues from epoch 44 with a Student-t
+  frame NLL (bounded per-entry gradients), run 261103-n4-full-B-t44.
 - **The MCMC appendix reads the current references** ([F70](070-mcmc-appendix-from-packed-references.md)): one
   seed per window; Fisher fair from SNR 15 (0.89-0.96x the chains from SNR 40), no proxy below 5, and 2.2-2.5x
   WIDER than the chains in f0 on the full band at SNR 5-15 (open which side); Fisher fdot overflows on 44% of

@@ -205,6 +205,9 @@ def labelfree(name: str) -> dict:
 
 
 lf4, lf8 = labelfree("long-narrow-4"), labelfree("prior-narrow-8")
+# updated 2026-11-18: full S=16's prior-started chains (TREX 18033012, windows 70, 77, 31, 42, two seeds, 200 000
+# iterations; 31 and 42 hold only SNR < 3 sources), read by the same script (18033013)
+lf16 = labelfree("prior-full-16")
 med = lambda a: float(np.median(a))
 rng = lambda a, f="{:.2f}": (f.format(np.min(a)), f.format(np.max(a)))
 print(f"label-free narrow-4: loud chain/ref {med(lf4['loud']['q4'] / lf4['loud']['ref']):.2f}, faint chain/prior "
@@ -241,6 +244,23 @@ labelfree_numbers = {
     "McmcPriorStartMidFoundFlowLo": rng(lf8["mid"]["fflow"])[0],
     "McmcPriorStartMidFoundFlowHi": rng(lf8["mid"]["fflow"])[1],
     "McmcPriorStartChance": f"{med(lf8['mid']['fprior']):.2f}",
+    # full S=16, prior start for every SNR < 7 source
+    "McmcPriorStartSixteenLoudChainRef": f"{med(lf16['loud']['q4'] / lf16['loud']['ref']):.1f}",
+    "McmcPriorStartSixteenLoudChainRefLo": rng(lf16["loud"]["q4"] / lf16["loud"]["ref"], "{:.1f}")[0],
+    "McmcPriorStartSixteenLoudChainRefHi": rng(lf16["loud"]["q4"] / lf16["loud"]["ref"], "{:.1f}")[1],
+    "McmcPriorStartSixteenLoudGrowing": WORDS[int(np.sum(lf16["loud"]["q4"] > lf16["loud"]["q1"]))],
+    "McmcPriorStartSixteenLoudN": WORDS[len(lf16["loud"]["q4"])],
+    "McmcPriorStartSixteenLoudFlowRefLo": rng(lf16["loud"]["flow"] / lf16["loud"]["ref"])[0],
+    "McmcPriorStartSixteenLoudFlowRefHi": rng(lf16["loud"]["flow"] / lf16["loud"]["ref"])[1],
+    "McmcPriorStartSixteenFaintChainPrior": f"{med(lf16['faint']['q4'] / lf16['faint']['prior']):.2f}",
+    "McmcPriorStartSixteenFaintRefPrior": f"{med(lf16['faint']['ref'] / lf16['faint']['prior']):.2f}",
+    "McmcPriorStartSixteenFaintFlowPrior": f"{med(lf16['faint']['flow'] / lf16['faint']['prior']):.2f}",
+    "McmcPriorStartSixteenMidFoundLastLo": rng(lf16["mid"]["fq4"])[0],
+    "McmcPriorStartSixteenMidFoundLastHi": rng(lf16["mid"]["fq4"])[1],
+    "McmcPriorStartSixteenMidFoundRefLo": rng(lf16["mid"]["fref"])[0],
+    "McmcPriorStartSixteenMidFoundRefHi": rng(lf16["mid"]["fref"])[1],
+    "McmcPriorStartSixteenMidFoundFlowLo": rng(lf16["mid"]["fflow"])[0],
+    "McmcPriorStartSixteenMidFoundFlowHi": rng(lf16["mid"]["fflow"])[1],
 }
 
 style.save_numbers(

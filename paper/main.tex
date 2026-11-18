@@ -198,8 +198,9 @@ specifically highlighted here.
 \paragraph{Analysis.}
 \begin{itemize}
   \item Fisher against MCMC on the full band at \acs{snr} 5--15: the forecast is 2.2--2.5 times wider in
-    $f_0$ than the chains (\cref{app:mcmc-fisher}); decide which side is off with the prior-started full
-    $S=16$ chains (running).
+    $f_0$ than the chains (\cref{app:mcmc-fisher}). The prior-started full $S=16$ chains (2026-11-18) are
+    1.2--1.7 times wider than the reference at \acs{snr} 7--22 and mostly still widening, so part of the gap
+    is the reference's (\cref{app:results-mcmc}); with four injections it is not settled.
   \item The Gaussian mock's validation $p$-values change between machines (\cref{app:evaluation-mocks}).
   \item The overlap offset is no single parameter group (\cref{app:results-validation}, 2026-11-18): draws
     trade $f_0$ against phase. Whether a different chart or loss would remove that is open.
@@ -211,7 +212,9 @@ specifically highlighted here.
     references from $\snr=7$ up, and bracket $\snr=3$--7 without settling it, so rerunning the
     references with prior starts would not help; the appendix now scores $\snr<3$ against the prior and
     reports the bracket at $\snr=3$--7 (not in the main text for now). Full $S=16$'s prior-started
-    chains ran out of memory; rerun on TREX 2026-11-17 with 96 GB, then read label-free like narrow $S=8$.
+    chains landed 2026-11-18: same picture below $\snr=7$, but at $\snr\ge7$ they are 1.2--1.7 times wider
+    than the reference and still widening, so full $S=16$'s loud ratios are upper bounds
+    (\cref{app:results-mcmc}). Settling it would need longer prior-started chains (about 40 CPU hours each).
 
 \end{itemize}
 
