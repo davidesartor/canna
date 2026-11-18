@@ -2,21 +2,131 @@
 \section{The Gravitational-Wave Problem}
 \label{sec:gw}
 % =======================================================================================
-% Moved 2026-11-09 from the former sections/problem.tex (data, prior) and the data tokens of the
-% former Network subsection; subsections in the order priors, rates, waveforms, frequency-domain
-% factorisation, slicing in frequency, tokenisation. 2026-11-10: the equations, tab:priors-source,
-% fig:priors and fig:noise-psd of 3.1-3.3 (then 4.1-4.3) were MOVED here from app:priors, app:forward-model and
-% app:noise (labels unchanged; the appendices now refer to them). Still in the appendices: why the band
-% can be sliced (app:forward-model-windows), the bands and their response lengths (tab:forward-model-bands).
+% Restructured 2026-11-18 after Delmond et al. (arXiv:2606.29039), Secs. II-A to II-D, III-A and III-C:
+% section intro; Waveforms (signal, response, noise; details in app:forward-model and app:noise);
+% Priors and Source Counts (the former Priors and Rates subsections, merged); The Bayesian Inversion
+% Problem (likelihood, factorisation, windows, symmetries; formerly Section 2, then the last subsection
+% here); Training Set (new; the bands and the tokens moved into it from the former Slicing in Frequency
+% and Tokenisation subsections). Every label of the former subsections is kept.
+% Earlier history: moved 2026-11-09 from the former sections/problem.tex (data, prior) and the data
+% tokens of the former Network subsection; 2026-11-10 the equations, tab:priors-source, fig:priors and
+% fig:noise-psd were MOVED here from app:priors, app:forward-model and app:noise (labels unchanged).
 
-A \ac{gb} is a circular, slowly chirping binary. Its signal is fixed by eight
-parameters $\theta=(f_0,\fdot,\Amp,\alpha,\delta,\psi,\iota,\phi_0)$: frequency, frequency
-derivative, amplitude, sky position, polarisation, inclination and initial phase
-(\cref{app:forward-model}).
+In this section we set out the inference problem the flow solves. A \ac{gb} is a circular, slowly
+chirping binary whose signal is fixed by eight parameters,
+\begin{equation}
+  \theta = (f_0,\fdot,\Amp,\alpha,\delta,\psi,\iota,\phi_0),
+  \label{eq:gw-parameters}
+\end{equation}
+its frequency $f_0$ and frequency derivative $\fdot$ at the start of the observation, strain
+amplitude $\Amp$, sky position in right ascension $\alpha$ and declination $\delta$, polarisation
+angle $\psi$, inclination $\iota$ and initial phase $\phi_0$. \Cref{sec:gw-waveforms} follows these
+parameters from the polarisations the binary emits, through the response of the \ac{lisa}
+constellation, to the three \ac{tdi} channels and the noise they carry; the full response, the noise
+model and the checks of our simulator against published references are in
+\cref{app:forward-model,app:noise}. \Cref{sec:gw-priors} gives the prior over the sources of a
+frequency window, a stretch of $K$ consecutive Fourier bins with centre frequency $\fw$, and how many
+sources such a window holds. \Cref{sec:inversion} states the Bayesian inversion: the likelihood, why
+the band can be analysed window by window, the posterior and its symmetries.
+\Cref{sec:gw-training} describes how the windows the network trains on are simulated.
 
-\subsection{Priors}
+\subsection{Waveforms}
+\label{sec:gw-data}\label{sec:gw-waveforms}
+% Equations and figure moved 2026-11-10 from app:forward-model and app:noise (the details stay there).
+
+\paragraph{Signal.}
+A \ac{gb} emits a quasi-monochromatic \ac{gw} at twice its orbital frequency that drifts slowly
+through radiation reaction \citep{nelemans2001gravitational,korol2017prospects}. Its
+transverse-traceless strain at the observer is
+\begin{equation}
+  h_{ij}(\xi) = h_+(\xi)\,e^+_{ij} + h_\times(\xi)\,e^\times_{ij},\qquad
+  \xi = t - \frac{\hat{\mathbf k}\cdot\mathbf x(t)}{c},
+  \label{eq:forward-model-xi}
+\end{equation}
+with $t$ the time, $\hat{\mathbf k}$ the direction of propagation, set by $(\alpha,\delta)$,
+$\mathbf x(t)$ the observer's position, $c$ the speed of light and $e^{+,\times}_{ij}$ the
+polarisation tensors of the source frame, which is the frame of the \ac{ssb} rotated by $\psi$
+about $\hat{\mathbf k}$ (\cref{app:forward-model-waveform}). For a circular binary with a constant
+frequency derivative,
+\begin{equation}
+\begin{aligned}
+  h_+(\xi) &= -\Amp\,\bigl(1+\cos^2\iota\bigr)\cos\Psi(\xi),\\
+  h_\times(\xi) &= -2\Amp\cos\iota\,\sin\Psi(\xi),\\
+  \Psi(\xi) &= -\phi_0 + 2\pi f_0\,\xi + \pi\fdot\,\xi^2,
+\end{aligned}
+  \label{eq:forward-model-waveform}
+\end{equation}
+with $\Psi$ the phase of the wave and every parameter at the start of the observation.
+Radiation reaction alone would fix the drift by the chirp mass $\Mc$, with $G$ Newton's constant,
+\begin{equation}
+  \fdot = \frac{96}{5}\,\pi^{8/3}\left(\frac{G\Mc}{c^3}\right)^{5/3} f_0^{11/3},
+  \label{eq:forward-model-fdot}
+\end{equation}
+and the amplitude by the chirp mass and the distance (\cref{eq:forward-model-amplitude}); the
+simulator keeps $\fdot$ and $\Amp$ free, with the prior of \cref{sec:gw-priors}.
+
+\paragraph{Response.}
+Over an observation time $\Tobs=\qty{\ForwardModelTobsYears}{\year}$ the constellation's orbit
+modulates a source in amplitude and Doppler-shifts it, so in the frequency domain it occupies a few
+bins of width $1/\Tobs$ to a few hundred around $f_0$. We simulate the responses of the six laser
+links between the three spacecraft \citep{finn2009response,cornish2009alternative} with the
+heterodyned fast response \citep{cornish2007tests,jaxgb} on equal, constant arms
+\citep{lisaorbits} (\cref{app:forward-model-link,app:forward-model-heterodyne}). Laser frequency noise
+is cancelled by forming from them the \ac{tdi}~1.5 Michelson combinations $X$, $Y$, $Z$
+\citep{tinto2021time} (\cref{app:forward-model-tdi}), and from these the noise-orthogonal channels
+\citep{prince2002lisa}
+\begin{equation}
+  A = \frac{Z-X}{\sqrt2},\quad E = \frac{X-2Y+Z}{\sqrt6},\quad T = \frac{X+Y+Z}{\sqrt3}.
+  \label{eq:forward-model-aet}
+\end{equation}
+
+\paragraph{Noise.}
+The noise is the instrument noise of the \ac{lisa} science requirements
+\citep{lisasst2018lisa,babak2021lisa}: stationary, Gaussian, with one-sided \ac{psd} $S_c(f)$ in
+channel $c\in\{A,E,T\}$ (\cref{eq:noise-psd}, \cref{fig:noise-psd}a). On the window's Fourier bins
+$f_k = (k_0+k)/\Tobs$, $k=0,\dots,K-1$, with $k_0$ its first bin (\cref{sec:gw-windows}), and with
+$\tilde h_c(f;\theta_s)$ the Fourier transform of source $s$'s response in channel $c$, the data of a
+window holding $S$ sources are
+\begin{equation}
+\begin{aligned}
+  \tilde d_{k,c} &= \sum_{s=1}^{S}\tilde h_c(f_k;\theta_s) + \tilde n_{k,c},\\
+  \tilde n_{k,c} &\sim \CN\!\bigl(0,\ P_c(f_k)\bigr),\qquad
+  P_c(f) = \tfrac12\,S_c(f)\,\Tobs,
+\end{aligned}
+  \label{eq:noise-data}
+\end{equation}
+with $\CN$ the circular complex Gaussian, independent across bins and channels, so that the real
+and imaginary parts of $\tilde n_{k,c}$ each have variance $P_c/2$ (\cref{app:noise-likelihood}).
+Signals are compared through the noise-weighted inner product \citep{cutler1994gravitational}
+\begin{equation}
+\begin{aligned}
+  \inner{a}{b} &= 4\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{S_c(f_k)\,\Tobs}\\
+  &= 2\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{P_c(f_k)},
+\end{aligned}
+  \label{eq:inner}
+\end{equation}
+and a source's \ac{snr} $\snr_s$ is that of its response alone,
+$\snr_s^2 = \inner{h(\theta_s)}{h(\theta_s)}$ (\cref{app:noise-snr}).
+% updated 2026-11-09 (moving the definition of theta to the section's head): "modulates it" -> "modulates a source".
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/noise.pdf}
+  \caption{The noise and the amplitude unit built on it. (a) Amplitude spectral densities
+    $\sqrt{S_c}$ of \cref{eq:noise-psd}, with the \ac{oms} and acceleration terms of $S_A$
+    alone: acceleration noise dominates below a few \unit{\milli\hertz}, and $T$ is orders of
+    magnitude quieter there. Shading marks the narrow and full bands. (b) The sky-averaged
+    constant $C$ of \cref{app:noise-snr}, measured with our \acs{snr} for an isotropic and a
+    Galactic sky ($\pm$ one standard error): flat at low frequency, rising at the top of the full
+    band, where $1+0.6(f/f_\star)^2$ only approximates the response.}
+  \label{fig:noise-psd}
+\end{figure*}
+
+\subsection{Priors and Source Counts}
 \label{sec:gw-priors}
-% Equations, table and figure moved 2026-11-10 from app:priors (the details stay there).
+% Merged 2026-11-18 from the former Priors and Rates subsections (text unchanged except the sentence
+% contrasting the uniform priors of delmond2026neural). Equations, table and figure moved 2026-11-10
+% from app:priors (the details stay there).
 
 Given the window centre $\fw$, a window's $S$ sources, $S$ fixed per run, are independent draws
 from one per-source prior $\pi_w(\theta) = \pi(\theta\mid\fw)$ (\cref{tab:priors-source}),
@@ -24,19 +134,25 @@ from one per-source prior $\pi_w(\theta) = \pi(\theta\mid\fw)$ (\cref{tab:priors
   \pi_w(\theta_{1:S}) = \prod_{s=1}^{S}\pi_w(\theta_s).
   \label{eq:priors-window-prior}
 \end{equation}
-Frequency, drift and amplitude follow one Gaussian in their logarithms, the maximum-likelihood fit
-to the double white dwarfs above \qty{\PriorsCatalogueCutMhz}{\milli\hertz} of a simulated Galactic
-catalogue \citep{perego2025towards,breivik2020cosmic},
+Amortised analyses of a single \ac{gb} have drawn every parameter independently, $f_0$ uniform in a
+window a few \unit{\micro\hertz} wide, $\fdot$ and $\Amp$ uniform between catalogue bounds and the
+sky and orientation isotropic \citep{delmond2026neural}. We take the joint law of a simulated Galactic
+population instead, which keeps the correlations between frequency, drift and amplitude and the
+population's faint majority. Frequency, drift and amplitude follow one Gaussian in their
+logarithms, the maximum-likelihood fit to the double white dwarfs above
+\qty{\PriorsCatalogueCutMhz}{\milli\hertz} of a simulated Galactic catalogue
+\citep{perego2025towards,breivik2020cosmic},
 % updated 2026-11-17: citations confirmed by A. Perego (Perego+2025 with COSMIC, Breivik+2020); TODO removed.
 \begin{equation}
   \begin{pmatrix}\log_{10}f_0\\ \log_{10}\fdot\\ \log_{10}\Amp\end{pmatrix}
-  \sim \Normal(\mu, \Sigma),\qquad
-  \mu = \begin{pmatrix}\PriorsMeanF\\ \PriorsMeanFdot\\ \PriorsMeanAmp\end{pmatrix},
+  \sim \Normal(\mu_\pi, \Sigma_\pi),\qquad
+  \mu_\pi = \begin{pmatrix}\PriorsMeanF\\ \PriorsMeanFdot\\ \PriorsMeanAmp\end{pmatrix},
   \label{eq:priors-source}
 \end{equation}
-with $f_0$ in \unit{\hertz}, $\fdot$ in \unit{\hertz\per\second}, the covariance $\Sigma$ in
-\cref{app:priors-sources}, and $f_0$ truncated to the window (\cref{eq:priors-interior}). Given
-$f_0$, the drift and amplitude are Gaussian with means linear in $\log_{10}f_0$,
+with $\Normal$ the Gaussian, $f_0$ in \unit{\hertz}, $\fdot$ in \unit{\hertz\per\second}, the
+covariance $\Sigma_\pi$ in \cref{app:priors-sources}, and $f_0$ truncated to the window
+(\cref{eq:priors-interior}). Given $f_0$, the drift and amplitude are Gaussian with means linear in
+$\log_{10}f_0$,
 \begin{equation}
 \begin{aligned}
   \log_{10}\fdot \mid f_0 &\sim \Normal\bigl(\PriorsInterceptFdot + \PriorsSlopeFdot\log_{10}f_0,\ \PriorsResidualFdot^2\bigr),\\
@@ -49,7 +165,7 @@ the drift's slope close to the $11/3$ of a chirp driven by radiation reaction
 \citep{nelemans2001gravitational,toonen2012supernova,korol2017prospects,korol2020populations,georgousi2022gravitational,thiele2023applying}
 differ in their binary physics
 \citep{biscoveanu2023probing,toubiana2024interacting,boileau2025gravitational,delfavero2025recovering};
-refitting \cref{eq:priors-source} to another changes only $\mu$ and $\Sigma$.
+refitting \cref{eq:priors-source} to another changes only $\mu_\pi$ and $\Sigma_\pi$.
 The sky is a mixture of a bulge, a thick and a thin disc and an isotropic floor in galactic
 longitude $l$ and $\sin b$, with $b$ the galactic latitude,
 \begin{multline}
@@ -118,13 +234,12 @@ $\phi_0$ & $\Unif(0, 2\pi)$ \\
   \label{fig:priors}
 \end{figure*}
 
-\subsection{Rates}
+\paragraph{Source counts.}
 \label{sec:gw-rates}
 % Formula moved 2026-11-10 from app:priors, "How many sources a window holds" (inline there).
-
 Most sources lie far below the noise: in the
 full band \qty{\RelatedWorkVisibleShare}{\percent} of them reach $\snr\ge\RelatedWorkSnrLow$
-(\cref{app:priors}), with $\snr$ the signal-to-noise ratio of a source alone in its window
+(\cref{app:priors}), with $\snr$ the \ac{snr} of a source alone in its window
 (\cref{sec:gw-waveforms}). The simulated Galaxy holds $N = \num{\RatesCatalogue}$ double white dwarfs
 in the band. A window of $w$ bins centred at $f$ holds each with the probability $p(f,w)$ that its
 $f_0$ falls in it under the catalogue's marginal $\pi(f_0)$, so it holds $n$ sources, $n_{\rm vis}$ of
@@ -136,7 +251,8 @@ them visible,
 \end{gathered}
   \label{eq:gw-rates}
 \end{equation}
-with $\int_w$ over the window and $P_{\rm vis}(f_0) = P\bigl(\snr\ge\RatesVisibleSnr\mid f_0\bigr)$,
+with $\operatorname{Bin}$ the binomial law, $\int_w$ over the window and
+$P_{\rm vis}(f_0) = P\bigl(\snr\ge\RatesVisibleSnr\mid f_0\bigr)$,
 the amplitude integrated out given $f_0$ (\cref{eq:priors-conditional}). A narrow-band window of
 \RatesNarrowWindow{} bins holds on average \numrange{\RatesNarrowAllLo}{\RatesNarrowAllHi} sources and
 \numrange{\RatesNarrowVisibleLo}{\RatesNarrowVisibleMax} visible ones, a full-band window of
@@ -145,99 +261,42 @@ Our $S\le16$ slots test how a joint posterior scales with $S$; a real analysis i
 sources with a trans-dimensional sampler \citep{littenberg2020global} and models the rest as
 confusion noise \citep{karnesis2021characterization}.
 
-\subsection{Waveforms}
-\label{sec:gw-data}\label{sec:gw-waveforms}
-% Equations and figure moved 2026-11-10 from app:forward-model and app:noise (the details stay there).
+\subsection{The Bayesian Inversion Problem}
+\label{sec:inversion}\label{sec:problem}
+% Moved 2026-11-18 from sections/inversion.tex (formerly Section 2); rewritten the same day after
+% Delmond et al. (arXiv:2606.29039), Sec. III-A, with the likelihood moved here from Waveforms and the
+% former subsections Frequency-Domain Factorisation and Slicing in Frequency (windows) as paragraphs.
 
-A \ac{gb} emits a quasi-monochromatic wave at twice its orbital frequency that drifts slowly
-through radiation reaction \citep{nelemans2001gravitational,korol2017prospects}. Its
-transverse-traceless strain at the observer is
+The data $d = (\tilde d_{k,c})$ of a window are generated by its true sources through
+\cref{eq:noise-data}. Within a Bayesian framework, inferring the sources means estimating the
+posterior
 \begin{equation}
-  h_{ij}(\xi) = h_+(\xi)\,e^+_{ij} + h_\times(\xi)\,e^\times_{ij},\qquad
-  \xi = t - \frac{\hat{\mathbf k}\cdot\mathbf x(t)}{c},
-  \label{eq:forward-model-xi}
+  p(\theta_{1:S}\mid d) = \frac{p(d\mid\theta_{1:S})\,\pi_w(\theta_{1:S})}{p(d)},
+  \label{eq:posterior}
 \end{equation}
-with $\hat{\mathbf k}$ the direction of propagation, set by $(\alpha,\delta)$, $\mathbf x(t)$ the
-observer's position, $c$ the speed of light and $e^{+,\times}_{ij}$ the polarisation tensors of
-the source frame, rotated by $\psi$ about $\hat{\mathbf k}$ (\cref{app:forward-model-waveform}). For a
-circular binary with a constant frequency derivative,
-\begin{equation}
-\begin{aligned}
-  h_+(\xi) &= -\Amp\,\bigl(1+\cos^2\iota\bigr)\cos\Psi(\xi),\\
-  h_\times(\xi) &= -2\Amp\cos\iota\,\sin\Psi(\xi),\\
-  \Psi(\xi) &= -\phi_0 + 2\pi f_0\,\xi + \pi\fdot\,\xi^2,
-\end{aligned}
-  \label{eq:forward-model-waveform}
-\end{equation}
-with every parameter at the start of the observation. Radiation reaction alone would fix the
-drift by the chirp mass $\Mc$, with $G$ Newton's constant,
-\begin{equation}
-  \fdot = \frac{96}{5}\,\pi^{8/3}\left(\frac{G\Mc}{c^3}\right)^{5/3} f_0^{11/3};
-  \label{eq:forward-model-fdot}
-\end{equation}
-the simulator keeps $\fdot$ free, with the prior of \cref{eq:priors-conditional}.
-Over $\Tobs=\qty{\ForwardModelTobsYears}{\year}$ the
-constellation's orbit modulates a source in amplitude and Doppler-shifts it, so in the frequency
-domain it occupies a few bins to a few hundred around $f_0$. We simulate the link responses
-\citep{finn2009response,cornish2009alternative} with the heterodyned fast response
-\citep{cornish2007tests,jaxgb} on equal, constant arms \citep{lisaorbits}, form the \ac{tdi}~1.5
-Michelson combinations $X$, $Y$, $Z$ \citep{tinto2021time} and from them the noise-orthogonal
-channels \citep{prince2002lisa}
-\begin{equation}
-  A = \frac{Z-X}{\sqrt2},\quad E = \frac{X-2Y+Z}{\sqrt6},\quad T = \frac{X+Y+Z}{\sqrt3}.
-  \label{eq:forward-model-aet}
-\end{equation}
-The noise is the instrument noise of the \ac{lisa} science requirements
-\citep{lisasst2018lisa,babak2021lisa}: stationary, Gaussian, with one-sided \ac{psd} $S_c(f)$ in
-channel $c$ (\cref{fig:noise-psd}a). On the window's Fourier bins $f_k$ (\cref{sec:gw-windows}),
-with $\tilde h_c(f;\theta_s)$ the Fourier transform of source $s$'s response in channel $c$, the data
-are
-\begin{equation}
-\begin{aligned}
-  \tilde d_{k,c} &= \sum_{s=1}^{S}\tilde h_c(f_k;\theta_s) + \tilde n_{k,c},\\
-  \tilde n_{k,c} &\sim \CN\!\bigl(0,\ P_c(f_k)\bigr),\qquad
-  P_c(f) = \tfrac12\,S_c(f)\,\Tobs,
-\end{aligned}
-  \label{eq:noise-data}
-\end{equation}
-with $\CN$ the circular complex Gaussian, independent across bins and channels. With the noise-weighted inner product
-\citep{cutler1994gravitational}
-\begin{equation}
-\begin{aligned}
-  \inner{a}{b} &= 4\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{S_c(f_k)\,\Tobs}\\
-  &= 2\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{P_c(f_k)},
-\end{aligned}
-  \label{eq:inner}
-\end{equation}
-the log-likelihood of a window is the Whittle likelihood of \cref{eq:noise-data},
+in which the prior of \cref{eq:priors-window-prior} encodes what the Galactic population says
+before the data, and the likelihood measures how well the signal of candidate sources matches the
+data. The noise is Gaussian with known \acp{psd}, so the log-likelihood is, up to a constant, the
+Whittle likelihood of \cref{eq:noise-data},
 \begin{equation}
 \begin{aligned}
   \log p(d\mid\theta_{1:S}) &= -\tfrac12\inner{d-h}{d-h} + \text{const}\\
   &= -\sum_{k,c}\frac{\bigl|\tilde d_{k,c}-\tilde h_{k,c}(\theta_{1:S})\bigr|^2}{P_c(f_k)} + \text{const},\\
-  \tilde h_{k,c}(\theta_{1:S}) &= \sum_{s}\tilde h_c(f_k;\theta_s).
+  \tilde h_{k,c}(\theta_{1:S}) &= \sum_{s}\tilde h_c(f_k;\theta_s),
 \end{aligned}
   \label{eq:loglik}
 \end{equation}
-and a source's signal-to-noise ratio $\snr_s$ is given by $\snr_s^2 = \inner{h(\theta_s)}{h(\theta_s)}$
-(\cref{app:noise-snr}). The network sees the data whitened by $P_c$ (\cref{app:noise}).
-% updated 2026-11-09 (moving the definition of theta to the section's head): "modulates it" -> "modulates a source".
+with $h$ the signal of all the window's sources. The evidence
+$p(d) = \int p(d\mid\theta_{1:S})\,\pi_w(\theta_{1:S})\,\dd\theta_{1:S}$ is intractable, so the
+posterior is usually explored by stochastic sampling, with \ac{mcmc}
+\citep{littenberg2020global,strub2022bayesian} or nested sampling \citep{skilling2006nested}. These
+methods are accurate, but they evaluate \cref{eq:loglik} many times for every window, and a global
+fit repeats them over every window and every new stretch of data. We instead train a conditional
+generative model of the posterior once, over all windows of a band, so that a new window costs only
+draws from it (\cref{sec:method}).
 
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/noise.pdf}
-  \caption{The noise and the amplitude unit built on it. (a) Amplitude spectral densities
-    $\sqrt{S_c}$ of \cref{eq:noise-psd}, with the \acs{oms} and acceleration terms of $S_A$
-    alone: acceleration noise dominates below a few \unit{\milli\hertz}, and $T$ is orders of
-    magnitude quieter there. Shading marks the narrow and full bands. (b) The sky-averaged
-    constant $C$ of \cref{app:noise-snr}, measured with our \acs{snr} for an isotropic and a
-    Galactic sky ($\pm$ one standard error): flat at low frequency, rising at the top of the full
-    band, where $1+0.6(f/f_\star)^2$ only approximates the response.}
-  \label{fig:noise-psd}
-\end{figure*}
-
-\subsection{Frequency-Domain Factorisation}
+\paragraph{Factorisation.}
 \label{sec:gw-factorisation}
-
 Stationary noise is independent across bins and, in $A$, $E$, $T$, across channels, so the
 log-likelihood of the band is a sum over bins (\cref{eq:loglik}). A \ac{gb}'s heterodyned response
 has compact support, $R$ bins around $f_0\Tobs$ (\cref{tab:forward-model-bands}), so a source changes
@@ -250,19 +309,18 @@ neighbours break it, and a global fit updates overlapping segments in turn
 \citep{littenberg2020global} (\cref{app:forward-model-limits}).
 % updated 2026-11-17: moved here from app:forward-model-windows ("Why the band can be sliced"), shortened.
 
-\subsection{Slicing in Frequency}
+\paragraph{Windows.}
 \label{sec:gw-windows}
-
-The observation $y$ is a window of $K = \ForwardModelWindowResponses{}R$ consecutive whitened bins
-in each channel, $K\times6$ real numbers, with first bin and centre
+A window is $K = \ForwardModelWindowResponses{}R$ consecutive bins in each channel, with first bin
+and centre
 \begin{equation}
   k_0(\fw) = \ForwardModelWindowStride{}\,\operatorname{rint}\Bigl(\frac{\fw\Tobs - K/2}{\ForwardModelWindowStride{}}\Bigr),
-  \qquad \fw = \frac{k_0 + K/2}{\Tobs}.
+  \qquad \fw = \frac{k_0 + K/2}{\Tobs},
   \label{eq:forward-model-window-start}
 \end{equation}
-Its $S$ sources add linearly, and a guard band of $R/2$ bins at each edge keeps every response
-inside it, so that the factorisation above is exact: in a band $[f_{\min}, f_{\max}]$, sources are
-drawn with
+with $\operatorname{rint}$ rounding to the nearest integer. Its $S$ sources add linearly, and a guard
+band of $R/2$ bins at each edge keeps every response inside it, so that the factorisation above is
+exact: in a band $[f_{\min}, f_{\max}]$, sources are drawn with
 \begin{equation}
 \begin{aligned}
   f_0 &\ge \max\Bigl(\frac{k_0 + R/2}{\Tobs},\, f_{\min}\Bigr),\\
@@ -270,7 +328,55 @@ drawn with
 \end{aligned}
   \label{eq:forward-model-window-interior}
 \end{equation}
-an interior of $\ForwardModelInteriorResponses{}R$ bins (\cref{app:forward-model-windows}).
+an interior of $\ForwardModelInteriorResponses{}R$ bins (\cref{app:forward-model-windows}). The
+network reads the window whitened: $y\in\R^{K\times6}$, the real and imaginary parts of
+$\tilde d_{k,c}$ in the three channels, each divided by its noise standard deviation
+$\sqrt{P_c(f_k)/2}$ (\cref{eq:noise-whiten}). The map from $d$ to $y$ is fixed and invertible given
+$\fw$, so the target is $p(\theta_{1:S}\mid y,\fw) = p(\theta_{1:S}\mid d)$, for every $\fw$ in the
+band and from one network.
+
+\paragraph{Symmetries.} The likelihood is invariant under $(\psi,\phi_0)\to(\psi+\pi/2,\phi_0+\pi)$
+and its shifts, four copies of each source for $(\psi,\phi_0)\in[0,2\pi)^2$
+(\cref{eq:psi-phi-symmetry}), and under the $S!$ permutations of the sources. A flow on the raw
+parameters must place mass on every copy and every labelling, and evaluating it needs the copies
+matched \citep{stephens2000dealing,jasra2005markov,buscicchio2019label}.
+% updated 2026-11-09: S! was \PriorsPermutations (S = 4), S now varies per run
+
+\subsection{Training Set}
+\label{sec:gw-training}
+% New 2026-11-18, after Delmond et al. (arXiv:2606.29039), Sec. III-C; summarises app:priors-window and
+% app:priors-training. The Bands paragraph is the former Slicing in Frequency's last paragraph, the
+% Tokens paragraph the former Tokenisation subsection.
+
+Training needs windows paired with their sources, $(\theta_{1:S}, y)$ drawn from
+$\pi_w(\theta_{1:S})\,p(y\mid\theta_{1:S},\fw)$. \Citet{delmond2026neural} precompute a bank of
+responses over frequency, drift and sky and draw the remaining parameters on the fly. We simulate
+every window afresh instead, on the device and inside the compiled training step, so there is no
+fixed dataset and no window is seen twice (\cref{app:priors-training}). One example takes four steps:
+\begin{enumerate}
+  \item a window centre $\fw$ (\cref{eq:priors-window}), placed mostly where the catalogue's sources
+    can be seen, with weight the catalogue's $f_0$ marginal times the chance that a source there
+    reaches $\snr\ge\PriorsVisibleSnr$, and in \qty{\PriorsUniformWindowsPercent}{\percent} of the
+    windows log-uniformly over the band, so that training also sees the empty windows most of the
+    band holds;
+  \item $S$ sources $\theta_{1:S}\sim\pi_w$ (\cref{eq:priors-window-prior}), with $f_0$ in the
+    interior of \cref{eq:forward-model-window-interior};
+  \item each source's $R$-bin response, computed with JaxGB \citep{jaxgb} over
+    $\Tobs=\qty{\ForwardModelTobsYears}{\year}$ (\cref{app:forward-model-heterodyne}) and added at its
+    offset in the window, and noise drawn by \cref{eq:noise-data};
+  \item the whitened data $y$, and the sources in the flow coordinates of \cref{sec:method-chart},
+    in order of $f_0$.
+\end{enumerate}
+The weights of the first step choose which windows training sees, not what their sources are, so
+the posterior given a window is unchanged. Unlike \citet{delmond2026neural}, who keep sources with an
+\ac{snr} between 10 and 100, we apply no cut: most of a window's sources lie below the noise, and
+for them the flow must return the prior. The parameters are not standardised by the prior's
+moments; the flow coordinates and the frame of \cref{sec:method} take that role. The simulation
+takes \qty{\PriorsNarrowDrawShare}{\percent} of a training step in the narrow band and
+\qty{\PriorsFullDrawShare}{\percent} in the full band (\cref{tab:priors-bands}).
+\Cref{fig:forward-model-window} shows one window of each band.
+
+\paragraph{Bands.}
 We train two configurations (\cref{tab:forward-model-bands}): the narrow band, windows of
 \PriorsNarrowW{} bins with \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, where sources
 crowd the most; and the full band, windows of \PriorsFullW{} bins up to
@@ -278,11 +384,10 @@ crowd the most; and the full band, windows of \PriorsFullW{} bins up to
 a hundred bins.
 % updated 2026-11-09: the narrow band was "f0 <= \PriorsNarrowHighMhz mHz"; it now starts at 1 mHz.
 
-\subsection{Tokenisation}
+\paragraph{Tokens.}
 \label{sec:gw-tokens}
-
 The data stream of the network (\cref{sec:method-network}) reads the window as
-a short-time Fourier transform, \NetworkPatch{} bins per token, each token holding its band's time
+a \ac{stft}, \NetworkPatch{} bins per token, each token holding its band's time
 samples in the three channels (\cref{eq:network-stft}): \NetworkTokensNarrow{} tokens in the
 narrow band, \NetworkTokensFull{} in the full band.
 % updated 2026-11-09 (moved out of the Network subsection): "The data stream" -> "The data stream of

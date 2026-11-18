@@ -38,9 +38,27 @@ and with it the polarisation tensors of the \ac{ssb},
 $\epsilon^+_{ij} = (\hat{\mathbf u}\otimes\hat{\mathbf u} - \hat{\mathbf v}\otimes\hat{\mathbf v})_{ij}$
 and
 $\epsilon^\times_{ij} = (\hat{\mathbf u}\otimes\hat{\mathbf v} + \hat{\mathbf v}\otimes\hat{\mathbf u})_{ij}$.
-The source frame is the \acs{ssb} frame rotated by the polarisation angle $\psi$,
-$e^+_{ij} = \cos2\psi\,\epsilon^+_{ij} + \sin2\psi\,\epsilon^\times_{ij}$ and
-$e^\times_{ij} = -\sin2\psi\,\epsilon^+_{ij} + \cos2\psi\,\epsilon^\times_{ij}$. In complex form,
+The source frame is the \acs{ssb} frame rotated by the polarisation angle $\psi$ about
+$\hat{\mathbf k}$: its axes are $\hat{\mathbf p} = \cos\psi\,\hat{\mathbf u} + \sin\psi\,\hat{\mathbf v}$
+and $\hat{\mathbf q} = -\sin\psi\,\hat{\mathbf u} + \cos\psi\,\hat{\mathbf v}$, and its polarisation
+tensors are
+\begin{equation}
+\begin{aligned}
+  e^+_{ij} &= (\hat{\mathbf p}\otimes\hat{\mathbf p} - \hat{\mathbf q}\otimes\hat{\mathbf q})_{ij}
+  = \cos2\psi\,\epsilon^+_{ij} + \sin2\psi\,\epsilon^\times_{ij},\\
+  e^\times_{ij} &= (\hat{\mathbf p}\otimes\hat{\mathbf q} + \hat{\mathbf q}\otimes\hat{\mathbf p})_{ij}
+  = -\sin2\psi\,\epsilon^+_{ij} + \cos2\psi\,\epsilon^\times_{ij}.
+\end{aligned}
+  \label{eq:forward-model-source-frame}
+\end{equation}
+In the \acs{ssb} basis the strain of \cref{eq:forward-model-xi} is therefore
+$h_{ij} = h_+^{\rm SSB}\epsilon^+_{ij} + h_\times^{\rm SSB}\epsilon^\times_{ij}$, with
+\begin{equation}
+  h_+^{\rm SSB} = h_+\cos2\psi - h_\times\sin2\psi,\qquad
+  h_\times^{\rm SSB} = h_+\sin2\psi + h_\times\cos2\psi,
+  \label{eq:forward-model-ssb-polarisations}
+\end{equation}
+and $h_{+,\times}$ those of \cref{eq:forward-model-waveform}. In complex form,
 $h_{ij}(\xi) = \mathrm{Re}\bigl\{\bigl(A_+\epsilon^+_{ij} + A_\times\epsilon^\times_{ij}\bigr)e^{\ii\Psi(\xi)}\bigr\}$ with
 \begin{equation}
   A_+ = -\Amp\bigl[(1+\cos^2\iota)\cos2\psi + 2\ii\cos\iota\sin2\psi\bigr],\qquad
@@ -67,11 +85,20 @@ invariant under the symmetries of \cref{eq:psi-phi-symmetry}. The flow's helicit
 $z_\mp$ (\cref{eq:chart}) are these two numbers, conjugated, with the phase referred to
 mid-observation and the modulus compressed.
 
-\paragraph{Frequency derivative.}
-For a circular binary driven by gravitational radiation alone, the frequency derivative is
-fixed by the chirp mass $\Mc$ (\cref{eq:forward-model-fdot}). The simulator does not impose this relation: each source is parametrised by
-$\theta = (f_0, \fdot, \Amp, \alpha, \delta, \psi, \iota, \phi_0)$, with $\fdot$ and the amplitude
-free parameters rather than functions of $\Mc$, $f_0$ and the distance. Their prior, joint with
+\paragraph{Frequency derivative and amplitude.}
+For a circular binary of component masses $m_1$ and $m_2$ at luminosity distance $d_L$, driven by
+gravitational radiation alone, the quadrupole formula fixes the frequency derivative
+(\cref{eq:forward-model-fdot}) and the amplitude through the chirp mass
+$\Mc = (m_1m_2)^{3/5}/(m_1+m_2)^{1/5}$ \citep{maggiore2008gravitational},
+\begin{equation}
+  \Amp = \frac{2\,(G\Mc)^{5/3}}{c^4\,d_L}\,(\pi f_0)^{2/3}.
+  \label{eq:forward-model-amplitude}
+\end{equation}
+A measured $\fdot$ gives $\Mc$ through \cref{eq:forward-model-fdot}, and $\Amp$ then gives $d_L$;
+when $\fdot$ is not resolved, $\Amp$ constrains only the combination $\Mc^{5/3}/d_L$. The simulator
+does not impose either relation: each source is parametrised by
+$\theta = (f_0, \fdot, \Amp, \alpha, \delta, \psi, \iota, \phi_0)$ (\cref{eq:gw-parameters}), with
+$\fdot$ and the amplitude free parameters rather than functions of $\Mc$, $f_0$ and $d_L$. Their prior, joint with
 $f_0$, is fitted to a catalogue of Galactic binaries (\cref{app:priors}); on average it has
 $\fdot\propto f_0^{\ForwardModelFdotSlope}$, close to \cref{eq:forward-model-fdot}. The frequency
 evolves linearly over the observation, with a constant $\fdot$.
@@ -248,23 +275,48 @@ full & \ForwardModelFullR{} & \qty{\ForwardModelFullTruncRelMedian}{\percent} & 
 \subsection{Time-Delay Interferometry}
 \label{app:forward-model-tdi}
 
-Laser frequency noise is cancelled by \ac{tdi} \citep{tinto2021time}. For equal and constant arms,
-the Michelson combinations are formed on the envelopes of \cref{eq:forward-model-slow}, with the
-instantaneous frequency $f = f_0 + \fdot\,t$ and the delay phase $x = 2\pi fL = f/f_\star$:
+The laser frequency noise on each link is several orders of magnitude above a \ac{gb}'s signal.
+\Ac{tdi} cancels it by combining the six link responses, each delayed by light travel times along
+the arms, so that every laser's noise enters twice with opposite signs
+\citep{tinto2021time,babak2021lisa}. With the delay operator
+\begin{equation}
+  D_{i_1i_2\cdots i_n}\,x(t) = x\Bigl(t - \sum_{h=1}^{n-1}L_{i_hi_{h+1}}\Bigr)
+  \label{eq:forward-model-delay}
+\end{equation}
+for constant light travel times $L_{ij}$, the first Michelson combination is
+\begin{equation}
+\begin{aligned}
+  X ={}& y_{13} + D_{13}\,y_{31} + D_{131}\,y_{12} + D_{1312}\,y_{21}\\
+  &- \bigl[y_{12} + D_{12}\,y_{21} + D_{121}\,y_{13} + D_{1213}\,y_{31}\bigr],
+\end{aligned}
+  \label{eq:forward-model-tdi-time}
+\end{equation}
+the difference between the two round trips of spacecraft 1 along its arms, and $Y$ and $Z$ follow
+from the cyclic permutation $1\to2\to3\to1$ \citep[eq.~14]{babak2021lisa}. It cancels the laser
+noise for a static constellation with unequal arms; for the equal arms of our model it is \acs{tdi}
+generation 1.5. In the frequency domain each delay becomes a phase, $D_{ij}\to e^{-2\pi\ii fL_{ij}}$,
+by the shift theorem, so for equal arms every delay is $D = e^{-\ii x}$, with $x = 2\pi fL = f/f_\star$
+the delay phase, and
+\begin{equation}
+  X = (1-D^2)\bigl[(y_{13}-y_{12}) + D\,(y_{31}-y_{21})\bigr].
+  \label{eq:forward-model-tdi-equal}
+\end{equation}
+
+JaxGB forms the combinations on the envelopes of \cref{eq:forward-model-slow}, with the
+instantaneous frequency $f = f_0 + \fdot\,t$:
 \begin{equation}
   X = -2\ii\sin x\;e^{-\ii x}\Bigl[\bigl(\mathcal G_{21} - \mathcal G_{31}\bigr)
   + e^{-\ii x}\bigl(\mathcal G_{12} - \mathcal G_{13}\bigr)\Bigr],
   \label{eq:forward-model-tdi-x}
 \end{equation}
-with $Y$ and $Z$ from the cyclic permutation $1\to2\to3\to1$, Fourier-transformed as in
-\cref{eq:forward-model-heterodyne}. This is \acs{tdi} generation 1.5, which the noise model of
+with $Y$ and $Z$ again from the cyclic permutation, Fourier-transformed as in
+\cref{eq:forward-model-heterodyne}. This is the generation 1.5 that the noise model of
 \cref{app:noise} assumes; generation 2 would multiply every channel by
 $1 - e^{-4\ii x} = 2\ii\sin2x\,e^{-2\ii x}$ and the noise \ac{psd} by the matching $4\sin^22x$.
 
-Since $-2\ii\sin x\,e^{-\ii x} = -(1 - D^2)$ with $D = e^{-\ii x}$ the delay operator,
-\cref{eq:forward-model-tdi-x} is $(1-D^2)$ times a combination of the four links that involve
-spacecraft 1. The standard equal-arm combination \citep[eq.~14]{babak2021lisa} pairs the delays
-the other way round, $(1-D^2)\bigl[(y_{13}-y_{12}) + D\,(y_{31}-y_{21})\bigr]$; the two differ by
+Since $-2\ii\sin x\,e^{-\ii x} = -(1 - D^2)$, \cref{eq:forward-model-tdi-x} is also $(1-D^2)$ times
+a combination of the four links that involve spacecraft 1, but it pairs the delays the other way
+round from \cref{eq:forward-model-tdi-equal}; the two differ by
 $(1-D^2)(1-D)\bigl[(y_{13}-y_{31}) - (y_{12}-y_{21})\bigr]$, which is of higher order in $x$.
 On the same link responses the difference indeed grows as $f_0^3$, to at most \num{\NoiseTdiMax}
 at the top of the band (\cref{app:noise-validation}, \cref{fig:forward-model-checks}a). The channels are
@@ -283,7 +335,7 @@ offsets $k_{\min} - k_0$; overlapping sources add linearly. A guard band of $R/2
 keeps every response inside the window: sources are drawn in the interior of
 \cref{eq:forward-model-window-interior},
 an interior of $\ForwardModelInteriorResponses{}R$ bins, and since a response spans $q\pm R/2$ it ends
-at the window's edge at most. The centre $f_c$ is drawn as in \cref{app:priors-window}, mostly where
+at the window's edge at most. The centre $\fw$ is drawn as in \cref{app:priors-window}, mostly where
 the catalogue's sources can be seen and in a share of the windows log-uniformly over the band, snapped
 to the grid of \cref{eq:forward-model-window-start}, and the window index clipped to the range whose
 interiors just cover $[f_{\min}, f_{\max}]$.
@@ -306,7 +358,7 @@ spread over tens of bins.
   drawn that holds a source with $\snr\ge\PriorsVisibleSnr{}$. (a, b) The network's input in the
   real part of channel $A$ (\cref{eq:noise-whiten}; grey) with the noiseless signal whitened the
   same way (black); the noise has unit variance. (c, d) Each source's $A$ response alone, in
-  units of the noise's rms per bin, labelled with its \acs{snr}; shading marks the guard bands,
+  units of the noise's root-mean-square per bin, labelled with its \acs{snr}; shading marks the guard bands,
   which hold no $f_0$, only the responses' wings. In both bands the Doppler and chirp terms spread a
   response over tens of bins, most of them below the noise.}
   \label{fig:forward-model-window}

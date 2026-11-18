@@ -121,7 +121,7 @@ Population models of the Galaxy's double white dwarfs
 differ in their common-envelope and tidal physics
 \citep{biscoveanu2023probing,fiacco2024uncovering,toubiana2024interacting,boileau2025gravitational,delfavero2025recovering,vanzeist2025comparing};
 the Gaussian of \cref{eq:priors-source} is the best fit to one of them, and refitting it to another
-changes only $\mu$ and $\Sigma$.
+changes only $\mu_\pi$ and $\Sigma_\pi$.
 
 \paragraph{Sky.}
 The sky prior is a mixture in galactic longitude $l$ and $\sin b$, the coordinates in which
@@ -191,7 +191,7 @@ amplitudes of the flow coordinates depend on these angles only through $\phi_0\p
 (\cref{eq:chart}), which all four copies share: the chart folds them into one point.
 
 \paragraph{Exchangeable sources.}
-The sources are i.i.d.\ and enter the likelihood through their sum, so the
+The sources are independent and identically distributed and enter the likelihood through their sum, so the
 likelihood is invariant under the $S! = \PriorsPermutations{}$ relabellings: the label-switching
 problem of mixture models \citep{stephens2000dealing,jasra2005markov}, which \ac{mcmc} analyses of
 gravitational-wave sources meet as well \citep{buscicchio2019label}. With

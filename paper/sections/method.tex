@@ -9,13 +9,16 @@
 \subsection{Flow Matching}
 \label{sec:method-fm}
 
-The network first reads a Gaussian frame off the data, a mean $\mu$ and a standard deviation
-$\sigma$ per coordinate of each slot, around the prior's moments (\cref{eq:fm-frame}). It is trained
-on the Gaussian likelihood of the true sources $X_1$, so it learns the posterior's marginal mean and
-width, with a weight that keeps loud sources, whose frames are decades narrower than the prior, from
-dominating the batch (\cref{eq:fm-frame-loss}). The flow then works in that frame, $Z =
-(X-\mu)/\sigma$: paths are straight, $Z_s = Z_0 + s(Z_1-Z_0)$, from a standard normal $Z_0$ to the
-true sources $Z_1$ (\cref{eq:fm-path}), and the flow cannot move the frame. The network predicts
+The flow draws $X\in\R^{8S}$, the $S$ sources of a window in the flow coordinates of
+\cref{sec:method-chart}, eight per source, held in $S$ slots in order of $f_0$; $X_1$ is the
+window's true sources in these coordinates. The network first reads a Gaussian frame off the data,
+a mean $\mu$ and a standard deviation $\sigma$ per coordinate of each slot, around the prior's
+moments (\cref{eq:fm-frame}). It is trained on the Gaussian likelihood of $X_1$, so it learns the
+posterior's marginal mean and width, with a weight that keeps loud sources, whose frames are decades
+narrower than the prior, from dominating the batch (\cref{eq:fm-frame-loss}). The flow then works in
+that frame, $Z = (X-\mu)/\sigma$: paths are straight, $Z_s = Z_0 + s(Z_1-Z_0)$ with time
+$s\in[0,1]$, from a standard normal $Z_0$ to the true sources $Z_1 = (X_1-\mu)/\sigma$
+(\cref{eq:fm-path}), and the flow cannot move the frame. The network predicts
 the mean $\hat Z_1$ and log standard deviation $\log\tau$ of a Gaussian over the endpoint, per
 coordinate, and is trained on the endpoint's negative log-likelihood (\cref{eq:loss}) at times
 uniform along the path; its velocity is $(\hat Z_1 - Z_s)/(1-s)$ (\cref{app:fm-loss}). A loud

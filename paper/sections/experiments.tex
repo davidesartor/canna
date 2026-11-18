@@ -6,7 +6,8 @@
 % references) and sections/results.tex. The results of the source-count runs are drafted in app:results
 % (tab:results-runs, tab:results-widths, tab:results-forks, fig:results): pick what moves here.
 
-Results for narrow-B and full-B, under the protocol of \cref{sec:validation}; full tables are in
+Results for the size-B network (\cref{sec:method-network}) on the narrow and full bands, narrow-B and
+full-B, under the protocol of \cref{sec:validation}; full tables are in
 \cref{app:results}.
 
 % Moved 2026-11-09 from sec:inversion (formerly the head of sections/validation.tex).
@@ -27,7 +28,7 @@ reading a trained flow with it (\cref{app:evaluation}).
 plant one error at a time (\cref{tab:evaluation-power}). A posterior that returns the prior, one
 that takes a phase or the sky from the prior, and one that shuffles parameters between draws all
 keep every one-dimensional rank uniform: the coordinate ranks reject them at their size,
-\EvaluationPowerPhaseCoord{} at $\alpha=\qty{\EvaluationPowerAlpha}{\percent}$, and \ac{tarp}
+\EvaluationPowerPhaseCoord{} at a significance level of \qty{\EvaluationPowerAlpha}{\percent}, and \ac{tarp}
 at most at \EvaluationPowerTarpBlind. Ranks of data-space quantities, the overlap of each source's
 signal with the data and the window's log-likelihood, catch all three with power near one, and so
 does the energy score.
@@ -72,10 +73,10 @@ for display.}
 % updated 2026-11-13: the corner plots exist (app:results-corners).
 
 \paragraph{Cost.} \FlowMatchingCostDraws{} draws of a window take
-\qty{\FlowMatchingCostNarrow}{\second} on one GPU in the narrow band and
+\qty{\FlowMatchingCostNarrow}{\second} on one \ac{gpu} in the narrow band and
 \qty{\FlowMatchingCostFull}{\second} in the full band (\cref{fig:fm-cost}); a joint \ac{mcmc}
 chain of a narrow-band eval injection takes \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} on
-\McmcJointCores{} CPU cores (\cref{app:mcmc-cost}).
+\McmcJointCores{} \ac{cpu} cores (\cref{app:mcmc-cost}).
 % updated 2026-11-09: References paragraph, "all \RelatedWorkParameters{} parameters" (S = 4) -> "all 8S".
 The widths settle by 32 to 64 steps (\cref{app:evaluation-sampler}).
 % updated 2026-11-13: sampler sweep on the source-count runs.

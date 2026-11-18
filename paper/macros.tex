@@ -25,7 +25,8 @@
 \DeclareSIUnit\parsec{pc}
 
 % acronyms: \ac{snr} spells it out on first use, \acp plural, \acs short, \acl long
-% no links: the acronym table is hand-made (tab:acronyms), not \printacronyms, so there are no targets
+% no links: there is no acronym list (the Notation appendix with its hand-made table was removed
+% 2026-11-18), so there are no targets; every acronym is spelt out by \ac on first use
 \acsetup{make-links = false, first-style = long-short}
 
 % physics
@@ -57,3 +58,8 @@
 \DeclareAcronym{mmdit}{short = MMDiT, long = multimodal diffusion transformer}
 \DeclareAcronym{rope}{short = RoPE, long = rotary position embedding}
 \DeclareAcronym{mlp}{short = MLP, long = multilayer perceptron}
+\DeclareAcronym{rms}{short = RMS, long = root mean square}
+
+% hardware
+\DeclareAcronym{gpu}{short = GPU, long = graphics processing unit}
+\DeclareAcronym{cpu}{short = CPU, long = central processing unit}

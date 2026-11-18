@@ -78,9 +78,16 @@ The observation lasts $\Tobs = \qty{\NoiseTobsYears}{\year}$ and sources have $f
 Fourier bins $f_k = (k_0 + k)/\Tobs$, $k = 0,\dots,K-1$, with $K = \NoiseKNarrow{}$ in the
 narrow band and \NoiseKFull{} in the full band (\cref{app:forward-model-windows}). The data are
 the sum of the $S$ source responses and Gaussian noise (\cref{eq:noise-data}),
-independent across bins $k$ and channels $c\in\{A,E,T\}$; the real and imaginary parts each
-have variance $P_c/2$. $P_c$ is evaluated at each bin's own frequency, so the noise level
-changes across a window as it does across the band.
+independent across bins $k$ and channels $c\in\{A,E,T\}$, with real and imaginary parts drawn
+independently,
+\begin{equation}
+  \mathrm{Re}\,\tilde n_{k,c},\ \mathrm{Im}\,\tilde n_{k,c} \sim
+  \Normal\Bigl(0,\ \frac{P_c(f_k)}{2}\Bigr) = \Normal\Bigl(0,\ \frac{S_c(f_k)\,\Tobs}{4}\Bigr).
+  \label{eq:noise-draw}
+\end{equation}
+$P_c$ is evaluated at each bin's own frequency, so the noise level changes across a window as it
+does across the band. The noise is added to the noiseless responses in the frequency domain, bin by
+bin.
 
 \paragraph{Normalisation.}
 $\tilde h_c$ is the continuous Fourier transform $\int h_c(t)\,e^{-2\pi\ii ft}\,\dd t$, as JaxGB

@@ -19,7 +19,8 @@ methods; the paragraphs below cover the wider literature it draws on.
 \begin{table}[!htbp]
 \caption{Inference of galactic binaries, as each work reports it. \emph{Joint}: one posterior
 over overlapping sources, not a product over them. \emph{Likelihood}: evaluated to draw a
-posterior sample.}
+posterior sample. \emph{Reference}: what the posteriors are checked against; P--P, a
+ probability--probability plot of the credible levels of the true parameters.}
 \label{tab:related-closest}
 \centering
 \small
@@ -35,7 +36,7 @@ posterior sample.}
 work & sources per posterior & joint & amortised & likelihood & signal, data and prior & reference \\
 \midrule
 \rwgroup{likelihood-based}
-\acs*{rjmcmc} global fit \citep{littenberg2020global,katz2024efficient,strub2024global}
+\ac{rjmcmc} global fit \citep{littenberg2020global,katz2024efficient,strub2024global}
   & all resolvable ones, their number inferred
   & \rwyes & \rwno & \rwyes
   & full response; the whole band, segment by segment, with the noise and other source classes
@@ -47,16 +48,16 @@ flows as priors and proposals \citep{korsakova2024neural,sasli2026learned}
   & its chains \\
 \midrule
 \rwgroup{amortised}
-\citet{delmond2026neural}, \acs*{nsf}
+\citet{delmond2026neural}, \ac{nsf}
   & 1; 2 as a proof of concept, ordered by $f_0$
   & 2 only & \rwyes & \rwno
   & full response; $A$, $E$; $\Tobs=\qty{1}{\year}$; $f_0$ within $\pm\qty{2}{\micro\hertz}$ of a fixed centre; \acs*{snr} \numrange{10}{100}
   & \acs*{mcmc}; P--P \\
-\citet{mao2025robust}, \acs*{fmpe}
+\citet{mao2025robust}, \ac{fmpe}
   & 1, with 3 free parameters
   & \rwno & \rwyes & \rwno
   & \acs*{gb}-like; \acs*{tdi} channel $A$ only; \qtyrange{30}{90}{\day} with gaps; narrow boxes around the truth
-  & \acs*{maf} \\
+  & \acl*{maf} \\
 SlotFlow \citep{houba2025slotflow}, \acs*{nsf} per slot
   & up to 10, their number inferred; slots matched to injections
   & factorised & \rwyes & \rwno

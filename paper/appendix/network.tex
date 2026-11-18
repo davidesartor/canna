@@ -192,7 +192,7 @@ reach nothing, so it has no output projections, feed-forward modulations or feed
 them; its register outputs feed the frame head.
 
 \paragraph{Attention.}
-Attention has $H$ heads of dimension \NetworkHeadDim{}. Queries and keys are RMS-normalised per
+Attention has $H$ heads of dimension \NetworkHeadDim{}. Queries and keys are normalised by their \ac{rms} per
 head, and the queries carry a learned per-head gain, initialised to one
 \citep{henry2020query,dehghani2023scaling}. The source and sink queries take one softmax over
 their own keys and the cached keys, taken in parts that are never concatenated in memory, which

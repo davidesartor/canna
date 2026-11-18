@@ -106,7 +106,7 @@ from \EvaluationIdealLo{} to \num{\EvaluationIdealHi} bins and is only meaningfu
     \toprule
     Quantity & Definition & Per band \\
     \midrule
-    Width $w$ & $1.4826\,\MAD(f_0)$; the standard deviation for a Gaussian, robust to stray draws
+    Width $w$ & $1.4826\,\MAD(f_0)$, with $\MAD$ the median absolute deviation; the standard deviation for a Gaussian, robust to stray draws
       & median over found \\
     Width ratio & $w/w^\star$, with $w^\star$ of \cref{eq:evaluation-ideal-width} at the source's \acs{snr}
       & median over found \\
@@ -211,7 +211,7 @@ quantity on draws the flow has already made, never in inference.
     Log-likelihood (\cref{eq:loglik}) & window & a window that does not fit the data as a whole \\
     \midrule
     Energy score, \cref{eq:evaluation-energy} & slot, window & calibration and sharpness together \\
-    \acs{crps} (the one-dimensional energy score) & coordinate & the same, per coordinate \\
+    \ac{crps} (the one-dimensional energy score) & coordinate & the same, per coordinate \\
     Width over the ideal width at $\hat\snr$ & slot & sharpness against \cref{eq:evaluation-ideal-width} \\
     \bottomrule
   \end{tabular}

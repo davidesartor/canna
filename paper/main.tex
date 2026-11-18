@@ -120,12 +120,11 @@
 \fi
 \acresetall
 
-% Main text (reorganised 2026-11-09; sections 3 and 4 swapped 2026-11-18): abstract, introduction,
-% the Bayesian inversion problem, the gravitational-wave problem, flow matching and the network,
-% experiments and results, conclusions,
+% Main text (reorganised 2026-11-09; 2026-11-18: GW problem before the method, and the Bayesian
+% inversion problem moved into it as its last subsection): abstract, introduction, the
+% gravitational-wave problem, flow matching and the network, experiments and results, conclusions,
 % acknowledgements, appendices. New material goes to the appendices first.
 \input{sections/introduction}
-\input{sections/inversion}
 \input{sections/gw}
 \input{sections/method}
 \input{sections/experiments}
@@ -161,7 +160,6 @@ specifically highlighted here.
 \appendix
 \onecolumn
 
-\input{appendix/notation}
 \input{appendix/related-work}
 \input{appendix/forward-model}
 \input{appendix/noise}
@@ -229,9 +227,10 @@ specifically highlighted here.
     (the method references of the training recipe) against arXiv, like the rest.
   \item Before submission: blind mode, anonymised code link, self-citations in the third person,
     and the acknowledgements commented out for review (back at camera-ready).
-  \item Consistency pass done 2026-11-17 (notation against \cref{app:notation}, sky frames, British
+  \item Consistency pass done 2026-11-17 (notation, sky frames, British
     spelling, band names: \texttt{narrow-B}/\texttt{full-B} are band and network size, XS--XL sizes only);
-    redo after the main-text moves.
+    redo after the main-text moves. The Notation appendix was removed 2026-11-18: every symbol and
+    acronym is now defined where it first appears.
 \end{itemize}
 }
 
