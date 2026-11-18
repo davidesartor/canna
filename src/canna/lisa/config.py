@@ -80,6 +80,12 @@ class Config:
     # epochs between kept snapshots, 0 for none; a fork <run>/<epoch> resumes one and cools down from it
     snapshot_every: int = 0
     fork_from: str = ""
+    # <run>/<epoch>: a new run, on the current commit, that starts from <run>'s snapshot at <epoch> and keeps its schedule
+    # (train.continue_config); LISA_<FIELD> env vars may change any field, e.g. frame_nu
+    continue_from: str = ""
+    # the frame NLL's Student-t degrees of freedom, 0 for the Gaussian: with nu > 0 each entry's gradient on
+    # (delta_mu, delta_s) is bounded, so no single frame entry can set a clipped step (full-4's divergence, F67)
+    frame_nu: float = 0.0
     # False trains the frame alone: the flow's NLL is still computed and logged, but sends no gradient
     train_flow: bool = True
     # True writes the frame (mu, log sigma) on the eval catalog every epoch, to run_dir/frames/
@@ -89,6 +95,10 @@ class Config:
         for field, choices in CHOICES.items():
             assert getattr(self, field) in choices, f"{field} must be one of {choices}"
         assert self.batch_size % self.draws == 0, "draws must divide batch_size"
+        assert self.frame_nu >= 0, "frame_nu must be 0 (Gaussian) or positive"
+        assert not (
+            self.fork_from and self.continue_from
+        ), "a run forks or continues, not both"
         assert (
             self.batch_size // self.draws % self.micro_batches == 0
         ), "micro_batches must divide batch_size // draws, the observations"

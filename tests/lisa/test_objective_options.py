@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
+import pytest
 
 from canna.lisa.chart import flow_to_physical, physical_to_flow, prior_moments
 from canna.lisa.problem import LisaGB
@@ -103,3 +104,61 @@ def test_losses_are_the_frame_and_flow_nlls(small_flow):
     np.testing.assert_allclose(frame_nll, 2 * delta_s, atol=1e-6)
     np.testing.assert_allclose(flow_nll, 2 * s, atol=1e-6)
     assert total > flow_nll + 2 * delta_s * np.exp(delta_s)
+
+
+@pytest.mark.parametrize("nu", [1.0, 4.0, 30.0])
+def test_student_t_nll_is_log1p_and_survives_overflow(nu):
+    from canna.lisa.train import student_t_nll
+
+    k = jnp.array([0.0, 0.3, -2.0, 1e3, 1e14, -1e16, 1e20, 1e30], jnp.float32)
+    expected = (nu + 1) * np.log1p(np.square(np.float64(k)) / nu)
+    np.testing.assert_allclose(student_t_nll(k, nu), expected, rtol=1e-5)
+    grad = jax.vmap(jax.grad(lambda x: student_t_nll(x, nu)))(k)
+    assert np.isfinite(grad).all()
+    # d/dk = 2 (nu + 1) k / (nu + k^2), bounded by (nu + 1) / sqrt(nu)
+    assert np.all(np.abs(grad) <= (nu + 1) / np.sqrt(nu) * (1 + 1e-5))
+
+
+def test_student_t_frame_gradients_are_bounded_where_the_gaussian_blows_up():
+    from canna.lisa.train import student_t_nll
+
+    nu, x, mu_p, sigma_p = 4.0, 0.69, 0.0, 1.0
+
+    def entry(delta, nll):
+        delta_mu, delta_s = delta
+        k = (x - (mu_p + sigma_p * delta_mu)) * jnp.exp(-(jnp.log(sigma_p) + delta_s))
+        return jax.lax.stop_gradient(jnp.exp(delta_s)) * (nll(k) + 2 * delta_s)
+
+    student = lambda delta: entry(delta, lambda k: student_t_nll(k, nu))
+    gauss = lambda delta: entry(delta, jnp.square)
+    # F63's outlier: mu ~ 0, log sigma = -9.1, so k^2 ~ 4e7
+    delta = jnp.array([0.001, -9.1])
+    g_t, g_g = jax.grad(student)(delta), jax.grad(gauss)(delta)
+    assert abs(g_g[0]) > 1e4 and abs(g_g[1]) > 1e3
+    assert abs(g_t[0]) <= (nu + 1) / np.sqrt(nu) and abs(g_t[1]) <= 2 * nu * np.exp(-9.1)
+    # a calibrated entry, k ~ 1: both pull the same way at a similar size
+    delta = jnp.array([0.5, np.log(0.2)])
+    np.testing.assert_allclose(jax.grad(student)(delta), jax.grad(gauss)(delta), rtol=0.5)
+
+
+def test_continue_config_keeps_the_parent_schedule(tmp_path, monkeypatch):
+    import yaml
+
+    from canna.lisa import config as run_config
+    from canna.lisa.train import continue_config
+
+    parent = run_config.Config(
+        name="full-B", run="parent", commit="old", output_dir=tmp_path,
+        total_steps=64_000, log_interval=1000, warmup_steps=2000, snapshot_every=4,
+    )
+    (tmp_path / "runs" / "parent").mkdir(parents=True)
+    run_config.save(parent, tmp_path / "runs" / "parent" / "config.yaml")
+    monkeypatch.setenv("LISA_FRAME_NU", "4")
+    request = run_config.Config(output_dir=tmp_path, run="child", continue_from="parent/44")
+    child = continue_config(request, "new")
+    assert (child.run, child.commit, child.continue_from) == ("child", "new", "parent/44")
+    assert (child.total_steps, child.warmup_steps, child.snapshot_every) == (64_000, 2000, 4)
+    assert child.frame_nu == 4.0 and not child.fork_from
+    with pytest.raises(AssertionError):
+        continue_config(run_config.Config(output_dir=tmp_path, run="child", continue_from="parent/64"), "new")
+    assert yaml.safe_load((tmp_path / "runs" / "parent" / "config.yaml").read_text())["total_steps"] == 64_000

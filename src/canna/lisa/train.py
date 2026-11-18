@@ -106,18 +106,31 @@ class Binned(NamedTuple):
     flow_f0: Float[Array, "2 T F G"]
 
 
+def student_t_nll(k: Float[Array, "*shape"], nu: float) -> Float[Array, "*shape"]:
+    """(nu + 1) log(1 + k^2 / nu), the Student-t frame NLL's data term; from log|k| where k^2 would overflow float32."""
+    k2 = jnp.square(k)
+    big = ~(k2 < 1e30)  # also catches an infinite k^2
+    # the double where keeps each branch's gradient finite where it is not taken
+    tail = 2 * jnp.log(jnp.abs(jnp.where(big, k, 1.0))) - math.log(nu)
+    return (nu + 1) * jnp.where(big, tail, jnp.log1p(jnp.where(big, 0.0, k2) / nu))
+
+
 def losses(
     flow: LisaFlow,
     problem: LisaGB,
     batch: TrainSample,
     snr: Float[Array, "B S"] | None = None,
     train_flow: bool = True,
+    frame_nu: float = 0.0,
 ) -> Float[Array, "3"] | tuple[Float[Array, "3"], Binned]:
     """The objective, the frame's NLL of x1 and the flow's NLL of z1, all trained on but the frame NLL as is.
 
     The frame (mu_A, sigma_A) = (mu_p + sigma_p delta_mu, sigma_p e^{delta_s}) is fit by the NLL of x1 weighted by
     sg(e^{delta_s}) plus an unweighted ridge on delta; the flow by the Gaussian NLL of z1 = sg((x1 - mu_A) / sigma_A) on paths
     from z0. snr: each source's own, for the diagnostics per bin. train_flow=False: the objective is the frame's alone.
+    frame_nu > 0: the frame is fit by the Student-t NLL with nu = frame_nu instead, (nu + 1) log(1 + k^2 / nu) + 2 delta_s,
+    whose per-entry gradients are bounded, |d/d delta_mu| <= (nu + 1) / sqrt(nu) and |d/d delta_s| <= 2 nu e^{delta_s};
+    the frame NLL returned (and so the catalog loss and the best checkpoint) stays the Gaussian one, comparable across runs.
     """
     # the data stream is encoded once per observation and shared by its K draws
     delta, cache = jax.vmap(flow.encode)(batch.y, batch.f)
@@ -126,8 +139,11 @@ def losses(
     delta_mu, delta_s = jnp.split(delta, 2, axis=-1)
     k = (batch.x1 - mu) * jnp.exp(-log_sigma)
     frame_nll = jnp.square(k) + 2 * delta_s
+    frame_fit = (
+        student_t_nll(k, frame_nu) + 2 * delta_s if frame_nu > 0 else frame_nll
+    )
     frame_loss = jnp.mean(
-        jax.lax.stop_gradient(jnp.exp(delta_s)) * frame_nll
+        jax.lax.stop_gradient(jnp.exp(delta_s)) * frame_fit
         + FRAME_DECAY * (jnp.square(delta_mu) + jnp.square(delta_s))
     )
 
@@ -237,11 +253,12 @@ def train_step(
     batch: TrainSample,
     micro_batches: int = 1,
     train_flow: bool = True,
+    frame_nu: float = 0.0,
 ) -> tuple[TrainState, Float[Array, "3"]]:
     """One optimizer step on the objective; the frame NLL, the flow NLL and the grad norm."""
 
     def total(flow, chunk):
-        parts = losses(flow, problem, chunk, train_flow=train_flow)
+        parts = losses(flow, problem, chunk, train_flow=train_flow, frame_nu=frame_nu)
         return parts[0], parts
 
     # the batch's gradient as the mean over equal chunks, one chunk's activations live at a time
@@ -281,6 +298,7 @@ def train_epoch(
     draws: int = 1,
     micro_batches: int = 1,
     train_flow: bool = True,
+    frame_nu: float = 0.0,
 ) -> tuple[TrainState, Float[Array, "S 3"]]:
     """Fuse n_steps (batch draw + train_step) pairs into one XLA dispatch via lax.scan.
 
@@ -301,7 +319,13 @@ def train_epoch(
             jr.split(key_batch, observations), rearrange(u, "(b k) -> b k", k=draws)
         )
         state, parts = train_step(
-            problem, tx, state._replace(key=key), batch, micro_batches, train_flow
+            problem,
+            tx,
+            state._replace(key=key),
+            batch,
+            micro_batches,
+            train_flow,
+            frame_nu,
         )
         return eqx.filter(state, eqx.is_array), parts
 
@@ -502,6 +526,32 @@ def fork_config(config: Config) -> Config:
     )
 
 
+def continue_config(config: Config, commit: str) -> Config:
+    """A continuation's config: its parent's, as run config.run on `commit`, starting from the parent's snapshot at
+    <epoch> and keeping its schedule (total steps, warmup, cooldown); LISA_<FIELD> env vars may change any field."""
+    parent, epoch = config.continue_from.rsplit("/", 1)
+    assert config.run and config.run != parent, "a continuation needs its own LISA_RUN"
+    stored = yaml.safe_load(
+        (config.output_dir / "runs" / parent / "config.yaml").read_text()
+    )
+    name = stored.pop("name")
+    assert (
+        0 < int(epoch) * stored["log_interval"] < stored["total_steps"]
+    ), f"{config.continue_from} is not inside {parent}'s schedule"
+    return Config(
+        name=name,
+        **run_config.merge([stored, run_config.env_layer()])
+        | dict(
+            output_dir=config.output_dir,
+            run=config.run,
+            commit=commit,
+            continue_from=config.continue_from,
+            fork_from="",
+            init_from="",
+        ),
+    )
+
+
 def load_trained(config: Config) -> tuple[LisaGB, LisaFlow, int]:
     """The problem, the trained flow (the latest checkpoint's, or with weights: best the best one's) and its epoch."""
     folder = "checkpoints" if config.weights == "last" else "best"
@@ -559,6 +609,15 @@ def main() -> None:
             )
         config.run_dir.mkdir(parents=True, exist_ok=True)
         run_config.save(config, config.run_dir / "config.yaml")
+    elif config.continue_from:
+        # a continuation: a new run on this commit, so its source must be committed, from its parent's snapshot
+        if git("status", "--porcelain", "--", "."):
+            raise SystemExit(
+                f"uncommitted changes in {src}: commit them to start a run"
+            )
+        config = continue_config(config, git("rev-parse", "HEAD"))
+        config.run_dir.mkdir(parents=True, exist_ok=True)
+        run_config.save(config, config.run_dir / "config.yaml")
     else:
         # a new run: pinned to a commit, so its source must be committed
         if git("status", "--porcelain", "--", "."):
@@ -601,8 +660,8 @@ def main() -> None:
     state, start_epoch, restored = restore_checkpoint(
         checkpoints, state, tuple(histories)
     )
-    if start_epoch == 0 and config.fork_from:
-        parent, epoch = config.fork_from.rsplit("/", 1)
+    if start_epoch == 0 and (config.fork_from or config.continue_from):
+        parent, epoch = (config.fork_from or config.continue_from).rsplit("/", 1)
         with checkpoint_manager(
             config.output_dir / "runs" / parent, read_only=True, folder="snapshots"
         ) as parent_snapshots:
@@ -650,6 +709,7 @@ def main() -> None:
             config.draws,
             config.micro_batches,
             config.train_flow,
+            config.frame_nu,
         )
         loss_history[epoch] = jax.device_get(epoch_losses)
         catalog_history[epoch], binned = jax.device_get(

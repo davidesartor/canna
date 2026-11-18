@@ -3,6 +3,8 @@
 #     sbatch $CANNA_SBATCH_GPU slurm/lisa.sbatch [<config>] [LISA_<FIELD>=value ...]   # a new run (default full-B)
 #     sbatch $CANNA_SBATCH_GPU slurm/lisa.sbatch <config> LISA_RUN=<run>              # resume it, on its commit
 #     sbatch $CANNA_SBATCH_GPU slurm/lisa.sbatch <config> LISA_FORK_FROM=<run>/<epoch> # cool down from its snapshot, as <run>-e<epoch>
+#     sbatch $CANNA_SBATCH_GPU slurm/lisa.sbatch <config> LISA_RUN=<new> LISA_CONTINUE_FROM=<run>/<epoch> [LISA_FRAME_NU=4]
+#                                         # a new run on this commit from its snapshot, on its schedule (e.g. past a divergence)
 # L and XL hold 6 and 14 GiB checkpoints: pass --mem=64G.
 
 #SBATCH --job-name=canna-lisa
