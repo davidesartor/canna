@@ -83,6 +83,8 @@
 
 \printAffiliationsAndNotice{}  % required, even empty
 
+% Abstract dropped for now (user, 2026-11-18): fenced off with \iffalse, text kept for later.
+\iffalse
 \begin{abstract}
   % Adapted from the fml draft of 2026-10-11 (origin/fml paper/main.tex) to the current appendices.
   % Each claim and its source: cost (app:fm-sampling, app:mcmc-cost); four sources, full response,
@@ -115,15 +117,17 @@
   % updated 2026-11-09 (stale facts only): "the four binaries" -> "the S binaries"; "the band below
   % 3 mHz" -> "1-3 mHz".
 \end{abstract}
+\fi
 \acresetall
 
-% Main text (reorganised 2026-11-09): abstract, introduction, the Bayesian inversion problem, flow
-% matching and the network, the gravitational-wave problem, experiments and results, conclusions,
+% Main text (reorganised 2026-11-09; sections 3 and 4 swapped 2026-11-18): abstract, introduction,
+% the Bayesian inversion problem, the gravitational-wave problem, flow matching and the network,
+% experiments and results, conclusions,
 % acknowledgements, appendices. New material goes to the appendices first.
 \input{sections/introduction}
 \input{sections/inversion}
-\input{sections/method}
 \input{sections/gw}
+\input{sections/method}
 \input{sections/experiments}
 \input{sections/conclusions}
 
