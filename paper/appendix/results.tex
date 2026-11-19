@@ -181,8 +181,10 @@ the peak (chains: \qty{\ResultsNarrowFourMcmcOff}{\percent}). With eight, $f_0$ 
 band has only a handful of sources.
 
 \paragraph{The full band.}
-% updated 2026-11-19 (t44): "close to the chains only for faint sources" -> with S=4 also up to SNR 40.
-On the full band the flow is close to the chains for faint sources, and with $S=4$ up to $\snr=40$. At $\snr=15$--40 its $f_0$
+% updated 2026-11-19 (t44): "close to the chains only for faint sources" -> with S=4 also up to SNR 40; then (user: align
+% text and tables) "close ... up to SNR 40" -> the S=4 width range at SNR 7-40 (1.1-1.8), "order of magnitude" -> 6.6 to 24.
+On the full band the flow is close to the chains for faint sources, and with $S=4$ within
+\ResultsFullFourWidthLo--\ResultsFullFourWidthHi{} times their widths up to $\snr=40$. At $\snr=15$--40 its $f_0$
 widths are \ResultsFullFourFzeroMid{} ($S=4$), \ResultsFullEightFzeroMid{} ($S=8$) and
 \ResultsFullSixteenFzeroMid{} ($S=16$) times the chains', and above $\snr=40$ they are
 \ResultsFullFourFzeroLoud, \ResultsFullEightFzeroLoud{} and \ResultsFullSixteenFzeroLoud{} times, with
@@ -222,8 +224,8 @@ The wide part is mostly the flow's refinement. The frame, computed from the data
 \qty{\ResultsFullSplitMhz}{\milli\hertz} its $f_0$ width is \ResultsFullFourFrameLow,
 \ResultsFullEightFrameLow{} and \ResultsFullSixteenFrameLow{} times the chains' ($S=4$, 8, 16), and the flow
 narrows it \ResultsFullFourContractLow, \ResultsFullEightContractLow{} and
-\ResultsFullSixteenContractLow-fold. Above \qty{\ResultsFullSplitMhz}{\milli\hertz} the frame is about twice
-as wide again (\ResultsFullFourFrameHigh, \ResultsFullEightFrameHigh{} and \ResultsFullSixteenFrameHigh{}
+\ResultsFullSixteenContractLow-fold. Above \qty{\ResultsFullSplitMhz}{\milli\hertz} the frame is two
+to three times as wide again (\ResultsFullFourFrameHigh, \ResultsFullEightFrameHigh{} and \ResultsFullSixteenFrameHigh{}
 times), but the flow narrows it only \ResultsFullFourContractHigh, \ResultsFullEightContractHigh{} and
 \ResultsFullSixteenContractHigh-fold. (The models' eval windows, 256 draws per window, $f_0$ widths in bins;
 \texttt{outputs/runs/261103-frame-vs-flow.py}.)
@@ -236,8 +238,8 @@ cure this.
 Every reported model covers
 \ResultsCoverSixtyEightLo--\ResultsCoverSixtyEightHi{} of the true coordinates at the
 \qty{68}{\percent} level and \ResultsCoverNinetyFiveLo--\ResultsCoverNinetyFiveHi{} at
-\qty{95}{\percent}, pooled over coordinates and sources, including the full-band models that are an
-order of magnitude too wide on loud sources. As the mocks predicted (\cref{app:evaluation-mocks}),
+\qty{95}{\percent}, pooled over coordinates and sources, including the full-band models that are
+\ResultsFullFourFzeroLoud{} to \ResultsFullSixteenFzeroLoud{} times too wide in $f_0$ on loud sources. As the mocks predicted (\cref{app:evaluation-mocks}),
 coverage after relabelling does not see excess width: the comparison with the chains does, and so do
 the data-space ranks of the validation pass (\cref{app:results-validation}).
 
@@ -280,7 +282,7 @@ From $\snr=7$ to 40 the narrow band with two sources has medians of
 \ResultsJsNarrowTwoMean, about that of two Gaussians offset by half a width
 (\ResultsJsGaussOffsetHalf) or with widths 1.5 apart (\ResultsJsGaussWidthOneHalf). That is about the
 \num{0.05} that \citet{delmond2026neural} report for one source in their low-frequency bands,
-though their estimator, and so its floor, is not stated. The mean barely moves with four sources,
+though their estimator, and so its floor, is not stated. The mean rises a little with four sources,
 \ResultsJsNarrowFourMean, and rises with eight, to \ResultsJsNarrowEightMean, $f_0$ most, to
 \ResultsJsNarrowEightFzero{} (\ResultsJsNarrowFourFzero{} with four). On the full band the mean is
 \ResultsJsFullFourLowMean, \ResultsJsFullEightLowMean{} and \ResultsJsFullSixteenLowMean{} at
@@ -289,7 +291,7 @@ $\snr=7$--15 ($S=4$, 8, 16) and \ResultsJsFullFourLoudMean, \ResultsJsFullEightL
 \ResultsJsFullEightLoudFzero{} and \ResultsJsFullSixteenLoudFzero, $\ln\fdot$
 \ResultsJsFullFourLoudFdot, \ResultsJsFullEightLoudFdot{} and \ResultsJsFullSixteenLoudFdot, and the
 right ascension \ResultsJsFullFourLoudSky, \ResultsJsFullEightLoudSky{} and
-\ResultsJsFullSixteenLoudSky: the order-of-magnitude excess widths of \cref{tab:results-widths}, for a
+\ResultsJsFullSixteenLoudSky: the several-fold to twenty-fold excess widths of \cref{tab:results-widths}, for a
 Gaussian ten times too wide gives \ResultsJsGaussWidthTen. The divergence ranks the models and the
 coordinates as the widths do. As for the widths, full $S=16$'s reference is likely too narrow from $\snr=7$
 to about 20 (\cref{app:results-mcmc}), so its divergences there are upper bounds.

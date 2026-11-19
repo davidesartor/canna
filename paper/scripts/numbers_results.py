@@ -246,20 +246,25 @@ numbers["ResultsNarrowEightFzeroMid"] = f"{width('narrow', 8, '15-40'):.1f}"
 numbers["ResultsNarrowEightFoundLow"] = f"{100 * found('narrow', 8, '7-15'):.0f}"
 numbers["ResultsNarrowEightOff"] = f"{100 * off('narrow', 8):.0f}"
 numbers["ResultsNarrowEightMcmcOff"] = f"{100 * off('narrow', 8, 'mcmc_off_peak_snr15'):.0f}"
+# full S=4 (t44): every width ratio at SNR 7-40, as for narrow-2 (2026-11-19: the text's "close up to SNR 40")
+f4 = [width("full", 4, b, c) for b in ("7-15", "15-40") for c in COLS]
+numbers["ResultsFullFourWidthLo"] = f"{min(f4):.1f}"
+numbers["ResultsFullFourWidthHi"] = f"{max(f4):.1f}"
+sig2 = lambda x: f"{x:.1f}" if x < 10 else f"{x:.0f}"  # 2026-11-19: 6.6 as in the tables, was rounded to 7
 # full band
 for n, word in ((4, "Four"), (8, "Eight"), (16, "Sixteen")):
     numbers[f"ResultsFull{word}FzeroMid"] = f"{width('full', n, '15-40'):.1f}"
-    numbers[f"ResultsFull{word}FzeroLoud"] = f"{width('full', n, '>=40'):.0f}"
-    numbers[f"ResultsFull{word}FdotLoud"] = f"{width('full', n, '>=40', 'log fdot'):.0f}"
-    numbers[f"ResultsFull{word}SkyLoud"] = f"{width('full', n, '>=40', 'lon'):.0f}"
+    numbers[f"ResultsFull{word}FzeroLoud"] = sig2(width('full', n, '>=40'))
+    numbers[f"ResultsFull{word}FdotLoud"] = sig2(width('full', n, '>=40', 'log fdot'))
+    numbers[f"ResultsFull{word}SkyLoud"] = sig2(width('full', n, '>=40', 'lon'))
     numbers[f"ResultsFull{word}AmpLoud"] = f"{width('full', n, '>=40', 'log A'):.1f}"
     numbers[f"ResultsFull{word}FoundLoud"] = f"{100 * found('full', n, '>=40'):.0f}"
     numbers[f"ResultsFull{word}FoundMid"] = f"{100 * found('full', n, '15-40'):.0f}"
     numbers[f"ResultsFull{word}Off"] = f"{100 * off('full', n):.0f}"
     numbers[f"ResultsFull{word}McmcOff"] = f"{100 * off('full', n, 'mcmc_off_peak_snr15'):.0f}"
-    numbers[f"ResultsFull{word}Model"] = label(selected("full", n))
+    numbers[f"ResultsFull{word}Model"] = e64.model_label("full", n).split(" ")[0]  # 2026-11-19: was label(), "main" for t44
 for n, word in ((2, "Two"), (4, "Four"), (8, "Eight")):
-    numbers[f"ResultsNarrow{word}Model"] = label(selected("narrow", n))
+    numbers[f"ResultsNarrow{word}Model"] = e64.model_label("narrow", n).split(" ")[0]
 # the faint sources: flow and MCMC agree below SNR 7 everywhere
 FAINT = [k for k in [("narrow", 2), ("narrow", 4), ("full", 4), ("full", 8)] if selected(*k)]  # narrow-8 and full-16 on their own  # narrow-8 is reported on its own
 faint = [width(b, n, "0-7", c) for b, n in FAINT for c in COLS]
@@ -602,7 +607,7 @@ SBC_MAIN = style.PAPER / "data/runs/sbc-main.json"
 if JS_MAIN.is_file() and SBC_MAIN.is_file():
     jm = {(m["band"], m["n_sources"]): m for m in json.loads(JS_MAIN.read_text())["models"]}
     sm = json.loads(SBC_MAIN.read_text())
-    pfmt = lambda p: "$<$0.001" if p < 0.001 else f"{p:.3f}" if p < 0.01 else f"{p:.2f}"
+    pfmt = lambda p: "$<$0.001" if p < 0.001 else f"{p:.3f}"  # 2026-11-19: as in tab:results-validation (was 2 decimals)
     rows = []
     for band, n in sorted(CONFIGS, key=lambda c: (c[0] != "narrow", c[1])):
         key = f"{band}-{n}"
@@ -613,11 +618,12 @@ if JS_MAIN.is_file() and SBC_MAIN.is_file():
         m, s = jm[band, n], sm[key]
         snr = np.array([x["snr"] for x in m["sources"]])
         js = np.array([x["js"] for x in m["sources"]]).mean(1)  # mean over the eight coordinates
-        low, high = js[(snr >= 7) & (snr < 15)].mean(), js[snr >= 15].mean()
+        # 2026-11-19: median over the sources, as tab:results-js (was the mean: full S=4 0.19 here, 0.074 there)
+        low, high = np.median(js[(snr >= 7) & (snr < 15)]), np.median(js[snr >= 15])
         windows = f"{len(np.unique([x['injection'] for x in m['sources']]))} / {s['flow']['windows']}"
-        rows.append(rf"n{n}-{band} & {n} & {e64.model_label(band, n)} & {windows} & {low:.2f} & {high:.2f} & {s['flow']['in68']:.3f} & {pfmt(s['flow']['min_p'])} \\")
+        rows.append(rf"n{n}-{band} & {n} & {e64.model_label(band, n)} & {windows} & {js3(low)} & {js3(high)} & {s['flow']['in68']:.3f} & {pfmt(s['flow']['min_p'])} \\")
     numbers["ResultsSummaryRows"] = "\n".join(rows)
-    numbers["ResultsSummaryFloor"] = f"{np.median([m['null']['median'] for m in jm.values()]):.2f}"
+    numbers["ResultsSummaryFloor"] = js3(np.median([m['null']['median'] for m in jm.values()]))  # = ResultsJsFloorMedian
 
 # anything computed from a model that has not landed (full S=4's e64) prints as nan: mark it instead
 numbers = {k: (r"\textcolor{red}{??}" if re.search(r"\bnan\b", v) else v) for k, v in numbers.items()}

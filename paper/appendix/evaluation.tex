@@ -39,7 +39,11 @@ By default every pass evaluates the run's last checkpoint, at the end of the coo
 (\cref{app:training-loop}), as a fallback for a run that degrades late; it is chosen on the eval
 injections, so its results on them are optimistic. The runs of \cref{app:results} were evaluated at
 that checkpoint, which in the finished runs falls in the cooldown, at most a few epochs before the end
-(\cref{tab:results-runs}), and is the only usable one of the full-band run with $S=4$, which diverged. The flow predicts the
+(\cref{tab:results-runs}). The exception is the full band with $S=4$, whose run diverged: its
+Student-t continuation is evaluated at its last checkpoint, since its logged loss does not compare
+across the switch (\cref{app:results-runs}).
+% updated 2026-11-19: was "and is the only usable one of the full-band run with S=4, which diverged" (pre-t44).
+The flow predicts the
 endpoint $Z_1$ in the frame (\cref{app:fm}), and the sampler takes \EvaluationOdeSteps{} midpoint
 steps toward the predicted mean, each exact if the prediction were constant along the step. On a uniform grid the last
 step cannot resolve posteriors much narrower than $s_0/2K_t$ (\cref{fig:fm-sensitivity}b), so

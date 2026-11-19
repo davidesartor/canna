@@ -131,7 +131,8 @@ steps, without restarts). A later cooldown ends lower (\cref{tab:results-forks})
 to epoch 32 the eval-catalogue loss falls in every configuration, except full-band $S=4$ at epoch 16,
 whose snapshot caught a noisy epoch. Cooling at the planned epoch, after \ResultsEpochs{} epochs, still
 gains on narrow $S=4$ and full $S=8$, which are therefore not converged, but not on narrow $S=2$ and
-$S=8$, where the fork from epoch 32 ends below the main run.
+$S=8$ and full $S=16$, where the fork from epoch 32 ends below the main run.
+% updated 2026-11-19: full S=16 added (e32 -0.887 vs main -0.874; app:results-forks "lose on three").
 
 \subsection{Batch}
 \label{app:training-batch}
