@@ -82,11 +82,15 @@ for run_dir in sorted(Path(p) for p in glob.glob(str(RUNS / "261103-n*-B*"))):
             continue
         problem = LisaGB(**config["problem"])
         pid = (str(config["problem"]), config["seed"])
+        draws = load(eval_dir / "draws.npz")
         if pid not in references:
             references[pid] = load_reference(problem, config["seed"])
+            if references[pid] is None:  # 2026-11-19: the hashed problem id changed after the runs' commit
+                import e64
+
+                references[pid] = e64.reference_for(draws["truth"])
             reference_runs[pid] = (band, n)
         ref = references[pid]
-        draws = load(eval_dir / "draws.npz")
         # f0 draws off the MCMC's peak: farther than max(0.5 bin, 5 MCMC widths) from the MCMC median
         m = ref["mcmc"][..., 0] * problem.t_obs
         f = draws["draws"][..., 0] * problem.t_obs

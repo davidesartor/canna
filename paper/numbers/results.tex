@@ -18,6 +18,8 @@ full & 16 & \num{2.11} & 64 & \num{42240} & 63 & finished & \num{-0.874} (64) \\
 \newcommand{\ResultsCommit}{90735b9}
 \newcommand{\ResultsFullFourDivergedEpoch}{51}
 \newcommand{\ResultsFullFourBestEpoch}{43}
+\newcommand{\ResultsTFourMaxGrad}{3e6}
+\newcommand{\ResultsTFourGaussMaxGrad}{9e17}
 \newcommand{\ResultsWallNarrow}{32--34}
 \newcommand{\ResultsWallFull}{64--66}
 \newcommand{\ResultsWallFullFour}{53}
@@ -37,7 +39,9 @@ narrow-8 & 7--15 & 234 & 2.62 & 1.10 & 1.38 & 1.74 & 1.49 & 1.58 & 0.62 & 0.70 &
  & 15--40 & 130 & 1.50 & 1.16 & 1.55 & 2.01 & 1.72 & 1.59 & 0.78 & 0.72 & 0.97 \\
  & $\ge40$ & 12 & 1.69 & 1.44 & 1.47 & 3.08 & 2.61 & 1.43 & 0.83 & 0.73 & 0.99 \\
 \addlinespace
-full-4 & \multicolumn{11}{l}{\textcolor{red}{TODO(run): 261103-n4-full-B-t44, eval pending on TREX}} \\
+full-4 & 7--15 & 50 & 1.66 & 1.07 & 1.21 & 1.57 & 1.39 & 1.21 & 0.62 & 0.69 & 0.95 \\
+ & 15--40 & 87 & 1.22 & 1.19 & 1.17 & 1.84 & 1.65 & 1.22 & 0.77 & 0.72 & 0.95 \\
+ & $\ge40$ & 66 & 6.61 & 5.75 & 1.56 & 5.00 & 3.70 & 1.60 & 0.82 & 0.69 & 0.94 \\
 \addlinespace
 full-8 & 7--15 & 87 & 1.69 & 1.12 & 1.41 & 1.90 & 1.66 & 1.44 & 0.67 & 0.70 & 0.95 \\
  & 15--40 & 176 & 2.19 & 1.44 & 1.42 & 2.69 & 2.11 & 1.42 & 0.69 & 0.69 & 0.95 \\
@@ -46,15 +50,15 @@ full-8 & 7--15 & 87 & 1.69 & 1.12 & 1.41 & 1.90 & 1.66 & 1.44 & 0.67 & 0.70 & 0.
 full-16 & 7--15 & 179 & 2.89 & 1.12 & 1.48 & 2.19 & 1.77 & 1.59 & 0.57 & 0.68 & 0.95 \\
  & 15--40 & 357 & 2.15 & 1.34 & 1.60 & 2.75 & 2.16 & 1.60 & 0.70 & 0.67 & 0.96 \\
  & $\ge40$ & 288 & 21.5 & 10.7 & 2.75 & 14.7 & 8.69 & 2.80 & 0.49 & 0.69 & 0.95 \\}
-\newcommand{\ResultsMcmcRhatMax}{1.052}
+\newcommand{\ResultsMcmcRhatMax}{1.073}
 \newcommand{\ResultsMcmcRhatNarrowMax}{1.005}
 \newcommand{\ResultsMcmcEssMin}{1097}
-\newcommand{\ResultsMcmcFzeroCoverLo}{0.69}
+\newcommand{\ResultsMcmcFzeroCoverLo}{0.67}
 \newcommand{\ResultsMcmcFzeroCoverHi}{0.72}
-\newcommand{\ResultsEvals}{5}
+\newcommand{\ResultsEvals}{6}
 \newcommand{\ResultsCoverSixtyEightLo}{0.67}
 \newcommand{\ResultsCoverSixtyEightHi}{0.69}
-\newcommand{\ResultsCoverNinetyFiveLo}{0.95}
+\newcommand{\ResultsCoverNinetyFiveLo}{0.94}
 \newcommand{\ResultsCoverNinetyFiveHi}{0.95}
 \newcommand{\ResultsNarrowTwoWidthLo}{1.02}
 \newcommand{\ResultsNarrowTwoWidthHi}{1.31}
@@ -74,16 +78,16 @@ full-16 & 7--15 & 179 & 2.89 & 1.12 & 1.48 & 2.19 & 1.77 & 1.59 & 0.57 & 0.68 & 
 \newcommand{\ResultsNarrowEightFoundLow}{62}
 \newcommand{\ResultsNarrowEightOff}{34}
 \newcommand{\ResultsNarrowEightMcmcOff}{5}
-\newcommand{\ResultsFullFourFzeroMid}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourFzeroLoud}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourFdotLoud}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourSkyLoud}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourAmpLoud}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourFoundLoud}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourFoundMid}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourOff}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourMcmcOff}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourModel}{--}
+\newcommand{\ResultsFullFourFzeroMid}{1.2}
+\newcommand{\ResultsFullFourFzeroLoud}{7}
+\newcommand{\ResultsFullFourFdotLoud}{6}
+\newcommand{\ResultsFullFourSkyLoud}{5}
+\newcommand{\ResultsFullFourAmpLoud}{1.6}
+\newcommand{\ResultsFullFourFoundLoud}{82}
+\newcommand{\ResultsFullFourFoundMid}{77}
+\newcommand{\ResultsFullFourOff}{28}
+\newcommand{\ResultsFullFourMcmcOff}{2}
+\newcommand{\ResultsFullFourModel}{main}
 \newcommand{\ResultsFullEightFzeroMid}{2.2}
 \newcommand{\ResultsFullEightFzeroLoud}{11}
 \newcommand{\ResultsFullEightFdotLoud}{9}
@@ -139,12 +143,12 @@ full-16 & \num{-0.630} / 8.57 & \num{-0.737} / 4.82 & \num{-0.826} / 3.43 & \num
 \newcommand{\ResultsSepCloseBins}{3}
 \newcommand{\ResultsSepFarBins}{10}
 \newcommand{\ResultsFullSplitMhz}{10}
-\newcommand{\ResultsFullFourLoudHighShare}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourUnfoundHighShare}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourFoundHigh}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourFoundLowBand}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourFzeroHigh}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourFzeroLowBand}{\textcolor{red}{??}}
+\newcommand{\ResultsFullFourLoudHighShare}{45}
+\newcommand{\ResultsFullFourUnfoundHighShare}{92}
+\newcommand{\ResultsFullFourFoundHigh}{63}
+\newcommand{\ResultsFullFourFoundLowBand}{97}
+\newcommand{\ResultsFullFourFzeroHigh}{20}
+\newcommand{\ResultsFullFourFzeroLowBand}{1.9}
 \newcommand{\ResultsFullEightLoudHighShare}{41}
 \newcommand{\ResultsFullEightUnfoundHighShare}{76}
 \newcommand{\ResultsFullEightFoundHigh}{37}
@@ -188,7 +192,10 @@ narrow-8 & all & 8000 & $<$0.001 & 0.593 & 0.338 & $<$0.001 & 0.062 & $<$0.001 &
  & 15--40 & 1071 & 0.061 & 0.416 & 0.521 & $<$0.001 & 0.006 & $<$0.001 & +0.15 & +0.48 & 0.01 \\
  & 40--100 & 85 & 0.013 & 0.262 & 0.192 & $<$0.001 & $<$0.001 & $<$0.001 & +0.36 & +0.50 & 0.00 \\
 \addlinespace
-full-4 & \multicolumn{10}{l}{\textcolor{red}{TODO(run): 261103-n4-full-B-t44, eval pending on TREX}} \\
+full-4 & all & 4000 & 0.016 & 0.013 & 0.531 & $<$0.001 & 0.156 & $<$0.001 & +0.20 & +0.40 & 0.11 \\
+\quad Gaussian mock & all & 4000 & $<$0.001 & $<$0.001 & $<$0.001 & $<$0.001 & $<$0.001 & $<$0.001 & +0.05 & +0.23 & 0.40 \\
+ & 15--40 & 802 & 0.077 & 0.615 & 0.896 & $<$0.001 & 0.561 & $<$0.001 & +0.17 & +0.39 & 0.13 \\
+ & 40--100 & 200 & 0.058 & 0.835 & 0.354 & $<$0.001 & 0.642 & $<$0.001 & +0.31 & +0.42 & 0.09 \\
 \addlinespace
 full-8 & all & 8000 & 0.135 & 0.206 & 0.036 & $<$0.001 & $<$0.001 & $<$0.001 & +0.20 & +0.47 & 0.02 \\
 \quad Gaussian mock & all & 8000 & $<$0.001 & $<$0.001 & $<$0.001 & $<$0.001 & $<$0.001 & $<$0.001 & +0.04 & +0.31 & 0.28 \\
@@ -209,7 +216,7 @@ full-16 & all & 16000 & 0.039 & 0.005 & 0.013 & $<$0.001 & $<$0.001 & $<$0.001 &
 \newcommand{\ResultsFlowOverlapOffsetHi}{+0.24}
 \newcommand{\ResultsLikeExcessLo}{+0.07}
 \newcommand{\ResultsLikeExcessHi}{+0.20}
-\newcommand{\ResultsOverlapFixFlowLo}{+0.24}
+\newcommand{\ResultsOverlapFixFlowLo}{+0.23}
 \newcommand{\ResultsOverlapFixFlowHi}{+0.31}
 \newcommand{\ResultsOverlapFixFlowRiseLo}{+0.03}
 \newcommand{\ResultsOverlapFixFlowRiseHi}{+0.15}
@@ -234,18 +241,18 @@ full-16 & all & 16000 & 0.039 & 0.005 & 0.013 & $<$0.001 & $<$0.001 & $<$0.001 &
 \newcommand{\ResultsNarrowFourFaintMcmcPrior}{0.84}
 \newcommand{\ResultsNarrowEightFaintFlowPrior}{0.88}
 \newcommand{\ResultsNarrowEightFaintMcmcPrior}{0.19}
-\newcommand{\ResultsFullFourFaintFlowPrior}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourFaintMcmcPrior}{\textcolor{red}{??}}
+\newcommand{\ResultsFullFourFaintFlowPrior}{0.95}
+\newcommand{\ResultsFullFourFaintMcmcPrior}{0.97}
 \newcommand{\ResultsFullEightFaintFlowPrior}{0.99}
 \newcommand{\ResultsFullEightFaintMcmcPrior}{0.95}
 \newcommand{\ResultsFullSixteenFaintFlowPrior}{0.99}
 \newcommand{\ResultsFullSixteenFaintMcmcPrior}{0.60}
 \newcommand{\ResultsFaintFlowPriorLo}{0.84}
 \newcommand{\ResultsFaintFlowPriorHi}{0.99}
-\newcommand{\ResultsFullFourFrameLow}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourContractLow}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourFrameHigh}{\textcolor{red}{??}}
-\newcommand{\ResultsFullFourContractHigh}{\textcolor{red}{??}}
+\newcommand{\ResultsFullFourFrameLow}{24}
+\newcommand{\ResultsFullFourContractLow}{14}
+\newcommand{\ResultsFullFourFrameHigh}{62}
+\newcommand{\ResultsFullFourContractHigh}{3}
 \newcommand{\ResultsFullEightFrameLow}{71}
 \newcommand{\ResultsFullEightContractLow}{17}
 \newcommand{\ResultsFullEightFrameHigh}{163}
@@ -330,7 +337,9 @@ narrow-8 & 7--15 & 234 & 0.29 & 0.028 & 0.098 & 0.16 & 0.11 & 0.029 & 0.14 & 0.0
  & 15--40 & 130 & 0.22 & 0.037 & 0.13 & 0.21 & 0.15 & 0.031 & 0.13 & 0.083 & 0.14 \\
  & $\ge40$ & 12 & 0.24 & 0.091 & 0.17 & 0.42 & 0.34 & 0.032 & 0.16 & 0.071 & 0.19 \\
 \addlinespace
-full-4 & \multicolumn{11}{l}{\textcolor{red}{TODO(run): 261103-n4-full-B-t44, eval pending on TREX}} \\
+full-4 & 7--15 & 50 & 0.14 & 0.025 & 0.059 & 0.12 & 0.080 & 0.038 & 0.081 & 0.055 & 0.074 \\
+ & 15--40 & 87 & 0.11 & 0.067 & 0.051 & 0.20 & 0.13 & 0.061 & 0.064 & 0.068 & 0.11 \\
+ & $\ge40$ & 66 & 0.60 & 0.64 & 0.17 & 0.54 & 0.53 & 0.13 & 0.18 & 0.24 & 0.37 \\
 \addlinespace
 full-8 & 7--15 & 87 & 0.27 & 0.029 & 0.079 & 0.21 & 0.14 & 0.073 & 0.11 & 0.12 & 0.16 \\
  & 15--40 & 176 & 0.32 & 0.13 & 0.15 & 0.38 & 0.31 & 0.071 & 0.13 & 0.17 & 0.23 \\
@@ -339,7 +348,7 @@ full-8 & 7--15 & 87 & 0.27 & 0.029 & 0.079 & 0.21 & 0.14 & 0.073 & 0.11 & 0.12 &
 full-16 & 7--15 & 179 & 0.39 & 0.044 & 0.19 & 0.29 & 0.20 & 0.074 & 0.24 & 0.19 & 0.24 \\
  & 15--40 & 357 & 0.32 & 0.15 & 0.20 & 0.40 & 0.31 & 0.11 & 0.22 & 0.21 & 0.26 \\
  & $\ge40$ & 288 & 0.79 & 0.67 & 0.35 & 0.75 & 0.66 & 0.19 & 0.39 & 0.35 & 0.55 \\}
-\newcommand{\ResultsJsFaintLo}{0.012}
+\newcommand{\ResultsJsFaintLo}{0.011}
 \newcommand{\ResultsJsFaintHi}{0.042}
 \newcommand{\ResultsJsFaintFullFzero}{0.015}
 \newcommand{\ResultsJsFaintNarrowTwoFzero}{0.044}
@@ -353,11 +362,11 @@ full-16 & 7--15 & 179 & 0.39 & 0.044 & 0.19 & 0.29 & 0.20 & 0.074 & 0.24 & 0.19 
 \newcommand{\ResultsJsNarrowFourFzero}{0.087}
 \newcommand{\ResultsJsNarrowEightMean}{0.14}
 \newcommand{\ResultsJsNarrowEightFzero}{0.26}
-\newcommand{\ResultsJsFullFourLoudFzero}{\textcolor{red}{??}}
-\newcommand{\ResultsJsFullFourLoudFdot}{\textcolor{red}{??}}
-\newcommand{\ResultsJsFullFourLoudSky}{\textcolor{red}{??}}
-\newcommand{\ResultsJsFullFourLoudMean}{\textcolor{red}{??}}
-\newcommand{\ResultsJsFullFourLowMean}{\textcolor{red}{??}}
+\newcommand{\ResultsJsFullFourLoudFzero}{0.60}
+\newcommand{\ResultsJsFullFourLoudFdot}{0.64}
+\newcommand{\ResultsJsFullFourLoudSky}{0.54}
+\newcommand{\ResultsJsFullFourLoudMean}{0.37}
+\newcommand{\ResultsJsFullFourLowMean}{0.074}
 \newcommand{\ResultsJsFullEightLoudFzero}{0.67}
 \newcommand{\ResultsJsFullEightLoudFdot}{0.65}
 \newcommand{\ResultsJsFullEightLoudSky}{0.62}
@@ -378,7 +387,7 @@ full-16 & 7--15 & 179 & 0.39 & 0.044 & 0.19 & 0.29 & 0.20 & 0.074 & 0.24 & 0.19 
 \newcommand{\ResultsSummaryRows}{n2-narrow & 2 & 128 / 1000 & 0.08 & 0.07 & 0.691 & $<$0.001 \\
 n4-narrow & 4 & 128 / 1000 & 0.09 & 0.09 & 0.688 & 0.03 \\
 n8-narrow & 8 & 128 / 1000 & 0.17 & 0.17 & 0.693 & $<$0.001 \\
-n4-full & 4 & & & & & \\
+n4-full & 4 & 128 / 1000 & 0.19 & 0.29 & 0.691 & 0.02 \\
 n8-full & 8 & 128 / 1000 & 0.21 & 0.36 & 0.691 & 0.14 \\
 n16-full & 16 & 128 / 1000 & 0.28 & 0.40 & 0.689 & 0.04 \\}
 \newcommand{\ResultsSummaryFloor}{0.01}

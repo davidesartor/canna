@@ -191,10 +191,10 @@ specifically highlighted here.
   \item Fisher draws on the full band: $\fdot$ overflows to infinity for about half the draws of the faint
     sources (\cref{app:evaluation-fisher}); bound them and repack the references.
   \item Every result is the 64-epoch run of its problem (2026-11-18, \texttt{paper/scripts/e64.py}); full $S=4$'s is
-    the Student-t continuation 261103-n4-full-B-t44, whose eval (TREX 18162618) is pending: then import\_runs.py
-    (scoring), import\_js.py main, import\_sbc.py, import\_faint/corners/ranks.py, overlap\_groups\_flow.py and
-    261103-frame-vs-flow.py (TREX), import\_overlap/frame.py, numbers\_results.py. The Student-t frame loss itself is
-    not yet described in \cref{app:training}.
+    the Student-t continuation 261103-n4-full-B-t44, evaluated at its last checkpoint (2026-11-19: every full $S=4$
+    entry filled; the loss in \cref{app:fm-frame}). Its best-checkpoint rule still reads the Gaussian frame loss:
+    fix the selection (flow $+\,2\delta_s$) before another frame\_nu run. It is the best full-band model on every
+    parameter, so whether the Student-t frame helps the other five problems is open (one seed, one run).
   \item One seed per configuration: the run-to-run spread is unmeasured, so differences of a few
     hundredths of a nat between forks are not significant. TODO(run, expensive, deliberately not
     launched 2026-11-13): a second seed of narrow $S=2$, about 32 A100 hours.

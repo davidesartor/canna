@@ -42,12 +42,13 @@ other on one GPU, and the full band on another; a third GPU cooled down forks fr
 snapshots and evaluated every finished run and fork (\cref{app:training-loop}). Five runs trained to
 their end with every loss finite. The full-band run with $S=4$ diverged at epoch
 \ResultsFullFourDivergedEpoch, just before its cooldown, after isolated single-step spikes of the
-frame's loss (\cref{app:training-optimiser}); it is evaluated at its best checkpoint, epoch
-\ResultsFullFourBestEpoch, which never cooled down. Its results below are those of its continuation from
-the snapshot at epoch 44 with a Student-t frame loss, which trains the remaining epochs and the cooldown
-(\cref{app:training-optimiser}). \textcolor{red}{TODO(run): the eval of that continuation
-(261103-n4-full-B-t44, TREX job 18162618) is pending; every full $S=4$ entry below is blank or ?? until it
-is fetched and scored (import\_runs.py, then the import\_*.py and numbers\_results.py of paper/scripts).}
+frame's loss (\cref{app:training-optimiser}); its best checkpoint, epoch
+\ResultsFullFourBestEpoch, never cooled down. Its results below are those of its continuation from
+the snapshot at epoch 44 with the Student-t frame loss of \cref{app:fm-frame}, which trained the
+remaining epochs and the cooldown with every loss finite (\cref{app:training-optimiser}). The
+continuation is evaluated at its last checkpoint, epoch \ResultsEpochs: the best-checkpoint rule reads
+the logged, Gaussian frame loss, which does not compare across the switch (\cref{app:fm-frame}).
+% updated 2026-11-19: t44 landed (TREX 18085060, eval 18162618, scorecard 18292006, analyses 18292007).
 % updated 2026-11-18 (user): every result below is the 64-epoch main run of its problem ("e64",
 % paper/scripts/e64.py); the cooldown forks appear only in app:results-forks. Was: the lowest eval-catalogue
 % loss among the main run and its forks, which picked the fork from epoch 32 in four problems.
@@ -88,7 +89,8 @@ model & \acs{snr} & $n$ & $f_0$ & $\log\fdot$ & $\log\Amp$ & $\alpha$ & $\delta$
 \caption{(a), (b)~Flow over joint-\ac{mcmc} width of $f_0$ and of the right ascension against the
 source \ac{snr}, for the models of \cref{tab:results-widths}; narrow band solid, full band dashed. (c)~The
 eval-catalogue loss of the cooldown forks against the epoch at which their cooldown starts, and of the
-main runs at theirs; the full band with $S=4$ has no cooled main run.}
+main runs at theirs; the full band with $S=4$ has no cooled main run (its Student-t continuation's
+logged loss does not compare, \cref{app:fm-frame}).}
 \label{fig:results}
 \end{figure*}
 
@@ -167,36 +169,41 @@ the peak (chains: \qty{\ResultsNarrowFourMcmcOff}{\percent}). With eight, $f_0$ 
 band has only a handful of sources.
 
 \paragraph{The full band.}
-On the full band the flow is close to the chains only for faint sources. At $\snr=15$--40 its $f_0$
+% updated 2026-11-19 (t44): "close to the chains only for faint sources" -> with S=4 also up to SNR 40.
+On the full band the flow is close to the chains for faint sources, and with $S=4$ up to $\snr=40$. At $\snr=15$--40 its $f_0$
 widths are \ResultsFullFourFzeroMid{} ($S=4$), \ResultsFullEightFzeroMid{} ($S=8$) and
 \ResultsFullSixteenFzeroMid{} ($S=16$) times the chains', and above $\snr=40$ they are
 \ResultsFullFourFzeroLoud, \ResultsFullEightFzeroLoud{} and \ResultsFullSixteenFzeroLoud{} times, with
 $\log\fdot$ \ResultsFullFourFdotLoud, \ResultsFullEightFdotLoud{} and \ResultsFullSixteenFdotLoud{} times
 and the right ascension \ResultsFullFourSkyLoud, \ResultsFullEightSkyLoud{} and
 \ResultsFullSixteenSkyLoud{} times; amplitude and inclination stay within \ResultsFullFourAmpLoud,
-\ResultsFullEightAmpLoud{} and \ResultsFullSixteenAmpLoud. Only \ResultsFullFourFoundLoud\,\%,
+\ResultsFullEightAmpLoud{} and \ResultsFullSixteenAmpLoud. Only \qty{\ResultsFullFourFoundLoud}{\percent},
 \qty{\ResultsFullEightFoundLoud}{\percent} and \qty{\ResultsFullSixteenFoundLoud}{\percent} of the loud
-sources are found, and \ResultsFullFourOff\,\%, \qty{\ResultsFullEightOff}{\percent} and
+sources are found, and \qty{\ResultsFullFourOff}{\percent}, \qty{\ResultsFullEightOff}{\percent} and
 \qty{\ResultsFullSixteenOff}{\percent} of their draws fall off the chains' peak, against
-\ResultsFullFourMcmcOff\,\%, \qty{\ResultsFullEightMcmcOff}{\percent} and
-\qty{\ResultsFullSixteenMcmcOff}{\percent} of the chains' own. From $S=4$ to 8 the loud widths grow by 10 to 40 per cent; from 8 to 16 that
-of $f_0$ more than doubles, and those of $\log\fdot$ and the sky grow by about half. The loud sources of the full band are those whose posteriors are narrowest against
+\qty{\ResultsFullFourMcmcOff}{\percent}, \qty{\ResultsFullEightMcmcOff}{\percent} and
+\qty{\ResultsFullSixteenMcmcOff}{\percent} of the chains' own. From $S=4$ to 8 the loud widths of $f_0$, $\log\fdot$ and the sky grow by half or more and the
+amplitude's by a quarter; from 8 to 16 that of $f_0$ doubles, the sky's grows by two thirds and that of
+$\log\fdot$ by a fifth.
+% updated 2026-11-19 (t44): was "From S=4 to 8 the loud widths grow by 10 to 40 per cent; from 8 to 16 that
+% of f0 more than doubles, and those of log fdot and the sky grow by about half" (vs-mcmc >=40 rows: S=4 6.6, 5.8,
+% 5.0, 1.6; S=8 10.7, 9.1, 8.6, 2.0; S=16 21.5, 10.7, 14.7, 2.8 for f0, log fdot, lon, log A). The loud sources of the full band are those whose posteriors are narrowest against
 the prior and whose responses span the most bins (\cref{app:forward-model}), the regime the per-source
 frame is meant for (\cref{app:fm-sensitivity}); the full-band models do not resolve them yet.
 The misses sit at high frequency. Above \qty{\ResultsFullSplitMhz}{\milli\hertz} lie
-\ResultsFullFourLoudHighShare\,\% ($S=4$), \qty{\ResultsFullEightLoudHighShare}{\percent}
+\qty{\ResultsFullFourLoudHighShare}{\percent} ($S=4$), \qty{\ResultsFullEightLoudHighShare}{\percent}
 ($S=8$) and \qty{\ResultsFullSixteenLoudHighShare}{\percent} ($S=16$) of the sources at $\snr\ge40$, but
-\ResultsFullFourUnfoundHighShare\,\%, \qty{\ResultsFullEightUnfoundHighShare}{\percent} and
+\qty{\ResultsFullFourUnfoundHighShare}{\percent}, \qty{\ResultsFullEightUnfoundHighShare}{\percent} and
 \qty{\ResultsFullSixteenUnfoundHighShare}{\percent} of those not found. Below
-\qty{\ResultsFullSplitMhz}{\milli\hertz} the models find \ResultsFullFourFoundLowBand\,\%,
+\qty{\ResultsFullSplitMhz}{\milli\hertz} the models find \qty{\ResultsFullFourFoundLowBand}{\percent},
 \qty{\ResultsFullEightFoundLowBand}{\percent} and \qty{\ResultsFullSixteenFoundLowBand}{\percent} of the
 loud sources, with $f_0$ widths \ResultsFullFourFzeroLowBand, \ResultsFullEightFzeroLowBand{} and
-\ResultsFullSixteenFzeroLowBand{} times the chains'; above it, \ResultsFullFourFoundHigh\,\%,
+\ResultsFullSixteenFzeroLowBand{} times the chains'; above it, \qty{\ResultsFullFourFoundHigh}{\percent},
 \qty{\ResultsFullEightFoundHigh}{\percent} and \qty{\ResultsFullSixteenFoundHigh}{\percent}, at
 \ResultsFullFourFzeroHigh, \ResultsFullEightFzeroHigh{} and \ResultsFullSixteenFzeroHigh{} times. The source count costs most above
 \qty{\ResultsFullSplitMhz}{\milli\hertz}: from $S=4$ to 16 the share found there falls from
-\ResultsFullFourFoundHigh\,\% to \qty{\ResultsFullSixteenFoundHigh}{\percent}, and below it
-only from \ResultsFullFourFoundLowBand\,\% to \qty{\ResultsFullSixteenFoundLowBand}{\percent}. There the Doppler shift and the
+\qty{\ResultsFullFourFoundHigh}{\percent} to \qty{\ResultsFullSixteenFoundHigh}{\percent}, and below it
+only from \qty{\ResultsFullFourFoundLowBand}{\percent} to \qty{\ResultsFullSixteenFoundLowBand}{\percent}. There the Doppler shift and the
 chirp spread a source over the most bins (\cref{app:forward-model}).
 The wide part is mostly the flow's refinement. The frame, computed from the data alone
 (\cref{app:network}), is wide by design on loud sources: on those below
@@ -206,8 +213,7 @@ narrows it \ResultsFullFourContractLow, \ResultsFullEightContractLow{} and
 \ResultsFullSixteenContractLow-fold. Above \qty{\ResultsFullSplitMhz}{\milli\hertz} the frame is about twice
 as wide again (\ResultsFullFourFrameHigh, \ResultsFullEightFrameHigh{} and \ResultsFullSixteenFrameHigh{}
 times), but the flow narrows it only \ResultsFullFourContractHigh, \ResultsFullEightContractHigh{} and
-\ResultsFullSixteenContractHigh-fold. \textcolor{red}{TODO(run): 261103-frame-vs-flow.py on full $S=4$'s
-64-epoch model (t44) once it lands; its entries are ?? until then.} (The models' eval windows, 256 draws per window, $f_0$ widths in bins;
+\ResultsFullSixteenContractHigh-fold. (The models' eval windows, 256 draws per window, $f_0$ widths in bins;
 \texttt{outputs/runs/261103-frame-vs-flow.py}.)
 % updated 2026-11-17: the cause of the >10 mHz misses, as the authors read it
 These sources are seen poorly because the prior produces few sources like them, so the training set holds
@@ -215,7 +221,7 @@ few examples of loud sources above \qty{\ResultsFullSplitMhz}{\milli\hertz}. We 
 cure this.
 
 \paragraph{Calibration.}
-Every reported model, \ResultsEvals{} of the six so far (full $S=4$ pending), covers
+Every reported model covers
 \ResultsCoverSixtyEightLo--\ResultsCoverSixtyEightHi{} of the true coordinates at the
 \qty{68}{\percent} level and \ResultsCoverNinetyFiveLo--\ResultsCoverNinetyFiveHi{} at
 \qty{95}{\percent}, pooled over coordinates and sources, including the full-band models that are an
@@ -324,7 +330,7 @@ To find the parameter, every draw of the validation pass had one group of its fl
 truth's (the frequencies $x_f, x_{\fdot}$; the sky $l, b$; the phases $\arg z_\pm$; the moduli $|z_\pm|$) before
 its overlap was ranked again, for each model and for its Gaussian mock on the same injections.
 % updated 2026-11-18: the 64-epoch models of narrow S=2, S=8 and full S=16 rerun (TREX 18206237).
-\textcolor{red}{TODO(run): full $S=4$ (261103-n4-full-B-t44) once its eval lands; the ranges below cover the other five problems.}
+% updated 2026-11-19: full S=4 (t44) added (TREX 18292007); the ranges below cover all six problems.
 No group
 is the one. Setting the frequencies or the sky to the truth leaves the mock's offset where it was
 (\ResultsOverlapFixMockFreqSkyLo{} to \ResultsOverlapFixMockFreqSkyHi), but raises the flow's, to
@@ -372,11 +378,14 @@ overlaps the chains, Fisher close by, but is wider and puts a second mode in the
 louder source; the pair is 35 bins apart, since that problem has no close loud pair. With $S=4$ the pair, 4.6 bins apart, keeps its cores, and a few per cent of the flow's $f_0$ draws of
 the lower source sit on its neighbour, the off-peak share of \cref{app:results-mcmc}. With $S=8$ and two
 sources 0.7 bins apart the flow is wider than the chains in every parameter and its amplitudes have long
-tails. On the full band at $S=4$ the flow's $f_0$ peaks on the chains' but its tails reach several bins in
-$f_0$ and a tenth of a radian in the sky; at $S=8$ its posterior is multimodal where the chains
+tails. On the full band at $S=4$, on two sources at $\snr$ 39 and 33 that are 2.5 bins apart, the flow's $f_0$ of
+the louder one peaks on the chains' with a tail of about a bin, that of the other spreads over several bins,
+its amplitudes are skewed, the louder one's low and the other's high, where the chains sit on the truth, and
+the sky has tails of a tenth of a radian; at $S=8$ its posterior is multimodal where the chains
 have one mode; at $S=16$, on two sources at $\snr$ 68 and 51 only 0.02 bins apart, the flow is offset from
 the truth by about a bin in $f_0$ and \qtyrange{0.2}{0.3}{\radian} in the sky, where the chains sit on it.
 % updated 2026-11-18: the corners redrawn for the 64-epoch models (narrow S=2, S=8, full S=16 changed model).
+% updated 2026-11-19: full S=4 redrawn on t44 (injection 114, slots 1-2, SNR 38.6/33.0, 2.49 bins apart).
 \textcolor{red}{TODO(text): pick one of these for the main text (\cref{sec:results-main}); the windows
 were chosen by the rule above, not by eye.}
 

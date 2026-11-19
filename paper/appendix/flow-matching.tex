@@ -115,6 +115,21 @@ the frame's width settles no lower than $\sigma \approx \lambda\ln(1/\lambda)$ p
 $5\times10^{-3}$. A loud source's frame is then wider than its posterior and the flow narrows the
 rest in $z_1$; a quiet source's is unchanged, the ridge being small against its likelihood.
 
+% added 2026-11-19: the Student-t frame loss of the full S=4 continuation (frame_nu, commit 0f1def1).
+\paragraph{Student-t frame.}
+One run, the continuation of the full band with $S=4$ (\cref{app:results-runs}), replaces $\kappa^2$
+in \cref{eq:fm-frame-loss} by the Student-t term $(\nu+1)\ln(1+\kappa^2/\nu)$ with $\nu=4$, weight and
+ridge unchanged. Under the weight, the Gaussian term's gradients are $-2\kappa$ in $\delta_\mu$ and
+$2e^{\delta_s}(1-\kappa^2)$ in $\delta_s$, unbounded in $\kappa$: one entry whose frame has collapsed far
+below its error fills a clipped step on its own. The Student-t's are $-2(\nu+1)\kappa/(\nu+\kappa^2)$,
+at most $(\nu+1)/\sqrt\nu$ in size, and $2e^{\delta_s}\bigl[1-(\nu+1)\kappa^2/(\nu+\kappa^2)\bigr]$, at
+most $2\nu e^{\delta_s}$. The Student-t is a scale mixture of Gaussians, and its expected precision
+weight given the residual, $(\nu+1)/(\nu+\kappa^2)$, discounts an outlier instead of following it.
+The frame is then no longer the moment match: its scale lies below the posterior's standard
+deviation (the trained frame is about $0.6$ times as wide as the Gaussian one), and the flow, which
+reads it through the stop-gradient, takes up the difference in $Z_1$. The logged frame loss stays the
+Gaussian one of \cref{eq:fm-frame-loss}, so it does not compare across the switch.
+
 \paragraph{Why a frame.}
 The posterior widths span many decades, from the prior for a quiet source to a small fraction of a
 bin in $f_0$ for a loud one (\cref{app:fm-sensitivity}). A flow from a base on the prior's scale

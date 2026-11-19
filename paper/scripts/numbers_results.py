@@ -131,6 +131,18 @@ numbers["ResultsCommit"] = ref["commit"][:7]
 full4 = main("full", 4)
 numbers["ResultsFullFourDivergedEpoch"] = str(full4["epochs_done"] + 1)
 numbers["ResultsFullFourBestEpoch"] = str(full4["evals"][-1]["epoch"])
+
+
+# 2026-11-19: the largest single-step gradient norm after snapshot 44 (epochs 45 on) of full S=4's Student-t
+# continuation and of the Gaussian run up to its divergence, from the runs' history.npz (outputs/runs, local)
+def max_grad_after_44(run: str) -> str:
+    g = np.load(style.PAPER.parent / f"outputs/runs/{run}/history.npz")["losses"][44:, :, 2]
+    mantissa, exponent = f"{np.nanmax(np.where(np.isfinite(g), g, np.nan)):.0e}".split("e")
+    return f"{mantissa}e{int(exponent)}"
+
+
+numbers["ResultsTFourMaxGrad"] = max_grad_after_44(e64.run_name("full", 4))
+numbers["ResultsTFourGaussMaxGrad"] = max_grad_after_44("261103-n4-full-B")
 def hour_range(band: str) -> str:
     h = sorted({round(hours(main(band, n))) for b, n in CONFIGS if b == band})
     return str(h[0]) if len(h) == 1 else f"{h[0]}--{h[-1]}"
