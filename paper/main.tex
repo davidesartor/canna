@@ -8,9 +8,12 @@
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{hyperref}
+% icml2026.sty blanks \addcontentsline, which hyperref also uses to write the PDF outline: keep hyperref's
+\let\outlineaddcontentsline\addcontentsline
 % make hyperref and algorithmic work together
 \newcommand{\theHalgorithm}{\arabic{algorithm}}
 \usepackage[preprint]{icml2026}  % [accepted] for the camera-ready
+\let\addcontentsline\outlineaddcontentsline
 
 \usepackage{amsmath}
 \usepackage{amssymb}
