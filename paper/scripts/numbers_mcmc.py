@@ -22,7 +22,7 @@ FISHER_BAND = (0.8, 1.25)
 # updated 2026-11-18: Fisher against the six packed references; "high" from SNR 40, "faint" below 5, and the full band's
 # SNR 5-15 bins where the forecast is wider than the chains
 HIGH_SNR, MID_SNR, FAINT_SNR = 40.0, 15.0, 5.0
-# the window drawn in fig_mcmc-posterior.py
+# the example window of the posterior numbers
 POSTERIOR_BAND, POSTERIOR_INJECTION = ("narrow", 4), 101
 COST = style.PAPER / "data/runs/mcmc-cost.json"
 WORDS = (

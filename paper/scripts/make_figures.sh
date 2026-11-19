@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Rebuild figures/*.pdf and numbers/*.tex from the fig_*/numbers_* scripts here.
-#   scripts/make_figures.sh [--pdf] [fig_noise ...]    --pdf also compiles build/main.pdf
+#   scripts/make_figures.sh [--pdf] [fig_priors ...]    --pdf also compiles build/main.pdf
 # The scripts import JAX on the CPU: run it in a job (make_figures.sbatch), not on a login node.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
