@@ -3,7 +3,8 @@
 \label{sec:introduction}
 % updated 2026-11-09 (stale facts only): "the four sources ..., 32 parameters" -> "the S sources ...,
 % 8S parameters"; "the narrow band below 3 mHz" -> "1-3 mHz". The contributions still cite the old
-% section names through kept labels (sec:method-chart is now in sec:gw, sec:validation in sec:experiments; sec:inversion is now the last subsection of sec:gw).
+% section names through kept labels (sec:method-chart is in sec:method, sec:validation in
+% sec:experiments; since 2026-11-19 sec:inversion is the first subsection of sec:background).
 % =======================================================================================
 
 \Ac{lisa} will observe millions of \acp{gb} in the Milky Way, quasi-monochromatic sources
@@ -54,4 +55,8 @@ checks pass flows that are plainly wrong.
 We train on two bands, the narrow band, \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, with windows
 of \PriorsNarrowW{} bins and the full band up to \qty{\PriorsFullHighMhz}{\milli\hertz} with windows
 of \PriorsFullW{} bins, and compare against joint and per-source \ac{mcmc} chains
-(\cref{sec:results}). \Cref{app:related} covers the related work.
+(\cref{sec:results}). \Cref{sec:background} reviews the literature we build on, with the detailed
+comparison in \cref{app:related}; \cref{sec:gw} states the \ac{gb} problem, \cref{sec:method} our
+network and its training, and \cref{sec:narrow-band} the two bands.
+% updated 2026-11-19 (user): roadmap for the new section order; was "\Cref{app:related} covers the
+% related work."

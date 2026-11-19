@@ -123,13 +123,18 @@
 \fi
 \acresetall
 
-% Main text (reorganised 2026-11-09; 2026-11-18: GW problem before the method, and the Bayesian
-% inversion problem moved into it as its last subsection): abstract, introduction, the
-% gravitational-wave problem, flow matching and the network, experiments and results, conclusions,
-% acknowledgements, appendices. New material goes to the appendices first.
+% Main text (reorganised 2026-11-09 and 2026-11-18; order set 2026-11-19 (user)): abstract;
+% introduction (motivation, contributions); background and related work (Bayesian inversion,
+% diffusion and large-scale generation, GW inference, brief, with app:related as the long version);
+% the LISA GB problem; network and training; the narrow-band problem (prior vs visible sources,
+% response span growing with frequency, the two bands); experimental results; conclusions and
+% discussion; acknowledgements; appendices. Main-text sections may stay brief and point to an
+% appendix. New material goes to the appendices first.
 \input{sections/introduction}
+\input{sections/background}
 \input{sections/gw}
 \input{sections/method}
+\input{sections/narrow-band}
 \input{sections/experiments}
 \input{sections/conclusions}
 
@@ -224,8 +229,13 @@ specifically highlighted here.
 \begin{itemize}
   \item Decide what moves from the appendices into the main text: the abstract's results sentence,
     \cref{sec:results-main} and the conclusions' summary of where the flow is wider than the chains
-    (the frequency-domain factorisation is in \cref{sec:gw-factorisation} since 2026-11-17). The main text now
-    runs a few lines past page 8 (2026-11-18), so anything moved in needs a cut elsewhere.
+    (the frequency-domain factorisation is in \cref{sec:gw-factorisation} since 2026-11-17). The main text
+    ran a few lines past page 8 on 2026-11-18; with the Background and Narrow-Band sections of
+    2026-11-19 its conclusions start on page 10, so about two pages have to go back to the
+    appendices (candidates: \cref{tab:gw-globalfit} and the Mojito paragraph, the window algebra of
+    \cref{sec:gw-windows}).
+  \item \Cref{sec:background-generative}: add references on large-scale multimodal generation beyond
+    images (red TODO there).
   \item Review every \texttt{\% updated 2026-11-09} marker (stale facts fixed in moved text) and
     keep or revert each.
   \item Check the references marked ``from memory, not yet checked'' in \texttt{references.bib}

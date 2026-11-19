@@ -1,7 +1,11 @@
 % =======================================================================================
-\section{The Gravitational-Wave Problem}
+\section{The LISA Galactic-Binary Problem}
 \label{sec:gw}
 % =======================================================================================
+% Restructured 2026-11-19 (user): retitled (was The Gravitational-Wave Problem); the Global-Fit Problem
+% subsection (sec:gw-globalfit, tab:gw-globalfit) moved to sec:background-gw, except its last
+% paragraph (the scope of our experiment), now in the intro below; the Training Set subsection is in
+% sec:method, the two bands in sec:narrow-band.
 % Restructured 2026-11-18 after Delmond et al. (arXiv:2606.29039), Secs. II-A to II-D, III-A and III-C:
 % section intro; Waveforms (signal, response, noise; details in app:forward-model and app:noise);
 % Priors and Source Counts (the former Priors and Rates subsections, merged); The Bayesian Inversion
@@ -12,8 +16,11 @@
 % tokens of the former Network subsection; 2026-11-10 the equations, tab:priors-source, fig:priors and
 % fig:noise-psd were MOVED here (fig:noise-psd moved back to app:noise 2026-11-18) from app:priors, app:forward-model and app:noise (labels unchanged).
 
-In this section we set out the inference problem the flow solves. \Cref{sec:gw-globalfit} places
-it within the global fit of the \ac{lisa} data. \Cref{sec:gw-waveforms} follows
+In this section we set out the inference problem the flow solves. Within the global fit of the
+\ac{lisa} data (\cref{sec:gw-globalfit}), our experiment addresses the \acp{gb} alone, in stationary
+noise of known spectrum and with no other sources in the data. It is a first step towards an
+amortised global fit: the same technique can be extended to the other signals and to more realistic
+noise and data, with gaps and glitches (\cref{sec:followups}). \Cref{sec:gw-waveforms} follows
 the signal of a \ac{gb} from the polarisations the binary emits, through the response of the
 \ac{lisa} constellation, to the three \ac{tdi} channels and the noise they carry; the full response, the noise
 model and the checks of our simulator against published references are in
@@ -21,74 +28,6 @@ model and the checks of our simulator against published references are in
 frequency window, a stretch of $K$ consecutive Fourier bins with centre frequency $\fw$.
 \Cref{sec:gw-slicing} writes the likelihood and the posterior, shows why they factorise window by
 window, and how many sources a window holds.
-\Cref{sec:gw-training} describes how the windows the network trains on are simulated.
-
-\subsection{The Global-Fit Problem}
-\label{sec:gw-globalfit}
-% New 2026-11-18 (user): context for the problem, numbers on sources, parameters and SNRs, and the
-% global-fit literature; data challenges (Sangria, Mojito Light/Heavy, planned) with benchmark costs, every
-% number cited (checked against the papers' text 2026-11-18: GLASS Sec. III and V, Erebor Sec. V,
-% Strub+2024 Sec. V, Gee-Moo (Deng+2025) Sec. IV; pipelines named Erebor, Gee-Moo, GLASS, else by authors (user);
-% trimmed 2026-11-18 (user): per-pipeline figures live in tab:gw-globalfit and app:related; last paragraph = our aim; Mojito from the LISA 2026 programme, the Phentax paper and Hooper's slides).
-
-The Milky Way holds tens of millions of double white dwarfs in the \ac{lisa} band
-\citep{nelemans2001gravitational,korol2017prospects,lamberts2019predicting}; the simulated Galaxy
-behind our prior holds \num{\RatesCatalogue} between \qty{\PriorsFullLowMhz}{\milli\hertz} and
-\qty{\PriorsFullHighMhz}{\milli\hertz}. Over \qty{\ForwardModelTobsYears}{\year} that band spans
-about $10^6$ Fourier bins, and below a few millihertz a window of \RatesNarrowWindow{} bins holds
-\numrange{\RatesNarrowAllLo}{\RatesNarrowAllHi} of them (\cref{sec:gw-rates}). Only
-\qty{\RelatedWorkVisibleShare}{\percent} reach an \ac{snr} of \RelatedWorkSnrLow{} alone in their window;
-the rest form a confusion foreground \citep{timpano2006characterizing,karnesis2021characterization}.
-Of order $10^4$ will be resolved \citep{nelemans2001gravitational,korol2017prospects}, with eight
-parameters each: a posterior over some $10^5$ dimensions, in which the number of sources is itself
-unknown.
-
-The same data hold massive black-hole binaries \citep{klein2016science}, extreme mass-ratio
-inspirals \citep{babak2017science}, stellar-mass black-hole binaries \citep{sesana2016prospects}, and
-\acp{sgwb} of Galactic, extragalactic \citep{boileau2025gravitational} and possibly cosmological
-\citep{caprini2016science} origin \citep{colpi2024lisa}. The noise \ac{psd} must be estimated with
-the sources and told apart from a background \citep{flauger2021improved,baghi2023uncovering}, and the
-data will have gaps \citep{baghi2019gravitational,dey2021effect} and glitches
-\citep{baghi2022detection,spadaro2023glitch}.
-
-The global fit infers all of these together, with a reversible-jump \ac{mcmc}
-\citep{green1995reversible} that adds and removes sources as well as moving them, built on two
-decades of \ac{gb} samplers
-\citep{cornish2005lisa,crowder2007solution,cornish2007tests,littenberg2011detection,littenberg2020global}.
-On the year-long Sangria data challenge \citep{baghi2022lisa}, about $3\times10^7$ \acp{gb} of which
-about $10^4$ have an \ac{snr} above 7 \citep{littenberg2023prototype,katz2024efficient}, current
-pipelines return \numrange{5000}{12000} \acp{gb} for \num{700} to about $10^6$ \ac{cpu} hours
-(\cref{tab:gw-globalfit}). The first common dataset of the \ac{lisa} Consortium's \ac{ddpc}, Mojito,
-two years with time-varying noise and realistic populations
-\citep{hooper2025preparing,rondeel2026advancing}, came in a Light edition in December 2025, now
-fitted by Erebor and Gee-Moo \citep{lisapriors}, and a Heavy edition scheduled for October 2026
-\citep{menu2026towards}; further datasets are planned \citep{santini2026phentax}, and the data
-centres budget about $10^7$ \ac{cpu} hours each by 2027 \citep{hooper2025preparing}.
-
-Our experiment addresses the \acp{gb} alone, in stationary noise of known spectrum and with no other
-sources in the data. It is a first step towards an amortised global fit: the same technique can be
-extended to the other signals and to more realistic noise and data, with gaps and glitches
-(\cref{sec:followups}).
-
-\begin{table*}[t]
-\caption{Global fits of the Sangria data set (one year, about $3\times10^7$ injected \acp{gb}, about
-$10^4$ above \acs{snr} 7), as each work reports them. \acs{cpu} hours for GLASS are its
-\num{7488} \acsp{cpu} times its five days; Erebor ran on four A100 \acsp{gpu} and about twelve
-\acsp{cpu}; Gee-Moo's run had not fully converged.}
-\label{tab:gw-globalfit}
-\centering
-\small
-\begin{tabular}{@{}llll@{}}
-\toprule
-pipeline & \acp{gb} returned & hardware, time & \acs{cpu} hours \\
-\midrule
-GLASS \citep{littenberg2023prototype} & -- & \num{7488} \acsp{cpu}, \qty{5}{\day} & ${\sim}10^6$ \\
-Erebor \citep{katz2024efficient} & \num{12000} (\num{8000} confident) & 4 A100, \qty{7}{\day} & ${\sim}700$ \acs{gpu} h \\
-\citet{strub2024global} & \num{5100} (half a year) & \acs{cpu} cluster & \num{700} \\
-Gee-Moo \citep{deng2025modular} & \num{9542} (\num{7620} identified) & \num{1000} cores, \qty{20}{\hour} & ${\sim}2\times10^4$ \\
-\bottomrule
-\end{tabular}
-\end{table*}
 
 \subsection{Waveforms}
 \label{sec:gw-data}\label{sec:gw-waveforms}
@@ -392,11 +331,11 @@ We instead fix the number of sources per window: every window holds exactly $S_w
 per run from 2 to 16 (\cref{app:results}). We impose it when we simulate the window, whose width is
 fixed: its $S$ sources are drawn independently from the catalogue prior truncated to its interior
 (\cref{eq:forward-model-window-interior}), whatever number the catalogue would put there, and the
-window itself is placed where sources can be seen (\cref{app:priors-window,app:priors-sources}). The
+window itself is placed where sources can be seen (\cref{sec:narrow-band}). The
 flow then works in a space of fixed dimension, $8S$, and the runs measure how a joint posterior
 scales with the number of overlapping sources. A real analysis infers that number with a
 trans-dimensional sampler \citep{littenberg2020global} and models the unresolved rest as confusion
 noise \citep{karnesis2021characterization}. A follow-up (\cref{sec:followups}) will let both the
 number of sources and the window length vary: windows whose length follows the Doppler spread of the
-responses, which grows with $f_0$, and which hold few sources each should make the analysis simpler,
+responses, which grows with $f_0$ (\cref{sec:narrow-band-span}), and which hold few sources each should make the analysis simpler,
 at high frequencies in particular, where the Galaxy is sparse and the sources are loud.

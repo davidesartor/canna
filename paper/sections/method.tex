@@ -1,27 +1,21 @@
 % =======================================================================================
-\section{Flow Matching and the Network}
+\section{Network and Training}
 \label{sec:method}
 % =======================================================================================
+% Restructured 2026-11-19 (user): retitled (was Flow Matching and the Network); the Bayesian Inversion
+% Problem subsection (sec:inversion, sec:problem) moved to sec:background, in general terms, and its
+% window-specific sentences became the lead-in below; the Bands paragraph and tab:forward-model-bands
+% moved to sec:narrow-band.
 % Moved 2026-11-09 from the former sections/method.tex: Flow Matching, Flow Coordinates, Network and
 % Training stay here; the data tokens moved to sec:gw-tokens. New material in the
 % appendices: app:fm, app:network, app:training (snapshots and cooldown forks, app:training-loop).
 
-\subsection{The Bayesian Inversion Problem}
-\label{sec:inversion}\label{sec:problem}
-% Moved 2026-11-18 (user) from the end of sec:gw, without its Factorisation, Windows and Symmetries
-% paragraphs (now sec:gw-slicing); written after Delmond et al. (arXiv:2606.29039), Sec. III-A.
-
 Inferring the sources of a window means estimating their posterior, \cref{eq:loglik}, in which
 the prior of \cref{eq:priors-window-prior} encodes what the Galactic population says before the
-data, and the likelihood measures how well the signal of candidate sources matches the data. The
-evidence $p(d_w) = \int p(d_w\mid\Theta_w)\,\pi_w(\Theta_w)\,\dd\Theta_w$ is intractable,
-so the posterior is usually explored by stochastic sampling, with \ac{mcmc}
-\citep{littenberg2020global,strub2022bayesian} or nested sampling \citep{skilling2006nested}. These
-methods are accurate, but they evaluate the likelihood many times for every window, and a global
-fit repeats them over every window and every new stretch of data. We instead train a conditional
-generative model of the posterior once, over all windows of a band, so that a new window costs only
-draws from it (\cref{sec:method-fm}).
-% updated 2026-11-18 (user): the posterior and likelihood equations moved to sec:gw-slicing.
+data. Sampling it with \ac{mcmc} \citep{littenberg2020global,strub2022bayesian} evaluates the
+likelihood many times for every window, and a global fit repeats that over every window and every
+new stretch of data (\cref{sec:background}). We instead train a conditional generative model of the
+posterior once, over all windows of a band, so that a new window costs only draws from it.
 
 \subsection{Flow Matching}
 \label{sec:method-fm}
@@ -99,10 +93,9 @@ every window afresh instead, on the device and inside the compiled training step
 fixed dataset and no window is seen twice (\cref{app:priors-training}). One example takes four steps:
 \begin{enumerate}
   \item a window centre $\fw$ (\cref{eq:priors-window}), placed mostly where the catalogue's sources
-    can be seen, with weight the catalogue's $f_0$ marginal times the chance that a source there
-    reaches $\snr\ge\PriorsVisibleSnr$, and in \qty{\PriorsUniformWindowsPercent}{\percent} of the
-    windows log-uniformly over the band, so that training also sees the empty windows most of the
-    band holds;
+    can be seen, and in \qty{\PriorsUniformWindowsPercent}{\percent} of the windows log-uniformly
+    over the band, so that training also sees the empty windows most of the band holds
+    (\cref{sec:narrow-band-prior});
   \item $S_w = S$ sources $\Theta_w\sim\pi_w$ (\cref{eq:priors-window-prior}), with $f_0$ in the
     interior of \cref{eq:forward-model-window-interior};
   \item each source's $R$-bin response, computed with JaxGB \citep{jaxgb} over
@@ -111,46 +104,17 @@ fixed dataset and no window is seen twice (\cref{app:priors-training}). One exam
   \item the whitened data $y$, and the sources in the flow coordinates of \cref{sec:method-chart},
     in order of $f_0$.
 \end{enumerate}
-The weights of the first step choose which windows training sees, not what their sources are, so
-the posterior given a window is unchanged. Unlike \citet{delmond2026neural}, who keep sources with an
+% moved 2026-11-19 (user) to sec:narrow-band-prior: "The weights of the first step choose which
+% windows training sees, not what their sources are, so the posterior given a window is unchanged."
+Unlike \citet{delmond2026neural}, who keep sources with an
 \ac{snr} between 10 and 100, we apply no cut: most of a window's sources lie below the noise, and
 for them the flow must return the prior. The parameters are not standardised by the prior's
 moments; the flow coordinates and the frame of \cref{sec:method} take that role. The simulation
 takes \qty{\PriorsNarrowDrawShare}{\percent} of a training step in the narrow band and
 \qty{\PriorsFullDrawShare}{\percent} in the full band (\cref{tab:priors-bands}).
-\Cref{fig:forward-model-window} shows one window of each band.
-
-\paragraph{Bands.}
-We train two configurations (\cref{tab:forward-model-bands}): the narrow band, windows of
-\PriorsNarrowW{} bins with \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, where sources
-crowd the most; and the full band, windows of \PriorsFullW{} bins up to
-\qty{\PriorsFullHighMhz}{\milli\hertz}. At the top of the full band a source's Doppler, chirp and
-antenna sidebands span \ForwardModelFullSpan{} bins at the mean $\fdot$, against
-$R=\ForwardModelFullR{}$, so the few sources there lose their outermost bins above the noise. The narrow band's $R=\ForwardModelNarrowR{}$ keeps all
-the power above the noise of \qty{99.9}{\percent} of its sources, which are
-\qty{\ForwardModelNarrowSpanShare}{\percent} of the full band's sources above the noise
-(\cref{app:forward-model-heterodyne}).
-% 2026-11-19 (user): the former app:forward-model-windows (B.4) trimmed into here, sec:gw-windows and
-% tab:forward-model-bands (moved from the appendix).
-
-\begin{table}[t]
-\caption{The two bands, which share the priors and the window layout: response width $R$, window
-length $K$ and interior in bins, number of distinct windows, $f_0$ range, and share of $\log f_0$ over
-\qtyrange{\ForwardModelBandLow}{\ForwardModelBandHigh}{\milli\hertz}.}
-\label{tab:forward-model-bands}
-\centering
-\small
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}lrrrrcr@{}}
-\toprule
-band & $R$ & $K$ & interior & windows & $f_0$ [mHz] & share \\
-\midrule
-narrow & \ForwardModelNarrowR{} & \ForwardModelNarrowK{} & \ForwardModelNarrowInterior{} & \num{\ForwardModelNarrowWindows} & \numrange{\ForwardModelNarrowLow}{\ForwardModelNarrowTop} & \qty{\ForwardModelNarrowFraction}{\percent} \\
-full & \ForwardModelFullR{} & \ForwardModelFullK{} & \ForwardModelFullInterior{} & \num{\ForwardModelFullWindows} & \numrange{\ForwardModelFullLow}{\ForwardModelFullTop} & \qty{\ForwardModelFullFraction}{\percent} \\
-\bottomrule
-\end{tabular}
-\end{table}
-% updated 2026-11-09: the narrow band was "f0 <= \PriorsNarrowHighMhz mHz"; it now starts at 1 mHz.
+\Cref{fig:forward-model-window} shows one window of each band; \cref{sec:narrow-band} sets out the
+two bands and why we train both.
+% moved 2026-11-19 (user) to sec:narrow-band-bands: the Bands paragraph and tab:forward-model-bands.
 
 \paragraph{Tokens.}
 \label{sec:gw-tokens}
