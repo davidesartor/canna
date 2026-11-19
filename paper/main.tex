@@ -166,6 +166,9 @@ specifically highlighted here.
 
 \newpage
 \appendix
+% 2026-11-19 (user): appendix equations numbered per appendix, A1, B1, ...
+\counterwithin{equation}{section}
+\renewcommand{\theequation}{\thesection\arabic{equation}}
 \onecolumn
 
 \input{appendix/related-work}
@@ -178,7 +181,6 @@ specifically highlighted here.
 \input{appendix/training}
 \input{appendix/evaluation}
 \input{appendix/mcmc}
-\input{appendix/fisher}
 \input{appendix/results}
 
 % =======================================================================================

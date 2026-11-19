@@ -52,22 +52,11 @@ with which the log-likelihood of \cref{eq:loglik} is $-\tfrac12\inner{d-h}{d-h}$
 and the optimal \ac{snr} of a source, \cref{eq:gw-snr}, is $\snr_s = \inner{h(\theta_s)}{h(\theta_s)}^{1/2}$.
 
 
-We checked the simulator against independent references. The noise generator matches its model
-within the Monte-Carlo floor: over \num{\NoiseGeneratorWindows} pure-noise windows every moment of
-the whitened noise has its expected value, no correlation between bins or channels and no tilt of the
-\acs{psd} across a window exceed the sampling scatter, and $\inner{n}{n}$ follows
-$\chi^2_{\NoiseGeneratorDof{}}$ (Kolmogorov--Smirnov $p = \NoiseGeneratorKs{}$). The units are those
-of the response: the simulator's sky-averaged sensitivity over the analytic curve of
-\citet{robson2019construction} is flat at the expected $1/2$ (\numrange{\NoiseSkyRatioLow}{\NoiseSkyRatioHigh}),
-where the noise in fractional length would make it fall as $f^{-2}$. Our \acs{tdi}-1.5 $X$ agrees with
-the standard equal-arm $X$ of \citet[eq.~14]{babak2021lisa} built from the same link responses; the
-difference, of higher order in $fL$, grows as $f_0^3$ to at most \num{\NoiseTdiMax} at the top of the
-band, and the signal powers agree to \qty{\NoiseTdiPowerMax}{\percent}. Finally, for the faint
-verification binary of \citet[Table~VII]{strub2022bayesian} our \acs{snr} is \NoiseStrubSnr{} against
-their \NoiseStrubSnrTheirs{}, and the reference \acs{mcmc} (\cref{app:mcmc}) under their priors
-reproduces their $f_0$ width, their correlations and, over \NoiseStrubRealisations{} noise realisations,
-their gain from the observed to the maximum-likelihood \acs{snr}
-(\num{\NoiseStrubGain \pm \NoiseStrubGainError} against \NoiseStrubGainTheirs{}). Its $\cos\iota$
-interval is wider than theirs; a prior box about the maximum narrows it most of the way, which
-suggests their interval reflects a narrower effective prior. On noiseless data every marginal centres
-on the truth except $\log_{10}\Amp$ and $\cos\iota$, which slide along their degeneracy with the prior volume.
+We checked the simulator against independent references. The noise generator matches its model: over
+\num{\NoiseGeneratorWindows} pure-noise windows the whitened noise has the expected moments, no
+correlations between bins or channels, and $\inner{n}{n}$ follows $\chi^2_{\NoiseGeneratorDof{}}$
+(Kolmogorov--Smirnov $p = \NoiseGeneratorKs{}$). The sensitivity matches the analytic curve of
+\citet{robson2019construction} up to the expected factor $1/2$, our \acs{tdi} $X$ that of
+\citet{babak2021lisa} to \num{\NoiseTdiMax}, and for the verification binary of
+\citet[Table~VII]{strub2022bayesian} our \acs{snr} is \NoiseStrubSnr{} against their
+\NoiseStrubSnrTheirs{}, with the reference \acs{mcmc} (\cref{app:mcmc}) reproducing their posterior.
