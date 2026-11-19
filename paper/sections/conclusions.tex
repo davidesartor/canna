@@ -62,3 +62,9 @@ frequency bins and is costly to evaluate, and any effect the likelihood leaves o
 \citep{baghi2019gravitational,dey2021effect}. As long as the training simulations contain these effects, the
 cost of the network's draws does not change, and neither does the way its posteriors are checked
 (\cref{app:evaluation}).
+
+% added 2026-11-19 (user): the second seed, moved here from a red TODO of app:results-forks.
+Every result here comes from one training run per band and source count, so the spread from run to run
+is not measured. Retraining with other seeds, the narrow band with $S=2$ first (about 32 hours on an
+A100), would show which differences between runs, such as those of a few hundredths of a nat between the
+64-epoch runs and their forks (\cref{app:results-forks}), are real.

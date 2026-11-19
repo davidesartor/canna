@@ -1,179 +1,86 @@
-# MCMC reference: can the chains the flow is scored against be trusted? (2026-10-24)
+# MCMC reference: the joint chains the flow is scored against (updated 2026-11-19)
+
+The paper's reference posteriors are joint MCMC chains over all sources of each eval window, one reference per band
+and source count. Their settings, health, convergence, cost and the Fisher cross-check are in the paper's
+appendices (`app:mcmc`, `app:fisher`, `app:results-mcmc`); this folder holds the data and the scripts behind them.
+Findings F67-F71 in [`../research-log/`](../research-log/000-takeaways.md) give the history.
 
 ## Takeaways
 
-> `data/` and the pages hold the 2026-10-31 rebuild on problem `244bc20185` (log ḟ chart, eval
-> catalog under the visible-biased window prior); the takeaways below still describe the
-> 2026-10-24 chains on `ad8a87a575` (log Mc chart). Both are the old narrow band (32 response
-> points, f₀ ≤ 1.26 mHz); the 2026-11-01 narrow band is problem `6425f0e81c`, not yet run.
+- **Six references, one per problem.** Narrow band S = 2, 4, 8 and full band S = 4, 8, 16, each on its 128 eval
+  injections with one seed: 768 joint chains. 64 walkers x 6 temperatures (up to 10), 100 000 burn-in, 300 000
+  kept, thin 100, started from the injection's Fisher draws; 1024 cold draws kept per injection.
+- **Healthy by the usual diagnostics.** R-hat <= 1.073 (the worst is full S = 4; narrow band <= 1.005), ESS >= 1097.
+  The chains' own coverage of the true f0 at 68% is 0.67-0.72.
+- **Sound from SNR 7 up, not below.** Long chains of narrow S = 4 (injections 16, 48, 80, 112; four seeds x
+  400 000 iterations, kept from the start) settle for the loud sources: read without labels, their f0 widths move
+  by 0.97-0.99x between the first and last quarter and end 0.93x the reference's. Below SNR 7 the chains drift
+  from their Fisher start: faint sources spread towards the prior (0.79 -> 1.12x its f0 width), sources at SNR 3-7
+  are slowly lost. The f0-ordered labels make the strict drift test fail even where the physics is settled.
+- **Crowded problems: the prior is the reference below SNR 3, SNR 3-7 is bracketed.** On narrow S = 8 and full
+  S = 16 the reference never leaves its Fisher start for faint sources (f0 width 0.19x and 0.60x the prior's).
+  Chains with every SNR < 7 source started from the prior (narrow S = 8: four injections, two seeds, 400 000
+  iterations; full S = 16: four injections, two seeds, 200 000) find no faint source more often than chance, and
+  at SNR 3-7 the two starts bracket the answer from opposite sides. At SNR >= 7 they confirm narrow S = 8's
+  reference (1.11x), but on full S = 16 they end 1.2-1.7x wider than the reference and still widening, so its
+  loud ratios are upper bounds.
+- **Fisher is a cross-check only.** From SNR 40 up its median width per parameter is 0.89-0.96x the chains', a fair
+  proxy from SNR 15 up; below SNR 5 it is none (f0 0.18x the chains'); on the full band at SNR 5-15 it is 2.2-2.5x
+  wider in f0, partly because the reference is too narrow there. Its log fdot draws are unbounded for faint
+  full-band sources and are not used.
+- **Cost.** 400 000 iterations on 2 CPU cores: 4.3-5.4 h for narrow S = 4, 8.8-9.5 h for S = 8, 33-40 h for full
+  S = 16. jexplore leaks memory per chunk, so long chains need generous memory (16 GB for four sources; the full
+  S = 16 prior-started chains ran with 96 GB).
 
-- **Every reference chain is converged and seed-stable.** The 8 joint chains (windows 9, 5, 2, 7 ×
-  2 seeds) have R̂ ≤ 1.00004 and ESS ≥ 138 716; the 80 narrowband chains R̂ ≤ 1.00015 and
-  ESS ≥ 72 334. Seed-to-seed widths agree within 3% for 95% of joint and 99.4% of narrowband
-  source-parameters (worst 17% and 3.8%).
-- **Holding the other sources at their truth barely matters.** Joint ÷ narrowband width has a
-  median of 1.006, and 80% of the 128 joint source-parameters lie in 0.9–1.1. The exceptions sit
-  in six sources, worst in window 2: its SNR-7 source's f₀ (3.15×) and its SNR-314 source's
-  longitude (2.51×), where the joint chain hops between sky modes.
-- **The paper's 100 000 burn / 300 000 keep / thin 100 passes every kept-draw check, but only
-  windows 9 and 7 pass the strict burn-in test.** Over the kept draws ESS ≥ 572 253,
-  |R̂ − 1| ≤ 6.4e-4 and median drift ≤ 0.070 half-widths (tolerance 0.1). Windows 9 and 7 settle
-  by 60 000 and 20 000 iterations; windows 5 and 2 never settle within 400 000, so the criterion
-  recommends no setting. fml's 20 000 / 60 000 / 20 passes in window 7 only.
-- **τ is an upper bound.** τ_max is 26–34 iterations, within 2× the trace's thinning of 20, and
-  the slowest parameter is always the cold log L. The ESS values are lower bounds; no conclusion
-  depends on resolving τ.
-- **The Fisher forecast is a good start point, not a reference.** Above SNR 40, Fisher ÷ MCMC
-  lies in 0.8–1.25 for 88% of narrowband (27 sources) and 90% of joint (9 sources)
-  source-parameters, without log Mc. It misses by more than 2× for four sources at SNR 48–137,
-  along the log A–sin ι and ψ–φ₀ degeneracies (up to 4.0×). Below SNR 40 it spans 0.35–2.63;
-  log Mc, which the prior dominates, 0.60–1.48. The Fisher f₀ width is a median 1.06× the ideal
-  √3/(πρ) bins (at most 1.55×).
-- **The averaged Hessian is not always positive along Mc.** In 8 of the 80 eval sources of both
-  bands the 32-realisation average has a non-positive Mc diagonal; the prior precision fixes it,
-  and `fisher_samples`' eigenvalue floor at the prior binds in 9 of the 20 injections.
-- **Cost.** A 400 000-iteration joint chain takes 4.4–5.1 h on 2 CPUs and needs 16 GB: jexplore
-  leaks about 64 MB per 2000-iteration chunk, so 8 GB runs out of memory.
+## Current files
 
-> 2026-11-16: `data/convergence-261113/` holds the convergence study of the current narrow-band reference
-> with four sources (problem `cc4b9e9aa0`, injections 16/48/80/112, 4 seeds x 400 000 iterations) and
-> the label-free reading of it and of the prior-started narrow S=8 chains
-> (`scripts/label_free_widths.py`, F68). The paper's convergence section reads it; the page below
-> still shows `data/convergence/`.
+| file | what |
+|---|---|
+| `data/eval-<problem id>.npz` | the six references (`canna.lisa.mcmc pack`): per injection 1024 pooled cold draws relabelled onto the truth and folded, 256 Fisher draws, the truth, R-hat, ESS and the chains' own SBC/TARP |
+| `eval-<problem id>-corner.html`, `-validation.html` | the MCMC alone on the eval catalogue: corner pages with Fisher as the reference, and its SBC ranks, TARP and scores |
+| `data/convergence-261113/summary.json`, `curves.npz` | the narrow S = 4 long-chain convergence study (`analyse_convergence.py`) |
+| `data/convergence-261113/labelfree-*.json` | label-free readings (`label_free_widths.py`) of those long chains and of the prior-started chains of narrow S = 8 and full S = 16, against the reference and the reported flow (`-e32` = read on the e32 fork's draws) |
 
-## What the page shows
+Problem ids: narrow S = 2 `a9a1998079`, S = 4 `cc4b9e9aa0`, S = 8 `ad9cb6a159`; full S = 4 `13653a71f0`, S = 8
+`2ca7ffaadb`, S = 16 `6a6e86da4a`. The id hashes the problem's numeric fields and the eval seed, so a problem
+change means new chains. The long-chain traces themselves are large and stay outside git (`outputs/mcmc/`).
 
-The takeaways above are the record of the 2026-10-24 chains (the old 10-window catalogue:
-narrowband chains per source, joint chains in four windows). The scripts now run and read the
-joint reference only; the page and these numbers update once its chains are collected,
-exported and analysed.
+The paper reads the packed references through `paper/scripts/mcmc_reference.py` (`numbers_mcmc.py`, `fig_mcmc.py`,
+`fig_mcmc-posterior.py`) and the label-free JSONs through `numbers_mcmc.py`; each run's `corner.html` and
+`validation.html` overlay the same draws.
 
-[`mcmc.html`](mcmc.html), interactive and standalone; every number on it is
-computed in the page from the data it inlines. The sidebar picks an eval injection (blue: the four with
-long chains), a source (loudest first), a parameter, which drives every card, and the
-parameter it is paired with in the corner. The tiles summarise that choice: the injection and
-source SNRs, the chains' R̂ and ESS, seed 1 ÷ seed 0 and Fisher ÷ MCMC widths of the
-parameter, and the injection's burn test. All state lives in the URL hash (`#window=15&param=3&…`), so a view can be linked.
+## How they are made
 
-1. **Do the two seeds of the joint reference agree?** A corner of the eight coordinates (offsets
-   from the truth, in reference widths: both seeds pooled) with the Fisher 1σ/2σ ellipses, one
-   enlarged pair or marginal, and each seed's and the Fisher's width per coordinate, with the
-   prior's width below. Sets (joint per seed, Fisher) toggle; a corner cell picks the pair.
-2. **Are the long chains past burn-in?** For the four long-chain injections: the walkers' 16–84% band
-   or one walker per seed over 400 000 iterations, for the parameter or the cold log L, with the
-   autocorrelation and its τ; then median and width drift against burn-in and ESS and R̂ − 1
-   against kept length, with the tolerances drawn and a button to the worst series. The table
-   scores the paper's and fml's settings per injection.
-3. **How far does the Fisher forecast follow the MCMC?** Fisher ÷ joint MCMC width against source
-   SNR for every eval source, with the ideal f₀ width; then each source's averaged Hessian
-   diagonal over the prior's precision, for the narrow or the full band, and a table of each
-   injection's non-positive diagonals and floored eigenvalues.
-4. **What this means**: the takeaways, recomputed from the inlined data.
+- **Reference chains**: `canna.lisa.mcmc run`, one array task per (injection, seed) via
+  [`slurm/lisa-mcmc.sbatch`](../../slurm/lisa-mcmc.sbatch), cached as `outputs/mcmc/joint-<problem id>/`; then
+  `canna.lisa.mcmc pack` (CPU, a few minutes) writes `data/eval-<problem id>.npz`.
+- **Long chains**: [`long_chain.py`](scripts/long_chain.py) runs the same sampler from iteration 0 at a fixed
+  thinning ([`long_chain.sbatch`](scripts/long_chain.sbatch)); [`analyse_convergence.py`](scripts/analyse_convergence.py)
+  scores burn-in and kept length ([`analyse.sbatch`](scripts/analyse.sbatch)).
+- **Prior-started chains**: [`long_chain_prior.py`](scripts/long_chain_prior.py), `long_chain.py` with the walkers
+  of the SNR < 3 sources started from the prior instead of the Fisher draws.
+- **Label-free reading**: [`label_free_widths.py`](scripts/label_free_widths.py), post-processing only: per draw a
+  loud source (SNR >= 7) takes the slot nearest its true f0, faint ones keep their rank and are compared with the
+  f0-ordered prior, and "found" is the share of draws with a slot within 0.5 bins of the true f0.
 
-## The eval-catalog reference
+**Method in short.** Each source is sampled in (ln f0, ln fdot, ln A, alpha, delta, psi, cos iota, phi0) under the
+training prior (the catalogue Gaussian in log f0, log fdot, log A with f0 in the window, uniform angles and
+cos iota, the Galactic sky), independently across sources, with one extra cut: log fdot at most 5 standard
+deviations above its conditional mean. The sampler moves in a box (alpha, psi, phi0 on full periods centred on the
+truth; ln fdot and ln A out to 8 conditional standard deviations). The likelihood is the window likelihood in double
+precision, every source's response added into the window. The sampler is jexplore's parallel-tempered ensemble:
+per iteration a temperature swap, then a differential-evolution or stretch move. Widths are 1.4826 x MAD of the
+draws relabelled onto the truth and folded by the exact symmetries psi -> psi + pi and (psi, phi0) ->
+(psi + pi/2, phi0 + pi) (`mcmc.fold`).
 
-Every run's eval is scored against one MCMC reference per problem, not per run: the joint
-chains of every injection of the eval catalog (`eval_injections` at the config's seed: 8
-windows × 8 SNR ranks = 64 injections, 2 seeds each, 128 chains), cached as
-`outputs/mcmc/joint-<problem id>/inj{j}_seed{k}.npz` by `canna.lisa.mcmc run`
-([`slurm/lisa-mcmc.sbatch`](../../slurm/lisa-mcmc.sbatch), one array task per chain). The
-problem id hashes the problem's numeric fields and the eval seed, so a problem change means new
-chains and a new folder; the plots refuse a reference whose id no longer matches.
-`mcmc pack` turns them into `data/eval-<problem id>.npz`: per injection 1024 joint draws (both
-seeds pooled, relabelled onto the truth and folded) packed as fp64 centre/scale plus fp16
-residuals, the truth, R̂, ESS, up to 256 Fisher draws and the MCMC's own SBC/TARP and proper
-scores over the complete injections.
+## Archive: the October page
 
-- `eval-<id>-corner.html`: the eval corner page with the MCMC leading and the Fisher as
-  the reference, no flow.
-- `eval-<id>-validation.html`: SBC ranks, ECDF bands, TARP and scores of the MCMC on the
-  eval catalog, with the worst R̂ and least ESS.
-
-Each run's `corner.html` overlays the same draws and its `validation.html` compares flow and
-MCMC widths and W1 on the fly. Rebuild after new chains (CPU, a few minutes):
-
-```bash
-LISA_CONFIG=narrow-B uv run --frozen python -m canna.lisa.mcmc pack   # as a CPU job
-```
-
-## Method
-
-**Joint chains** (`canna.lisa.mcmc`) sample all 4 × 8 parameters of one injection in one
-ensemble against the same noise the flow saw. Each source lives in (log f₀, log ḟ, log A, lon,
-lat, ψ, sin ι, φ₀) inside a box (`make_window`): f₀ on the window, log ḟ and log A 8
-conditional stds past the catalogue mean at the window's ends (ḟ's top at the prior's 5σ cut),
-lat and sin ι their full range, and 2π around the truth for the angles. The prior
-(`log_prior`) is the catalogue density in (log f₀, log ḟ, log A) under the ḟ cut times the
-galactic sky mixture, independent across sources; the likelihood (`log_likelihood`) is
-−Σ|o − h|²/P over the window from one `source_segments` call. The sampler is jexplore's
-parallel-tempered ensemble: 64 walkers × 6 temperatures (1–10), a temperature swap then DE or
-stretch per iteration, started (`initial_points`) from the injection's Fisher draws with ḟ
-redrawn from the prior at each f₀ and clipped into the box; 100 000 burn, 300 000 kept, thin
-100. [`collect_chains.py`](scripts/collect_chains.py) saves every chain's R̂, ESS, τ and wall
-time to `data/joint-<id>/chains.json`.
-
-**Comparisons.** Each set is relabelled onto the injected sources (`match_sources`) and folded
-by the likelihood's exact symmetries ψ → ψ + π and (ψ, φ₀) → (ψ + π/2, φ₀ + π) (`mcmc.fold`).
-Widths are 1.4826 × MAD.
-
-**Burn-in.** [`long_chain.py`](scripts/long_chain.py) runs `mcmc.sample_chains` unchanged with
-no burn-in for 400 000 iterations, 4 seeds per injection, thinned at 20, folded and in f₀ bins,
-on injections 15, 29, 43 and 57 (windows 1, 3, 5, 7 at SNR ranks 7, 5, 3, 1; `joint_mcmc.WINDOWS`).
-[`analyse_convergence.py`](scripts/analyse_convergence.py) computes per parameter (32
-coordinates plus the cold log L) τ (emcee's estimator, Sokal window c = 5), ESS = walkers ×
-kept / τ, split R̂ over 8 half-ensembles, and the drift of each marginal's median (in half 68%
-widths) and 68% width against the other seeds' pooled second halves. An injection passes at burn b
-when b ≥ 10 τ_max and every 20 000-iteration segment from b on drifts less than 0.1; the keep is
-the shortest with ESS ≥ 2000 per seed, R̂ < 1.01 and the same drift tolerance. ESS 2000 puts the
-Monte Carlo error of a width near 2.6% per seed, below the flow/MCMC ratios being resolved.
-
-**Fisher.** The Fisher draws are `injections.fisher_samples`: the Hessian of −log L at the truth
-averaged over 32 noise draws, plus the prior precision, eigenvalues floored at the prior;
-[`fisher_diagonal.py`](scripts/fisher_diagonal.py) records its diagonal, the floored eigenvalues
-and the f₀ width against √3/(πρ). Agreement means a ratio in 0.8–1.25; faint means SNR < 40.
-
-[`export_draws.py`](scripts/export_draws.py) thins every set to 400 draws per seed and source,
-stored as integer hundredths of the reference width (both seeds pooled), plus prior draws and
-the long-chain traces; [`build_page.py`](scripts/build_page.py) writes `mcmc.html` with `data/`
-inline. [`joint_mcmc.py`](scripts/joint_mcmc.py) checks the truth and the start against the
-prior and times log L on one injection.
-
-## How to rebuild
-
-From the repo root, after `source slurm/unity.env` (or `trex.env`). Everything but the page is
-JAX, so it runs as jobs.
-
-```bash
-# joint chains (one task per (injection, seed); cached ones are skipped), then their health
-sbatch $CANNA_SBATCH_CPU --array=0-$(( $(LISA_CONFIG=narrow-B uv run --frozen python -m canna.lisa.mcmc status --count) - 1 )) slurm/lisa-mcmc.sbatch narrow-B
-sbatch $CANNA_SBATCH_CPU reports/mcmc/scripts/collect.sbatch narrow-B
-# long chains (16 tasks, 16 GB, ~5 h each, 4 at a time), then the convergence analysis
-sbatch $CANNA_SBATCH_CPU reports/mcmc/scripts/long_chain.sbatch narrow-B
-sbatch $CANNA_SBATCH_CPU --dependency=afterok:<long-chain job> reports/mcmc/scripts/analyse.sbatch narrow-B
-# draws and traces
-sbatch $CANNA_SBATCH_CPU reports/mcmc/scripts/export.sbatch narrow-B
-# Fisher diagonal of both bands (~4 min), then the page
-sbatch $CANNA_SBATCH_CPU reports/mcmc/scripts/fisher.sbatch
-```
-
-Each sbatch header has a smoke-test line. The page alone is numpy and runs on a login node:
-
-```bash
-bash -c 'ulimit -v 4000000; uv run --frozen python reports/mcmc/scripts/build_page.py'
-```
-
-It prints every number the takeaways quote.
-
-## Data
-
-- `data/draws.json`: per eval injection with chains, the folded draws (joint per seed, Fisher,
-  prior), their widths and medians, and the source SNRs.
-- `data/joint-<problem id>/chains.json`: every joint chain's R̂, ESS, τ and seconds.
-- `data/convergence/summary.json`, `curves.npz`: the criterion, per-injection burn/keep/thin, the
-  scored paper and fml settings, and every drift, ESS and R̂ curve.
-- `data/convergence/traces.json`: thinned long-chain traces and autocorrelations.
-- `data/eval-<problem id>.npz`: the eval-catalog reference above.
-- `data/fisher-diagonal.json`: the precision diagonal, prior diagonal, floored eigenvalues and
-  f₀ widths of every eval injection of both bands.
-
-The paper's MCMC, convergence and Fisher numbers and figures read these files.
+[`mcmc.html`](mcmc.html) and the data it inlines are the record of the 2026-10-24 to 2026-10-31 chains on the
+previous prior and the old narrow band (problems `ad8a87a575`, log Mc chart, and `244bc20185`): `data/draws.json`,
+`data/convergence/`, `data/joint-*/chains.json` and `data/fisher-diagonal.json`, built by
+[`collect_chains.py`](scripts/collect_chains.py), [`export_draws.py`](scripts/export_draws.py),
+[`fisher_diagonal.py`](scripts/fisher_diagonal.py) and [`build_page.py`](scripts/build_page.py). The paper no
+longer reads any of them. Rebuilding the page on the current references would need `export_draws.py` and
+`fisher_diagonal.py` updated (log fdot in place of log Mc, the six problems) and rerun as jobs. The October
+takeaways (converged, seed-stable chains in four windows; joint vs narrowband chains agreeing to a median 1.006)
+are in this file's git history.

@@ -6,8 +6,7 @@
 The flow's posteriors are judged against Markov chains that sample the likelihood of
 \cref{eq:loglik} directly. The chains are an evaluation reference only: training never sees
 them, and the flow's posteriors never use them. This appendix describes the reference sampler,
-its convergence, how the Fisher forecast of \cref{app:evaluation-fisher} compares with it, and
-what it costs. The flow against these chains is in \cref{app:results}.
+its convergence and what it costs; the Fisher forecast against it is in \cref{app:mcmc-fisher}. The flow against these chains is in \cref{app:results}.
 
 \subsection{\acs{mcmc} for Galactic Binaries}
 \label{app:mcmc-context}
@@ -180,41 +179,6 @@ localised.
   largest $|\hat R - 1|$ against the kept length, with the thresholds as horizontal lines.}
   \label{fig:mcmc-convergence}
 \end{figure}
-
-\subsection{Fisher against \acs{mcmc}}
-\label{app:mcmc-fisher}
-
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics{figures/mcmc.pdf}
-  \caption{Fisher widths over the joint \ac{mcmc} widths of the six references, per band (panels) and
-  source count (colours): the median over the sources in each \ac{snr} bin of the $f_0$ ratio (solid) and of
-  the median ratio of the six parameters other than $f_0$ and $\fdot$ (dashed); the shaded band is
-  \McmcFisherLo--\McmcFisherHi. From \ac{snr} \McmcFisherMidSnr{} up the forecast sits in the band.}
-  \label{fig:mcmc-widths}
-\end{figure}
-
-The Fisher forecast is the cheap reference used on every injection; the chains of the six references test
-it, over \McmcFisherSources{} sources (\cref{fig:mcmc-widths}). From \ac{snr} \McmcFisherHighSnr{} up
-(\McmcFisherHighCount{} sources) the forecast's median width per parameter is
-\McmcFisherHighMedianLo--\McmcFisherHighMedianHi{} times the chains', and \qty{\McmcFisherHighInside}{\percent}
-of the width ratios other than $\fdot$'s lie in \McmcFisherLo--\McmcFisherHi; at \ac{snr}
-\McmcFisherMidSnr--\McmcFisherHighSnr{} (\McmcFisherMidCount{} sources),
-\qty{\McmcFisherMidInside}{\percent} do. Below \ac{snr} \McmcFisherFaintSnr{} the chains spread a faint
-source's $f_0$ over much of the window, as the prior does (\cref{app:results-mcmc}), and the forecast does
-not: its $f_0$ width is a median \McmcFisherFaintFzero{} of the chains'. Between \ac{snr}
-\McmcFisherFaintSnr{} and \McmcFisherMidSnr{} on the full band the forecast is the wider one, by
-\McmcFisherFullMidLo--\McmcFisherFullMidHi{} in $f_0$ (median per source count) and
-\McmcFisherFullMidDrift{} in $\fdot$.
-% resolved 2026-11-18 from the prior-started chains of full S=16 (labelfree-prior-full-16.json, TREX 18033012/18033013):
-% chain(late)/reference f0 width 1.29-1.66 for the five sources at SNR 7-15, none localised at SNR 5-7.
-Part of the gap is the chains'. The prior-started chains of full $S=16$ (\cref{app:results-mcmc}) end
-1.3 to 1.7 times wider in $f_0$ than the reference on the five sources of their windows at $\snr=7$--15,
-and are still widening, so the reference is too narrow there; between $\snr=5$ and 7 they do not localise
-the sources at all. How much of the remaining factor is the forecast's Gaussian stand-in for the $\fdot$
-prior, which would make it too wide, is not tested.
-The forecast is therefore a fair proxy for the widths from \ac{snr} \McmcFisherMidSnr{} up, and no proxy
-below.
 
 \subsection{Independent Check}
 \label{app:mcmc-strub}

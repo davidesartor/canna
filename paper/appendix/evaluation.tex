@@ -5,8 +5,8 @@
 A trained flow is evaluated in three passes that answer different questions
 (\cref{tab:evaluation-passes}). Two of them use the truth to pair drawn and injected sources,
 and are therefore descriptive; only the validation pass, which never sees the truth, tests
-calibration. A Gaussian Fisher forecast and a reference \ac{mcmc} (\cref{app:mcmc}) give
-widths to compare against. Every test is first checked on posteriors whose errors are known: a
+calibration. A reference \ac{mcmc} (\cref{app:mcmc}) and a Gaussian Fisher forecast (\cref{app:fisher})
+give widths to compare against. Every test is first checked on posteriors whose errors are known: a
 toy with an exact posterior for the size and power of the validation tests
 (\cref{tab:evaluation-power}), and a ladder of mock flows run through the whole pipeline
 (\cref{app:evaluation-mocks}). Results are in \cref{app:results}.
@@ -142,29 +142,8 @@ and the orientation widen the real frequency width, and one correlation is large
 construction: $f_0$ is the frequency at the start of the observation (\cref{app:forward-model}),
 so once the chirp is measured, the quadratic phase term is fitted about one end of the interval
 and the marginal width of $f_0$ grows by a factor of \EvaluationStartFactor{} over the centred
-one. \Cref{fig:evaluation-fisher-width} bears this out. Over the \EvaluationSourcesBoth{} eval
-sources of the two bands, the Fisher $f_0$ width is never below $w^\star$ and is a median
-\EvaluationFisherRatioMedian{} times it (\EvaluationFisherRatioLo--\EvaluationFisherRatioHi).
-In the narrow band, where the chirp is barely measured, the median is
-\EvaluationFisherRatioNarrow{} (at most \EvaluationFisherRatioNarrowHi); in the full band it is
-\EvaluationFisherRatioFull, and loud high-frequency sources sit near the factor
-\EvaluationStartFactor. A calibrated Gaussian mock posterior (\cref{app:evaluation-mocks}) agrees:
-on the sources with $\snr \ge \EvaluationBandThree$ its median width is \EvaluationMockFisherIdeal{}
-times $w^\star$ in the narrow band and \EvaluationMockFisherIdealFull{} times in the full band. A
-full-band width ratio well above one is therefore not by itself a failure of the flow; the Fisher
-width is the sharper reference there.
-
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=\textwidth]{figures/fisher-width.pdf}
-  \caption{The ideal width is a floor, not a forecast. (a) Fisher-forecast $f_0$ width of the
-  \EvaluationSourcesBoth{} eval sources against their \ac{snr}, with the ideal width
-  $\sqrt3/(\pi\snr)$ of \cref{eq:evaluation-ideal-width} (dashed). (b) Their ratio. Narrow-band
-  sources stay within a factor \EvaluationFisherRatioNarrowHi{} of the ideal; full-band sources,
-  whose chirp is measured, reach the factor \EvaluationStartFactor{} that a start-of-observation
-  $f_0$ costs (upper dashed line). Vertical lines mark the scorecard's \ac{snr} bands.}
-  \label{fig:evaluation-fisher-width}
-\end{figure}
+one. The Fisher forecast bears this out (\cref{app:fisher-ideal}): a full-band width ratio well above one is
+not by itself a failure of the flow, and there the Fisher width is the sharper reference.
 
 \subsection{Calibration Without the Truth}
 \label{app:evaluation-validation}
@@ -327,12 +306,6 @@ at $\snr\ge\EvaluationMockReferenceSnr$ whose joint reference chains are a refer
 The full band, with \EvaluationMockInjectionsFull{} validation injections, gives the same readings.
 The Gaussian mock has also been run on each source-count problem, as the null of the runs' validation
 table (\cref{tab:results-validation}).
-\textcolor{red}{TODO(new runs): the Hessian statistics of the Fisher forecast (\cref{app:evaluation-fisher}:
-decades of the diagonal, non-positive second diagonal, floored eigenvalues) still come from
-reports/mcmc/data/fisher-diagonal.json, run on injections of the previous prior whose second coordinate was
-$\log\Mc$; rerun it on the eval catalogue (the forecast's widths against the chains are already the current
-ones, \cref{app:mcmc-fisher}).}
-
 \begin{table*}[t]
   \centering
   \caption{The mock ladder on the narrow band. Width over the ideal width
@@ -375,11 +348,11 @@ Four readings follow, and each shapes how the results are read.
     $\snr=\EvaluationMockReferenceSnr$ up.
     % added 2026-11-18: a second realisation (reports/posterior-eval/mock-flows/README.md, 2026-11-02) gave
     % f0 p = 0.141 and fdot 0.422 where this one gives 0.042 and 0.255; the prior mock reproduces exactly.
-    \textcolor{red}{TODO(check): an earlier run of the same mock on the same injections (other hardware)
-    gave $p=0.14$ for $f_0$ and $0.42$ for $\fdot$ where this one gives $0.04$ and $0.26$, while the prior mock
-    reproduces to the digit: the Gaussian draws are not reproducible across machines (an eigendecomposition
-    of an ill-conditioned covariance), so its $p$-values near the threshold carry a realisation spread;
-    fix the draws or quote the spread.} A flow's $p$-value or rank offset is compared
+    % updated 2026-11-19 (user): the TODO(check) on reproducibility turned into this sentence.
+    An earlier run of the same mock on the same injections, on other hardware, gave $p=0.14$ for $f_0$ and
+    $0.42$ for $\fdot$ where this one gives $0.04$ and $0.26$, while the prior mock reproduces to the digit:
+    the Gaussian draws differ between machines (an eigendecomposition of an ill-conditioned covariance), so
+    $p$-values near the threshold move by that much, and the readings above do not change. A flow's $p$-value or rank offset is compared
     with the Gaussian mock's on the same test and injections, not with
     \qty{\EvaluationPowerAlpha}{\percent}.
   \item \emph{Proper scores are weak against small errors.} The narrow mock scores only a factor
@@ -393,61 +366,6 @@ Four readings follow, and each shapes how the results are read.
     (\EvaluationMockFloorIdeal{} times the ideal, against \EvaluationMockFisherIdeal{} for the Gaussian
     mock).
 \end{itemize}
-
-\subsection{Fisher Forecast}
-\label{app:evaluation-fisher}
-
-Each eval injection gets a Gaussian forecast centred at the truth $\theta^\star$, in the
-\EvaluationJointDim{} physical parameters of its sources, with precision
-\begin{equation}
-  \Gamma = \frac1{N_{\rm F}}\sum_{r=1}^{N_{\rm F}}\nabla^2_\theta\bigl[-\log L(\theta; d_r)\bigr]_{\theta^\star}
-  + \Lambda,
-  \qquad N_{\rm F} = \EvaluationFisherDraws,
-  \label{eq:evaluation-fisher}
-\end{equation}
-with $\log L$ from \cref{eq:loglik} and $d_r$ independent noise realisations around the
-injection's signal. The noise average of the Hessian at the truth is the Fisher matrix
-\citep{cutler1994gravitational,vallisneri2008use}. The prior term $\Lambda$, the inverse
-covariance of the candidates' parameters, is a Gaussian stand-in for the prior that keeps poorly
-measured directions at the prior's width rather than infinite.
-
-The forecast is drawn in $q$, the parameters with $\log\fdot$ in place of $\fdot$, so the drift
-stays positive ($\Gamma$ and $\Lambda$ pick up the Jacobian
-$J = \mathrm{diag}(1, \fdot^\star, 1,\dots)$ on both sides). In physical units the diagonal of
-$\Gamma$ spans a median of \EvaluationFisherDecades{} decades
-(\EvaluationFisherDecadesLo--\EvaluationFisherDecadesHi{} per injection), so both matrices are
-rescaled to unit diagonal, $\tilde\Gamma = D^{-1}\Gamma D^{-1}$ with
-$D = \mathrm{diag}\sqrt{|\Gamma_{ii}|}$. With $\tilde\Gamma = \sum_k w_k v_k v_k^{\T}$, each
-eigenvalue is floored at the prior precision along its eigenvector:
-\begin{equation}
-  q = q^\star + D^{-1}\sum_k \frac{\xi_k\,v_k}{\sqrt{\max(w_k,\,v_k^{\T}\tilde\Lambda v_k)}},
-  \quad \xi_k \sim \Normal(0,1).
-  \label{eq:evaluation-fisher-draws}
-\end{equation}
-
-The floor is needed because a finite noise average leaves part of the data-dependent term of the
-Hessian, which along a barely constrained direction can outweigh the signal term. The averaged
-diagonal of the second parameter ($\log\Mc$ in these runs) is not positive for \EvaluationMcNegative{} of the \EvaluationSourcesBoth{}
-eval sources, in \EvaluationMcNegativeInjections{} of the \EvaluationFisherInjections{}
-injections. The floor binds only where the averaged Hessian is negative along an eigenvector,
-for at most \EvaluationFlooredMax{} eigenvalues, in \EvaluationFlooredInjections{} injections.
-% added 2026-11-18 from the packed references (reports/mcmc/data/eval-<pid>.npz)
-\textcolor{red}{TODO(fix): on the full band the floor does not bound $\log\fdot$ for faint sources: for
-44--\qty{45}{\percent} of the eval sources (all below \ac{snr} 4) about half the Fisher draws have
-$\fdot=\infty$ after $\exp(\log\fdot)$, and \texttt{pack} stores them with scale 1, so their $\fdot$ is lost
-(the $f_0$ draws stay finite; the narrow band is unaffected). Bound the draws in $\log\fdot$ (for instance
-at the chains' \McmcBoxSigmas{}-$\sigma$ box) and repack; check which flow-over-Fisher $\fdot$ ratios of
-\cref{app:results} include these sources.}
-
-The forecast is a reference width, not a posterior: it is unimodal, so it misses the exact
-symmetries of \cref{eq:psi-phi-symmetry}; it is Gaussian, so it cannot follow the curved
-amplitude--inclination degeneracy; and along a parameter the data barely constrain it shows the
-prior's width centred on the truth. That is $\fdot$ for most of the narrow band: with $f_0$ free a drift is
-resolved only to about $\EvaluationDriftResolution/\snr$ bins, and a source
-\EvaluationFdotSigmas{} standard deviations above its mean $\fdot$ drifts by \EvaluationChirpDrift{} bins over the mission
-only at the band's top, \qty{\EvaluationNarrowFzeroTop}{\milli\hertz}; the drift falls steeply
-with frequency, so only loud sources near the top constrain $\fdot$.
-\Cref{app:mcmc-fisher} tests the forecast against the joint chains.
 
 \subsection{Comparison With the Reference \acs{mcmc}}
 \label{app:evaluation-mcmc}

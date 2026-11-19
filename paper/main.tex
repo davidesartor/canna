@@ -170,6 +170,7 @@ specifically highlighted here.
 \input{appendix/training}
 \input{appendix/evaluation}
 \input{appendix/mcmc}
+\input{appendix/fisher}
 \input{appendix/results}
 
 % =======================================================================================
@@ -185,30 +186,21 @@ specifically highlighted here.
   \item A noise \acs{psd} estimated with the sources, since a louder noise than the flow's own makes it
     confident and wrong (\cref{app:evaluation-sampler}). (The power/log grids and Euler are in, 2026-11-18.)
 \item \cref{app:mcmc} now reads the six packed references of the eval catalogue (2026-11-18: settings,
-    one seed per injection, $\hat R$ and \acs{ess}, the posterior figure, Fisher against MCMC, cost); the
-    reports/mcmc README and page still describe the old chains, and the Hessian statistics of
-    \cref{app:evaluation-fisher} (fisher-diagonal.json) the old prior: rerun.
-  \item Fisher draws on the full band: $\fdot$ overflows to infinity for about half the draws of the faint
-    sources (\cref{app:evaluation-fisher}); bound them and repack the references.
+    one seed per injection, $\hat R$ and \acs{ess}, the posterior figure, cost; Fisher in \cref{app:fisher}); the
+    reports/mcmc README describes them since 2026-11-19 (its page, mcmc.html, stays the October archive).
   \item The reported model of each problem (2026-11-19, user; \texttt{paper/scripts/e64.py}) is the better of the
     two runs that trained to near their end, the 64-epoch run and its fork cooled from epoch 32, by eval-catalogue
     loss: e32 for narrow $S=2$, 8 and full $S=16$, main for narrow $S=4$ (epoch 62) and full $S=8$; for full $S=4$
     the Student-t continuation 261103-n4-full-B-t44 at its last checkpoint (its loss does not compare). The
-    tables name each model and its epoch. Its best-checkpoint rule still reads the Gaussian frame loss: fix the
-    selection (flow $+\,2\delta_s$) before another frame\_nu run. t44 is the best full-band model on every
-    parameter, but whether the Student-t frame helps the other problems is open (one seed, one run, S=4).
+    tables name each model and its epoch. t44 is the best full-band model on every parameter, but whether the
+    Student-t frame helps the other problems is open (one seed, one run, S=4); no further runs are planned.
   \item One seed per configuration: the run-to-run spread is unmeasured, so differences of a few
-    hundredths of a nat between forks are not significant. TODO(run, expensive, deliberately not
-    launched 2026-11-13): a second seed of narrow $S=2$, about 32 A100 hours.
+    hundredths of a nat between forks are not significant. A second seed of narrow $S=2$ (about 32 A100
+    hours) is a follow-up in \cref{sec:followups} (2026-11-19, user), not a run for this paper.
 \end{itemize}
 
 \paragraph{Analysis.}
 \begin{itemize}
-  \item Fisher against MCMC on the full band at \acs{snr} 5--15: the forecast is 2.2--2.5 times wider in
-    $f_0$ than the chains (\cref{app:mcmc-fisher}). The prior-started full $S=16$ chains (2026-11-18) are
-    1.2--1.7 times wider than the reference at \acs{snr} 7--22 and mostly still widening, so part of the gap
-    is the reference's (\cref{app:results-mcmc}); with four injections it is not settled.
-  \item The Gaussian mock's validation $p$-values change between machines (\cref{app:evaluation-mocks}).
   \item The overlap offset is no single parameter group (\cref{app:results-validation}, 2026-11-18): draws
     trade $f_0$ against phase. Whether a different chart or loss would remove that is open.
   \item The full band misses loud sources above about \qty{10}{\milli\hertz}, mostly because the flow
