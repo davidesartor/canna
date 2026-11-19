@@ -23,7 +23,7 @@ out = {}
 for path in sorted(DATA.glob("frame-vs-flow-*.npz")):
     d = np.load(path)
     tag = path.stem.removeprefix("frame-vs-flow-")
-    # only the e64 models (e64.py); the fp32 comparison runs (<cfg>-fp32) are kept as they are
+    # only the reported models (e64.SELECTED); the fp32 comparison runs (<cfg>-fp32) are kept as they are
     cfg = {"n": "narrow", "f": "full"}[tag[0]], int(tag[1:].split("-")[0])
     if not tag.endswith("-fp32") and str(d["run"]) != e64.run_name(*cfg):
         print(f"{tag}: {d['run']} is not the e64 model, skipped")
@@ -42,6 +42,7 @@ for path in sorted(DATA.glob("frame-vs-flow-*.npz")):
             "flow_over_frame": float(np.median(g("flow_width")[m] / g("frame_sigma")[m])),
             "flow_within_1": float(np.mean(np.abs(g("flow_offset")[m]) < g("flow_width")[m])),
         }
-    out[tag] = rec
-    print(tag, {k: (v["flow_over_mcmc"], v["flow_over_frame"]) for k, v in rec.items() if isinstance(v, dict)})
+    key = tag if tag.endswith("-fp32") else tag.split("-")[0]  # e.g. f16-e32 -> f16 when it is the reported model
+    out[key] = rec
+    print(key, {k: (v["flow_over_mcmc"], v["flow_over_frame"]) for k, v in rec.items() if isinstance(v, dict)})
 (PAPER / "data/runs/frame-vs-flow.json").write_text(json.dumps(out, indent=1))

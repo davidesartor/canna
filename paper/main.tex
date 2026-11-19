@@ -190,11 +190,13 @@ specifically highlighted here.
     \cref{app:evaluation-fisher} (fisher-diagonal.json) the old prior: rerun.
   \item Fisher draws on the full band: $\fdot$ overflows to infinity for about half the draws of the faint
     sources (\cref{app:evaluation-fisher}); bound them and repack the references.
-  \item Every result is the 64-epoch run of its problem (2026-11-18, \texttt{paper/scripts/e64.py}); full $S=4$'s is
-    the Student-t continuation 261103-n4-full-B-t44, evaluated at its last checkpoint (2026-11-19: every full $S=4$
-    entry filled; the loss in \cref{app:fm-frame}). Its best-checkpoint rule still reads the Gaussian frame loss:
-    fix the selection (flow $+\,2\delta_s$) before another frame\_nu run. It is the best full-band model on every
-    parameter, so whether the Student-t frame helps the other five problems is open (one seed, one run).
+  \item The reported model of each problem (2026-11-19, user; \texttt{paper/scripts/e64.py}) is the better of the
+    two runs that trained to near their end, the 64-epoch run and its fork cooled from epoch 32, by eval-catalogue
+    loss: e32 for narrow $S=2$, 8 and full $S=16$, main for narrow $S=4$ (epoch 62) and full $S=8$; for full $S=4$
+    the Student-t continuation 261103-n4-full-B-t44 at its last checkpoint (its loss does not compare). The
+    tables name each model and its epoch. Its best-checkpoint rule still reads the Gaussian frame loss: fix the
+    selection (flow $+\,2\delta_s$) before another frame\_nu run. t44 is the best full-band model on every
+    parameter, but whether the Student-t frame helps the other problems is open (one seed, one run, S=4).
   \item One seed per configuration: the run-to-run spread is unmeasured, so differences of a few
     hundredths of a nat between forks are not significant. TODO(run, expensive, deliberately not
     launched 2026-11-13): a second seed of narrow $S=2$, about 32 A100 hours.
@@ -210,7 +212,7 @@ specifically highlighted here.
   \item The overlap offset is no single parameter group (\cref{app:results-validation}, 2026-11-18): draws
     trade $f_0$ against phase. Whether a different chart or loss would remove that is open.
   \item The full band misses loud sources above about \qty{10}{\milli\hertz}, mostly because the flow
-    refines the frame only 2--5-fold there (\cref{app:results-mcmc}). Framed (2026-11-17): the prior
+    refines the frame only 2--4-fold there (14--17-fold below) (\cref{app:results-mcmc}). Framed (2026-11-17): the prior
     produces few such sources for training; the cure is left to a follow-up.
   \item The joint-MCMC references of narrow $S=8$ and full $S=16$ never left their Fisher start for
     faint sources (\cref{app:results-mcmc}). The prior-started chains (2026-11-16) confirm the

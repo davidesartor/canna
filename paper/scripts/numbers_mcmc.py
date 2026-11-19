@@ -184,7 +184,14 @@ cost = json.loads(COST.read_text())
 # the true f0. Narrow S=4: the Fisher-started convergence chains; narrow S=8: chains with every SNR < 7 source started
 # from the prior (windows 66, 81, 51, 57).
 def labelfree(name: str) -> dict:
-    r = json.loads((CONVERGENCE / f"labelfree-{name}.json").read_text())
+    # 2026-11-19: of labelfree-<name>.json and labelfree-<name>-e32.json, the one read on the reported model (e64.py)
+    import e64
+
+    paths = [CONVERGENCE / f"labelfree-{name}{s}.json" for s in ("", "-e32")]
+    recs = [json.loads(p.read_text()) for p in paths if p.is_file()]
+    picks = {e64.run_name(b, n) for b, n in e64.CONFIGS}
+    r = next((x for x in recs if x["run"] in picks), recs[0])
+    print(f"label-free {name}: flow of {r['run']} {r['eval']}")
     groups = {}
     for rec in r["injections"]:
         snr = np.array(rec["snr"])

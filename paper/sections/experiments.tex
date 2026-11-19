@@ -57,11 +57,14 @@ wider than it, and the Fisher width is the sharper reference there.
 \subsection{Results}
 \label{sec:results-main}
 
-% added 2026-11-18 (user): the 64-epoch main run (e64) of every problem; numbers_results.py from
+% updated 2026-11-19 (user): the better of the 64-epoch run and its e32 fork per problem (paper/scripts/e64.py,
+% SELECTED); was 2026-11-18 the 64-epoch main run (e64) of every problem; numbers_results.py from
 % data/runs/js-divergence-main.json (import_js.py main) and data/runs/sbc-main.json (import_sbc.py).
 \begin{table}[t]
 \centering
-\caption{Summary of the six problems, for the 64-epoch run of each. Windows: eval windows with
+\caption{Summary of the six problems, for the model reported for each (\cref{app:results-runs}). Model: the
+64-epoch main run, its fork cooled from epoch 32 (e32) or, for full $S=4$, the continuation from epoch 44 (t44),
+with the epoch evaluated in brackets. Windows: eval windows with
 joint \acs{mcmc} / prior windows of the \acs{sbc}. JS: Jensen--Shannon divergence in bits between the
 flow's and the chains' one-dimensional marginals (\cref{eq:evaluation-js}), averaged over the eight
 coordinates and over the sources at $\snr=7$--15 and $\snr\ge15$; 0 for equal marginals,
@@ -70,12 +73,12 @@ central \qty{68}{\percent} of the draws, and the smallest $\gamma$-test $p$-valu
 coordinates (\cref{app:results-validation}).}
 \label{tab:results-summary}
 \small
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}lrcrrrr@{}}
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}lrlcrrrr@{}}
 \toprule
- & & & \multicolumn{2}{c}{JS} & \multicolumn{2}{c}{\acs{sbc}} \\
-\cmidrule(lr){4-5}\cmidrule(l){6-7}
-problem & $S$ & windows & 7--15 & $\ge15$ & 68\% & $p_{\min}$ \\
+ & & & & \multicolumn{2}{c}{JS} & \multicolumn{2}{c}{\acs{sbc}} \\
+\cmidrule(lr){5-6}\cmidrule(l){7-8}
+problem & $S$ & model & windows & 7--15 & $\ge15$ & 68\% & $p_{\min}$ \\
 \midrule
 \ResultsSummaryRows
 \bottomrule

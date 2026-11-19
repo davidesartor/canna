@@ -53,18 +53,18 @@ def null_floor(n_p: int, n_q: int, rng: np.random.Generator) -> np.ndarray:
     return np.array([js_divergence(rng.standard_normal(n_p), rng.standard_normal(n_q)) for _ in range(NULL_TRIALS)])
 
 
-# `import_js.py main`: the 64-epoch main runs (the e64 models of the paper's Section 4 table) instead of
+# 2026-11-19: both outputs now read the reported models (e64.SELECTED). Was: `import_js.py main`: the 64-epoch main runs instead of
 # the lowest-loss model; full S=4 then needs its Student-t continuation (MAIN_RUN), skipped until it lands
 MAIN = len(sys.argv) > 1 and sys.argv[1] == "main"
-MAIN_RUN = {("full", 4): "261103-n4-full-B-t44"}
+import e64  # noqa: E402  (2026-11-19: the reported models, e64.SELECTED)
 if MAIN:
     OUT = PAPER / "data/runs/js-divergence-main.json"
 
 
 def selected_eval(band: str, n: int) -> tuple[Path, dict] | None:
     """The eval with the lowest eval-catalogue loss among the main run and its cooldown forks (or the main run)."""
-    if MAIN:
-        name = MAIN_RUN.get((band, n), f"261103-n{n}-{band}-B")
+    if True:  # 2026-11-19: both outputs read the reported model (e64.SELECTED); was: MAIN only, else lowest loss
+        name = e64.run_name(band, n)
         evals = sorted((RUNS / name / "eval").glob("*/draws.npz")) if (RUNS / name / "eval").is_dir() else []
         if not evals:
             print(f"{band} S={n}: no eval of {name} yet, skipped")

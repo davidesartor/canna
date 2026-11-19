@@ -54,3 +54,14 @@ in f0, fdot and sky, not "10 to 40 per cent").
 **Open.** The best-checkpoint rule (catalog frame + flow, Gaussian k^2) must use flow + 2 delta_s before any
 further frame_nu run. TREX: run, logs and analyses fetched and md5-verified (outputs/trex-t44-261119/), then
 deleted; the local run is outputs/runs/261103-n4-full-B-t44 (numbered 41-lisa-full-B-n4-t44).
+
+**Addendum (2026-11-19, later): reported models.** The user: the e32 forks and the 64-epoch runs are compatible, so
+"pick the best runs, provided that they are all close to the end", no new evals. Per problem the better of the
+64-epoch run and its e32 fork by eval-catalogue NLL (`paper/scripts/e64.py` SELECTED): e32 for narrow S=2 (-1.379
+vs -1.362), narrow S=8 (-0.974 vs -0.917) and full S=16 (-0.887 vs -0.874); main for narrow S=4 (-1.135 vs -1.092,
+eval at epoch 62 of 64) and full S=8 (-1.105 vs -1.083); t44 for full S=4 (NLL not comparable; narrower than e32
+everywhere). Every table names the model and the epoch evaluated ("e32 (40)", "main (62)", "t44 (64)"); the fork
+table's full S=4 main column is t44 (n/c / 1.22 at epoch 64). All analyses existed for these picks (overlap, frame,
+label-free -e32 files); readers now match by the run recorded in each file. Text aligned: narrow S=2 corner (e32 at
+the chains' widths, no second sky mode), full S=16 corner (1-2 bins), S=8 -> 16 loud growth (fdot two fifths), the
+convergence statement (narrow runs flat within fluctuations by epoch 62; full S=8, 16 still improving at 64).

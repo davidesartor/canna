@@ -52,8 +52,18 @@ the logged, Gaussian frame loss, which does not compare across the switch (\cref
 % updated 2026-11-18 (user): every result below is the 64-epoch main run of its problem ("e64",
 % paper/scripts/e64.py); the cooldown forks appear only in app:results-forks. Was: the lowest eval-catalogue
 % loss among the main run and its forks, which picked the fork from epoch 32 in four problems.
-We report the 64-epoch run of every problem, evaluated at its best checkpoint; the cooldown forks appear
-only in \cref{app:results-forks}.
+% updated 2026-11-19 (user): "pick the best runs, provided that they are all close to the end" (e64.SELECTED);
+% was 2026-11-18 "We report the 64-epoch run of every problem, evaluated at its best checkpoint".
+Two runs of each problem trained to near their end: the 64-epoch main run and its fork cooled from epoch 32,
+which agree within the differences we cannot resolve with one seed (\cref{app:results-forks}). For each
+problem we report the one with the lower eval-catalogue loss, at its best checkpoint: the fork from epoch 32
+for the narrow band with $S=2$ and 8 and the full band with $S=16$, the main run for the narrow band with
+$S=4$ and the full band with $S=8$. For the full band with $S=4$ the continuation's logged loss does not
+compare with the fork's, and we report the continuation, which is narrower than the fork in every parameter
+(\cref{tab:results-forks}). The tables name each model and the epoch evaluated. Only one reported model is
+not read at its last checkpoint, the narrow band with $S=4$ at epoch 62 of 64: by then its eval-catalogue
+loss moved only within its epoch-to-epoch fluctuations of a few hundredths, as did the other narrow runs',
+while the full-band runs with $S=8$ and 16 were still improving at their last epoch.
 The full-band run with $S=16$, the last of its chain, trained cleanly: its worst single-step frame
 loss stayed below 2, and its eval-catalogue loss was still falling at its last epoch.
 
@@ -63,7 +73,9 @@ loss stayed below 2, and its eval-catalogue loss was still falling at its last e
 \begin{table*}[t]
 \centering
 \caption{Flow over joint-\ac{mcmc} width per parameter, median over the sources of each band of
-source \ac{snr} ($n$ sources), for the 64-epoch run of each band and source count (\cref{app:results-runs}). Found: share of the
+source \ac{snr} ($n$ sources), for the model reported for each band and source count, named under it (main: the 64-epoch run; e32: its fork
+cooled from epoch 32; t44: full $S=4$'s continuation from epoch 44) with the epoch evaluated in brackets
+(\cref{app:results-runs}). Found: share of the
 sources with an $f_0$ width below one bin. Coverage: share of true flow coordinates inside the
 central \qty{68}{\percent} and \qty{95}{\percent} intervals, over the eight coordinates and the sources
 of the band, after relabelling to the truth (optimistic, \cref{app:evaluation-matching}). $\alpha$ and
@@ -183,11 +195,11 @@ sources are found, and \qty{\ResultsFullFourOff}{\percent}, \qty{\ResultsFullEig
 \qty{\ResultsFullSixteenOff}{\percent} of their draws fall off the chains' peak, against
 \qty{\ResultsFullFourMcmcOff}{\percent}, \qty{\ResultsFullEightMcmcOff}{\percent} and
 \qty{\ResultsFullSixteenMcmcOff}{\percent} of the chains' own. From $S=4$ to 8 the loud widths of $f_0$, $\log\fdot$ and the sky grow by half or more and the
-amplitude's by a quarter; from 8 to 16 that of $f_0$ doubles, the sky's grows by two thirds and that of
-$\log\fdot$ by a fifth.
+amplitude's by a quarter; from 8 to 16 that of $f_0$ more than doubles, the sky's grows by two thirds and
+that of $\log\fdot$ by two fifths.
 % updated 2026-11-19 (t44): was "From S=4 to 8 the loud widths grow by 10 to 40 per cent; from 8 to 16 that
 % of f0 more than doubles, and those of log fdot and the sky grow by about half" (vs-mcmc >=40 rows: S=4 6.6, 5.8,
-% 5.0, 1.6; S=8 10.7, 9.1, 8.6, 2.0; S=16 21.5, 10.7, 14.7, 2.8 for f0, log fdot, lon, log A). The loud sources of the full band are those whose posteriors are narrowest against
+% 5.0, 1.6; S=8 10.7, 9.1, 8.6, 2.0; S=16 21.5, 10.7, 14.7, 2.8 for f0, log fdot, lon, log A; e32 since 2026-11-19: 23.6, 12.8, 14.8, 2.9). The loud sources of the full band are those whose posteriors are narrowest against
 the prior and whose responses span the most bins (\cref{app:forward-model}), the regime the per-source
 frame is meant for (\cref{app:fm-sensitivity}); the full-band models do not resolve them yet.
 The misses sit at high frequency. Above \qty{\ResultsFullSplitMhz}{\milli\hertz} lie
@@ -374,8 +386,7 @@ central \qty{96}{\percent} of the flow and the chains together, so a few far-tai
 draws behind each figure are saved beside it (\texttt{data/corners}, from \texttt{scripts/import\_corners.py}).
 
 They show in single windows what the tables average. On the narrow band with $S=2$ the flow
-overlaps the chains, Fisher close by, but is wider and puts a second mode in the right ascension of the
-louder source; the pair is 35 bins apart, since that problem has no close loud pair. With $S=4$ the pair, 4.6 bins apart, keeps its cores, and a few per cent of the flow's $f_0$ draws of
+overlaps the chains, Fisher close by, with about their widths in every parameter; the pair is 35 bins apart, since that problem has no close loud pair. With $S=4$ the pair, 4.6 bins apart, keeps its cores, and a few per cent of the flow's $f_0$ draws of
 the lower source sit on its neighbour, the off-peak share of \cref{app:results-mcmc}. With $S=8$ and two
 sources 0.7 bins apart the flow is wider than the chains in every parameter and its amplitudes have long
 tails. On the full band at $S=4$, on two sources at $\snr$ 39 and 33 that are 2.5 bins apart, the flow's $f_0$ of
@@ -383,8 +394,11 @@ the louder one peaks on the chains' with a tail of about a bin, that of the othe
 its amplitudes are skewed, the louder one's low and the other's high, where the chains sit on the truth, and
 the sky has tails of a tenth of a radian; at $S=8$ its posterior is multimodal where the chains
 have one mode; at $S=16$, on two sources at $\snr$ 68 and 51 only 0.02 bins apart, the flow is offset from
-the truth by about a bin in $f_0$ and \qtyrange{0.2}{0.3}{\radian} in the sky, where the chains sit on it.
+the truth by one to two bins in $f_0$ and \qtyrange{0.2}{0.3}{\radian} in the sky, where the chains sit on it.
 % updated 2026-11-18: the corners redrawn for the 64-epoch models (narrow S=2, S=8, full S=16 changed model).
+% updated 2026-11-19 (selection): narrow S=2, S=8 and full S=16 back on their e32 forks (same windows and pairs);
+% narrow S=2 "but is wider and puts a second mode in the right ascension of the louder source" and full S=16 "about a
+% bin in f0" were the 64-epoch models'.
 % updated 2026-11-19: full S=4 redrawn on t44 (injection 114, slots 1-2, SNR 38.6/33.0, 2.49 bins apart).
 \textcolor{red}{TODO(text): pick one of these for the main text (\cref{sec:results-main}); the windows
 were chosen by the rule above, not by eye.}
@@ -456,7 +470,8 @@ sources' \acp{snr} and their separation.}
 \centering
 \caption{Eval-catalogue loss / flow over joint-\ac{mcmc} $f_0$ width at $\snr=15$--40, for the forks that
 start their cooldown at epochs 4 to 32, and for the main run, which starts it at the planned
-\qty{80}{\percent} of its \ResultsEpochs{} epochs (full $S=4$: its best, uncooled, checkpoint).}
+\qty{80}{\percent} of its \ResultsEpochs{} epochs; in brackets the epoch evaluated. Full $S=4$'s main column is
+its Student-t continuation from epoch 44, whose logged loss does not compare (n/c, \cref{app:fm-frame}).}
 \label{tab:results-forks}
 \small
 \begin{tabular}{@{}lccccc@{}}
@@ -474,7 +489,7 @@ by \ResultsNarrowTwoForkGain{} nats from epoch 4 to 32 on the narrow band with $
 \ResultsFullFourForkGain{} on the full band with $S=4$, and the $f_0$ widths shrink toward the chains'
 with it. The cooldown matters most on the full band: the diverged full-band run with $S=4$, never cooled,
 has loud $f_0$ widths \ResultsFullFourMainLoud{} times the chains', against \ResultsFullFourForkLoud{}
-for its fork from epoch 32. Beyond epoch 32 the main runs gain on two configurations and lose on three
+for its fork from epoch 32 and \ResultsFullFourContLoud{} for its continuation, cooled at the end. Beyond epoch 32 the main runs gain on two configurations and lose on three
 (\cref{app:training-schedules}); with one seed per configuration, differences of a few hundredths of a
 nat are within the run-to-run spread we have not measured.
 \textcolor{red}{TODO(run, expensive, not launched): a second seed of the narrow band with $S=2$, about

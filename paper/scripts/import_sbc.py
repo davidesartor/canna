@@ -1,4 +1,4 @@
-"""SBC of the 64-epoch main run of every band and source count (the e64 models of the Section 4 summary table).
+"""SBC of the reported model of every band and source count (e64.SELECTED; the Section 4 summary table).
 
 Per model, from the validation scorecard of its last eval (1000 prior windows, ranks of the truth among 127
 draws): per flow coordinate the gamma-test p-value (canna.lisa.validate.gamma_test) and the share of truths in
@@ -29,7 +29,7 @@ OUT = PAPER / "data/runs/sbc-main.json"
 # packed MCMC reference per problem (reports/mcmc/data/eval-<problem id>.npz)
 PID = {("narrow", 2): "a9a1998079", ("narrow", 4): "cc4b9e9aa0", ("narrow", 8): "ad9cb6a159",
        ("full", 4): "13653a71f0", ("full", 8): "2ca7ffaadb", ("full", 16): "6a6e86da4a"}
-MAIN_RUN = {("full", 4): "261103-n4-full-B-t44"}
+import e64  # noqa: E402  (2026-11-19: the reported models, e64.SELECTED)
 COORDS = ["f0", "fdot", "lon", "lat", "re_zp", "im_zp", "re_zm", "im_zm"]
 
 
@@ -55,7 +55,7 @@ def sbc(s: dict) -> dict:
 
 out = {}
 for (band, n), pid in PID.items():
-    run = MAIN_RUN.get((band, n), f"261103-n{n}-{band}-B")
+    run = e64.run_name(band, n)
     cards = sorted(glob.glob(str(REPO / f"outputs/runs/{run}/eval/*/scorecard.npz")))
     if not cards:
         print(f"{band} S={n}: no eval of {run} yet, skipped")

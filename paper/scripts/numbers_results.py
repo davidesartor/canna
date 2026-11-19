@@ -36,15 +36,20 @@ def fork(band: str, n: int, epoch: int) -> dict:
 
 def family(band: str, n: int) -> list[dict]:
     """The main run and its cooldown forks that have an eval."""
-    out = [main(band, n)] + [fork(band, n, e) for e in FORKS if f"261103-n{n}-{band}-B-e{e}" in by_name]
+    out = [by_name[e64.main_name(band, n)]] + [fork(band, n, e) for e in FORKS if f"261103-n{n}-{band}-B-e{e}" in by_name]
     return [r for r in out if r["evals"]]
 
 
 def selected(band: str, n: int) -> dict | None:
-    """The reported model (e64.py): the 64-epoch main run, full S=4's Student-t continuation; None until it is scored.
-    (Until 2026-11-18: the lowest eval-catalogue NLL among the main run and its forks.)"""
+    """The reported model (e64.SELECTED, 2026-11-19): the better of the 64-epoch run and its e32 fork by eval-catalogue NLL,
+    full S=4's Student-t continuation; None until it is scored. (2026-11-18: the 64-epoch run everywhere.)"""
     r = by_name.get(e64.run_name(band, n))
     return r if r and r["evals"] else None
+
+
+def model_cell(band: str, n: int) -> str:
+    """2026-11-19: which model a table block reports and the epoch of its eval, under the block's name."""
+    return rf"\footnotesize {e64.model_label(band, n)}"
 
 
 def label(run: dict | None) -> str:
@@ -177,7 +182,7 @@ for band, n in CONFIGS:
         vm, sc = row(ev, b, "vs_mcmc"), scores_band(ev, b)
         if vm is None:
             continue
-        lead = rf"{band}-{n}" if first else ""
+        lead = rf"{band}-{n}" if first else (model_cell(band, n) if b == BANDS[1] else "")
         first = False
         cells = " & ".join(f2(vm["width_ratio"][c]) for c in COLS)
         found = f"{sc['found']:.2f}" if sc else "--"
@@ -280,7 +285,8 @@ for band, n in CONFIGS:
             cells.append("--")
             continue
         ev = r["evals"][-1]
-        cells.append(rf"\num{{{ev['catalog_at_eval']:.3f}}} / {f2(row(ev, '15-40', 'vs_mcmc')['width_ratio']['f0 [bins]'])}")
+        loss = "n/c" if r["run"].endswith("-t44") else rf"\num{{{ev['catalog_at_eval']:.3f}}}"  # Student-t frame: not comparable
+        cells.append(rf"{loss} / {f2(row(ev, '15-40', 'vs_mcmc')['width_ratio']['f0 [bins]'])} ({ev['epoch']})")
     fork_rows.append(rf"{band}-{n} & " + " & ".join(cells) + r" \\")
 numbers["ResultsForkRows"] = "\n".join(fork_rows)
 cat = lambda band, n, e: (fork(band, n, e) if e else main(band, n))["evals"][-1]["catalog_at_eval"]
@@ -289,6 +295,7 @@ numbers["ResultsFullFourForkGain"] = f"{cat('full', 4, 4) - cat('full', 4, 32):.
 loud_f0 = lambda r: row(r["evals"][-1], ">=40", "vs_mcmc")["width_ratio"]["f0 [bins]"]
 numbers["ResultsFullFourMainLoud"] = f"{loud_f0(main('full', 4)):.0f}"
 numbers["ResultsFullFourForkLoud"] = f"{loud_f0(fork('full', 4, 32)):.1f}"
+numbers["ResultsFullFourContLoud"] = f"{loud_f0(by_name[e64.main_name('full', 4)]):.1f}"
 
 
 # ---- per source (import_runs.py "sources"): closest-pair separation, where the unfound loud sources sit ------
@@ -364,7 +371,7 @@ for band, n in CONFIGS:
     if not v:
         continue
     for stratum, tex in (("all", "all"), ("15-40", "15--40"), ("40-100", "40--100")):
-        validation_rows.append(validation_row(rf"{band}-{n}" if stratum == "all" else "", tex, v[stratum]))
+        validation_rows.append(validation_row(rf"{band}-{n}" if stratum == "all" else model_cell(band, n) if stratum == "15-40" else "", tex, v[stratum]))
         if stratum == "all" and (band, n) in mock:
             validation_rows.append(validation_row(r"\quad Gaussian mock", "all", mock[band, n]["strata"]["all"]))
     validation_rows.append(r"\addlinespace")
@@ -536,7 +543,7 @@ if JS_DATA.is_file():
             k = (snr >= lo) & (snr < hi)
             if not k.any():
                 continue
-            lead = rf"{band}-{n}" if first else ""
+            lead = rf"{band}-{n}" if first else (model_cell(band, n) if b == "15-40" else "")
             first = False
             cells = " & ".join(js3(np.median(js[k, c])) for c in range(8))
             rows.append(rf"{lead} & {BAND_TEX[b]} & {int(k.sum())} & {cells} & {js3(np.median(js[k].mean(1)))} \\")
@@ -589,7 +596,7 @@ if JS_DATA.is_file():
     for tag, mu in (("Half", 0.5), ("One", 1.0), ("Two", 2.0)):
         numbers[f"ResultsJsGaussOffset{tag}"] = js3(js_gauss(gauss(0, 1), gauss(mu, 1)))
 
-# ---- Section 4 summary table: the 64-epoch main run (e64) of every problem (import_js.py main, import_sbc.py) -----
+# ---- Section 4 summary table: the reported model of every problem (e64.SELECTED; import_js.py main, import_sbc.py) --
 JS_MAIN = style.PAPER / "data/runs/js-divergence-main.json"
 SBC_MAIN = style.PAPER / "data/runs/sbc-main.json"
 if JS_MAIN.is_file() and SBC_MAIN.is_file():
@@ -601,14 +608,14 @@ if JS_MAIN.is_file() and SBC_MAIN.is_file():
         key = f"{band}-{n}"
         if (band, n) not in jm or key not in sm:
             # not landed yet (full S=4: the Student-t continuation 261103-n4-full-B-t44)
-            rows.append(rf"n{n}-{band} & {n} & & & & & \\")
+            rows.append(rf"n{n}-{band} & {n} & & & & & & \\")
             continue
         m, s = jm[band, n], sm[key]
         snr = np.array([x["snr"] for x in m["sources"]])
         js = np.array([x["js"] for x in m["sources"]]).mean(1)  # mean over the eight coordinates
         low, high = js[(snr >= 7) & (snr < 15)].mean(), js[snr >= 15].mean()
         windows = f"{len(np.unique([x['injection'] for x in m['sources']]))} / {s['flow']['windows']}"
-        rows.append(rf"n{n}-{band} & {n} & {windows} & {low:.2f} & {high:.2f} & {s['flow']['in68']:.3f} & {pfmt(s['flow']['min_p'])} \\")
+        rows.append(rf"n{n}-{band} & {n} & {e64.model_label(band, n)} & {windows} & {low:.2f} & {high:.2f} & {s['flow']['in68']:.3f} & {pfmt(s['flow']['min_p'])} \\")
     numbers["ResultsSummaryRows"] = "\n".join(rows)
     numbers["ResultsSummaryFloor"] = f"{np.median([m['null']['median'] for m in jm.values()]):.2f}"
 
