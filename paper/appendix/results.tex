@@ -206,8 +206,8 @@ narrows it \ResultsFullFourContractLow, \ResultsFullEightContractLow{} and
 \ResultsFullSixteenContractLow-fold. Above \qty{\ResultsFullSplitMhz}{\milli\hertz} the frame is about twice
 as wide again (\ResultsFullFourFrameHigh, \ResultsFullEightFrameHigh{} and \ResultsFullSixteenFrameHigh{}
 times), but the flow narrows it only \ResultsFullFourContractHigh, \ResultsFullEightContractHigh{} and
-\ResultsFullSixteenContractHigh-fold. \textcolor{red}{TODO(run): 261103-frame-vs-flow.py on the 64-epoch
-models of full $S=16$ and $S=4$ (TREX); their entries are ?? until then.} (The models' eval windows, 256 draws per window, $f_0$ widths in bins;
+\ResultsFullSixteenContractHigh-fold. \textcolor{red}{TODO(run): 261103-frame-vs-flow.py on full $S=4$'s
+64-epoch model (t44) once it lands; its entries are ?? until then.} (The models' eval windows, 256 draws per window, $f_0$ widths in bins;
 \texttt{outputs/runs/261103-frame-vs-flow.py}.)
 % updated 2026-11-17: the cause of the >10 mHz misses, as the authors read it
 These sources are seen poorly because the prior produces few sources like them, so the training set holds
@@ -215,7 +215,7 @@ few examples of loud sources above \qty{\ResultsFullSplitMhz}{\milli\hertz}. We 
 cure this.
 
 \paragraph{Calibration.}
-Every eval, main runs and forks, \ResultsEvals{} in all, covers
+Every reported model, \ResultsEvals{} of the six so far (full $S=4$ pending), covers
 \ResultsCoverSixtyEightLo--\ResultsCoverSixtyEightHi{} of the true coordinates at the
 \qty{68}{\percent} level and \ResultsCoverNinetyFiveLo--\ResultsCoverNinetyFiveHi{} at
 \qty{95}{\percent}, pooled over coordinates and sources, including the full-band models that are an
@@ -323,9 +323,8 @@ table leaves out: how the parameters of one draw go together.
 To find the parameter, every draw of the validation pass had one group of its flow coordinates set to the
 truth's (the frequencies $x_f, x_{\fdot}$; the sky $l, b$; the phases $\arg z_\pm$; the moduli $|z_\pm|$) before
 its overlap was ranked again, for each model and for its Gaussian mock on the same injections.
-\textcolor{red}{TODO(run): recomputed so far for narrow $S=4$ and full $S=8$ only, whose reported models were
-already the 64-epoch runs; narrow $S=2$, narrow $S=8$ and full $S=16$ (and full $S=4$) need
-overlap\_groups\_flow.py on their 64-epoch scorecards (TREX), and the ranges below cover two problems until then.}
+% updated 2026-11-18: the 64-epoch models of narrow S=2, S=8 and full S=16 rerun (TREX 18206237).
+\textcolor{red}{TODO(run): full $S=4$ (261103-n4-full-B-t44) once its eval lands; the ranges below cover the other five problems.}
 No group
 is the one. Setting the frequencies or the sky to the truth leaves the mock's offset where it was
 (\ResultsOverlapFixMockFreqSkyLo{} to \ResultsOverlapFixMockFreqSkyHi), but raises the flow's, to

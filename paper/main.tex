@@ -190,6 +190,11 @@ specifically highlighted here.
     \cref{app:evaluation-fisher} (fisher-diagonal.json) the old prior: rerun.
   \item Fisher draws on the full band: $\fdot$ overflows to infinity for about half the draws of the faint
     sources (\cref{app:evaluation-fisher}); bound them and repack the references.
+  \item Every result is the 64-epoch run of its problem (2026-11-18, \texttt{paper/scripts/e64.py}); full $S=4$'s is
+    the Student-t continuation 261103-n4-full-B-t44, whose eval (TREX 18162618) is pending: then import\_runs.py
+    (scoring), import\_js.py main, import\_sbc.py, import\_faint/corners/ranks.py, overlap\_groups\_flow.py and
+    261103-frame-vs-flow.py (TREX), import\_overlap/frame.py, numbers\_results.py. The Student-t frame loss itself is
+    not yet described in \cref{app:training}.
   \item One seed per configuration: the run-to-run spread is unmeasured, so differences of a few
     hundredths of a nat between forks are not significant. TODO(run, expensive, deliberately not
     launched 2026-11-13): a second seed of narrow $S=2$, about 32 A100 hours.
@@ -222,8 +227,8 @@ specifically highlighted here.
 \begin{itemize}
   \item Decide what moves from the appendices into the main text: the abstract's results sentence,
     \cref{sec:results-main} and the conclusions' summary of where the flow is wider than the chains
-    (the frequency-domain factorisation is in \cref{sec:gw-factorisation} since 2026-11-17). The main text ends on page 4 of
-    the 8 allowed.
+    (the frequency-domain factorisation is in \cref{sec:gw-factorisation} since 2026-11-17). The main text now
+    runs a few lines past page 8 (2026-11-18), so anything moved in needs a cut elsewhere.
   \item Review every \texttt{\% updated 2026-11-09} marker (stale facts fixed in moved text) and
     keep or revert each.
   \item Check the references marked ``from memory, not yet checked'' in \texttt{references.bib}

@@ -182,8 +182,8 @@ numbers["ResultsMcmcEssMin"] = f"{min(e['mcmc_min_ess'] for e in evs):.0f}"
 numbers["ResultsMcmcFzeroCoverLo"] = f"{min(e['mcmc_f0_in68'] for e in evs):.2f}"
 numbers["ResultsMcmcFzeroCoverHi"] = f"{max(e['mcmc_f0_in68'] for e in evs):.2f}"
 
-# pooled calibration of every eval, main and forks
-all_evals = [e for r in runs for e in r["evals"]]
+# pooled calibration of the reported (e64) models; was every eval, main runs and forks
+all_evals = [selected(b, n)["evals"][-1] for b, n in CONFIGS if selected(b, n)]
 numbers["ResultsEvals"] = str(len(all_evals))
 numbers["ResultsCoverSixtyEightLo"] = f"{min(coverage(e, 'in68') for e in all_evals):.2f}"
 numbers["ResultsCoverSixtyEightHi"] = f"{max(coverage(e, 'in68') for e in all_evals):.2f}"

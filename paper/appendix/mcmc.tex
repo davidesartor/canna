@@ -206,10 +206,13 @@ not: its $f_0$ width is a median \McmcFisherFaintFzero{} of the chains'. Between
 \McmcFisherFaintSnr{} and \McmcFisherMidSnr{} on the full band the forecast is the wider one, by
 \McmcFisherFullMidLo--\McmcFisherFullMidHi{} in $f_0$ (median per source count) and
 \McmcFisherFullMidDrift{} in $\fdot$.
-\textcolor{red}{TODO(check): find which side is off in the full band at \ac{snr} 5--15. The forecast's
-Gaussian stand-in for the $\fdot$ prior, which also widens its $\fdot$ there, would make the forecast too
-wide; a chain held near its Fisher start (\cref{app:results-mcmc}) would make the chains too narrow. Read the
-prior-started chains of full $S=16$ (running) in this \ac{snr} range.}
+% resolved 2026-11-18 from the prior-started chains of full S=16 (labelfree-prior-full-16.json, TREX 18033012/18033013):
+% chain(late)/reference f0 width 1.29-1.66 for the five sources at SNR 7-15, none localised at SNR 5-7.
+Part of the gap is the chains'. The prior-started chains of full $S=16$ (\cref{app:results-mcmc}) end
+1.3 to 1.7 times wider in $f_0$ than the reference on the five sources of their windows at $\snr=7$--15,
+and are still widening, so the reference is too narrow there; between $\snr=5$ and 7 they do not localise
+the sources at all. How much of the remaining factor is the forecast's Gaussian stand-in for the $\fdot$
+prior, which would make it too wide, is not tested.
 The forecast is therefore a fair proxy for the widths from \ac{snr} \McmcFisherMidSnr{} up, and no proxy
 below.
 
