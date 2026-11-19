@@ -105,6 +105,32 @@ anticentre, $l=\pm\pi$ ($x_l=\pm\ChartSeamX{}$), which holds \qty{\ChartSeamMass
 within \ang{\ChartEdgeDeg}. The inverse rotation maps any real $(l, b)$ to a direction, so the
 flow's output never needs wrapping.
 
+\paragraph{Amplitude unit.}
+\label{app:chart-unit}
+% moved 2026-11-19 (user) from app:noise-snr.
+The chart measures amplitudes in a unit that depends only on the window,
+$u(\fw) = \sqrt{S_n(\fw)/\Tobs}$, with $S_n$ the sky-averaged sensitivity of
+\citet[eq.~1]{robson2019construction} without the confusion term,
+\begin{equation}
+  S_n(f) = \frac{10}{3\,(cL)^2}\left[P_{\rm oms} + \frac{4P_{\rm acc}}{(2\pi f)^4}\right]
+  \left[1+0.6\Bigl(\frac{f}{f_\star}\Bigr)^2\right],\qquad f_\star = \frac{1}{2\pi L}.
+  \label{eq:noise-sky}
+\end{equation}
+Their eq.~13 carries $2\bigl(1+\cos^2(f/f_\star)\bigr)$ in place of the 4; over
+\qtyrange{\NoiseBandLow}{\NoiseBandHigh}{\milli\hertz} the two differ by at most
+\qty{\NoiseRobsonPower}{\percent} in $S_n$ (\qty{\NoiseRobsonAmplitude}{\percent} in amplitude),
+because the acceleration term is negligible where they differ. $S_n$ enters nothing but this
+unit: the likelihood, the \ac{snr} and the prior all use the full response and
+\cref{eq:noise-psd}. For a monochromatic source averaged over sky, polarisation, inclination and
+phase, $\E[\snr^2] = C\,\Amp^2\Tobs/S_n(f)$. Rather than take $C$ from a paper with other
+normalisation conventions, we measure it with our own $\snr$ on \num{\NoiseCSources} sources:
+$C = \num{\NoiseC \pm \NoiseCError}$ for an isotropic sky
+(\num{\NoiseCGalactic} for the Galactic sky prior), constant to \qty{\NoiseCFlat}{\percent} below
+\qty{\NoiseCFlatBelow}{\milli\hertz} and \qty{\NoiseCRise}{\percent} higher at
+\qty{\NoiseCTop}{\milli\hertz}. The unit $u$ is thus the amplitude of a source at a sky-averaged
+\ac{snr} of $\sqrt C\approx\NoiseSqrtC{}$; the chart needs a scale that tracks the noise across
+the band, not an exact \acs{snr}.
+
 \paragraph{Helicity amplitudes.}
 $\zeta_+$ and $\zeta_-$ are the complex amplitudes of the two circular polarisations in units
 of $u(\fw)$, with $S_n$ the sky-averaged sensitivity of \cref{eq:noise-sky}

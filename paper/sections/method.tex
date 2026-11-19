@@ -86,6 +86,81 @@ attends to everything and is conditioned on the time. Rotary embeddings in frequ
 size B, \num{\NetworkBTotalFull} parameters.
 % moved to sec:gw-tokens: "The data stream reads the window as a short-time Fourier transform, ..."
 
+\subsection{Training Set}
+\label{sec:gw-training}
+% Moved 2026-11-19 (user) from the end of sec:gw (was 2.5). New 2026-11-18, after Delmond et al. (arXiv:2606.29039), Sec. III-C; summarises app:priors-window and
+% app:priors-training. The Bands paragraph is the former Slicing in Frequency's last paragraph, the
+% Tokens paragraph the former Tokenisation subsection.
+
+Training needs windows paired with their sources, $(\Theta_w, y)$ drawn from
+$\pi_w(\Theta_w)\,p(y\mid\Theta_w,\fw)$. \Citet{delmond2026neural} precompute a bank of
+responses over frequency, drift and sky and draw the remaining parameters on the fly. We simulate
+every window afresh instead, on the device and inside the compiled training step, so there is no
+fixed dataset and no window is seen twice (\cref{app:priors-training}). One example takes four steps:
+\begin{enumerate}
+  \item a window centre $\fw$ (\cref{eq:priors-window}), placed mostly where the catalogue's sources
+    can be seen, with weight the catalogue's $f_0$ marginal times the chance that a source there
+    reaches $\snr\ge\PriorsVisibleSnr$, and in \qty{\PriorsUniformWindowsPercent}{\percent} of the
+    windows log-uniformly over the band, so that training also sees the empty windows most of the
+    band holds;
+  \item $S_w = S$ sources $\Theta_w\sim\pi_w$ (\cref{eq:priors-window-prior}), with $f_0$ in the
+    interior of \cref{eq:forward-model-window-interior};
+  \item each source's $R$-bin response, computed with JaxGB \citep{jaxgb} over
+    $\Tobs=\qty{\ForwardModelTobsYears}{\year}$ (\cref{app:forward-model-heterodyne}) and added at its
+    offset in the window, and noise drawn by \cref{eq:noise-data};
+  \item the whitened data $y$, and the sources in the flow coordinates of \cref{sec:method-chart},
+    in order of $f_0$.
+\end{enumerate}
+The weights of the first step choose which windows training sees, not what their sources are, so
+the posterior given a window is unchanged. Unlike \citet{delmond2026neural}, who keep sources with an
+\ac{snr} between 10 and 100, we apply no cut: most of a window's sources lie below the noise, and
+for them the flow must return the prior. The parameters are not standardised by the prior's
+moments; the flow coordinates and the frame of \cref{sec:method} take that role. The simulation
+takes \qty{\PriorsNarrowDrawShare}{\percent} of a training step in the narrow band and
+\qty{\PriorsFullDrawShare}{\percent} in the full band (\cref{tab:priors-bands}).
+\Cref{fig:forward-model-window} shows one window of each band.
+
+\paragraph{Bands.}
+We train two configurations (\cref{tab:forward-model-bands}): the narrow band, windows of
+\PriorsNarrowW{} bins with \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, where sources
+crowd the most; and the full band, windows of \PriorsFullW{} bins up to
+\qty{\PriorsFullHighMhz}{\milli\hertz}. At the top of the full band a source's Doppler, chirp and
+antenna sidebands span \ForwardModelFullSpan{} bins at the mean $\fdot$, against
+$R=\ForwardModelFullR{}$, so the few sources there lose their outermost bins above the noise. The narrow band's $R=\ForwardModelNarrowR{}$ keeps all
+the power above the noise of \qty{99.9}{\percent} of its sources, which are
+\qty{\ForwardModelNarrowSpanShare}{\percent} of the full band's sources above the noise
+(\cref{app:forward-model-heterodyne}).
+% 2026-11-19 (user): the former app:forward-model-windows (B.4) trimmed into here, sec:gw-windows and
+% tab:forward-model-bands (moved from the appendix).
+
+\begin{table}[t]
+\caption{The two bands, which share the priors and the window layout: response width $R$, window
+length $K$ and interior in bins, number of distinct windows, $f_0$ range, and share of $\log f_0$ over
+\qtyrange{\ForwardModelBandLow}{\ForwardModelBandHigh}{\milli\hertz}.}
+\label{tab:forward-model-bands}
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lrrrrcr@{}}
+\toprule
+band & $R$ & $K$ & interior & windows & $f_0$ [mHz] & share \\
+\midrule
+narrow & \ForwardModelNarrowR{} & \ForwardModelNarrowK{} & \ForwardModelNarrowInterior{} & \num{\ForwardModelNarrowWindows} & \numrange{\ForwardModelNarrowLow}{\ForwardModelNarrowTop} & \qty{\ForwardModelNarrowFraction}{\percent} \\
+full & \ForwardModelFullR{} & \ForwardModelFullK{} & \ForwardModelFullInterior{} & \num{\ForwardModelFullWindows} & \numrange{\ForwardModelFullLow}{\ForwardModelFullTop} & \qty{\ForwardModelFullFraction}{\percent} \\
+\bottomrule
+\end{tabular}
+\end{table}
+% updated 2026-11-09: the narrow band was "f0 <= \PriorsNarrowHighMhz mHz"; it now starts at 1 mHz.
+
+\paragraph{Tokens.}
+\label{sec:gw-tokens}
+The data stream of the network (\cref{sec:method-network}) reads the window as
+a \ac{stft}, \NetworkPatch{} bins per token, each token holding its band's time
+samples in the three channels (\cref{eq:network-stft}): \NetworkTokensNarrow{} tokens in the
+narrow band, \NetworkTokensFull{} in the full band.
+% updated 2026-11-09 (moved out of the Network subsection): "The data stream" -> "The data stream of
+% the network (sec:method-network)".
+
 \subsection{Training}
 \label{sec:method-training}
 

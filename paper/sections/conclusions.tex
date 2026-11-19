@@ -34,10 +34,14 @@ training data, the test injections and the likelihood of the reference \ac{mcmc}
 so its simplifications limit realism, not the consistency of the comparison. Lifting them, roughly
 in the order a global fit would need them, is the work that follows:
 \begin{itemize}
-  \item a variable number of sources per window, and sources that straddle a window's edge or leak
-  in from a neighbouring window: every window now holds exactly $S$ binaries, mostly below the
-  noise, and nothing else. Using the posteriors inside a global fit, which infers the number of
-  sources and updates overlapping segments in turn \citep{littenberg2020global}, needs both;
+  \item windows of adaptive length, a realistic number of sources per window, varying from window
+  to window with the density of the Galaxy, and sources that straddle a window's edge or leak in
+  from a neighbouring window: every window now has a fixed length and holds exactly $S$ binaries,
+  mostly below the noise, and nothing else. A tiling whose window length follows the Doppler spread
+  of the responses, which grows with $f_0$, and keeps the number of sources per window small should
+  simplify the analysis, at high frequencies in particular, where the Galaxy is sparse and the
+  sources are loud. Using the posteriors inside a global fit, which infers the number of sources
+  and updates overlapping segments in turn \citep{littenberg2020global}, needs all three;
   \item the confusion foreground of the unresolved binaries
   \citep{timpano2006characterizing,karnesis2021characterization} and the other source classes;
   \item gaps in the data \citep{baghi2019gravitational,dey2021effect}, and noise that is estimated
@@ -48,7 +52,7 @@ in the order a global fit would need them, is the work that follows:
   \item the cubic phase of $\ddot f = \tfrac{11}{3}\fdot^2/f_0$, which JaxGB drops: the frequency now
   evolves linearly, which is negligible in the narrow band and matters most at the top of the full band;
   \item responses longer than $R$ bins, since the widest sources of the full band now lose their
-  outermost bins above the noise (\cref{tab:forward-model-truncation}).
+  outermost bins above the noise (\cref{app:forward-model-heterodyne}).
 \end{itemize}
 % added 2026-11-18 (user): realistic orbits and gaps next; stress the expected robustness against MCMC
 We will add realistic orbits and gaps first. \emph{We expect the network to be very robust to both,

@@ -1,78 +1,30 @@
 % =======================================================================================
 \section{Reference \acs{mcmc}}
-\label{app:mcmc}
+\label{app:mcmc}\label{app:mcmc-sampler}\label{app:mcmc-context}\label{app:mcmc-convergence}\label{app:mcmc-strub}\label{app:mcmc-cost}
 % =======================================================================================
+% 2026-11-19 (user): subsections merged; their labels kept in place.
+% Trimmed 2026-11-19 (user): no figures (mcmc-posterior, mcmc-convergence dropped), context, posterior
+% example, long-chain diagnostics and the Strub check reduced to their conclusions. Full previous text:
+% git history (5a06420).
 
-The flow's posteriors are judged against Markov chains that sample the likelihood of
-\cref{eq:loglik} directly. The chains are an evaluation reference only: training never sees
-them, and the flow's posteriors never use them. This appendix describes the reference sampler,
-its convergence and what it costs; the Fisher forecast against it is in \cref{app:mcmc-fisher}. The flow against these chains is in \cref{app:results}.
+The flow's posteriors are judged against Markov chains that sample the window likelihood of
+\cref{eq:loglik} directly; training never sees them. Unlike a global fit
+\citep{littenberg2020global}, the number of sources and the noise are known, so no move changes the
+model.
 
-\subsection{\acs{mcmc} for Galactic Binaries}
-\label{app:mcmc-context}
 
-The standard analysis of \ac{lisa}'s \acp{gb} is a global fit
-\citep{cornish2007tests,littenberg2020global,littenberg2023prototype,strub2024global,katz2024efficient,deng2025modular}:
-one Markov chain samples all resolvable sources and the noise together, moves between source
-counts by reversible jumps \citep{green1995reversible}, and crosses between likelihood modes
-(\cref{app:priors}) by parallel tempering \citep{earl2005parallel,vousden2016dynamic}. The band
-is split into overlapping segments updated in turn, the unit our windows imitate, and every new
-stretch of data or noise model means sampling again. Normalising flows have been proposed as
-priors and proposals for these samplers \citep{korsakova2024neural,sasli2026learned}, and
-sequential Monte Carlo parallelises their trans-dimensional moves \citep{demasi2026massively}.
-Amortised posteriors for one or two binaries have been compared with \ac{mcmc} by
-\citet{delmond2026neural}, and slot-based posteriors of sinusoidal mixtures with \ac{rjmcmc} by
-\citet{houba2025slotflow} (\cref{app:related}). Our references are simpler than a global fit:
-the number of sources and the noise are known, so no move changes the model.
-
-\subsection{Reference Sampler}
-\label{app:mcmc-sampler}
-
-Each eval injection (\cref{app:evaluation-injections}) is sampled jointly: one ensemble over all
-\McmcJointDim{} parameters of its \McmcSlots{} sources, on the window likelihood of
-\cref{eq:loglik}. Each source's response (\McmcResponsePoints{} bins in the narrow band) is added
-into the window, bins outside it dropped as in the simulator, so one likelihood costs one response
-per source. The chains sample the joint posterior $p(\theta\mid d)$, whose per-source marginals are
-the flow's target; no source is held at its true value.
-
-\paragraph{Coordinates and prior.}
-Each source is sampled in $u = (\ln f_0, \ln\fdot, \ln\Amp, \alpha, \delta, \psi, \cos\iota,
-\phi_0)$ under the training prior of \cref{app:priors}, independently across sources: the Gaussian
-in $(\log_{10}f_0, \log_{10}\fdot, \log_{10}\Amp)$ of \cref{app:priors-sources} with $f_0$ inside
-the window, $\cos\iota$, $\psi$ and $\phi_0$ uniform, and $(\alpha,\delta)$ with the Galactic sky
-density times $\cos\delta$. The chains add one cut, $\log_{10}\fdot$ at most \McmcFdotSigmas{}
-standard deviations above its mean given $f_0$, which removes a prior mass of
-\num{\McmcFdotCutMass}. The sampler moves in a box: $\alpha$, $\psi$ and $\phi_0$ on full $2\pi$
-periods centred on the truth, so no mode near it is cut by an edge, and $\ln\fdot$ and $\ln\Amp$
-out to \McmcBoxSigmas{} conditional standard deviations from their prior mean anywhere in the
-window, short of the $\fdot$ cut. The likelihood is computed in double precision.
-
-\paragraph{Moves, start and length.}
-The sampler is a parallel-tempered ensemble Metropolis--Hastings sampler from the \ac{lisa}
-community; each iteration is a temperature swap followed, with equal probability, by a
-differential-evolution move \citep{terbraak2006markov} or an affine-invariant stretch move
-\citep{goodman2010ensemble,foreman2013emcee}, with \McmcTemps{} temperatures spaced geometrically
-from the cold chain to \McmcTempMax{} \citep{earl2005parallel,vousden2016dynamic}. Tempering lets
-a chain leave the mode it starts in. The walkers start from the injection's Fisher draws
-(\cref{app:evaluation-fisher}), with $\fdot$ redrawn from its prior at each draw's $f_0$, clipped
-into the box and under the $\fdot$ cut. Starting near the truth suits a reference, not inference:
-it skips the search, and burn-in and tempering remove the start. Each of the \McmcInjections{}
-eval injections runs \McmcSeeds{} seed, \McmcChains{} chains per problem
-(\cref{tab:mcmc-settings}); their cold draws are subsampled to \McmcKeepDraws{} per injection for the
-evaluation.
-% updated 2026-11-18: the packed references hold one seed per injection (n_seeds = 1), not two
-Every band and source count of \cref{app:results} has its own reference, \McmcChainsAll{} chains over the
-\McmcReferences: the joint chains of the \EvaluationInjections{} eval injections of that problem, one seed
-each, over all $8S$ parameters,
-with responses of \PriorsNarrowR{} bins on the narrow band and \PriorsFullR{} on the full
-band. Over the six references in use, the largest $\hat R$ is \ResultsMcmcRhatMax{}
-(\ResultsMcmcRhatNarrowMax{} on the narrow band) and the smallest effective sample size
-\ResultsMcmcEssMin{}; the full-band chains thus sit above the usual $\hat R<1.01$ for their worst
-parameter, which the comparison of \cref{app:results} has to bear in mind. The chains' own
-coverage of the true $f_0$ at the \qty{68}{\percent} level is
-\ResultsMcmcFzeroCoverLo--\ResultsMcmcFzeroCoverHi.
-% updated 2026-11-18: the rest of the appendix rebuilt from the six packed references (reports/mcmc/data/eval-<pid>.npz;
-% paper/scripts/mcmc_reference.py); the old 64-window chains of a previous prior are no longer used.
+Each eval injection (\cref{app:evaluation-injections}) is sampled jointly, one ensemble over all
+$8S$ parameters of its sources, with responses of \PriorsNarrowR{} bins in the narrow band and
+\PriorsFullR{} in the full band, in double precision. Each source moves in
+$(\ln f_0, \ln\fdot, \ln\Amp, \alpha, \delta, \psi, \cos\iota, \phi_0)$ under the training prior
+(\cref{app:priors}), with one extra cut, $\log_{10}\fdot$ at most \McmcFdotSigmas{} standard
+deviations above its mean given $f_0$ (prior mass \num{\McmcFdotCutMass}). The sampler is a
+parallel-tempered ensemble sampler with differential-evolution \citep{terbraak2006markov} and
+stretch moves \citep{goodman2010ensemble,foreman2013emcee}, \McmcTemps{} temperatures up to
+\McmcTempMax{} \citep{vousden2016dynamic}, started from the injection's Fisher draws
+(\cref{app:evaluation-fisher}); the cold draws are relabelled to the injected sources
+(\cref{eq:evaluation-matching}) and folded onto the injection's branch of the $(\psi,\phi_0)$
+symmetries (\cref{eq:psi-phi-symmetry}) before any width is taken (\cref{tab:mcmc-settings}).
 
 \begin{table}[t]
   \centering
@@ -96,110 +48,22 @@ coverage of the true $f_0$ at the \qty{68}{\percent} level is
   \end{tabular}
 \end{table}
 
-\subsection{Reference Posteriors}
-\label{app:mcmc-posteriors}
 
-Before any width is taken, the draws are relabelled to the injected sources by
-\cref{eq:evaluation-matching}, folded onto the injection's branch of the exact $(\psi,\phi_0)$
-symmetries of \cref{eq:psi-phi-symmetry} (the likelihood is checked to be invariant on the
-draws), and $f_0$ is expressed in bins. Every width in this appendix is the robust
-$1.4826\,\MAD$ of the folded draws, per parameter.
+Over the six references the largest split $\hat R$ \citep{gelman1992inference} is
+\ResultsMcmcRhatMax{} (\ResultsMcmcRhatNarrowMax{} on the narrow band) and the smallest \ac{ess}
+\ResultsMcmcEssMin{}; the full-band chains sit above the usual $\hat R<1.01$ for their worst
+parameter. Longer chains of the narrow band with four sources, \McmcConvSeeds{} seeds on
+injections \McmcConvRuns, show that the loud sources are settled once read without labels, while
+two things drift below $\snr=7$: sources under $\snr=3$ widen towards the prior, and sources at
+$\snr=3$--7 are slowly lost. The reference is therefore sound at $\snr\ge7$, somewhat narrow for
+invisible sources, and an upper bound on how often a source at $\snr=3$--7 is localised. On the
+verification binary of \citet{strub2022bayesian} the sampler reproduces the published posterior and
+\ac{snr} gain (\cref{app:noise-validation}).
 
-\Cref{fig:mcmc-posterior} shows what the reference looks like for one injection of the narrow band with
-four sources. For the two louder sources the posterior is close to Gaussian, and the Fisher forecast
-follows its correlations: amplitude against inclination, and $\psi$ against $\phi_0$. The two faint ones
-are not. The faintest puts \qty{\McmcPosteriorFarPercent}{\percent} of its $f_0$ draws more than a bin
-from the truth, \qty{90}{\percent} of them within \McmcPosteriorSpreadBins{} bins, where the forecast,
-centred near the truth, stays within a bin.
 
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=\textwidth]{figures/mcmc-posterior.pdf}
-  \caption{The joint \ac{mcmc} posterior of injection \McmcPosteriorInjection{} of the narrow band with four
-  sources (window \ac{snr} \McmcPosteriorWindowSnr), one row per source, as offsets from the truth in four
-  pairs of parameters, against the Fisher forecast. The loud sources are near-Gaussian, and the forecast
-  matches their correlations. The faintest source (\ac{snr} \McmcPosteriorFaintSnr) spreads
-  \qty{\McmcPosteriorFarPercent}{\percent} of its $f_0$ draws more than a bin from the truth, which the
-  forecast cannot show.}
-  \label{fig:mcmc-posterior}
-\end{figure}
-
-\subsection{Convergence}
-\label{app:mcmc-convergence}
-
-For each parameter of each reference chain we compute the split $\hat R$ of \citet{gelman1992inference}
-over \McmcRhatGroups{} groups of cold walkers and the \ac{ess} from the integrated autocorrelation time,
-with emcee's estimator on the walker-averaged autocorrelation and Sokal's window
-\citep{foreman2013emcee}. Over the \McmcChainsAll{} chains of the six references $\hat R\le\McmcRefRhatMax$
-and $\acs{ess}\ge\McmcRefEssMin$ (\cref{app:mcmc-sampler}). With one seed per injection, the agreement
-between seeds and the burn-in are measured on the long chains below.
-
-\paragraph{Burn-in and length.}
-Agreement between walkers can hide a chain that has not settled. The sampler is therefore
-rerun unchanged on injections \McmcConvRuns{} for \McmcConvIterations{} iterations with
-\McmcConvSeeds{} seeds each, storing every \McmcConvThin{}th iteration from the start. Each
-marginal's drift is measured against the other seeds' second halves, so a seed stuck in its own
-mode shows up: the shift of the median in half \qty{68}{\percent} widths, and the relative change
-of the \qty{68}{\percent} width. A burn-in $b$ passes when $b\ge\McmcConvBurnTaus\,\tau_{\max}$
-and every segment of \McmcConvStep{} iterations from $b$ on keeps the median within
-\McmcConvMedianTol{} half-widths and the width within \qty{\McmcConvWidthTol}{\percent}. A kept
-length passes when every parameter has $\acs{ess}\ge\McmcConvEssCrit$ per seed (enough to resolve
-a width to a few per cent), $\hat R<\McmcConvRhatCrit$ across seeds, and the same drift
-tolerances.
-
-% updated 2026-11-16: long chains of the narrow S=4 reference (catalogue prior), read label-free
-The long chains here are those of the narrow band with four sources, on injections \McmcConvRuns.
-\Cref{fig:mcmc-convergence} shows the result. Over the paper's kept draws $\tau_{\max}$ is
-\McmcConvTauLo--\McmcConvTauHi{} iterations, the \ac{ess} at least \McmcConvEssLo{} per seed and
-$\hat R\le\McmcConvRhatHi$, but the drift test fails on every injection, for most marginals and at
-every burn-in: at worst \McmcConvWorstAfter{} times the tolerance, in \McmcConvWorstParam{} (\ac{snr}
-\McmcConvWorstSnr). That failure is mostly bookkeeping. Each draw lists its sources by $f_0$, so when a
-faint source wanders past a loud one their ranks swap and the loud source's rank marginal picks up
-the faint one's draws. Read without labels, the loud sources are settled: taking, in each draw, the
-source nearest a loud source's true $f_0$ ($\snr\ge7$), its width moves by a factor
-\McmcConvLoudDriftLo--\McmcConvLoudDriftHi{} between the first and last quarter of the chain and ends
-\McmcConvLoudChainRef{} times the reference's. Two things do drift, both below $\snr=7$. Sources under
-$\snr=3$ spread from \McmcConvFaintPriorFirst{} to \McmcConvFaintPriorLast{} times the prior's $f_0$
-width (of the $f_0$-ordered sources), where the reference holds them at \McmcConvFaintRefPrior{}
-and the flow at \McmcConvFaintFlowPrior. Sources at $\snr=3$--7 are slowly lost: the share of draws
-with some source within \McmcLabelFreeFoundBins{} bins of the true $f_0$ falls from
-\McmcConvMidFoundFirst{} to \McmcConvMidFoundLast{} over the four injections (reference
-\McmcConvMidFoundRef, flow \McmcConvMidFoundFlow). The reference is therefore sound at $\snr\ge7$,
-somewhat narrow for invisible sources, and an upper bound on how often a source at $\snr=3$--7 is
-localised.
-
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=\textwidth]{figures/mcmc-convergence.pdf}
-  % updated 2026-11-16
-  \caption{Convergence of the narrow-band reference chains with four sources, one line per
-  injection. (a) Worst drift of any marginal in each segment, in units of the tolerance, against the
-  segment's start. No injection drops below one: faint sources crossing loud ones in $f_0$ swap their
-  ranks, and sources below $\snr=7$ keep drifting (text). (b) Smallest \acs{ess} per seed and (c)
-  largest $|\hat R - 1|$ against the kept length, with the thresholds as horizontal lines.}
-  \label{fig:mcmc-convergence}
-\end{figure}
-
-\subsection{Independent Check}
-\label{app:mcmc-strub}
-
-The sampler and likelihood are also run on a published analysis, the faint verification binary
-of \citet[Table~VII]{strub2022bayesian}, under its authors' priors. They reproduce its posterior
-and its \ac{snr} gain from the observed to the maximum-likelihood value (\cref{app:noise},
-\cref{tab:noise-strub,fig:strub-source}).
-
-\subsection{Cost}
-\label{app:mcmc-cost}
-
-% updated 2026-11-18: wall times of our own 400 000-iteration chains on TREX (import_mcmc_cost.py)
-On \McmcJointCores{} CPU cores, a joint chain of \num{400000} iterations (burn-in and kept draws) takes
-\qtyrange{\McmcCostNarrowFourLo}{\McmcCostNarrowFourHi}{\hour} for a narrow-band window with four sources,
-\qtyrange{\McmcCostNarrowEightLo}{\McmcCostNarrowEightHi}{\hour} with eight, and about
-\qtyrange{\McmcCostFullSixteenLo}{\McmcCostFullSixteenHi}{\hour} for a full-band window with sixteen,
-against a fraction of a second for the flow (\cref{app:fm-sampling}). The cost grows with the dimension
-and with the response, \McmcResponsePointsFull{} bins per source on the full band against
-\McmcResponsePoints{} on the narrow one. The full $S=16$ figure doubles the measured wall times of its
-prior-started chains, which ran \num{200000} iterations.
-% updated 2026-11-18: full S=16 from the eight completed 200 000-iteration chains (TREX 18033012), doubled
-
-The flows of every band and source count against these chains are in \cref{app:results}.
+On \McmcJointCores{} \acs{cpu} cores a joint chain of \num{400000} iterations takes
+\qtyrange{\McmcCostNarrowFourLo}{\McmcCostNarrowFourHi}{\hour} for a narrow-band window with four
+sources, \qtyrange{\McmcCostNarrowEightLo}{\McmcCostNarrowEightHi}{\hour} with eight, and about
+\qtyrange{\McmcCostFullSixteenLo}{\McmcCostFullSixteenHi}{\hour} for a full-band window with sixteen
+(doubled from \num{200000}-iteration chains), against a fraction of a second for the flow
+(\cref{app:fm-sampling}).

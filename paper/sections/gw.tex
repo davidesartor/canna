@@ -31,8 +31,6 @@ window, and how many sources a window holds.
 % Strub+2024 Sec. V, Gee-Moo (Deng+2025) Sec. IV; pipelines named Erebor, Gee-Moo, GLASS, else by authors (user);
 % trimmed 2026-11-18 (user): per-pipeline figures live in tab:gw-globalfit and app:related; last paragraph = our aim; Mojito from the LISA 2026 programme, the Phentax paper and Hooper's slides).
 
-\textcolor{red}{TODO(structure): decide whether to move this subsection to the introduction.}
-
 The Milky Way holds tens of millions of double white dwarfs in the \ac{lisa} band
 \citep{nelemans2001gravitational,korol2017prospects,lamberts2019predicting}; the simulated Galaxy
 behind our prior holds \num{\RatesCatalogue} between \qty{\PriorsFullLowMhz}{\milli\hertz} and
@@ -152,7 +150,7 @@ the same device that trains the network (\cref{sec:gw-training}).
 \paragraph{Noise.}
 The noise is the instrument noise of the \ac{lisa} science requirements
 \citep{lisasst2018lisa,babak2021lisa}: stationary, Gaussian, with one-sided \ac{psd} $S_c(f)$ in
-channel $c\in\{A,E,T\}$ (\cref{eq:noise-psd}, \cref{fig:noise-psd}a). On the Fourier bins
+channel $c\in\{A,E,T\}$ (\cref{eq:noise-psd}). On the Fourier bins
 $f_k = k/\Tobs$ of the band, and with $\tilde h_c(f;\theta_s)$ the Fourier transform of source $s$'s
 response in channel $c$, the data $d = (\tilde d_{k,c})$ of a band holding $N$ sources are
 \begin{equation}
@@ -182,7 +180,7 @@ of bins, stands little above the noise in the data.
   \includegraphics[width=\textwidth]{figures/training-window.pdf}
   \caption{One training window per band (\cref{app:priors-window}); the full-band one is the first
   drawn that holds a source with $\snr\ge\PriorsVisibleSnr{}$. (a, b) The network's input in the
-  real part of channel $A$ (\cref{eq:noise-whiten}; grey) with the noiseless signal whitened the
+  real part of channel $A$ (\cref{sec:gw-windows}; grey) with the noiseless signal whitened the
   same way (black); the noise has unit variance. (c, d) Each source's $A$ response alone, in
   units of the noise's root-mean-square per bin, labelled with its \acs{snr}; shading marks the guard bands,
   which hold no $f_0$, only the responses' wings. In both bands the Doppler and chirp terms spread a
@@ -304,6 +302,8 @@ $\phi_0$ & $\Unif(0, 2\pi)$ \\
 % window posterior and likelihood (eq:loglik) moved here from sec:inversion; Symmetries moved to
 % sec:method-chart. Revised again 2026-11-18 (user): d from eq:noise-data (now over the band), channels
 % explicit, Theta = all N sources, windows indexed by w (was j), S_w sources per window.
+% 2026-11-19 (user): residual r written out inside |.|^2 in both likelihoods, no separate definition;
+% constants C, C_w dropped, "up to a normalisation constant" in the text.
 
 Let $\Theta = (\theta_1,\dots,\theta_N)$ collect the parameters of all $N$ sources of the band
 (\cref{eq:gw-parameters}), each drawn from the per-source prior $\pi$. The noise of
@@ -312,13 +312,11 @@ Whittle likelihood, and the posterior is
 \begin{equation}
 \begin{aligned}
   p(\Theta\mid d) &\propto p(d\mid\Theta)\prod_{s=1}^{N}\pi(\theta_s),\\
-  \log p(d\mid\Theta) &= -\sum_{k}\sum_{c\in\{A,E,T\}}\frac{\bigl|\tilde r_{k,c}(\Theta)\bigr|^2}{P_c(f_k)} + C,\\
-  \tilde r_{k,c}(\Theta) &= \tilde d_{k,c}-\sum_{s=1}^{N}\tilde h_c(f_k;\theta_s),
+  \log p(d\mid\Theta) &= -\sum_{k}\sum_{c}\frac{\bigl|\tilde d_{k,c}-\sum\limits_{s=1}^{N}\tilde h_c(f_k;\theta_s)\bigr|^2}{P_c(f_k)},
 \end{aligned}
   \label{eq:gw-band-posterior}
 \end{equation}
-with $\tilde r$ the residual, the sum over all the band's bins and $C$ a normalisation constant that does not depend on
-$\Theta$. Two properties make it separable. First, the noise is stationary, so its covariance is
+up to a normalisation constant that does not depend on $\Theta$, with the sums over all the band's bins $k$ and the channels $c\in\{A,E,T\}$. Two properties make it separable. First, the noise is stationary, so its covariance is
 diagonal in frequency: the bins, and in $A$, $E$, $T$ the channels, are independent, and the
 log-likelihood is a sum of one term per bin.
 
@@ -334,8 +332,11 @@ $K = \ForwardModelWindowResponses{}R$ consecutive bins, with first bin and centr
   \label{eq:forward-model-window-start}
 \end{equation}
 with $\operatorname{rint}$ rounding to the nearest integer. A source belongs to the window whose
-interior holds its $f_0$; a guard band of $R/2$ bins at each edge keeps its whole response inside
-the window (\cref{app:forward-model-windows}),
+interior holds its $f_0$. Its response fills the bins $q-R/2,\dots,q+R/2-1$, with
+$q=\operatorname{rint}(f_0\Tobs)$ (\cref{app:forward-model-heterodyne}), and lies inside the window's
+bins $k_0,\dots,k_0+K-1$ when $k_0+R/2\le q\le k_0+K-R/2$. Since both bounds are integers, this holds
+whenever $f_0\Tobs$ itself lies between them, so a guard band of $R/2$ bins at each edge keeps the
+whole response inside, and within the band
 \begin{equation}
 \begin{aligned}
   f_0 &\ge \max\Bigl(\frac{k_0 + R/2}{\Tobs},\, f_{\min}\Bigr),\\
@@ -343,7 +344,8 @@ the window (\cref{app:forward-model-windows}),
 \end{aligned}
   \label{eq:forward-model-window-interior}
 \end{equation}
-an interior of $\ForwardModelInteriorResponses{}R$ bins. When every response lies inside its window,
+an interior of $\ForwardModelInteriorResponses{}R$ bins. The window index is clipped to the range whose
+interiors just cover $[f_{\min}, f_{\max}]$. When every response lies inside its window,
 the log-likelihood is a sum of one term per window and the posterior factorises window by window.
 With $d_w$ the data on the $K$ bins of window $w$ and $\Theta_w$ its $S_w$ sources, with prior
 $\pi_w$ (\cref{eq:priors-window-prior}),
@@ -355,15 +357,15 @@ where
 \begin{equation}
 \begin{aligned}
   p(\Theta_w\mid d_w) &= \frac{p(d_w\mid\Theta_w)\,\pi_w(\Theta_w)}{p(d_w)},\\
-  \log p(d_w\mid\Theta_w) &= -\sum_{k\in w}\sum_{c\in\{A,E,T\}}\frac{\bigl|\tilde r_{k,c}(\Theta_w)\bigr|^2}{P_c(f_k)} + C_w,
+  \log p(d_w\mid\Theta_w) &= -\sum_{k\in w}\sum_{c}\frac{\bigl|\tilde d_{k,c}-\sum_{s\in w}\tilde h_c(f_k;\theta_s)\bigr|^2}{P_c(f_k)},
 \end{aligned}
   \label{eq:loglik}
 \end{equation}
-with the residual $\tilde r_{k,c}(\Theta_w)$ of \cref{eq:gw-band-posterior} summed over the window's
-$S_w$ sources only and $C_w$ independent of $\Theta_w$. One network, conditioned on the window's centre $\fw$, then
+up to a normalisation constant that does not depend on $\Theta_w$, with the sum over $s\in w$ running
+over the window's $S_w$ sources only. One network, conditioned on the window's centre $\fw$, then
 serves the whole band, window by window and in parallel. It reads the window whitened:
 $y\in\R^{K\times6}$, the real and imaginary parts of $\tilde d_{k,c}$ in the three channels, each
-divided by its noise standard deviation $\sqrt{P_c(f_k)/2}$ (\cref{eq:noise-whiten}); the map is
+divided by its noise standard deviation $\sqrt{P_c(f_k)/2}$; the map is
 invertible given $\fw$, so the target is $p(\Theta_w\mid y,\fw) = p(\Theta_w\mid d_w)$. In real data,
 sources at an edge and the wings of loud neighbours break the factorisation, and a global fit
 updates overlapping segments in turn \citep{littenberg2020global} (\cref{sec:followups}).
@@ -394,56 +396,7 @@ window itself is placed where sources can be seen (\cref{app:priors-window,app:p
 flow then works in a space of fixed dimension, $8S$, and the runs measure how a joint posterior
 scales with the number of overlapping sources. A real analysis infers that number with a
 trans-dimensional sampler \citep{littenberg2020global} and models the unresolved rest as confusion
-noise \citep{karnesis2021characterization}; a variable number of sources is a follow-up
-(\cref{sec:followups}).
-
-\subsection{Training Set}
-\label{sec:gw-training}
-% New 2026-11-18, after Delmond et al. (arXiv:2606.29039), Sec. III-C; summarises app:priors-window and
-% app:priors-training. The Bands paragraph is the former Slicing in Frequency's last paragraph, the
-% Tokens paragraph the former Tokenisation subsection.
-
-Training needs windows paired with their sources, $(\Theta_w, y)$ drawn from
-$\pi_w(\Theta_w)\,p(y\mid\Theta_w,\fw)$. \Citet{delmond2026neural} precompute a bank of
-responses over frequency, drift and sky and draw the remaining parameters on the fly. We simulate
-every window afresh instead, on the device and inside the compiled training step, so there is no
-fixed dataset and no window is seen twice (\cref{app:priors-training}). One example takes four steps:
-\begin{enumerate}
-  \item a window centre $\fw$ (\cref{eq:priors-window}), placed mostly where the catalogue's sources
-    can be seen, with weight the catalogue's $f_0$ marginal times the chance that a source there
-    reaches $\snr\ge\PriorsVisibleSnr$, and in \qty{\PriorsUniformWindowsPercent}{\percent} of the
-    windows log-uniformly over the band, so that training also sees the empty windows most of the
-    band holds;
-  \item $S_w = S$ sources $\Theta_w\sim\pi_w$ (\cref{eq:priors-window-prior}), with $f_0$ in the
-    interior of \cref{eq:forward-model-window-interior};
-  \item each source's $R$-bin response, computed with JaxGB \citep{jaxgb} over
-    $\Tobs=\qty{\ForwardModelTobsYears}{\year}$ (\cref{app:forward-model-heterodyne}) and added at its
-    offset in the window, and noise drawn by \cref{eq:noise-data};
-  \item the whitened data $y$, and the sources in the flow coordinates of \cref{sec:method-chart},
-    in order of $f_0$.
-\end{enumerate}
-The weights of the first step choose which windows training sees, not what their sources are, so
-the posterior given a window is unchanged. Unlike \citet{delmond2026neural}, who keep sources with an
-\ac{snr} between 10 and 100, we apply no cut: most of a window's sources lie below the noise, and
-for them the flow must return the prior. The parameters are not standardised by the prior's
-moments; the flow coordinates and the frame of \cref{sec:method} take that role. The simulation
-takes \qty{\PriorsNarrowDrawShare}{\percent} of a training step in the narrow band and
-\qty{\PriorsFullDrawShare}{\percent} in the full band (\cref{tab:priors-bands}).
-\Cref{fig:forward-model-window} shows one window of each band.
-
-\paragraph{Bands.}
-We train two configurations (\cref{tab:forward-model-bands}): the narrow band, windows of
-\PriorsNarrowW{} bins with \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, where sources
-crowd the most; and the full band, windows of \PriorsFullW{} bins up to
-\qty{\PriorsFullHighMhz}{\milli\hertz}, where a source's drift and Doppler spread cover up to
-a hundred bins.
-% updated 2026-11-09: the narrow band was "f0 <= \PriorsNarrowHighMhz mHz"; it now starts at 1 mHz.
-
-\paragraph{Tokens.}
-\label{sec:gw-tokens}
-The data stream of the network (\cref{sec:method-network}) reads the window as
-a \ac{stft}, \NetworkPatch{} bins per token, each token holding its band's time
-samples in the three channels (\cref{eq:network-stft}): \NetworkTokensNarrow{} tokens in the
-narrow band, \NetworkTokensFull{} in the full band.
-% updated 2026-11-09 (moved out of the Network subsection): "The data stream" -> "The data stream of
-% the network (sec:method-network)".
+noise \citep{karnesis2021characterization}. A follow-up (\cref{sec:followups}) will let both the
+number of sources and the window length vary: windows whose length follows the Doppler spread of the
+responses, which grows with $f_0$, and which hold few sources each should make the analysis simpler,
+at high frequencies in particular, where the Galaxy is sparse and the sources are loud.

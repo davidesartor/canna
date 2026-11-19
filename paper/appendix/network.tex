@@ -40,7 +40,7 @@ The network sees a window through three operations: whitening, an \ac{stft} into
 compression of the dynamic range.
 
 \paragraph{Whitening.}
-The input $y$ is the window whitened by \cref{eq:noise-whiten}: the real and imaginary parts of
+The input $y$ is the window whitened as in \cref{sec:gw-windows}: the real and imaginary parts of
 $A$, $E$ and $T$ in each of the $K$ bins, $K\times6$ numbers, from the window start $k_0$
 (\cref{app:forward-model}). Below, $y_{k,c}$ is the complex whitened value of bin $k =
 0,\dots,K-1$ and channel $c\in\{A, E, T\}$. Under noise alone its real and imaginary parts have
