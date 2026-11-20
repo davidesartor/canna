@@ -19,7 +19,7 @@ restricted to the centre of the band, where neither arises.
 \label{sec:narrow-band-prior}
 The catalogue puts most of its sources low in the band, where they are faint: the conditional mean
 amplitude reaches that of a source at $\snr=\PriorsVisibleSnr$ only above
-\qty{\PriorsAmpCrossMhz}{\milli\hertz} (\cref{fig:priors}e), and the visible sources are the loud
+\qty{\PriorsAmpCrossMhz}{\milli\hertz} (\cref{fig:priors}a), and the visible sources are the loud
 tail of the top of the band. Over the full band \qty{\PriorsFullVisible}{\percent} of the sources
 are visible, and \qty{\PriorsFullEmpty}{\percent} of the windows centred on the catalogue's $f_0$
 marginal hold none; the upper half of the band in $\log f_0$, which holds most of the visible
@@ -28,7 +28,7 @@ windows would spend nearly all its steps returning the prior. Training therefore
 windows by \cref{eq:priors-window}, with weight the catalogue's $f_0$ marginal times the chance that
 a source there reaches $\snr\ge\PriorsVisibleSnr$, and \qty{\PriorsUniformWindowsPercent}{\percent}
 of them log-uniformly over the band; \qty{\PriorsFullTrainingWithVisible}{\percent} of the full
-band's training windows then hold a visible source (\cref{fig:priors}d, \cref{app:priors-window}).
+band's training windows then hold a visible source (\cref{app:priors-window}).
 The weights choose which windows training sees, not what their sources are, so the posterior given
 a window is unchanged; what changes is how often each part of the band is trained.
 

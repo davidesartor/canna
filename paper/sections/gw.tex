@@ -171,7 +171,7 @@ with weights $w$, bulge widths $\sigma_{l,b}$ and disc scales $\lambda_{l,b}$ fi
 catalogue (\cref{app:priors-sources}), and $\mathcal{L}_c(x;\lambda)\propto e^{-|x|/\lambda}$ a
 Laplace density truncated to $|x|\le c$; it is rotated to the equatorial $(\alpha,\delta)$ of the
 response. The orientation is isotropic: $\psi$ and $\phi_0$ uniform, $\cos\iota$ uniform.
-\Cref{fig:priors} shows the prior over a window, and \cref{fig:prior-corner} in \cref{app:priors-sources} its joint law of
+\Cref{fig:priors} shows the prior, and \cref{fig:prior-corner} in \cref{app:priors-sources} its joint law of
 $(\Amp, f_0, \fdot, \alpha, \delta)$ over each band.
 
 % updated 2026-11-09: was "S=\PriorsSources sources" (S = 4); the runs use S = 2 to 16.
@@ -195,21 +195,19 @@ $\phi_0$ & $\Unif(0, 2\pi)$ \\
 \end{tabular}
 \end{table}
 
+% 2026-11-20 (user): redrawn in three panels (scripts/fig_priors.py): corner of (f0, fdot, A), sky, orientation.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/priors.pdf}
-  \caption{The prior over a window; lines are closed forms, filled steps and dots are
-  \num{\PriorsPriorWindows} windows per band centred on the catalogue's $f_0$ marginal. (a)~$\log_{10}f_0$ of the drawn
-  sources (filled) against the catalogue marginal truncated to each band (lines), and of the
-  full band's visible sources, $\snr\ge\PriorsVisibleSnr$ (dashed). (b)~Sky, \cref{eq:priors-sky}, in the
-  equal-area galactic $(l, \sin b)$: shading is the log density per steradian, contours enclose
-  the marked share of the sources. (c)~Chirp drift over the observation, in frequency bins, in
-  the full band: a sample of the sources (light), every visible one (dark), and the conditional
-  mean given $f_0$ (\cref{eq:priors-source}) with its $\pm1\sigma$ residual (grey). Dashed: the narrow
-  band's top and one bin. (d)~Where the window centres fall: on the catalogue's
-  $f_0$ marginal (dashed) and by \cref{eq:priors-window} as in training (solid), per band. (e)~Amplitude, as in (c); dashed is the amplitude at which a
-  source of mean-square sky and orientation reaches $\snr=\PriorsVisibleSnr$. (f)~\ac{snr} of each
-  source alone in its window, per band; dashed at $\snr=\PriorsVisibleSnr$.}
+  \caption{The per-source prior. (a)~$(\log_{10}f_0, \log_{10}\fdot, \log_{10}\Amp)$ over the full band,
+  \num{32768} sources in windows centred on the catalogue's $f_0$ marginal: the \qty{39}{\percent} and
+  \qty{86}{\percent} regions of the prior (blue) and of the sources with $\snr\ge\PriorsVisibleSnr$ (red), and the
+  line $\snr=\PriorsVisibleSnr$ (grey). The line averages over all the other parameters (sky, orientation, and
+  the parameter not shown, at its conditional mean), so sources that reach $\snr\ge\PriorsVisibleSnr$ through a
+  favourable sky or orientation also lie below it. (b)~The sky, \cref{eq:priors-sky}, in ecliptic coordinates $(\lambda, \beta)$, those of \ac{lisa}'s orbit: the bulge,
+  the thick and the thin disc, each shaded over three decades of its density. (c)~The orientation: the orbit (blue, dashed below the sky plane) is inclined by $\iota$, the angle
+  between its normal $\hat L$ and the line of sight $z$, to the sky plane $(x, y)$; its line of nodes is at
+  $\psi$ from $x$, and $\phi_0$ is the phase along the orbit at the start of the observation.}
   \label{fig:priors}
 \end{figure*}
 

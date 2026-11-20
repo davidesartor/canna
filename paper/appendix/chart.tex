@@ -44,7 +44,7 @@ before scoring (\cref{app:evaluation}).
 Amplitude trades against inclination, a distant face-on source against a nearer inclined one;
 for a nearly face-on source one helicity dominates and the phase of the other is barely
 constrained (\cref{app:chart-helicity}). At low frequency the chirp drift $\fdot\Tobs^2$ is a
-small fraction of a bin (\cref{fig:priors}c, \cref{tab:priors-bands}) and $\fdot$ stays close to
+small fraction of a bin (\cref{tab:priors-bands}) and $\fdot$ stays close to
 its prior. In the joint chains of the eval injections (\cref{app:mcmc}) the posterior width of
 $\log_{10}\fdot$ is a median \ResultsNarrowFdotPriorLow{} of the prior's conditional width at
 $\snr=7$--15 and still \ResultsNarrowFdotPriorLoud{} above $\snr=40$ on the narrow band
@@ -104,6 +104,12 @@ anticentre, $l=\pm\pi$ ($x_l=\pm\ChartSeamX{}$), which holds \qty{\ChartSeamMass
 \ang{\ChartEdgeDeg}, and the galactic poles, $x_b=\pm\ChartPoleX{}$, which hold \qty{\ChartPoleMass}{\percent}
 within \ang{\ChartEdgeDeg}. The inverse rotation maps any real $(l, b)$ to a direction, so the
 flow's output never needs wrapping.
+% added 2026-11-20 (user): why galactic and not ecliptic.
+Galactic coordinates suit the prior, which is what the flow returns for the large majority of sources,
+those below the noise. Ecliptic coordinates would suit the likelihood instead: \ac{lisa} orbits in the
+ecliptic, and the second sky mode of a source at moderate \ac{snr}, reflected across the ecliptic, would
+be a sign flip of one coordinate. We have not compared the two charts, and since the sky is where the
+flow stays widest against the \ac{mcmc}, an ecliptic chart is worth a test.
 
 \paragraph{Amplitude unit.}
 \label{app:chart-unit}

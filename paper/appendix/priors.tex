@@ -50,8 +50,8 @@ sit low in the band, where the sources are faint: the upper half of the full ban
 which holds most of the visible sources, would get \qty{\PriorsFullTopShare}{\percent} of them, and
 \qty{\PriorsFullWithVisible}{\percent} would hold a visible source. Centred by
 \cref{eq:priors-window}, \qty{\PriorsFullTrainingTopShare}{\percent} of the full band's windows sit in
-its upper half and \qty{\PriorsFullTrainingWithVisible}{\percent} hold a visible source
-(\cref{fig:priors}d). In the narrow band, \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, where
+its upper half and \qty{\PriorsFullTrainingWithVisible}{\percent} hold a visible source.
+In the narrow band, \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, where
 the sources are louder to begin with, the share rises from \qty{\PriorsNarrowWithVisible}{\percent} to \qty{\PriorsNarrowTrainingWithVisible}{\percent}. The weights are approximate, since each candidate
 scores one sky and orientation alone in its window; they move the windows, not the target.
 
@@ -137,7 +137,7 @@ amplitude given $f_0$ have residual correlation $\PriorsResidualCorr$, and the
 \PriorsResidualFdot~dex of the drift is the population's spread in chirp mass. $\fdot$ is a free
 parameter of the source, not derived from a chirp mass, and the sampler does not cut it. Most sources
 barely drift: the full band's median drift over the observation is \PriorsFullDriftMedian{} of a bin,
-and \qty{\PriorsFullDriftOver}{\percent} of its sources drift by more than one (\cref{fig:priors}c).
+and \qty{\PriorsFullDriftOver}{\percent} of its sources drift by more than one.
 Further population models
 \citep{lamberts2019predicting,tang2024predicting} and studies of their
 common-envelope and tidal physics \citep{fiacco2024uncovering,vanzeist2025comparing} complete those
@@ -156,7 +156,7 @@ equatorial (\ang{\PriorsCentreRa}, \ang{\PriorsCentreDec}).
 \paragraph{Visibility.}
 A source alone in its window reaches $\snr\ge\PriorsVisibleSnr$ for
 \qty{\PriorsNarrowVisible}{\percent} of the narrow band's sources and
-\qty{\PriorsFullVisible}{\percent} of the full band's (\cref{fig:priors}f), and
+\qty{\PriorsFullVisible}{\percent} of the full band's (\cref{fig:priors}a), and
 \qty{\PriorsNarrowEmpty}{\percent} and \qty{\PriorsFullEmpty}{\percent} of the windows centred on the
 catalogue's $f_0$ hold no visible source, hence training's window prior (\cref{eq:priors-window}).
 

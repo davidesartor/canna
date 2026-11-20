@@ -41,7 +41,10 @@ in the order a global fit would need them, is the work that follows:
   mostly below the noise, and nothing else. A tiling whose window length follows the Doppler spread
   of the responses, which grows with $f_0$, and keeps the number of sources per window small should
   simplify the analysis, at high frequencies in particular, where the Galaxy is sparse and the
-  sources are loud. Using the posteriors inside a global fit, which infers the number of sources
+  sources are loud. Windows also overlap, a stride of \ForwardModelWindowStride{} bins apart, so on real
+  data a source lies in the interior of several windows and is inferred in each; how to combine these
+  posteriors into one per source, probably by post-processing the windows' draws, is part of the
+  follow-up. Using the posteriors inside a global fit, which infers the number of sources
   and updates overlapping segments in turn \citep{littenberg2020global}, needs all three;
   \item the confusion foreground of the unresolved binaries
   \citep{timpano2006characterizing,karnesis2021characterization} and the other source classes;
