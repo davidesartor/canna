@@ -1,0 +1,75 @@
+% =======================================================================================
+% Draft only: the general to-do list. The specific gaps are red TODOs where they occur in the text;
+% this list is what has to be done, improved or checked across the paper. Delete before submission.
+% =======================================================================================
+\clearpage
+\section*{\textcolor{red}{Open Items (draft only, delete before submission)}}
+\label{app:open-items}
+{\color{red}
+\paragraph{Runs and data.}
+\begin{itemize}
+  \item A noise \acs{psd} estimated with the sources, since a louder noise than the flow's own makes it
+    confident and wrong (\cref{app:evaluation-sampler}). (The power/log grids and Euler are in, 2026-11-18.)
+\item \cref{app:mcmc} now reads the six packed references of the eval catalogue (2026-11-18: settings,
+    one seed per injection, $\hat R$ and \acs{ess}, the posterior figure, cost; Fisher in \cref{app:fisher}); the
+    reports/mcmc README describes them since 2026-11-19 (its page, mcmc.html, stays the October archive).
+  \item The reported model of each problem (2026-11-19, user; \texttt{paper/scripts/e64.py}) is the better of the
+    two runs that trained to near their end, the 64-epoch run and its fork cooled from epoch 32, by eval-catalogue
+    loss: e32 for narrow $S=2$, 8 and full $S=16$, main for narrow $S=4$ (epoch 62) and full $S=8$; for full $S=4$
+    the Student-t continuation 261103-n4-full-B-t44 at its last checkpoint (its loss does not compare). The
+    tables name each model and its epoch. t44 is the best full-band model on every parameter, but whether the
+    Student-t frame helps the other problems is open (one seed, one run, S=4); no further runs are planned.
+  \item One seed per configuration: the run-to-run spread is unmeasured, so differences of a few
+    hundredths of a nat between forks are not significant. A second seed of narrow $S=2$ (about 32 A100
+    hours) is a follow-up in \cref{sec:followups} (2026-11-19, user), not a run for this paper.
+\end{itemize}
+
+\paragraph{Analysis.}
+\begin{itemize}
+  \item The overlap offset is no single parameter group (\cref{app:results-validation}, 2026-11-18): draws
+    trade $f_0$ against phase. Whether a different chart or loss would remove that is open.
+  \item The full band misses loud sources above about \qty{10}{\milli\hertz}, mostly because the flow
+    refines the frame only 2--4-fold there (14--17-fold below) (\cref{app:results-mcmc}). Framed (2026-11-17): the prior
+    produces few such sources for training; the cure is left to a follow-up.
+  \item The joint-MCMC references of narrow $S=8$ and full $S=16$ never left their Fisher start for
+    faint sources (\cref{app:results-mcmc}). The prior-started chains (2026-11-16) confirm the
+    references from $\snr=7$ up, and bracket $\snr=3$--7 without settling it, so rerunning the
+    references with prior starts would not help; the appendix now scores $\snr<3$ against the prior and
+    reports the bracket at $\snr=3$--7 (not in the main text for now). Full $S=16$'s prior-started
+    chains landed 2026-11-18: same picture below $\snr=7$, but at $\snr\ge7$ they are 1.2--1.7 times wider
+    than the reference and still widening, so full $S=16$'s loud ratios are upper bounds
+    (\cref{app:results-mcmc}). Settling it would need longer prior-started chains (about 40 CPU hours each).
+
+\end{itemize}
+
+\paragraph{Writing.}
+\begin{itemize}
+  \item Main text restructured 2026-11-20 (no page limit, for arXiv): the waveform and window
+    algebra are in \cref{app:forward-model} and the prior's fits in \cref{app:priors};
+    \cref{sec:narrow-band} precedes \cref{sec:method} and holds the source counts and the slots
+    (\cref{sec:gw-rates}); \cref{sec:method} runs coordinates, flow matching, architecture,
+    training, with \cref{fig:network-architecture} in the main text in place of the schematic;
+    calibration and cost are read once for all six models
+    (\cref{sec:results-calibration,sec:results-cost}). Still to decide: a results sentence in the
+    abstract.
+  \item TODO(Giorgio) of 2026-11-20: the \acs{sbc} of the \acs{mcmc} is in \cref{tab:results-summary};
+    the low-\acs{snr} question (is the \acs{mcmc} overconfident?) is answered in \cref{sec:validation}
+    from \cref{app:results-mcmc}, to be confirmed; the \acs{sbc} heatmap over frequency and \acs{snr} is
+    still missing (red TODO in \cref{sec:validation}).
+  \item \Cref{sec:background-generative}: add references on large-scale multimodal generation beyond
+    images; the sentence that asked for them was dropped from the main text until they exist.
+  \item Figures: \texttt{scripts/style.py} and every \texttt{fig\_*.py} were restyled 2026-11-20 (one
+    palette, colour by role) but not rendered; the captions of \cref{fig:priors,fig:narrow-band}
+    already name the new colours. Re-render every figure before reading them against the text.
+  \item Review every \texttt{\% updated 2026-11-09} marker (stale facts fixed in moved text) and
+    keep or revert each.
+  \item Check the references marked ``from memory, not yet checked'' in \texttt{references.bib}
+    (the method references of the training recipe) against arXiv, like the rest.
+  \item Before submission: blind mode, anonymised code link, self-citations in the third person,
+    and the acknowledgements commented out for review (back at camera-ready).
+  \item Consistency pass done 2026-11-17 (notation, sky frames, British
+    spelling, band names: \texttt{narrow-B}/\texttt{full-B} are band and network size, XS--XL sizes only);
+    redo after the main-text moves. The Notation appendix was removed 2026-11-18: every symbol and
+    acronym is now defined where it first appears.
+\end{itemize}
+}

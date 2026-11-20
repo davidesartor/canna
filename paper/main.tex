@@ -88,37 +88,24 @@
 
 \printAffiliationsAndNotice{}  % required, even empty
 
-% Rewritten 2026-11-20 (user): short, about half a column; replaces the long 2026-10-11 draft.
 \begin{abstract}
-  \Ac{lisa} will resolve thousands of \acp{gb} whose signals overlap in frequency, so their
-  parameters must be inferred jointly, which a \ac{mcmc} global fit does at great cost and must
-  repeat for every new stretch of data. We train a conditional flow-matching model once per band
-  that returns the joint posterior of the binaries in a frequency window, under the full
-  instrument response and broad priors. A flat chart of eight coordinates per source and slots
-  ordered in frequency remove the polarisation, phase and labelling copies of each source; a
-  Gaussian frame read from the data brings posteriors decades narrower than the prior to widths of
-  order one; and the data are encoded once per window, so every draw reuses them. Dividing the
-  band where the width of the sources' responses doubles gives five subproblems of fixed shapes, each
-  trained on its own device. On the core subproblem,
-  \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz},
-  \FlowMatchingCostDraws{} draws take \qty{\FlowMatchingCostNarrow}{\second} on one GPU, against
-  \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} for a joint \ac{mcmc} chain of the same
-  window.
+  \input{sections/abstract}
 \end{abstract}
 \acresetall
 
-% Main text (reorganised 2026-11-09 and 2026-11-18; order set 2026-11-19 (user)): abstract;
-% introduction (motivation, contributions); background and related work (Bayesian inversion,
-% diffusion and large-scale generation, GW inference, brief, with app:related as the long version);
-% the LISA GB problem; network and training; dividing the band (response span growing with frequency,
-% five bands by R, prior vs visible sources, the two trained configurations); experimental results; conclusions and
-% discussion; acknowledgements; appendices. Main-text sections may stay brief and point to an
-% appendix. New material goes to the appendices first.
+% Main text: introduction (motivation, contributions, headline result); background and related work
+% (brief, app:related is the long version); problem (signal, noise, prior, likelihood and windows);
+% subbands (response width R and the five subbands, source counts and slots, the two trained
+% configurations); method (coordinates, flow matching in the frame, architecture, training);
+% experiments (validation protocol, narrow band, full band, calibration, cost); conclusions
+% (limitations, follow-ups). Subbands come before the method because the method uses R and the
+% two configurations.
+% Main-text sections stay brief and point to an appendix. New material goes to the appendices first.
 \input{sections/introduction}
 \input{sections/background}
-\input{sections/gw}
+\input{sections/problem}
+\input{sections/subbands}
 \input{sections/method}
-\input{sections/narrow-band}
 \input{sections/experiments}
 \input{sections/conclusions}
 
@@ -168,72 +155,7 @@ specifically highlighted here.
 \input{appendix/results}
 \input{appendix/amortisation}
 
-% =======================================================================================
-% Draft only: the general to-do list. The specific gaps are red TODOs where they occur in the text;
-% this list is what has to be done, improved or checked across the paper. Delete before submission.
-% =======================================================================================
-\clearpage
-\section*{\textcolor{red}{Open Items (draft only, delete before submission)}}
-\label{app:open-items}
-{\color{red}
-\paragraph{Runs and data.}
-\begin{itemize}
-  \item A noise \acs{psd} estimated with the sources, since a louder noise than the flow's own makes it
-    confident and wrong (\cref{app:evaluation-sampler}). (The power/log grids and Euler are in, 2026-11-18.)
-\item \cref{app:mcmc} now reads the six packed references of the eval catalogue (2026-11-18: settings,
-    one seed per injection, $\hat R$ and \acs{ess}, the posterior figure, cost; Fisher in \cref{app:fisher}); the
-    reports/mcmc README describes them since 2026-11-19 (its page, mcmc.html, stays the October archive).
-  \item The reported model of each problem (2026-11-19, user; \texttt{paper/scripts/e64.py}) is the better of the
-    two runs that trained to near their end, the 64-epoch run and its fork cooled from epoch 32, by eval-catalogue
-    loss: e32 for narrow $S=2$, 8 and full $S=16$, main for narrow $S=4$ (epoch 62) and full $S=8$; for full $S=4$
-    the Student-t continuation 261103-n4-full-B-t44 at its last checkpoint (its loss does not compare). The
-    tables name each model and its epoch. t44 is the best full-band model on every parameter, but whether the
-    Student-t frame helps the other problems is open (one seed, one run, S=4); no further runs are planned.
-  \item One seed per configuration: the run-to-run spread is unmeasured, so differences of a few
-    hundredths of a nat between forks are not significant. A second seed of narrow $S=2$ (about 32 A100
-    hours) is a follow-up in \cref{sec:followups} (2026-11-19, user), not a run for this paper.
-\end{itemize}
-
-\paragraph{Analysis.}
-\begin{itemize}
-  \item The overlap offset is no single parameter group (\cref{app:results-validation}, 2026-11-18): draws
-    trade $f_0$ against phase. Whether a different chart or loss would remove that is open.
-  \item The full band misses loud sources above about \qty{10}{\milli\hertz}, mostly because the flow
-    refines the frame only 2--4-fold there (14--17-fold below) (\cref{app:results-mcmc}). Framed (2026-11-17): the prior
-    produces few such sources for training; the cure is left to a follow-up.
-  \item The joint-MCMC references of narrow $S=8$ and full $S=16$ never left their Fisher start for
-    faint sources (\cref{app:results-mcmc}). The prior-started chains (2026-11-16) confirm the
-    references from $\snr=7$ up, and bracket $\snr=3$--7 without settling it, so rerunning the
-    references with prior starts would not help; the appendix now scores $\snr<3$ against the prior and
-    reports the bracket at $\snr=3$--7 (not in the main text for now). Full $S=16$'s prior-started
-    chains landed 2026-11-18: same picture below $\snr=7$, but at $\snr\ge7$ they are 1.2--1.7 times wider
-    than the reference and still widening, so full $S=16$'s loud ratios are upper bounds
-    (\cref{app:results-mcmc}). Settling it would need longer prior-started chains (about 40 CPU hours each).
-
-\end{itemize}
-
-\paragraph{Writing.}
-\begin{itemize}
-  \item Decide what moves from the appendices into the main text: the abstract's results sentence,
-    \cref{sec:results-main} and the conclusions' summary of where the flow is wider than the chains
-    (the frequency-domain factorisation is in \cref{sec:gw-factorisation} since 2026-11-17). The main text
-    ran a few lines past page 8 on 2026-11-18; with the Background and Narrow-Band sections of
-    2026-11-19 its conclusions start on page 10, so about two pages have to go back to the
-    appendices (candidates: \cref{tab:gw-globalfit} and the Mojito paragraph, the window algebra of
-    \cref{sec:gw-windows}).
-  \item \Cref{sec:background-generative}: add references on large-scale multimodal generation beyond
-    images (red TODO there).
-  \item Review every \texttt{\% updated 2026-11-09} marker (stale facts fixed in moved text) and
-    keep or revert each.
-  \item Check the references marked ``from memory, not yet checked'' in \texttt{references.bib}
-    (the method references of the training recipe) against arXiv, like the rest.
-  \item Before submission: blind mode, anonymised code link, self-citations in the third person,
-    and the acknowledgements commented out for review (back at camera-ready).
-  \item Consistency pass done 2026-11-17 (notation, sky frames, British
-    spelling, band names: \texttt{narrow-B}/\texttt{full-B} are band and network size, XS--XL sizes only);
-    redo after the main-text moves. The Notation appendix was removed 2026-11-18: every symbol and
-    acronym is now defined where it first appears.
-\end{itemize}
-}
+% Draft only, delete before submission.
+\input{appendix/open-items}
 
 \end{document}

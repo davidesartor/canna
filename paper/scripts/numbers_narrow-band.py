@@ -1,4 +1,4 @@
-"""The numbers in sections/narrow-band.tex: the frequency bands set by the response width (reports/prior/response-span)
+"""The numbers in sections/subbands.tex: the frequency bands set by the response width (reports/prior/response-span)
 and how many sources a window of each band's width holds (reports/prior/source-count, as numbers_rates.py)."""
 
 import importlib.util

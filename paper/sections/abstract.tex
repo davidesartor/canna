@@ -1,0 +1,15 @@
+% Rewritten 2026-11-20 (user): short, about half a column; replaces the long 2026-10-11 draft.
+  \Ac{lisa} will resolve thousands of \acp{gb} whose signals overlap in frequency, so their
+  parameters must be inferred jointly, which a \ac{mcmc} global fit does at great cost and must
+  repeat for every new stretch of data. We train a conditional flow-matching model once per band
+  that returns the joint posterior of the binaries in a frequency window, under the full
+  instrument response and broad priors. A flat chart of eight coordinates per source and slots
+  ordered in frequency remove the polarisation, phase and labelling copies of each source; a
+  Gaussian frame read from the data brings posteriors decades narrower than the prior to widths of
+  order one; and the data are encoded once per window, so every draw reuses them. Dividing the
+  band where the width of the sources' responses doubles gives five subproblems of fixed shapes, each
+  trained on its own device. On the core subproblem,
+  \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz},
+  \FlowMatchingCostDraws{} draws take \qty{\FlowMatchingCostNarrow}{\second} on one GPU, against
+  \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} for a joint \ac{mcmc} chain of the same
+  window.
