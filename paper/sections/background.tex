@@ -117,21 +117,38 @@ fitted by Erebor and Gee-Moo \citep{lisapriors}, and a Heavy edition scheduled f
 centres budget about $10^7$ \ac{cpu} hours each by 2027 \citep{hooper2025preparing}.
 
 \begin{table*}[t]
-\caption{Global fits of the Sangria data set (one year, about $3\times10^7$ injected \acp{gb}, about
-$10^4$ above \acs{snr} 7), as each work reports them. \acs{cpu} hours for GLASS are its
-\num{7488} \acsp{cpu} times its five days; Erebor ran on four A100 \acsp{gpu} and about twelve
-\acsp{cpu}; Gee-Moo's run had not fully converged.}
+\caption{\Acp{gb} returned and cost, by approach. One-shot: global fits of the Sangria data set (one
+year, about $3\times10^7$ injected \acp{gb}, about $10^4$ above \acs{snr} 7), as each work reports
+them, time being training and then sampling per posterior; \acs{cpu} hours for GLASS are its \num{7488} \acsp{cpu} times its five days, Erebor ran on four
+A100 \acsp{gpu} and about twelve \acsp{cpu}, and Gee-Moo's run had not fully converged. Amortised:
+no work has fitted a band, so we give the sources per posterior (\cref{tab:related-closest}) and
+the training reported; \acs{gpu} hours for SlotFlow are its four \acsp{gpu} times \qty{190}{\hour}
+(it also states \num{305}), and Mao et al.'s range spans their 30- and 90-day models. Ours:
+on our own prior over two years rather than Sangria; its \acp{gb} are the most visible sources its
+$S=16$ slots per window fit over the divided band (\cref{eq:narrow-band-fitted}), of
+\num{\NarrowBandVisibleTotal} visible, and its cost is one training run of the full band plus the
+flow's draws per window.}
 \label{tab:gw-globalfit}
 \centering
 \small
+\newcommand{\tabgroup}[1]{\multicolumn{4}{@{}l}{\textsc{#1}}\\[1pt]}
 \begin{tabular}{@{}llll@{}}
 \toprule
 pipeline & \acp{gb} returned & hardware, time & \acs{cpu} hours \\
 \midrule
+\tabgroup{one-shot}
 GLASS \citep{littenberg2023prototype} & -- & \num{7488} \acsp{cpu}, \qty{5}{\day} & ${\sim}10^6$ \\
 Erebor \citep{katz2024efficient} & \num{12000} (\num{8000} confident) & 4 A100, \qty{7}{\day} & ${\sim}700$ \acs{gpu} h \\
 \citet{strub2024global} & \num{5100} (half a year) & \acs{cpu} cluster & \num{700} \\
 Gee-Moo \citep{deng2025modular} & \num{9542} (\num{7620} identified) & \num{1000} cores, \qty{20}{\hour} & ${\sim}2\times10^4$ \\
+\midrule
+\tabgroup{amortised}
+\citet{delmond2026neural} & 1; 2 as a proof of concept & 1 A100, ${\sim}1$ week; $<\qty{1}{\second}$ per posterior & ${\sim}170$ \acs{gpu} h \\
+\citet{mao2025robust} & 1, with 3 free parameters & 1 L40S, \numrange{3}{5.5}\,h & \numrange{3}{5.5} \acs{gpu} h \\
+SlotFlow \citep{houba2025slotflow} & up to 10 sinusoids, no response & 4 GH200, \qty{190}{\hour}; \qty{13}{\milli\second} per draw & ${\sim}760$ \acs{gpu} h \\
+\midrule
+\tabgroup{ours}
+this work, $S=16$ & \num{\NarrowBandFittedSixteen} (at most) & 1 A100, \ResultsFullHours\,h; \AmortisationFullFlowSeconds\,s per window & \ResultsFullHours{} \acs{gpu} h \\
 \bottomrule
 \end{tabular}
 \end{table*}
