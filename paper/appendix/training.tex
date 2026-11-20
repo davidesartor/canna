@@ -1,18 +1,16 @@
 % =======================================================================================
-\section{Optimisation, Training and Compute}
+\section{Training and Compute}
 \label{app:training}
 % =======================================================================================
 
-This appendix covers how the flow of \cref{app:fm,app:network} is trained: the optimiser
-(\cref{app:training-optimiser}), its schedule (\cref{app:training-schedules}), the
-batch (\cref{app:training-batch}), the training loop (\cref{app:training-loop}), the arithmetic
-precision (\cref{app:training-precision}) and the measured cost (\cref{app:training-compute}).
-\Cref{tab:training-recipe} collects the recipe. Every band and size shares it; only the step
-counts depend on the band.
+This appendix gives the recipe that trains the flow of \cref{app:fm,app:network}
+(\cref{sec:method-training}) and the compute it needs. \Cref{tab:training-recipe} collects the
+hyperparameters, which every band and size shares; only the step counts depend on the band. The
+subsections explain the batch, the optimiser, the schedule, the training loop and the cost.
 
 \begin{table}[htb]
-\caption{Training recipe, shared by every band and size; only the step counts depend on the band.
-$\gamma_t$ is the Muon learning rate of \cref{app:training-schedules}.}
+\caption{Training recipe, shared by every band and size. $\gamma_t$ is the Muon learning rate of
+\cref{app:training-schedules}.}
 \label{tab:training-recipe}
 \centering
 \small
@@ -33,7 +31,7 @@ AdamW (everything else) & peak learning rate & \num{\TrainingAdamRate} \\
 Schedule & gradient clipping & global norm \TrainingClipNorm{} \\
 & warmup & linear from zero, \num{\TrainingWarmupNarrow} (narrow), \num{\TrainingWarmupFull} (full) steps \\
 & after warmup & constant, then $1-\sqrt{\cdot}$ to zero over the last \qty{\TrainingCooldownPercent}{\percent} \\
-& total steps & per run, from a wall-time budget (\cref{tab:results-runs}); default \num{\TrainingStepsNarrow} (narrow), \num{\TrainingStepsFull} (full) \\
+& total steps & per run (\cref{tab:results-runs}); default \num{\TrainingStepsNarrow} (narrow), \num{\TrainingStepsFull} (full) \\
 & epoch & \TrainingEpochSteps{} steps, one checkpoint each \\
 \addlinespace
 Batch & samples per step & \TrainingBatch{} $=$ \TrainingObservations{} observations $\times$ \TrainingDraws{} draws of $(Z_0, t)$ \\
@@ -45,6 +43,24 @@ Precision & backbone & bfloat16 compute, float32 weights \\
 \end{tabular}
 \end{table}
 
+\subsection{Batch}
+\label{app:training-batch}
+
+A batch holds \TrainingBatch{} $(Z_0, t)$ samples: \TrainingObservations{} simulated observations,
+each with its own centre frequency $\fw$ and sources (\cref{app:priors}), and \TrainingDraws{} draws
+of the base point and time per observation. The data stream of an observation is encoded once and
+shared by its draws (\cref{app:network}), so the draws amortise both the simulation and the
+encoding. The times are stratified over the whole batch, one per stratum of \TrainingBatch{} equal
+strata (\cref{app:fm-clock}).
+
+Every batch is simulated on the device inside the step, so no observation is seen twice. The
+simulation takes \qty{\TrainingComputeNarrowBDrawPercent}{\percent} of a narrow-B step and
+\qty{\TrainingComputeFullBDrawPercent}{\percent} of a full-B step on an A100, whereas on
+\TrainingDrawCpuCores{} CPU cores the full-band batch alone takes \qty{\TrainingDrawCpuFullSeconds}{\second},
+\TrainingDrawCpuOverStep{} times the whole GPU step. Simulating on the host is therefore not an
+option. The gradient can be accumulated over equal micro-batches of whole observations, which
+leaves the mean gradient unchanged; by default the batch is not split.
+
 \subsection{Optimiser}
 \label{app:training-optimiser}
 
@@ -53,130 +69,72 @@ parameters are then split between Muon \citep{jordan2024muon} and AdamW, with th
 which \citet{liu2025muon} scale Muon to large language models.
 
 \paragraph{Muon.}
-For a weight matrix $W \in \R^{m \times n}$ (output by input) with clipped gradient $G$, Muon
-keeps a momentum $M \leftarrow \upsilon M + (1-\upsilon)\, G$, takes the Nesterov look-ahead
-$N = \upsilon M + (1-\upsilon)\, G$, and replaces it by an approximation $O$ of the nearest
-semi-orthogonal matrix $UV\T$ (from $N = U\Sigma V\T$), computed with
-\TrainingNewtonSchulzWord{} quintic Newton--Schulz iterations \citep{jordan2024muon}. The step is
+For a weight matrix $W \in \R^{m \times n}$ (output by input) with clipped gradient $G$, Muon keeps
+a momentum $M \leftarrow \upsilon M + (1-\upsilon)\, G$, takes the Nesterov look-ahead $N =
+\upsilon M + (1-\upsilon)\, G$, and replaces it by an approximation $O$ of the nearest
+semi-orthogonal matrix $UV\T$ (from $N = U\Sigma V\T$), computed with \TrainingNewtonSchulzWord{}
+quintic Newton--Schulz iterations \citep{jordan2024muon}. The step is
 \begin{equation}
   W \leftarrow W - \gamma_t \left(\TrainingMuonRms{}\sqrt{\max(m, n)}\; O + \varkappa W\right).
   \label{eq:training-muon}
 \end{equation}
 Its orthogonal part has an RMS of $\TrainingMuonRms{}\gamma_t$ for every shape, the scale at which
 \citet{liu2025muon} match AdamW's update size, so one learning rate serves every matrix. Weight
-matrices stacked over the backbone's blocks are orthogonalised one block at a time.
-
-\paragraph{Weight decay.}
-Muon's updates have a fixed size whatever the gradient's, so without decay the weights grow and
-Muon's lead over AdamW fades on long runs \citep{liu2025muon}. The decoupled decay of
-\cref{eq:training-muon}, $\varkappa = \TrainingWeightDecay{}$ as in \citet{liu2025muon}, applies
-only to the matrices Muon updates, and through $\gamma_t$ it ends with the cooldown. On an earlier
-version of this network, decaying the AdamW parameters shrank the head's output rows for one
-coordinate to a small fraction of the others, so AdamW runs without decay.
+matrices stacked over the backbone's blocks are orthogonalised one block at a time. The decoupled
+decay $\varkappa$ applies only to the matrices Muon updates, and through $\gamma_t$ it ends with the
+cooldown; Muon's updates have a fixed size whatever the gradient's, so without decay the weights
+grow and its lead over AdamW fades on long runs \citep{liu2025muon}.
 
 \paragraph{AdamW.}
-Every other parameter is updated by AdamW. Its first moment is float32, because a bfloat16 one
-loses the small increments of a smooth gradient.
+Every other parameter is updated by AdamW, without decay: decaying the AdamW parameters of an
+earlier version of the network shrank the head's output rows for one coordinate to a small fraction
+of the others. The first moment is float32, because a bfloat16 one loses the small increments of a
+smooth gradient.
 
-\paragraph{Which parameters Muon takes.}
-Muon is meant for hidden-layer matrices \citep{jordan2024muon}. It takes the weight matrix of
-every linear layer in \TrainingMuonFieldCount{} modules of the network (\cref{app:network}): the
-backbone, the two conditioning \acp{mlp} (of the time, and of the window's range of $f_0$), the
-two Fourier-feature \acp{mlp} (of the source frequency and of the data tokens' frequency bins) and
-the output modulations of the flow and of the frame, plus the head's hidden layer. AdamW takes the
-rest: the linear embeddings of the sources and of the data tokens, the frame-register and
-attention-sink embeddings, the frame's output layer, the query--key gains, every bias and the head's output layer. Muon holds \qty{\TrainingMuonShareXS}{\percent} of the
-parameters of full-XS, \qty{\TrainingMuonShareB}{\percent} of full-B and \qty{\TrainingMuonShareXL}{\percent} of full-XL.
+\paragraph{Assignment.}
+Muon takes the weight matrix of every linear layer in \TrainingMuonFieldCount{} modules of the
+network (\cref{app:network}): the backbone, the two conditioning \acp{mlp}, the two Fourier-feature
+\acp{mlp}, the output modulations of the flow and of the frame, and the hidden layer of the
+endpoint head. AdamW takes the rest: the linear embeddings of the sources and of the data tokens,
+the register and sink embeddings, the frame's output layer, the query gains, every bias and the
+endpoint head's output layer. Muon holds \qty{\TrainingMuonShareXS}{\percent} of the parameters of
+full-XS, \qty{\TrainingMuonShareB}{\percent} of full-B and \qty{\TrainingMuonShareXL}{\percent} of
+full-XL.
 
-\paragraph{Learning rates.}
-The peak rates, \num{\TrainingMuonRate} for Muon and \num{\TrainingAdamRate} for AdamW, were not tuned
-by a sweep on this network, and neither was the batch. Muon's matches AdamW's because its update
-RMS does \citep{liu2025muon}.
-At these rates five of the six runs of \cref{app:results} trained to their end with every loss
-finite. Full-band $S=4$ did not: from a few epochs before, isolated single steps sent the frame's
-loss and the gradient norm up by many decades while the epoch medians stayed flat, and at epoch
-\ResultsFullFourDivergedEpoch, just before its cooldown, a loss turned non-finite
-(\cref{app:results-runs}). The same run's forks, cooled from earlier snapshots, are unaffected.
-% updated 2026-11-19: the Student-t continuation (261103-n4-full-B-t44) trained to its end.
-Its continuation from the snapshot at epoch 44, with the Student-t frame loss of \cref{app:fm-frame}
-and the same rates and schedule, trained the remaining epochs and the cooldown with every loss finite:
-its largest single-step gradient norm was \num{\ResultsTFourMaxGrad}, against up to \num{\ResultsTFourGaussMaxGrad}
-in the Gaussian run's last epochs. No
-rate was swept, so whether lower rates avoid such spikes, or higher ones train faster, is open.
+\paragraph{Learning rates and stability.}
+The peak rates were not tuned by a sweep on this network, and neither was the batch. Muon's matches
+AdamW's because its update RMS does. At these rates five of the six runs of \cref{app:results}
+trained to their end with every loss finite. Full-band $S=4$ did not: from a few epochs before,
+isolated single steps sent the frame's loss and the gradient norm up by many decades while the
+epoch medians stayed flat, and at epoch \ResultsFullFourDivergedEpoch, just before its cooldown, a
+loss turned non-finite (\cref{app:results-runs}). Its continuation from an earlier snapshot with the
+Student-t frame loss of \cref{app:fm-frame}, at the same rates and schedule, trained to its end with
+every loss finite, and its largest single-step gradient norm was \num{\ResultsTFourMaxGrad},
+against up to \num{\ResultsTFourGaussMaxGrad} in the Gaussian run's last epochs. Whether lower
+rates avoid such spikes, or higher ones train faster, is open.
 
-\paragraph{Strength of the evidence.}
 Muon \citep{jordan2024muon}, its decay and update scale \citep{liu2025muon} and the
-warmup--stable--decay schedule \citep{hu2024minicpm,hagele2024scaling} are established on
-language models. None was tested on flow matching, and none was ablated here.
+warmup--stable--decay schedule \citep{hu2024minicpm,hagele2024scaling} are established on language
+models; none was tested on flow matching, and none was ablated here.
 
 \subsection{Schedule}
 \label{app:training-schedules}
 
-Both learning rates rise linearly from zero over the first \qty{\TrainingWarmupPercent}{\percent}
-of the run, stay constant, and fall to zero over the last \qty{\TrainingCooldownPercent}{\percent}
-as $\gamma_t = \gamma\,\bigl(1 - \sqrt{(t - T_c)/(T - T_c)}\bigr)$, with $T$ the run's total steps
-and $T_c$ the cooldown's start (\cref{tab:training-recipe}). This is the warmup--stable--decay
-schedule \citep{hu2024minicpm} with the $1-\sqrt{\cdot}$ cooldown that \citet{hagele2024scaling}
-find best; with a cooldown of a fifth of the run, they report it matching a cosine schedule.
-Only the cooldown depends on $T$, so raising $T$ before the cooldown starts extends the run as if
-it had been planned that long.
+Both learning rates rise linearly from zero over the first \qty{\TrainingWarmupPercent}{\percent} of
+the run, stay constant, and fall to zero over the last \qty{\TrainingCooldownPercent}{\percent} as
+$\gamma_t = \gamma\,\bigl(1 - \sqrt{(t - T_c)/(T - T_c)}\bigr)$, with $T$ the run's total steps and
+$T_c$ the cooldown's start. This is the warmup--stable--decay schedule \citep{hu2024minicpm} with
+the $1-\sqrt{\cdot}$ cooldown that \citet{hagele2024scaling} find best; with a cooldown of a fifth
+of the run, they report it matching a cosine schedule. Only the cooldown depends on $T$, so raising
+$T$ before the cooldown starts extends the run as if it had been planned that long.
 
-The step counts are a wall-time budget, not a convergence criterion: size B trains in about a day
-on one A100 with the bfloat16 backbone, \qty{\TrainingComputeNarrowBHours}{\hour} of steps on the narrow
-band and \qty{\TrainingComputeFullBHours}{\hour} on the full band (\cref{fig:training-compute}a).
-The runs of \cref{app:results} were sized the same way, from the epoch time of a
-\qty{30}{\minute} smoke test of each band and source count, to \ResultsEpochs{} epochs: about
-\ResultsNarrowHours\,h on the narrow band and \ResultsFullHours\,h on the full band (A100 hours of
-steps, without restarts). A later cooldown ends lower (\cref{tab:results-forks}): from forks at epoch 4
-to epoch 32 the eval-catalogue loss falls in every configuration, except full-band $S=4$ at epoch 16,
-whose snapshot caught a noisy epoch. Cooling at the planned epoch, after \ResultsEpochs{} epochs, still
-gains on narrow $S=4$ and full $S=8$, which are therefore not converged, but not on narrow $S=2$ and
-$S=8$ and full $S=16$, where the fork from epoch 32 ends below the main run.
-% updated 2026-11-19: full S=16 added (e32 -0.887 vs main -0.874; app:results-forks "lose on three").
+The step counts are a wall-time budget, not a convergence criterion. Each run of \cref{app:results}
+was sized from the epoch time of a short smoke test of its band and source count to
+\ResultsEpochs{} epochs, about \ResultsNarrowHours\,h on the narrow band and \ResultsFullHours\,h on
+the full band of A100 time. A later cooldown generally ends lower, and some configurations are not
+converged at the planned epoch (\cref{tab:results-forks}).
 
-\subsection{Batch}
-\label{app:training-batch}
-
-A batch holds \TrainingBatch{} $(Z_0, t)$ samples: \TrainingObservations{} simulated
-observations, each with its own centre frequency $\fw$ and sources (\cref{app:priors}), and
-\TrainingDraws{} draws of the base point and time per observation. The data stream of an
-observation is encoded once and shared by its draws (\cref{app:network}), so the draws amortise
-both the simulation and the encoding. The times are stratified over the whole batch, one per
-stratum of \TrainingBatch{} equal strata (\cref{app:fm-clock}).
-
-Every batch is simulated on the device inside the step, so no observation is seen twice. This is
-what keeps the simulator cheap (\cref{fig:training-overhead}a,b): it takes
-\qty{\TrainingComputeNarrowBDrawPercent}{\percent} of narrow-B's A100 step and
-\qty{\TrainingComputeFullBDrawPercent}{\percent} of full-B's, while on \TrainingDrawCpuCores{} CPU cores the
-full-band batch alone takes \qty{\TrainingDrawCpuFullSeconds}{\second}, \TrainingDrawCpuOverStep{} times
-full-B's whole A100 step.
-
-The gradient can be accumulated over equal micro-batches of whole observations, which holds one
-micro-batch's activations at a time and leaves the mean gradient unchanged; by default the batch
-is not split. Because the batch is simulated before it is split, splitting barely lowers the peak
-memory on the full band, where the simulated batch alone plans \qty{\TrainingDrawPlanFullGib}{\gibi\byte}
-(\cref{fig:training-compute}c).
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{figures/overhead.pdf}
-\caption{Where the training time goes, for one A100 with the bfloat16 backbone at the default
-batch. (a)~Share of each step spent in the network (forward and backward), the optimiser update
-and the simulation of the batch; the step time is on the right. The full band's simulation is a
-fixed cost that weighs most on the small sizes. (b)~Time to simulate one training batch
-(\TrainingDraws{} draws per observation, \TrainingSources{} sources) against the observations per
-batch, for the size-B bands (full solid, narrow dashed) on an A100 (\qty{40}{\giga\byte} PCIe), a GTX~1080~Ti and
-\TrainingDrawCpuCores{} CPU cores; the grey lines are the A100 (\qty{80}{\giga\byte}) step times of narrow-B and full-B,
-the vertical line the default batch. On the A100 the simulation stays well below the step; on the
-CPU it alone would exceed it many times over. (c)~Share of a \qty{\TrainingCheckpointChunkHours}{\hour}
-job not spent on saved steps (requeue margin, restart, per-epoch saves and the work lost when the
-job is cut off) against the epoch length, for size B on an A100 (narrow-B \qty{80}{\giga\byte}, full-B \qty{40}{\giga\byte} PCIe) and an L40S, modelled from measured
-step, save and restart costs; dots mark the best length. The default of \TrainingEpochSteps{}
-steps is near the minimum, and the curves are flat around it.}
-\label{fig:training-overhead}
-\end{figure}
-
-\subsection{Training loop, checkpoints and resume}
+\subsection{Training Loop}
 \label{app:training-loop}
 
 \paragraph{Epochs.}
@@ -186,98 +144,66 @@ gradient and the optimiser update of all its steps run in one loop on the device
 
 \paragraph{Eval-catalogue loss.}
 After every epoch, the \EvaluationInjections{} eval injections with their noise
-(\cref{app:evaluation-injections}), each at the midpoints of \FlowMatchingLossBins{} equal steps
-in $s$, give the frame's and the flow's negative log-likelihoods; the same
-injections at the midpoints of the \FlowMatchingLossBins{} bins of $\log_{10}(1-s)$ down to
-$10^{\FlowMatchingLossDecades}$ give, per bin and coordinate group, the predicted $\log_{10}\tau$ and the
-squared standardised error $((Z_1-\hat Z_1)/\tau)^2$ (\cref{app:fm-loss}), and per bin of the
-source's \ac{snr} the frame's $\log_{10}\sigma/\sigma_\pi$, its $\kappa^2$ and the width of $f_0$
-over its Fisher width (\cref{app:fm-frame}). The catalogue and its draws of $Z_0$, from a random stream that training never uses, are fixed for the run, so the
-curves move only with the weights. It also records the RMS of the backbone weights, which the
-decay of \cref{eq:training-muon} holds in check. Training stops before the checkpoint if any loss
-of the epoch is not finite, so the last checkpoint is always finite.
+(\cref{app:evaluation-injections}) give the frame's and the flow's negative log-likelihoods, each
+at the midpoints of \FlowMatchingLossBins{} equal steps in $s$. At the midpoints of
+\FlowMatchingLossBins{} bins of $\log_{10}(1-s)$ down to $10^{\FlowMatchingLossDecades}$ they also
+give, per bin and coordinate group, the predicted $\log_{10}\tau$ and the squared standardised
+error $((Z_1-\hat Z_1)/\tau)^2$ (\cref{app:fm-loss}), and per bin of the source's \ac{snr} the
+frame's $\log_{10}\sigma/\sigma_\pi$ and $\kappa^2$ (\cref{app:fm-frame}). The catalogue and its
+draws of $Z_0$ come from a random stream that training never uses and are fixed for the run, so the
+curves move only with the weights. Training stops before the checkpoint if any loss of the epoch is
+not finite, so the last checkpoint is always finite.
 
-\paragraph{Checkpoints and resume.}
+\paragraph{Checkpoints.}
 Every epoch saves, in the background while the next epoch trains, the weights, the optimisers'
 moments, the random key and the loss histories, keeping only the latest. A second checkpoint keeps
-the epoch with the lowest sum of the eval-catalogue frame and flow negative log-likelihoods
-(\cref{app:evaluation-weights}). A checkpoint is \qty{\TrainingCheckpointNarrowBGib}{\gibi\byte} on narrow-B and \qty{\TrainingCheckpointFullBGib}{\gibi\byte} on full-B, and
-the save blocks training for \qty{\TrainingCheckpointNarrowBBlock}{\second} on narrow-B and
-\qty{\TrainingCheckpointFullBBlock}{\second} on full-B. A job runs for at most \qty{\TrainingJobHours}{\hour} and
-requeues itself \TrainingRequeueMinutes{} minutes before its limit; the next job resumes from the
-latest checkpoint after a restart of about \qty{\TrainingCheckpointNarrowBRestartMinutes}{\minute} (narrow-B)
-and \qty{\TrainingCheckpointFullBRestartMinutes}{\minute} (full-B), mostly compilation; full-B's save, restart and loss
-are measured on an A100 (\qty{40}{\giga\byte} PCIe) running nothing else, narrow-B's on an A100 (\qty{80}{\giga\byte}). Because the key
-is checkpointed, a resumed run draws the same batches as an uninterrupted one; only the epoch cut
-off by the limit is repeated. A resume runs the commit the run was started from and may change only
-the micro-batch split, the step count and evaluation settings; raising the step count before the
-cooldown extends the run (\cref{app:training-schedules}). With the default epoch, a job loses
-\qty{\TrainingCheckpointNarrowBLostPercent}{\percent} (narrow-B) and \qty{\TrainingCheckpointFullBLostPercent}{\percent}
-(full-B) of its wall time to anything but saved steps; the best epoch lengths,
-\TrainingCheckpointNarrowBBestInterval{} and \TrainingCheckpointFullBBestInterval{} steps, would
-lose \qty{\TrainingCheckpointNarrowBBestLostPercent}{\percent} and \qty{\TrainingCheckpointFullBBestLostPercent}{\percent}
-(\cref{fig:training-overhead}c).
+the epoch with the lowest sum of the eval-catalogue frame and flow negative log-likelihoods, which
+is the checkpoint used for evaluation (\cref{app:evaluation-weights}). Because the key is
+checkpointed, a resumed run draws the same batches as an uninterrupted one.
+
 \paragraph{Snapshots and cooldown forks.}
 Every \ResultsSnapshotEvery{} epochs a run also keeps a snapshot of its whole state, which the
 rolling checkpoint overwrites. A fork restarts from the snapshot at epoch $k$ with the total cut to
-$k/(1-c)$ epochs, $c$ the cooldown fraction, so it cools down at once, over $ck/(1-c)$ epochs, as a run
-planned that long from the start would have; the schedule before the cooldown depends only on the
-warmup, which every fork shares with its parent. Forks from epochs \ResultsForkEpochs{} of each run
-give, at the cost of the cooldowns alone, the loss and the posteriors of four shorter runs
+$k/(1-c)$ epochs, $c$ the cooldown fraction, so it cools down at once, over $ck/(1-c)$ epochs, as a
+run planned that long from the start would have; the schedule before the cooldown depends only on
+the warmup, which every fork shares with its parent. Forks from epochs \ResultsForkEpochs{} of each
+run give, at the cost of the cooldowns alone, the loss and the posteriors of four shorter runs
 (\cref{tab:results-forks}).
-
-\paragraph{The runs on the cluster.}
-The runs of \cref{app:results} ran on single A100s of a shared cluster, the narrow and the full band
-each on its own GPU, their source counts one after another, while a third GPU ran the forks and
-evaluations as their snapshots appeared. Jobs of \TrainingJobHours{}\,h requeued themselves and
-resumed as above.
-Measured on the cluster, the narrow-band runs took \ResultsWallNarrow{}\,h of wall time with
-\ResultsRequeuesNarrow{} requeue each, and the full-band runs that finished \ResultsWallFull{}\,h with
-\ResultsRequeuesFull{}; the full-band run with $S=4$ diverged after \ResultsWallFullFour{}\,h
-(\cref{app:results-runs}).
 
 \subsection{Precision}
 \label{app:training-precision}
 
-Parameters and AdamW's moments are float32. By default the backbone
-runs in bfloat16, forward and backward, from bfloat16 copies of its float32 weights, while the
-embeddings, the conditioning \acp{mlp} and the head stay in float32 (\cref{app:network}); Muon's
-momentum and orthogonalisation run in bfloat16 (\cref{app:training-optimiser}). The bfloat16 backbone
-makes a step \numrange{\TrainingBackboneSpeedupAMin}{\TrainingBackboneSpeedupAMax} times faster than
-float32 on an A100 and \numrange{\TrainingBackboneSpeedupLMin}{\TrainingBackboneSpeedupLMax} times on an
-L40S, larger for the larger sizes; bfloat16 attention alone gains at most
-\qty{\TrainingAttentionGainPercent}{\percent} (\cref{fig:training-compute}b).
+Parameters and AdamW's moments are float32. The backbone runs in bfloat16, forward and backward,
+from bfloat16 copies of its float32 weights, while the embeddings, the conditioning \acp{mlp} and
+the heads stay in float32 (\cref{app:network-sizes}); Muon's momentum and orthogonalisation run in
+bfloat16. The bfloat16 backbone makes a step \numrange{\TrainingBackboneSpeedupAMin}{\TrainingBackboneSpeedupAMax}
+times faster than float32 on an A100, more for the larger sizes, whereas bfloat16 attention alone
+gains at most \qty{\TrainingAttentionGainPercent}{\percent}: the dense layers carry the cost.
 
 A float32 backbone is available, but it needs the GPU's matrix-multiplication autotuning switched
 off and full float32 matrix products (no TF32). On an earlier version of the network, float32
-programs compiled with autotuning gave silently wrong, over-confident posteriors on an A100 and on
-a laptop GPU, while the same program without autotuning reproduced the CPU. This was not re-tested
-on the current network; the bfloat16 backbone was not affected.
+programs compiled with autotuning gave silently wrong, over-confident posteriors on two GPU models,
+while the same program without autotuning reproduced the CPU. This was not re-tested on the current
+network; the bfloat16 backbone was not affected.
 
 \subsection{Compute}
 \label{app:training-compute}
 
-\Cref{fig:training-compute} gives the measured cost of every band and size of \cref{app:network}
-at the default batch, on an A100 (\qty{80}{\giga\byte}) and an L40S. The narrow band's step is the
-network's. The full band simulates its observations at many more frequency points (\cref{app:forward-model}), a fixed cost per batch
-that weighs most on the small sizes (\cref{fig:training-overhead}a) and sets a memory floor
-(\cref{fig:training-compute}c). In the step benchmark every size fits unsplit on the A100, and
-full-XL needs two micro-batches on the L40S; with the trainer's eval-catalogue pass and checkpointing
-alongside, narrow-XL on the L40S and full-XL on the A100 (\qty{80}{\giga\byte}) need a split
-too, and full-XL does not fit the L40S even split.
+\Cref{fig:training-compute} gives the measured cost of every band and size at the default batch on
+an A100. The narrow band's step is the network's. The full band also simulates its observations at
+many more frequency points (\cref{app:forward-model}), a fixed cost per batch that weighs most on
+the small sizes and sets a memory floor, since the whole batch is simulated before it is split into
+micro-batches. A size-B run takes about a day of steps on one A100 in either band:
+\qty{\TrainingComputeNarrowBHours}{\hour} on the narrow band and \qty{\TrainingComputeFullBHours}{\hour} on the full band.
+Every size fits on the A100 without splitting the batch, whereas full-XL does not fit the \qty{80}{\giga\byte} card
+once the trainer's eval pass and checkpointing run beside it.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figures/compute.pdf}
-\caption{Cost of every size on an A100 (blue) and an L40S (orange); full band solid with filled
-markers, narrow band dashed with hollow markers. (a)~Training step at the default batch of
-\TrainingBatch{} samples, simulation included, with the bfloat16 backbone; the gap between
-the bands is widest at the small sizes, where the full band's fixed simulation cost weighs most. (b)~Speed-up over float32 of the bfloat16
-backbone (coloured) and of bfloat16 attention alone (violet) at \TrainingSweepBatch{} observations
-per batch, both sides of each ratio measured on the same, slightly earlier revision of the network;
-the backbone, not attention, is where bfloat16 pays. (c)~Planned device memory of the unsplit
-step against each card's usable memory (dotted); the grey dotted line is the full band's simulated
-batch alone.}
+\caption{Cost of every size on one A100 with the bfloat16 backbone, at the default batch of
+\TrainingBatch{} samples; full band solid, narrow band dashed. (a)~Training step, simulation
+included. (b)~Planned device memory of the unsplit step, against the card's usable memory and the
+full band's simulated batch alone (dotted).}
 \label{fig:training-compute}
 \end{figure}
-
