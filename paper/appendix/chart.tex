@@ -3,12 +3,13 @@
 \label{app:chart}
 % =======================================================================================
 
-The flow does not transport physical parameters. A chart $\varphi$ maps each of the
-$S=\ChartSources{}$ sources of a window to \ChartCoords{} real coordinates, so a window's sources
-are a point of $\R^{\ChartCoords{}S}$, and the frame and the flow's training paths
-(\cref{app:fm}) all live there. The chart depends on the window through its centre frequency $\fw$, so
-converting between physical and flow coordinates always needs the $\fw$ of the observation.
-\Cref{fig:chart} shows what the chart does to the prior.
+This appendix defines the flow coordinates of \cref{sec:method-chart}, the map from a window's
+physical sources to $\R^{\ChartCoords{}S}$, and derives the properties the main text relies on:
+the four phase copies of a source map to one point, the helicity amplitudes make the likelihood
+Gaussian, the coordinates are flat, and the slots in order of $f_0$ remove the labelling. It opens
+with the symmetries the chart removes and ends with the slot ordering. The chart depends on the
+window through its centre frequency $\fw$, so converting between physical and flow coordinates
+always needs the $\fw$ of the observation. \Cref{fig:chart} shows what the chart does to the prior.
 
 % moved 2026-11-18 (user) from app:priors (was D.3); label unchanged.
 \subsection{Exact Symmetries}
@@ -26,66 +27,47 @@ unchanged:
   \pmod{2\pi},\qquad k = 0,1,2,3,
   \label{eq:psi-phi-symmetry}
 \end{equation}
-so every source's posterior has four exact copies in $(\psi,\phi_0)\in[0,2\pi)^2$. The helicity
-amplitudes of the flow coordinates depend on these angles only through $\phi_0\pm2\psi$
-(\cref{eq:chart}), which all four copies share: the chart folds them into one point.
+so every source's posterior has four exact copies in $(\psi,\phi_0)\in[0,2\pi)^2$.
 
 \paragraph{Exchangeable sources.}
-The sources are independent and identically distributed and enter the likelihood through their sum, so the
-likelihood is invariant under the $S! = \PriorsPermutations{}$ relabellings: the label-switching
-problem of mixture models \citep{stephens2000dealing,jasra2005markov}, which \ac{mcmc} analyses of
-gravitational-wave sources meet as well \citep{buscicchio2019label}. With
+The sources are independent and identically distributed and enter the likelihood through their
+sum, so the likelihood is invariant under the $S! = \PriorsPermutations{}$ relabellings: the
+label-switching problem of mixture models \citep{stephens2000dealing,jasra2005markov}, which
+\ac{mcmc} analyses of gravitational-wave sources meet as well \citep{buscicchio2019label}. With
 \cref{eq:psi-phi-symmetry}, every mode of an unordered posterior has
-$\PriorsPermutations{}\times4^{\PriorsSources{}} = \num{\PriorsCopies}$ equivalent copies. The chart folds the
-phase copies, and the slots in order of $f_0$ remove the permutations (\cref{app:chart-slots}). The evaluation pairs drawn and injected sources
-before scoring (\cref{app:evaluation}).
-
-\paragraph{Approximate degeneracies.}
-Amplitude trades against inclination, a distant face-on source against a nearer inclined one;
-for a nearly face-on source one helicity dominates and the phase of the other is barely
-constrained (\cref{app:chart-helicity}). At low frequency the chirp drift $\fdot\Tobs^2$ is a
-small fraction of a bin (\cref{tab:priors-bands}) and $\fdot$ stays close to
-its prior. In the joint chains of the eval injections (\cref{app:mcmc}) the posterior width of
-$\log_{10}\fdot$ is a median \ResultsNarrowFdotPriorLow{} of the prior's conditional width at
-$\snr=7$--15 and still \ResultsNarrowFdotPriorLoud{} above $\snr=40$ on the narrow band
-(\ResultsNarrowFdotPriorLoudN{} sources); on the full band it falls from \ResultsFullFdotPriorLow{} to
-\ResultsFullFdotPriorMid{} at $\snr=15$--40 and \ResultsFullFdotPriorLoud{} above 40. Below
-$\snr=7$ it is \ResultsNarrowFdotPriorFaint{} and \ResultsFullFdotPriorFaint.
+$\PriorsPermutations{}\times4^{\PriorsSources{}} = \num{\PriorsCopies}$ equivalent copies. The
+chart folds the phase copies (\cref{app:chart-helicity}), and the slots in order of $f_0$ remove
+the permutations (\cref{app:chart-slots}).
 
 \subsection{The Map}
 \label{app:chart-map}
 
-For a source with frequency $f_0$, frequency derivative $\fdot$, amplitude $\Amp$, sky position
-$(\alpha,\delta)$, polarisation angle $\psi$, inclination $\iota$ and initial phase $\phi_0$,
-the chart is
+For a source with frequency $f_0$, frequency derivative $\fdot$, sky position $(\alpha,\delta)$
+and the helicity amplitudes $z_\pm$ of \cref{eq:chart-helicity}, the chart is
 \begin{equation}
 \begin{aligned}
   x_f &= \frac{2\ln f_0 - \ln f_{\rm lo} - \ln f_{\rm hi}}{\ln f_{\rm hi} - \ln f_{\rm lo}}, &
   x_{\fdot} &= \frac{\log_{10}\fdot - m(f_0)}{\sigma_{\fdot}}, &
   (x_l, x_b) &= \Bigl(\frac{l}{\sigma_l},\,\frac{b}{\sigma_b}\Bigr), \\
-  z_\pm &= \operatorname{asinh}\lvert\zeta_\pm\rvert\,\frac{\zeta_\pm}{\lvert\zeta_\pm\rvert}, &
-  \zeta_\pm &= \frac{\Amp}{u(\fw)}\,\frac{(1\mp\cos\iota)^2}{4}\,e^{\ii(\phi_0^{\rm mid}\pm2\psi)}, &
-  u(f) &= \sqrt{S_n(f)/\Tobs},
+  x &= \bigl(x_f,\, x_{\fdot},\, x_l,\, x_b,\, \operatorname{Re}z_+,\, \operatorname{Im}z_+,\,
+  \operatorname{Re}z_-,\, \operatorname{Im}z_-\bigr).
 \end{aligned}
 \label{eq:chart}
 \end{equation}
-and the flow coordinates of the source are
-$x = (x_f,\, x_{\fdot},\, x_l,\, x_b,\, \operatorname{Re}z_+,\, \operatorname{Im}z_+,\,
-\operatorname{Re}z_-,\, \operatorname{Im}z_-)$, with $\phi_0^{\rm mid}$ the phase referred to
-mid-observation (\cref{eq:chart-phase}). The frequency, drift and sky coordinates are shaped so
-that their prior has a scale of order one; the helicity amplitudes are in noise units, so the
-prior's mostly sub-threshold sources sit close to their origin (\cref{app:chart-flat}). The chart
-has no singular or multiply covered point where the prior has mass.
+The frequency, drift and sky coordinates are shaped so that their prior has a scale of order one;
+the helicity amplitudes are in noise units, so the prior's mostly sub-threshold sources sit close
+to their origin (\cref{app:chart-flat}). The chart has no singular or multiply covered point where
+the prior has mass.
 
 \paragraph{Frequency.}
 $[f_{\rm lo}, f_{\rm hi}]$ is the window interior of \cref{eq:priors-interior}. A window is
 narrow against the prior's spread in $\log f_0$ (\cref{app:priors-sources}), so $x_f$ is close to
-$\Unif(-1,1)$: its standard deviation is \ChartXfStd{} in both bands, against $1/\sqrt3$. One unit of $x_f$ spans $(4R-R)/2$ bins,
-\ChartBinsPerUnitNarrow{} in the narrow band and \ChartBinsPerUnitFull{} in the full band. The flow
-always predicts an order-one position inside the window; the absolute frequency reaches the
-network through its conditioning on $\fw$ (\cref{app:network}). In single precision, $x_f$
-resolves \num{\ChartFThirtyTwoBinsFull} bins near the window edges in the full band, far below
-any posterior width.
+$\Unif(-1,1)$: its standard deviation is \ChartXfStd{} in both bands, against $1/\sqrt3$. One unit
+of $x_f$ spans $(4R-R)/2$ bins, \ChartBinsPerUnitNarrow{} in the narrow band and
+\ChartBinsPerUnitFull{} in the full band. The flow always predicts an order-one position inside the
+window; the absolute frequency reaches the network through its conditioning on $\fw$
+(\cref{app:network}). In single precision, $x_f$ resolves \num{\ChartFThirtyTwoBinsFull} bins near
+the window edges in the full band, far below any posterior width.
 
 \paragraph{Drift.}
 $\log_{10}\fdot$ is standardised by its conditional mean and standard deviation given $f_0$ under
@@ -137,12 +119,9 @@ $C = \num{\NoiseC \pm \NoiseCError}$ for an isotropic sky
 \ac{snr} of $\sqrt C\approx\NoiseSqrtC{}$; the chart needs a scale that tracks the noise across
 the band, not an exact \acs{snr}.
 
-\paragraph{Helicity amplitudes.}
-$\zeta_+$ and $\zeta_-$ are the complex amplitudes of the two circular polarisations in units
-of $u(\fw)$, with $S_n$ the sky-averaged sensitivity of \cref{eq:noise-sky}
-\citep[eq.~1]{robson2019construction} at the window centre, so that one unit holds across the
-window. In these units the \ac{snr} of a source is $\snr = \kappa\,\Amp/u(\fw)$, and $\kappa$ is
-set almost entirely by the inclination (\cref{fig:chart}c): averaged over the sky,
+\paragraph{Signal-to-noise per unit amplitude.}
+In these units the \ac{snr} of a source is $\snr = \kappa\,\Amp/u(\fw)$, and $\kappa$ is set almost
+entirely by the inclination (\cref{fig:chart}c): averaged over the sky,
 $\snr^2\propto\lvert\zeta_+\rvert^2+\lvert\zeta_-\rvert^2\propto 1+6\cos^2\iota+\cos^4\iota$, so
 \begin{equation}
   \kappa^2 \approx C\,\frac{1+6\cos^2\iota+\cos^4\iota}{16/5},
@@ -150,26 +129,29 @@ $\snr^2\propto\lvert\zeta_+\rvert^2+\lvert\zeta_-\rvert^2\propto 1+6\cos^2\iota+
 \end{equation}
 where $16/5$ is the average of the numerator over $\cos\iota$ and $C = \ChartSkyConstant{}$ is the
 mean of $\kappa^2$ over the galactic sky prior. The drawn sources follow \cref{eq:chart-kappa}
-within \qty{\ChartKappaLawRms}{\percent} root-mean-square; $\kappa$ runs from \ChartKappaNarrowLow{} (edge-on) to
-\ChartKappaNarrowHigh{} (face-on) in the narrow band and from \ChartKappaFullLow{} to
+within \qty{\ChartKappaLawRms}{\percent} root-mean-square; $\kappa$ runs from \ChartKappaNarrowLow{}
+(edge-on) to \ChartKappaNarrowHigh{} (face-on) in the narrow band and from \ChartKappaFullLow{} to
 \ChartKappaFullHigh{} in the full band (1st and 99th percentiles), where the response departs from
-its low-frequency limit. The radius is warped by $\operatorname{asinh}$, linear for faint
-amplitudes and logarithmic for loud ones.
+its low-frequency limit. The $\operatorname{asinh}$ warp of the radius is linear for faint
+amplitudes and logarithmic for loud ones, so a source's coordinates stay of order one from the
+noise floor to the loudest sources.
 
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/chart.pdf}
-  \caption{The helicity chart on prior draws. (a)~Amplitude in noise units against inclination
-  for narrow-band sources; colour is $\lvert\cos\iota\rvert$ throughout (a,~b). The prior draws
-  amplitude and inclination independently, most sources far below one noise unit. (b)~The same
-  sources as the radii of the two helicity amplitudes. Face-on sources lie far from the diagonal,
-  their weak helicity orders of magnitude below the dominant one. (c)~\ac{snr}
-  per unit amplitude against inclination, with the sky-averaged law \cref{eq:chart-kappa}.
-  (d)~The prior's marginal in each of the \ChartCoords{} flow coordinates, for both bands, with the
-  closed-form marginal dashed where it exists. The $z_\pm$ spike at zero: most sources lie far below one noise
-  unit.}
-  \label{fig:chart}
-\end{figure*}
+\subsection{The Inverse Map}
+\label{app:chart-inverse}
+
+The frequency, drift and sky invert directly. For the helicity amplitudes, with
+$r_\pm = \sqrt{\sinh\lvert z_\pm\rvert}$,
+\begin{equation}
+  \sqrt{\Amp/u(\fw)} = r_+ + r_-, \qquad
+  \cos\iota = \frac{r_- - r_+}{r_+ + r_-}, \qquad
+  \psi = \tfrac14\bigl(\arg z_+ - \arg z_-\bigr), \qquad
+  \phi_0^{\rm mid} = \tfrac12\bigl(\arg z_+ + \arg z_-\bigr),
+  \label{eq:chart-inverse}
+\end{equation}
+since $\sqrt{\lvert\zeta_+\rvert}+\sqrt{\lvert\zeta_-\rvert}=\sqrt{\Amp/u}$ for every $\iota$.
+\Cref{eq:chart-inverse} returns one of the four copies of \cref{eq:psi-phi-symmetry}, all
+equivalent. The inverse is defined everywhere except at $\Amp=0$, where both $z_\pm$ vanish and
+the orientation is undefined, a set of measure zero under the prior.
 
 \subsection{Why Helicity Amplitudes}
 \label{app:chart-helicity}
@@ -225,37 +207,35 @@ $\pi\delta$~\unit{\radian}, which couples phase and frequency across the whole p
 $(f_0, \fdot)$, \cref{eq:chart-phase} is a rotation of the circle, so $\phi_0^{\rm mid}$ is
 uniform and independent of the other parameters under the prior, as $\phi_0$ is.
 
-\subsection{The Inverse Map}
-\label{app:chart-inverse}
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/chart.pdf}
+  \caption{The helicity chart on prior draws. (a)~Amplitude in noise units against inclination
+  for narrow-band sources; colour is $\lvert\cos\iota\rvert$ throughout (a,~b). The prior draws
+  amplitude and inclination independently, most sources far below one noise unit. (b)~The same
+  sources as the radii of the two helicity amplitudes. Face-on sources lie far from the diagonal,
+  their weak helicity orders of magnitude below the dominant one. (c)~\ac{snr}
+  per unit amplitude against inclination, with the sky-averaged law \cref{eq:chart-kappa}.
+  (d)~The prior's marginal in each of the \ChartCoords{} flow coordinates, full band solid and
+  narrow band dashed, with the closed-form marginal in grey where it exists. The $z_\pm$ spike at zero: most sources lie far below one noise
+  unit.}
+  \label{fig:chart}
+\end{figure*}
 
-The frequency, drift and sky invert directly. For the helicity amplitudes, with
-$r_\pm = \sqrt{\sinh\lvert z_\pm\rvert}$,
-\begin{equation}
-  \sqrt{\Amp/u(\fw)} = r_+ + r_-, \qquad
-  \cos\iota = \frac{r_- - r_+}{r_+ + r_-}, \qquad
-  \psi = \tfrac14\bigl(\arg z_+ - \arg z_-\bigr), \qquad
-  \phi_0^{\rm mid} = \tfrac12\bigl(\arg z_+ + \arg z_-\bigr),
-  \label{eq:chart-inverse}
-\end{equation}
-since $\sqrt{\lvert\zeta_+\rvert}+\sqrt{\lvert\zeta_-\rvert}=\sqrt{\Amp/u}$ for every $\iota$.
-\Cref{eq:chart-inverse} returns one of the four copies of \cref{eq:psi-phi-symmetry}, all
-equivalent. The inverse is defined everywhere except at $\Amp=0$, where both $z_\pm$ vanish and
-the orientation is undefined, a set of measure zero under the prior.
-
-\subsection{Flat Chart and Straight Paths}
+\subsection{Flat Coordinates and Straight Paths}
 \label{app:chart-flat}
 
 All \ChartCoords{} coordinates are flat: the flow acts on $\R^{\ChartCoords{}}$ per source, with
 no manifold, no angle with a branch cut and no exponential or logarithm map. The flow-matching
-path between a base point $x_0$ and a target $x_1$ is the straight line
-$x_s = x_0 + s\,(x_1 - x_0)$ of constant velocity $x_1 - x_0$ (\cref{app:fm}), and the sampler's
-steps stay in the chart whatever the network predicts. The frame of \cref{app:fm-frame} is an
-affine map per coordinate, so a straight path in the frame is a straight path in the chart. Neither
-training nor sampling evaluates a density of the prior, and the chart's Jacobian never enters.
+path between a base point and a target is the straight line of constant velocity
+(\cref{app:fm}), and the sampler's steps stay in the chart whatever the network predicts. The
+frame of \cref{app:fm-frame} is an affine map per coordinate, so a straight path in the frame is a
+straight path in the chart. Neither training nor sampling evaluates a density of the prior, and
+the chart's Jacobian never enters.
 
-The pushed-forward prior is not simple, but it is well scaled (\cref{fig:chart}d): $x_f$ is
-close to uniform, the drift and sky coordinates have standard deviations between
-\ChartUnitStdLow{} and \ChartUnitStdHigh{}, and no pair of the \ChartCoords{} coordinates is correlated by more than
+The pushed-forward prior is not simple, but it is well scaled (\cref{fig:chart}d): $x_f$ is close
+to uniform, the drift and sky coordinates have standard deviations between \ChartUnitStdLow{} and
+\ChartUnitStdHigh{}, and no pair of the \ChartCoords{} coordinates is correlated by more than
 $\lvert r\rvert = \ChartMaxCorr{}$ over \ChartPriorDraws{} prior sources per band. The helicity
 components are the exception: in noise units the prior's sources are faint, and their standard
 deviations lie between \ChartZStdLow{} and \ChartZStdHigh{}. The scale that matters for them is the
@@ -263,10 +243,10 @@ posterior's, about one noise unit for every source the data resolve. The frame s
 prior moments and is trained to the posterior's (\cref{app:fm-frame}), so the flow sees every
 coordinate on the posterior's scale, whatever its scale under the prior.
 
-A flat chart of the sphere distorts lengths away from $b=0$, but the prior sits near the
-galactic plane, where the distortion is small, and little of its mass lies at the poles or
-across the cut in longitude. A Riemannian flow on the product of the sphere and the phase torus would remove them at the cost of
-geodesic paths and exponential maps.
+A flat chart of the sphere distorts lengths away from $b=0$, but the prior sits near the galactic
+plane, where the distortion is small, and little of its mass lies at the poles or across the cut in
+longitude. A Riemannian flow on the product of the sphere and the phase torus would remove both at
+the cost of geodesic paths and exponential maps.
 
 \subsection{Sources in Frequency Order}
 \label{app:chart-slots}
@@ -276,10 +256,10 @@ The $S$ sources of a window are exchangeable under the prior and the likelihood
 We break the symmetry by an ordering: the slots hold the sources in order of $f_0$, in training
 targets and in the frame (\cref{app:fm}), and the flow learns the posterior restricted to
 $f_{0,1}\le\dots\le f_{0,S}$, which has one copy of each mode. This is the label-switching remedy
-of mixture models \citep{stephens2000dealing,jasra2005markov}, and the ordering of
+of mixture models \citep{stephens2000dealing,jasra2005markov} and the ordering of
 \citet{delmond2026neural}; slots matched to the targets in the loss by the Hungarian algorithm
-\citep{houba2025slotflow} would leave the network to learn the labelling as well. Each slot then
-has a frame of its own, centred on the $k$-th lowest source.
+\citep{houba2025slotflow} would leave the network to learn the labelling as well. Each slot has a
+frame of its own, centred on the $k$-th lowest source.
 
 Every ordering has a boundary where two labellings meet. In frequency it falls between sources
 close in $f_0$, the overlap that is hardest to resolve: where two sources' $f_0$ posteriors overlap,

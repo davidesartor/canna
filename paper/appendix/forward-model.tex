@@ -3,201 +3,176 @@
 \label{app:forward-model}
 % =======================================================================================
 
-% Trimmed 2026-11-19 (user): only the steps of Delmond et al. (arXiv:2606.29039, Sec. II and App. A-C) not
-% already in sec:gw-waveforms; tables and figures kept. Full previous text: git history (5a06420).
-The forward model maps a source's parameters to the noiseless Fourier coefficients of the \ac{tdi}
-channels $A$, $E$, $T$ (\cref{sec:gw-waveforms}); this appendix gives the steps in between.
+This appendix defines the simulator of \cref{sec:gw}, so that it can be re-implemented: the waveform,
+the response of one laser link and its heterodyned form, the \ac{tdi} channels, and the windows the
+band is cut into. It ends with the accuracy of the truncated response, which backs the choice of $R$
+in \cref{sec:narrow-band}.
 
 \subsection{Waveform}
 \label{app:forward-model-waveform}
 
-The sky position $(\alpha,\delta)$, in the equatorial frame of the orbit files, defines the
-orthonormal triad
+The transverse-traceless strain of a \ac{gb} at the observer is
 \begin{equation}
-  \hat{\mathbf u} = (\sin\alpha,\,-\cos\alpha,\,0),\qquad
-  \hat{\mathbf v} = (-\sin\delta\cos\alpha,\,-\sin\delta\sin\alpha,\,\cos\delta),\qquad
-  \hat{\mathbf k} = (-\cos\delta\cos\alpha,\,-\cos\delta\sin\alpha,\,-\sin\delta),
-  \label{eq:forward-model-triad}
+  h_{ij}(\xi) = h_+(\xi)\,e^+_{ij} + h_\times(\xi)\,e^\times_{ij},\qquad
+  \xi = t - \frac{\hat{\mathbf k}\cdot\mathbf x(t)}{c},
+  \label{eq:forward-model-xi}
 \end{equation}
-and with it the polarisation tensors of the \ac{ssb},
-$\epsilon^+_{ij} = (\hat{\mathbf u}\otimes\hat{\mathbf u} - \hat{\mathbf v}\otimes\hat{\mathbf v})_{ij}$
-and
-$\epsilon^\times_{ij} = (\hat{\mathbf u}\otimes\hat{\mathbf v} + \hat{\mathbf v}\otimes\hat{\mathbf u})_{ij}$.
-The source frame is the \acs{ssb} frame rotated by the polarisation angle $\psi$ about
-$\hat{\mathbf k}$: its axes are $\hat{\mathbf p} = \cos\psi\,\hat{\mathbf u} + \sin\psi\,\hat{\mathbf v}$
-and $\hat{\mathbf q} = -\sin\psi\,\hat{\mathbf u} + \cos\psi\,\hat{\mathbf v}$, and its polarisation
-tensors are
+with $\hat{\mathbf k}$ the direction of propagation, $\mathbf x(t)$ the observer's position and
+$e^{+,\times}_{ij}$ the polarisation tensors of the source frame. For a circular binary with a constant
+frequency derivative,
 \begin{equation}
 \begin{aligned}
-  e^+_{ij} &= (\hat{\mathbf p}\otimes\hat{\mathbf p} - \hat{\mathbf q}\otimes\hat{\mathbf q})_{ij}
-  = \cos2\psi\,\epsilon^+_{ij} + \sin2\psi\,\epsilon^\times_{ij},\\
-  e^\times_{ij} &= (\hat{\mathbf p}\otimes\hat{\mathbf q} + \hat{\mathbf q}\otimes\hat{\mathbf p})_{ij}
-  = -\sin2\psi\,\epsilon^+_{ij} + \cos2\psi\,\epsilon^\times_{ij}.
+  h_+(\xi) &= -\Amp\,\bigl(1+\cos^2\iota\bigr)\cos\Psi(\xi),\\
+  h_\times(\xi) &= -2\Amp\cos\iota\,\sin\Psi(\xi),\\
+  \Psi(\xi) &= -\phi_0 + 2\pi f_0\,\xi + \pi\fdot\,\xi^2.
 \end{aligned}
-  \label{eq:forward-model-source-frame}
+  \label{eq:forward-model-waveform}
 \end{equation}
-In the \acs{ssb} basis the strain of \cref{eq:forward-model-xi} is therefore
-$h_{ij} = h_+^{\rm SSB}\epsilon^+_{ij} + h_\times^{\rm SSB}\epsilon^\times_{ij}$, with
+Radiation reaction ties the drift and the amplitude to the chirp mass $\Mc$ and the luminosity distance
+$d_L$ \citep{maggiore2008gravitational},
 \begin{equation}
-  h_+^{\rm SSB} = h_+\cos2\psi - h_\times\sin2\psi,\qquad
-  h_\times^{\rm SSB} = h_+\sin2\psi + h_\times\cos2\psi,
-  \label{eq:forward-model-ssb-polarisations}
+  \fdot = \frac{96}{5}\,\pi^{8/3}\left(\frac{G\Mc}{c^3}\right)^{5/3} f_0^{11/3},\qquad
+  \Amp = \frac{2\,(G\Mc)^{5/3}}{c^4\,d_L}\,(\pi f_0)^{2/3},
+  \label{eq:forward-model-fdot}
 \end{equation}
-and $h_{+,\times}$ those of \cref{eq:forward-model-waveform}. In complex form,
-$h_{ij}(\xi) = \mathrm{Re}\bigl\{\bigl(A_+\epsilon^+_{ij} + A_\times\epsilon^\times_{ij}\bigr)e^{\ii\Psi(\xi)}\bigr\}$ with
+but the simulator keeps $\fdot$ and $\Amp$ free, with the prior of \cref{app:priors-sources}.
+
+The sky position $(\alpha,\delta)$ defines the orthonormal triad
 \begin{equation}
-  A_+ = -\Amp\bigl[(1+\cos^2\iota)\cos2\psi + 2\ii\cos\iota\sin2\psi\bigr],\qquad
+  \hat{\mathbf u} = (\sin\alpha,\,-\cos\alpha,\,0),\quad
+  \hat{\mathbf v} = (-\sin\delta\cos\alpha,\,-\sin\delta\sin\alpha,\,\cos\delta),\quad
+  \hat{\mathbf k} = (-\cos\delta\cos\alpha,\,-\cos\delta\sin\alpha,\,-\sin\delta)
+  \label{eq:forward-model-triad}
+\end{equation}
+in the equatorial frame of the orbit files, with $\epsilon^+ = \hat{\mathbf u}\otimes\hat{\mathbf u} -
+\hat{\mathbf v}\otimes\hat{\mathbf v}$ and $\epsilon^\times = \hat{\mathbf u}\otimes\hat{\mathbf v} +
+\hat{\mathbf v}\otimes\hat{\mathbf u}$. The source frame is rotated by $\psi$ about $\hat{\mathbf k}$, so
+$e^+ = \cos2\psi\,\epsilon^+ + \sin2\psi\,\epsilon^\times$ and
+$e^\times = -\sin2\psi\,\epsilon^+ + \cos2\psi\,\epsilon^\times$, and
+$h_{ij} = \mathrm{Re}\bigl\{(A_+\epsilon^+_{ij} + A_\times\epsilon^\times_{ij})e^{\ii\Psi}\bigr\}$ with
+\begin{equation}
+  A_+ = -\Amp\bigl[(1+\cos^2\iota)\cos2\psi + 2\ii\cos\iota\sin2\psi\bigr],\quad
   A_\times = -\Amp\bigl[(1+\cos^2\iota)\sin2\psi - 2\ii\cos\iota\cos2\psi\bigr].
   \label{eq:forward-model-complex-amp}
 \end{equation}
-Sources quoted in ecliptic coordinates, as in the \acs{lisa} Data Challenges, must be rotated to
-this frame.
-
-In the circular basis $\epsilon^{\rm R,L}_{ij} = (\epsilon^+_{ij} \pm \ii\epsilon^\times_{ij})/2$, the two
-complex amplitudes of \cref{eq:forward-model-complex-amp} combine into
+In the circular basis $\epsilon^{\rm R,L} = (\epsilon^+ \pm \ii\epsilon^\times)/2$ this is
 \begin{equation}
-  A_+\epsilon^+_{ij} + A_\times\epsilon^\times_{ij}
-  = -\Amp\Bigl[(1+\cos\iota)^2 e^{2\ii\psi}\,\epsilon^{\rm L}_{ij} + (1-\cos\iota)^2 e^{-2\ii\psi}\,\epsilon^{\rm R}_{ij}\Bigr],
+  A_+\epsilon^+ + A_\times\epsilon^\times
+  = -\Amp\Bigl[(1+\cos\iota)^2 e^{2\ii\psi}\,\epsilon^{\rm L} + (1-\cos\iota)^2 e^{-2\ii\psi}\,\epsilon^{\rm R}\Bigr],
   \label{eq:forward-model-helicity}
 \end{equation}
 so the data depend on $(\Amp,\iota,\psi,\phi_0)$ only through the two complex numbers
-$\Amp(1\pm\cos\iota)^2e^{-\ii(\phi_0\mp2\psi)}$, the flow's helicity amplitudes (\cref{eq:chart}),
-our counterpart of the amplitude coefficients of \citet{delmond2026neural}.
+$\Amp(1\pm\cos\iota)^2e^{-\ii(\phi_0\mp2\psi)}$, the flow's helicity amplitudes (\cref{eq:chart}).
 
-For component masses $m_1$, $m_2$ at luminosity distance $d_L$, the quadrupole formula fixes the
-frequency derivative (\cref{eq:forward-model-fdot}) and the amplitude through the chirp mass
-$\Mc = (m_1m_2)^{3/5}/(m_1+m_2)^{1/5}$ \citep{maggiore2008gravitational},
-\begin{equation}
-  \Amp = \frac{2\,(G\Mc)^{5/3}}{c^4\,d_L}\,(\pi f_0)^{2/3}.
-  \label{eq:forward-model-amplitude}
-\end{equation}
-A measured $\fdot$ gives $\Mc$, and $\Amp$ then $d_L$; otherwise $\Amp$ constrains only
-$\Mc^{5/3}/d_L$.
-
-\subsection{Single-Link Response and Heterodyning}
+\subsection{Link Response and Heterodyning}
 \label{app:forward-model-link}\label{app:forward-model-heterodyne}
 % 2026-11-19 (user): merged with the former Heterodyned Frequency-Domain Response subsection.
 
-\ac{lisa} measures the wave as relative frequency fluctuations of six laser links between three
-spacecraft. Let $i$ be the receiving and $j$ the emitting spacecraft of link $ij$, $t_i$ the
-time of reception and $t_j = t_i - L_{ij}(t_i)$ the time of emission, with $L_{ij}$ the light
-travel time. The link response is \citep{finn2009response,cornish2009alternative}
+\ac{lisa} measures relative frequency fluctuations on six laser links. For link $ij$, received at
+spacecraft $i$ at time $t_i$ and emitted at $j$ at $t_j = t_i - L_{ij}$, the response is
+\citep{finn2009response,cornish2009alternative}
 \begin{equation}
   y_{ij}(t_i) = -\frac12\,\frac{H_{ij}(\xi_i) - H_{ij}(\xi_j)}{1 - \hat{\mathbf k}\cdot\hat{\mathbf x}_{ij}},
   \qquad
   H_{ij}(\xi) = \hat x^k_{ij}\hat x^l_{ij}\,h_{kl}(\xi),
   \label{eq:forward-model-link}
 \end{equation}
-with $\xi_i = t_i - \hat{\mathbf k}\cdot\mathbf x_i(t_i)/c$,
-$\xi_j = t_j - \hat{\mathbf k}\cdot\mathbf x_j(t_j)/c$, and $\hat{\mathbf x}_{ij}$ the unit vector
-from the emitter to the receiver; \acs{lisa}~\acs{gw}~Response \citep{lisagwresponse} uses the same
-response, triad and polarisation convention. For the \ac{gb}, let
-$\mathcal A_{ij} = A_+F^+_{ij} + A_\times F^\times_{ij}$, with the antenna patterns
-$F^+_{ij} = (\hat{\mathbf u}\cdot\hat{\mathbf x}_{ij})^2 - (\hat{\mathbf v}\cdot\hat{\mathbf x}_{ij})^2$
-and $F^\times_{ij} = 2(\hat{\mathbf u}\cdot\hat{\mathbf x}_{ij})(\hat{\mathbf v}\cdot\hat{\mathbf x}_{ij})$, and
-\begin{equation}
-  \alpha_{ij}(t_i) = \pi L_{ij}\,\bigl(1 - \hat{\mathbf k}\cdot\hat{\mathbf x}_{ij}\bigr)\,
-  \bigl(f_0 + \fdot\,\xi_i\bigr),
-  \label{eq:forward-model-alpha}
-\end{equation}
-half the phase the wave advances along the link. If the frequency does not change
-appreciably during one light travel time,
-\begin{equation}
-  y_{ij}(t_i) = -\mathrm{Re}\left\{\frac{\ii\,\mathcal A_{ij}\sin\alpha_{ij}}
-  {1 - \hat{\mathbf k}\cdot\hat{\mathbf x}_{ij}}\,
-  e^{-\ii\left(\alpha_{ij} - \Psi(\xi_i)\right)}\right\}.
-  \label{eq:forward-model-link-gb}
-\end{equation}
-We make two further approximations: the emitter's position is taken at the time of reception,
-$\mathbf x_j(t_j)\simeq\mathbf x_j(t_i)$, so that $\hat{\mathbf x}_{ji} = -\hat{\mathbf x}_{ij}$ and
-$\mathcal A_{ji} = \mathcal A_{ij}$; and all six light travel times are equal and constant,
-$L_{ij} = L = \qty{\ForwardModelArmGm}{\giga\metre}/c = \qty{\ForwardModelArmSeconds}{\second}$, which puts the
-transfer frequency at $f_\star = (2\pi L)^{-1} = \qty{\ForwardModelFStar}{\milli\hertz}$.
-
-With $q = \operatorname{rint}(f_0\Tobs)$ the frequency bin nearest to $f_0$, the response separates
-into a carrier and a slowly varying envelope,
-$y_{ij}(t) = \mathrm{Re}\bigl\{\mathcal G_{ij}(t)\,e^{2\pi\ii qt/\Tobs}\bigr\}$, with
+with $\hat{\mathbf x}_{ij}$ the unit vector from emitter to receiver. We take the emitter's position at
+the time of reception and all six light travel times equal and constant,
+$L = \qty{\ForwardModelArmGm}{\giga\metre}/c$, so the transfer frequency is
+$f_\star = (2\pi L)^{-1} = \qty{\ForwardModelFStar}{\milli\hertz}$. With
+$\mathcal A_{ij} = A_+F^+_{ij} + A_\times F^\times_{ij}$, where $F^+_{ij}$ and $F^\times_{ij}$ are the
+antenna patterns, and $\alpha_{ij} = \pi L(1 - \hat{\mathbf k}\cdot\hat{\mathbf x}_{ij})(f_0 + \fdot\xi_i)$,
+the response separates, for $q = \operatorname{rint}(f_0\Tobs)$, into a carrier and a slow envelope,
+$y_{ij}(t) = \mathrm{Re}\{\mathcal G_{ij}(t)\,e^{2\pi\ii qt/\Tobs}\}$, with
 \begin{equation}
   \mathcal G_{ij}(t) = -\frac{\ii}{2}\,\frac{f_0 + \fdot\,\xi_i}{f_{\star}}\,\mathcal A_{ij}\,
   \operatorname{sinc}\alpha_{ij}\;
   \exp\Bigl\{-\ii\Bigl[\alpha_{ij} + 2\pi f_0\frac{\hat{\mathbf k}\cdot\mathbf x_i(t)}{c}
-  - \Bigl(-\phi_0 + 2\pi\bigl(f_0 - \tfrac{q}{\Tobs}\bigr)t + \pi\fdot\,\xi_i^2\Bigr)\Bigr]\Bigr\},
+  - \Bigl(-\phi_0 + 2\pi\bigl(f_0 - \tfrac{q}{\Tobs}\bigr)t + \pi\fdot\,\xi_i^2\Bigr)\Bigr]\Bigr\}.
   \label{eq:forward-model-slow}
 \end{equation}
-where $\operatorname{sinc}x = \sin x/x$; this is \cref{eq:forward-model-link-gb} with the carrier
-taken out, since
-$\tfrac12(f/f_\star)\operatorname{sinc}\alpha_{ij} = \sin\alpha_{ij}/(1-\hat{\mathbf k}\cdot\hat{\mathbf x}_{ij})$.
-The envelope is sampled at the $R$ times $t_m = m\Tobs/R$, $m = 0,\dots,R-1$, and
-Fourier-transformed with a rectangular window, which gives the positive-frequency spectrum on
-the $R$ bins starting at $k_{\min} = q - R/2$:
+We sample the envelope at $t_m = m\Tobs/R$ and Fourier-transform it with a rectangular window, which
+gives the positive-frequency spectrum on the $R$ bins starting at $q - R/2$,
 \begin{equation}
   \tilde y_{ij}\Bigl(\frac{q+k}{\Tobs}\Bigr) = \frac{\Tobs}{2R}\sum_{m=0}^{R-1}\mathcal G_{ij}(t_m)\,
-  e^{-2\pi\ii km/R},\qquad k = -\tfrac R2,\dots,\tfrac R2 - 1.
+  e^{-2\pi\ii km/R},\qquad k = -\tfrac R2,\dots,\tfrac R2 - 1,
   \label{eq:forward-model-heterodyne}
 \end{equation}
-We call $R$ the number of response points. The prefactor makes this the positive-frequency half
-of the continuous Fourier transform, to which the noise is normalised (\cref{eq:noise-data}).
+normalised to the continuous transform that the noise of \cref{eq:noise-data} refers to.
 
-The envelope varies on the time scale of \acs{lisa}'s orbit, so its spectrum is confined to a band of
-bins around $q$. That band holds three contributions: the annual Doppler sideband,
-$\pm f_0v_\oplus/c$, with $v_\oplus = \qty{\ForwardModelVelocity}{\kilo\metre\per\second}$, so
-$v_\oplus/c\simeq\num{\ForwardModelVelocityRatio}$; the chirp drift $\fdot\,\Tobs$; and the sidebands of the
-antenna pattern, which rotates with the constellation's yearly orbit and modulates the signal at
-harmonics of $1/\unit{\year}$ up to the \ForwardModelAntennaOrdinal{} \citep{cutler1998angular}. A source
-therefore needs
+The envelope varies on the time scale of the orbit, so its spectrum is confined to the annual Doppler
+sideband $\pm f_0v_\oplus/c$, the chirp drift $\fdot\Tobs$, and the antenna-pattern sidebands at
+harmonics of $1/\unit{\year}$ \citep{cutler1998angular}. A source therefore needs
 \begin{equation}
   n_{\rm span}(f_0,\fdot) = 2\left\lceil\Bigl(\frac{f_0 v_\oplus}{c}
   + \fdot\,\Tobs + \frac{\ForwardModelAntennaHarmonics{}}{\unit{\year}}\Bigr)\Tobs\right\rceil \le R
   \label{eq:forward-model-span}
 \end{equation}
-bins of width $1/\Tobs = \qty{\ForwardModelBinNanoHz}{\nano\hertz}$. Since the outer bins of most
-responses lie below the noise, $R$ is set by the bins the data see rather than by this bound
-(\cref{fig:forward-model}). Against a \num{\ForwardModelReferencePoints}-point reference, the $R$-bin
-response keeps a source's power, with at most \qty{\ForwardModelNarrowTruncOutsideMax}{\percent}
-outside its $R$ bins and the \ac{snr} kept to \num{\ForwardModelFullTruncRhoDev}, but not the exact
-shape of its spectrum: a rectangular window leaks a tone that falls between bins, and the median
-error is \qty{\ForwardModelNarrowTruncRelMedian}{\percent} (narrow) and
-\qty{\ForwardModelFullTruncRelMedian}{\percent} (full), below \qty{1}{\percent} on a bin centre and up
-to \qty{\ForwardModelNarrowTruncRelOffBin}{\percent} halfway between bins. Training, the test
-injections and the reference \ac{mcmc} all use the same response, so the comparison between the flow
-and the chains is unaffected.
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/forward-model.pdf}
-  \caption{Choosing $R$ and what it costs. (a) Per bin of $f_0$, the bins that hold all of a source's
-  power above the noise, for the median source and for \qty{99}{\percent} of them, against
-  $n_{\rm span}$ at the prior's mean $\fdot$ (\cref{eq:forward-model-span}) and each band's $R$:
-  the data see far fewer bins than the bound, and the full band's $R$ falls short only above
-  \qty{\ForwardModelSpanWiderMhz}{\milli\hertz}. (b) Each source's relative
-  error against a \num{\ForwardModelReferencePoints}-point response grows with its distance from a bin
-  centre: the error is leakage of the rectangular window, not lost span. (c) The median error
-  over a ladder of $R$ falls close to $R^{-1/2}$; rings mark each band's own $R$.}
-  \label{fig:forward-model}
-\end{figure}
+bins, with $v_\oplus = \qty{\ForwardModelVelocity}{\kilo\metre\per\second}$. Most responses fall
+below the noise well inside this bound, so $R$ is set by the bins the data see
+(\cref{app:forward-model-accuracy}).
 
 \subsection{Time-Delay Interferometry}
 \label{app:forward-model-tdi}
 
-The laser frequency noise on each link is several orders of magnitude above a \ac{gb}'s signal.
-\Ac{tdi} cancels it by combining the six link responses, each delayed by light travel times along
-the arms, so that every laser's noise enters twice with opposite signs
-\citep{tinto2021time,babak2021lisa}. With the delay operator
+\Ac{tdi} cancels the laser frequency noise by combining delayed link responses
+\citep{tinto2021time,babak2021lisa}. With the delay operator $D_{i_1i_2\cdots i_n}x(t) =
+x(t - \sum_{h}L_{i_hi_{h+1}})$, the first Michelson combination is
 \begin{equation}
-  D_{i_1i_2\cdots i_n}\,x(t) = x\Bigl(t - \sum_{h=1}^{n-1}L_{i_hi_{h+1}}\Bigr)
-  \label{eq:forward-model-delay}
-\end{equation}
-for constant light travel times $L_{ij}$, the first Michelson combination is
-\begin{equation}
-\begin{aligned}
-  X ={}& y_{13} + D_{13}\,y_{31} + D_{131}\,y_{12} + D_{1312}\,y_{21}\\
-  &- \bigl[y_{12} + D_{12}\,y_{21} + D_{121}\,y_{13} + D_{1213}\,y_{31}\bigr],
-\end{aligned}
+  X = y_{13} + D_{13}y_{31} + D_{131}y_{12} + D_{1312}y_{21}
+  - \bigl[y_{12} + D_{12}y_{21} + D_{121}y_{13} + D_{1213}y_{31}\bigr],
   \label{eq:forward-model-tdi-time}
 \end{equation}
-the difference between the two round trips of spacecraft 1 along its arms, and $Y$ and $Z$ follow
-from the cyclic permutation $1\to2\to3\to1$ \citep[eq.~14]{babak2021lisa}. It cancels the laser
-noise for a static constellation with unequal arms; for our equal arms it is \acs{tdi}
-generation 1.5. In the frequency domain each delay becomes a phase, $D_{ij}\to e^{-2\pi\ii fL_{ij}}$,
-by the shift theorem; JaxGB forms the combinations on the envelopes of
-\cref{eq:forward-model-slow} and Fourier-transforms them as in \cref{eq:forward-model-heterodyne}.
+and $Y$, $Z$ follow by the cyclic permutation $1\to2\to3\to1$; for equal arms this is \acs{tdi}
+generation 1.5. In the frequency domain each delay is a phase $e^{-2\pi\ii fL}$, applied to the
+envelopes of \cref{eq:forward-model-slow} before the transform. The noise-orthogonal channels are
+\citep{prince2002lisa}
+\begin{equation}
+  A = \frac{Z-X}{\sqrt2},\qquad E = \frac{X-2Y+Z}{\sqrt6},\qquad T = \frac{X+Y+Z}{\sqrt3}.
+  \label{eq:forward-model-aet}
+\end{equation}
+
+\subsection{Windows}
+\label{app:forward-model-windows}
+
+A window $w$ is $K = \ForwardModelWindowResponses{}R$ consecutive bins with first bin and centre
+\begin{equation}
+  k_0(\fw) = \ForwardModelWindowStride{}\,\operatorname{rint}\Bigl(\frac{\fw\Tobs - K/2}{\ForwardModelWindowStride{}}\Bigr),
+  \qquad \fw = \frac{k_0 + K/2}{\Tobs}.
+  \label{eq:forward-model-window-start}
+\end{equation}
+A source's response fills bins $q-R/2,\dots,q+R/2-1$, which lie inside the window when
+$k_0+R/2\le q\le k_0+K-R/2$. Since both bounds are integers this holds whenever $f_0\Tobs$ lies
+between them, so a guard band of $R/2$ bins at each edge leaves an interior of
+$\ForwardModelInteriorResponses{}R$ bins in which a source belongs to the window,
+\begin{equation}
+  \max\Bigl(\frac{k_0 + R/2}{\Tobs},\, f_{\min}\Bigr) \le f_0 \le
+  \min\Bigl(\frac{k_0 + K - R/2}{\Tobs},\, f_{\max}\Bigr).
+  \label{eq:forward-model-window-interior}
+\end{equation}
+The window index is clipped to the range whose interiors just cover the band.
+
+\subsection{Accuracy of the Truncated Response}
+\label{app:forward-model-accuracy}
+
+Against a \num{\ForwardModelReferencePoints}-point reference, the $R$-bin response keeps a source's
+power: at most \qty{\ForwardModelNarrowTruncOutsideMax}{\percent} lies outside its $R$ bins and the
+\ac{snr} is kept to \num{\ForwardModelFullTruncRhoDev}. It does not keep the exact shape of the
+spectrum, because the rectangular window leaks a tone that falls between bins: the median error is
+\qty{\ForwardModelNarrowTruncRelMedian}{\percent} (narrow band) and
+\qty{\ForwardModelFullTruncRelMedian}{\percent} (full band), below \qty{1}{\percent} on a bin centre
+and up to \qty{\ForwardModelNarrowTruncRelOffBin}{\percent} halfway between bins
+(\cref{fig:forward-model}). Training, the test injections and the reference \ac{mcmc} share this
+response, so the comparison between the flow and the chains is unaffected.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics{figures/forward-model.pdf}
+  \caption{The error of the truncated response is leakage between bins. (a)~Each source's relative
+  error against a \num{\ForwardModelReferencePoints}-point response grows with its distance from a
+  bin centre (narrow band grey, full band black). (b)~The median error over a ladder of $R$ falls
+  close to $R^{-1/2}$ (dashed guide); full band solid, narrow band dashed, rings at each band's own
+  $R$.}
+  \label{fig:forward-model}
+\end{figure}

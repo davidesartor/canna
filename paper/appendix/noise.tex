@@ -7,10 +7,9 @@
 % already in sec:gw-waveforms and sec:gw-slicing; tables and figures kept; the sky-averaged sensitivity
 % moved to app:chart, where it is used. Full previous text: git history (5a06420).
 
-
-The noise is the instrument noise of the \ac{lisa} science requirements \citep{lisasst2018lisa}, in
-the single-link form of \citet[Issue~1.1]{babak2021lisa}: an \ac{oms} displacement noise and a
-test-mass acceleration noise on each link (their eqs.~9 and 11),
+The noise of \cref{eq:noise-data} is the instrument noise of the \ac{lisa} requirements
+\citep{lisasst2018lisa}, in the single-link form of \citet[Issue~1.1]{babak2021lisa}: an optical
+metrology noise and a test-mass acceleration noise,
 \begin{align}
   P_{\rm oms}(f) &= \bigl(\qty{\NoiseOms}{\pico\metre}\bigr)^2
   \left[1+\Bigl(\frac{\qty{2}{\milli\hertz}}{f}\Bigr)^4\right]\unit{\per\hertz}, \nonumber\\
@@ -19,44 +18,25 @@ test-mass acceleration noise on each link (their eqs.~9 and 11),
   \left[1+\Bigl(\frac{f}{\qty{8}{\milli\hertz}}\Bigr)^4\right]\unit{\per\hertz},
   \label{eq:noise-single-link}
 \end{align}
-in the fractional frequency of the response (their eqs.~10 and 13),
-\begin{equation}
-  S_{\rm oms}(f) = \Bigl(\frac{2\pi f}{c}\Bigr)^2P_{\rm oms}(f),\qquad
-  S_{\rm acc}(f) = \frac{P_{\rm acc}(f)}{(2\pi f)^2\,c^2}.
-\end{equation}
-For equal arms of light time $L = \qty{\NoiseArmSeconds}{\second}$, equal noise levels on every
-link and uncorrelated noises, the \acs{tdi}-1.5 channels have the one-sided \acp{psd}
-(their eqs.~19 and 127--129, with \acs{tdi}~2.0's common factor $4\sin^22x$ divided out)
+converted to fractional frequency by $S_{\rm oms} = (2\pi f/c)^2P_{\rm oms}$ and
+$S_{\rm acc} = P_{\rm acc}/[(2\pi f)^2c^2]$. For equal arms, $x = 2\pi fL$, the \acs{tdi}-1.5 channels
+have the one-sided \acp{psd} \citep[eqs.~19, 127--129]{babak2021lisa}
 \begin{align}
-  S_A(f) = S_E(f) &= 8\sin^2x\,\bigl[(2+\cos x)\,S_{\rm oms}
+  S_A = S_E &= 8\sin^2x\,\bigl[(2+\cos x)\,S_{\rm oms}
   + 4\,(1 + \cos x + \cos^2 x)\,S_{\rm acc}\bigr], \nonumber\\
-  S_T(f) &= 16\sin^2x\,(1-\cos x)\,\bigl[S_{\rm oms} + 2\,(1-\cos x)\,S_{\rm acc}\bigr],
-  \qquad x = 2\pi fL,
+  S_T &= 16\sin^2x\,(1-\cos x)\,\bigl[S_{\rm oms} + 2\,(1-\cos x)\,S_{\rm acc}\bigr].
   \label{eq:noise-psd}
 \end{align}
-which the simulator draws noise from (\cref{eq:noise-data}), the likelihood weights by and the
-network's input is whitened with. Acceleration noise dominates below a few \unit{\milli\hertz}.
-Unlike \citet{delmond2026neural} we keep $T$: it is orders of magnitude quieter than $A$ and $E$ at
-low frequency, $S_T/S_A = \num{\NoiseTOverALow}$ at \qty{\NoiseBandLow}{\milli\hertz}, but its
-signal response is suppressed with it, so it carries almost no \ac{snr} in our band. The noise is instrumental only: no Galactic
-confusion foreground \citep{karnesis2021characterization}, no gaps or glitches, and the same
-known \acs{psd} in every window.
-
-Signals are compared through the noise-weighted inner product \citep{cutler1994gravitational}
+The channel $T$ is quiet ($S_T/S_A = \num{\NoiseTOverALow}$ at \qty{\NoiseBandLow}{\milli\hertz}) but
+carries almost no \ac{snr} in our band. The noise is instrumental only: no Galactic foreground
+\citep{karnesis2021characterization}, gaps or glitches. Signals are compared through
 \begin{equation}
-  \inner{a}{b} = 4\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{S_c(f_k)\,\Tobs}
-  = 2\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{P_c(f_k)},
+  \inner{a}{b} = 4\,\mathrm{Re}\sum_{c}\sum_{k}\frac{a_{k,c}\,b^*_{k,c}}{S_c(f_k)\,\Tobs},
   \label{eq:inner}
 \end{equation}
-with which the log-likelihood of \cref{eq:loglik} is $-\tfrac12\inner{d-h}{d-h}$ up to a constant,
-and the optimal \ac{snr} of a source, \cref{eq:gw-snr}, is $\snr_s = \inner{h(\theta_s)}{h(\theta_s)}^{1/2}$.
-
-
-We checked the simulator against independent references. The noise generator matches its model: over
-\num{\NoiseGeneratorWindows} pure-noise windows the whitened noise has the expected moments, no
-correlations between bins or channels, and $\inner{n}{n}$ follows $\chi^2_{\NoiseGeneratorDof{}}$
-(Kolmogorov--Smirnov $p = \NoiseGeneratorKs{}$). The sensitivity matches the analytic curve of
-\citet{robson2019construction} up to the expected factor $1/2$, our \acs{tdi} $X$ that of
-\citet{babak2021lisa} to \num{\NoiseTdiMax}, and for the verification binary of
+so that the log-likelihood of \cref{eq:loglik} is $-\tfrac12\inner{d-h}{d-h}$ up to a constant and
+$\snr_s = \inner{h(\theta_s)}{h(\theta_s)}^{1/2}$. The simulator matches independent references: over
+\num{\NoiseGeneratorWindows} pure-noise windows $\inner{n}{n}$ follows $\chi^2_{\NoiseGeneratorDof{}}$
+(Kolmogorov--Smirnov $p = \NoiseGeneratorKs{}$), and for the verification binary of
 \citet[Table~VII]{strub2022bayesian} our \acs{snr} is \NoiseStrubSnr{} against their
-\NoiseStrubSnrTheirs{}, with the reference \acs{mcmc} (\cref{app:mcmc}) reproducing their posterior.
+\NoiseStrubSnrTheirs{}.
