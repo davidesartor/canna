@@ -37,7 +37,7 @@ prior-started chains confirm the reference for $S=8$; for the full band with $S=
 wider, so its ratios up to $\snr\approx20$ are upper bounds on the flow's excess width
 (\cref{app:results-mcmc}).
 
-\textcolor{red}{TODO(Giorgio): a heatmap of the \acs{sbc} as a function of frequency and \acs{snr}.}
+% 2026-11-20 (user): the SBC heatmap TODO done, fig:sbc-heatmap at the end of the section.
 
 \subsection{Narrow Band}
 \label{sec:results-main}\label{sec:results-narrow}
@@ -143,3 +143,26 @@ A posterior costs a fraction of a second. \FlowMatchingCostDraws{} draws of a na
 sampler steps (\cref{app:evaluation-sampler}). A joint \ac{mcmc} chain of one evaluation window takes
 \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} on \McmcJointCores{} \ac{cpu} cores
 (\cref{app:mcmc-cost}).
+
+% added 2026-11-20 (user): SBC by frequency and SNR (scripts/import_sbc_heatmap.py, fig_sbc-heatmap.py).
+\subsection{Calibration by Frequency and \acs{snr}}
+\label{sec:results-sbc-heatmap}
+
+Coverage and $p_{\min}$ in \cref{tab:results-summary} pool every source of a problem, but the posterior's
+difficulty changes with frequency and loudness. \Cref{fig:sbc-heatmap} splits the \acs{sbc} of each model by
+both, each source binned by its draws' median $f_0$ and \acs{snr}, which depend on the data alone: binning by
+the true values would condition on the truth, and even exact posteriors would fail.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/sbc-heatmap.pdf}
+  \caption{\acs{sbc} by frequency and \acs{snr} for the six models of \cref{tab:results-summary}, on the same
+  \num{1000} prior windows: in each cell, the smallest $\gamma$-test $p$-value over the eight flow coordinates
+  and, in brackets, the number of sources. Rows are five $f_0$ ranges, log-uniform over the band; columns are
+  five \acs{snr} ranges holding about the same number of sources. Both are the draws' medians, so the binning
+  depends on the data alone. Cells with fewer than 20 sources are left blank, and the test resolves $p$ down to
+  \num{0.001}. With eight coordinates per cell, an exact posterior gives $p_{\min} < 0.01$ in up to about one cell in
+  thirteen.}
+  \label{fig:sbc-heatmap}
+\end{figure*}
+
