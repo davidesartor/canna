@@ -1,6 +1,7 @@
 """Numbers of appendix/related-work.tex: this work's problem size, and how crowded its training windows are."""
 
 import os
+import re
 
 import numpy as np
 
@@ -21,12 +22,27 @@ WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight")
 DELMOND_SOURCES, DELMOND_TOBS = 2, YEAR
 DELMOND_HARDEST_DF0, DELMOND_EASIEST_DF0 = 0.2e-6, 0.5e-6
 CROWDING_WINDOWS, CHUNK = 4096, 256
+BAND_NAMES = ("LowTail", "LowFreq", "Core", "HighFreq", "HighTail")
 
 configs = {band: config.load(f"{band}-B") for band in ("narrow", "full")}
 problems = {band: LisaGB(**cfg.problem) for band, cfg in configs.items()}
 full = problems["full"]
 patch = configs["full"].network.get("patch", 16)
 assert configs["narrow"].network.get("patch", 16) == patch
+# each subband of numbers/narrow-band.tex at its own R over its own f0 range, inside the full run's problem
+band_macros = dict(
+    re.findall(r"\\newcommand\{\\NarrowBand(\w+)\}\{([^}]*)\}", (style.NUMBERS / "narrow-band.tex").read_text())
+)
+crowding_problems = {"Full": full} | {
+    name: LisaGB(
+        **configs["full"].problem
+        | dict(
+            response_points=int(band_macros[f"{name}R"]),
+            f0_range=(float(band_macros[f"{name}LowMhz"]) * 1e-3, float(band_macros[f"{name}HighMhz"]) * 1e-3),
+        )
+    )
+    for name in BAND_NAMES
+}
 
 
 def closest_pair_bins(problem: LisaGB, key) -> np.ndarray:
@@ -45,7 +61,7 @@ def closest_pair_bins(problem: LisaGB, key) -> np.ndarray:
 
 
 hardest = DELMOND_HARDEST_DF0 * DELMOND_TOBS
-closest = {band: closest_pair_bins(p, jr.key(0)) for band, p in problems.items()}
+closest = {band: closest_pair_bins(p, jr.key(0)) for band, p in crowding_problems.items()}
 assert full.n_sources / DELMOND_SOURCES == 2
 # visible sources span snr 7 to the prior's 99.99% quantile (reports/prior)
 prior_snr = np.load(style.REPO / "reports/prior/f0-fdot-amplitude/data/full.npz")["snr"]
@@ -66,12 +82,10 @@ numbers = {
     "RelatedWorkDelmondHardest": f"{hardest:.1f}",
     "RelatedWorkDelmondEasiest": f"{DELMOND_EASIEST_DF0 * DELMOND_TOBS:.1f}",
     "RelatedWorkCrowdingWindows": f"{CROWDING_WINDOWS}",
-    "RelatedWorkClosestNarrow": f"{np.median(closest['narrow']):.1f}",
-    "RelatedWorkClosestFull": f"{np.median(closest['full']):.0f}",
-    "RelatedWorkCloserNarrow": f"{100 * np.mean(closest['narrow'] < hardest):.0f}",
-    "RelatedWorkCloserFull": f"{100 * np.mean(closest['full'] < hardest):.0f}",
-    "RelatedWorkSubBinNarrow": f"{100 * np.mean(closest['narrow'] < 1):.0f}",
 }
-for band, c in closest.items():
-    print(band, "closest-pair quantiles", np.quantile(c, [0.1, 0.25, 0.5, 0.75, 0.9]))
+for band, gaps in closest.items():
+    numbers[f"RelatedWorkClosest{band}"] = f"{float(f'{np.median(gaps):.2g}'):g}"
+    numbers[f"RelatedWorkCloser{band}"] = f"{100 * np.mean(gaps < hardest):.0f}"
+    numbers[f"RelatedWorkSubBin{band}"] = f"{100 * np.mean(gaps < 1):.0f}"
+    print(band, "closest-pair quantiles", np.quantile(gaps, [0.1, 0.25, 0.5, 0.75, 0.9]))
 style.save_numbers("related-work", numbers)

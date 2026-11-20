@@ -1,6 +1,7 @@
-"""Figure: closest f0 separation per training window, narrow and full band, against the two-source pairs of Delmond et al."""
+"""Figure: closest f0 separation per training window, whole band and its five subbands, against the two-source pairs of Delmond et al."""
 
 import os
+import re
 
 import numpy as np
 
@@ -23,6 +24,8 @@ DELMOND_TOBS, DELMOND_PAIRS_DF0 = YEAR, {
     "close to MCMC": 0.5e-6,
 }
 CROWDING_WINDOWS, CHUNK = 4096, 256
+BAND_NAMES = ("LowTail", "LowFreq", "Core", "HighFreq", "HighTail")
+BAND_LABELS = ("low tail", "low freq", "core", "high freq", "high tail")
 
 
 def closest_pair_bins(problem: LisaGB, key) -> np.ndarray:
@@ -40,13 +43,25 @@ def closest_pair_bins(problem: LisaGB, key) -> np.ndarray:
     return np.concatenate([np.asarray(batched(chunk)) for chunk in keys])
 
 
-closest = {
-    band: closest_pair_bins(LisaGB(**config.load(f"{band}-B").problem), jr.key(0))
-    for band in ("narrow", "full")
+# each subband of numbers/narrow-band.tex at its own R over its own f0 range, inside the full run's problem
+full_problem = config.load("full-B").problem
+band_macros = dict(
+    re.findall(r"\\newcommand\{\\NarrowBand(\w+)\}\{([^}]*)\}", (style.NUMBERS / "narrow-band.tex").read_text())
+)
+problems = {"whole band": LisaGB(**full_problem)} | {
+    label: LisaGB(
+        **full_problem
+        | dict(
+            response_points=int(band_macros[f"{name}R"]),
+            f0_range=(float(band_macros[f"{name}LowMhz"]) * 1e-3, float(band_macros[f"{name}HighMhz"]) * 1e-3),
+        )
+    )
+    for name, label in zip(BAND_NAMES, BAND_LABELS)
 }
+closest = {band: closest_pair_bins(p, jr.key(0)) for band, p in problems.items()}
 
 style.setup()
-fig, ax = plt.subplots(figsize=(style.COLUMN, 1.9), constrained_layout=True)
+fig, ax = plt.subplots(figsize=(style.COLUMN, 2.2), constrained_layout=True)
 ax.axvspan(1e-3, 1.0, color=style.GRID, lw=0, zorder=0)
 ax.text(
     0.32,
@@ -71,20 +86,23 @@ for (label, df0), ls in zip(DELMOND_PAIRS_DF0.items(), ("-", "--")):
         color=style.INK2,
         fontsize=6,
         transform=ax.get_xaxis_transform(),
+        zorder=4,
+        bbox=dict(facecolor="white", edgecolor="none", pad=0.6),
     )
-# label each curve in the empty region above it
-for (band, gaps), colour, label_x in zip(
-    closest.items(), (style.BLUE, style.ORANGE), (1.3, 70.0)
-):
+# the whole band in ink, its subbands from light (low f0) to dark (high f0)
+colours = (style.INK, *style.BLUE_RAMP[1:4], *style.BLUE_RAMP[5:7])
+for (band, gaps), colour in zip(closest.items(), colours):
     gaps = np.sort(gaps)
     ax.step(
         gaps,
         np.arange(1, gaps.size + 1) / gaps.size,
         where="post",
         color=colour,
-        zorder=2,
+        lw=1.4 if band == "whole band" else 0.9,
+        zorder=3 if band == "whole band" else 2,
+        label=band,
     )
-    ax.text(label_x, 0.62, f"{band} band", ha="center", color=colour)
+ax.legend(loc="lower right", fontsize=5.8, frameon=False, handlelength=1.4, labelspacing=0.25)
 ax.set_xscale("log")
 ax.set_xlim(0.1, 4e3)
 ax.set_ylim(0, 1)

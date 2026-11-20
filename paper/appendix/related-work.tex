@@ -117,11 +117,14 @@ on the fly for generic orbits cut their cost \citep{cornish2025fast}.
 \includegraphics[width=3.25in]{figures/crowding.pdf}
 \caption{How crowded the training windows are: the distribution of the closest $f_0$ separation
 among the \RelatedWorkSourcesWord{} sources of a window, over \RelatedWorkCrowdingWindows{}
-training windows per band (\cref{eq:priors-window}), in each analysis's own bins of $1/\Tobs$
-(\qty{\RelatedWorkDelmondTobs}{\year} for \citet{delmond2026neural}, \qty{\RelatedWorkTobs}{\year} here). Vertical lines: the two source pairs of
+training windows (\cref{eq:priors-window}) of the whole band at $R=\NarrowBandHighFreqR$ (the full run) and
+of each of its five subbands at the subband's own $R$ (\cref{tab:narrow-band-bands}), in each analysis's own
+bins of $1/\Tobs$ (\qty{\RelatedWorkDelmondTobs}{\year} for \citet{delmond2026neural},
+\qty{\RelatedWorkTobs}{\year} here). Vertical lines: the two source pairs of
 \citet{delmond2026neural}, \RelatedWorkDelmondEasiest{} bins apart (close to \ac{mcmc}) and
-\RelatedWorkDelmondHardest{} (broad, sometimes biased). In the narrow band \qty{\RelatedWorkCloserNarrow}{\percent} of
-windows hold a pair closer than their hardest one, in the full band \qty{\RelatedWorkCloserFull}{\percent}.}
+\RelatedWorkDelmondHardest{} (broad, sometimes biased). Over the whole band
+\qty{\RelatedWorkCloserFull}{\percent} of windows hold a pair closer than their hardest one; per
+subband from low to high $f_0$, \qtylist{\RelatedWorkCloserLowTail;\RelatedWorkCloserLowFreq;\RelatedWorkCloserCore;\RelatedWorkCloserHighFreq;\RelatedWorkCloserHighTail}{\percent}.}
 \label{fig:related-crowding}
 \end{figure}
 
@@ -144,11 +147,14 @@ the amortised \ac{gb} works above has, to our knowledge, been extended to a join
 than two sources under the \ac{lisa} response.
 
 Our sources are not placed by hand but drawn from the prior, and \cref{fig:related-crowding}
-shows what that implies. In the narrow band the closest two sources of a window are a median
-\RelatedWorkClosestNarrow{} bins apart, closer than Delmond et al.'s hardest pair in
-\qty{\RelatedWorkCloserNarrow}{\percent} of windows and within one bin in \qty{\RelatedWorkSubBinNarrow}{\percent}; in the
-full band, whose windows are wider, the median is \RelatedWorkClosestFull{} bins and only
-\qty{\RelatedWorkCloserFull}{\percent} of windows are that crowded. Among the Galaxy's resolvable
+shows what that implies. Over the whole band the closest two sources of a window are a median
+\RelatedWorkClosestFull{} bins apart, and \qty{\RelatedWorkCloserFull}{\percent} of windows hold a
+pair closer than Delmond et al.'s hardest. A window is $4R$ bins wide, so the median doubles from one
+subband to the next: \RelatedWorkClosestLowTail{} bins in the low
+tail, \RelatedWorkClosestLowFreq{} at low frequency, \RelatedWorkClosestCore{} in the core,
+\RelatedWorkClosestHighFreq{} at high frequency and \RelatedWorkClosestHighTail{} in the high tail, and
+\qty{\RelatedWorkSubBinCore}{\percent} of core windows hold a pair within one bin.
+Among the Galaxy's resolvable
 sources overlap is rarer: fewer than \qty{1}{\percent} of pairs above \ac{snr} 7 have a match above
 one half after a year \citep{littenberg2020global}.
 Overlap costs the flow width. On the narrow band, sources at $\snr\ge7$ whose nearest injected

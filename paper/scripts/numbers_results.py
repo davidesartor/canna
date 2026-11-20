@@ -613,7 +613,7 @@ if JS_MAIN.is_file() and SBC_MAIN.is_file():
         key = f"{band}-{n}"
         if (band, n) not in jm or key not in sm:
             # not landed yet (full S=4: the Student-t continuation 261103-n4-full-B-t44)
-            rows.append(rf"n{n}-{band} & {n} & & & & & & \\")
+            rows.append(rf"n{n}-{band} & {n} & & & & & & & & \\")
             continue
         m, s = jm[band, n], sm[key]
         snr = np.array([x["snr"] for x in m["sources"]])
@@ -621,7 +621,7 @@ if JS_MAIN.is_file() and SBC_MAIN.is_file():
         # 2026-11-19: median over the sources, as tab:results-js (was the mean: full S=4 0.19 here, 0.074 there)
         low, high = np.median(js[(snr >= 7) & (snr < 15)]), np.median(js[snr >= 15])
         windows = f"{len(np.unique([x['injection'] for x in m['sources']]))} / {s['flow']['windows']}"
-        rows.append(rf"n{n}-{band} & {n} & {e64.model_label(band, n)} & {windows} & {js3(low)} & {js3(high)} & {s['flow']['in68']:.3f} & {pfmt(s['flow']['min_p'])} \\")
+        rows.append(rf"n{n}-{band} & {n} & {e64.model_label(band, n)} & {windows} & {js3(low)} & {js3(high)} & {s['flow']['in68']:.3f} & {pfmt(s['flow']['min_p'])} & {s['mcmc']['in68']:.3f} & {pfmt(s['mcmc']['min_p'])} \\")
     numbers["ResultsSummaryRows"] = "\n".join(rows)
     numbers["ResultsSummaryFloor"] = js3(np.median([m['null']['median'] for m in jm.values()]))  # = ResultsJsFloorMedian
 
