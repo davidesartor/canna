@@ -1,32 +1,30 @@
 % =======================================================================================
-\section{Reference Bayesian Inference Methods: \acs{mcmc} and Fisher}
-\label{app:mcmc}\label{app:mcmc-sampler}\label{app:mcmc-context}\label{app:mcmc-convergence}\label{app:mcmc-strub}\label{app:mcmc-cost}
-\label{app:fisher}\label{app:evaluation-fisher}\label{app:fisher-forecast}\label{app:mcmc-fisher}\label{app:fisher-ideal}
+\section{Reference \acs{mcmc}}
+\label{app:mcmc}
 % =======================================================================================
-% 2026-11-19 (user): merged with the former app:fisher (Fisher Forecast), appended below without its
-% subsections, labels on the section line. Subsections merged; their labels kept in place.
-% Trimmed 2026-11-19 (user): no figures (mcmc-posterior, mcmc-convergence dropped), context, posterior
-% example, long-chain diagnostics and the Strub check reduced to their conclusions. Full previous text:
-% git history (5a06420).
+% 2026-11-19 (user): merged with the former app:fisher (Fisher Forecast); no figures. Full previous
+% text: git history (5a06420).
 
 The flow's posteriors are judged against Markov chains that sample the window likelihood of
-\cref{eq:loglik} directly; training never sees them. Unlike a global fit
-\citep{littenberg2020global}, the number of sources and the noise are known, so no move changes the
-model.
+\cref{eq:loglik} directly; training never sees them. This appendix says what the reference is, how far it
+can be trusted and what it costs, in support of the width comparisons of \cref{app:results-mcmc}. Unlike a
+global fit \citep{littenberg2020global}, the number of sources and the noise are known, so no move changes
+the model.
 
+\subsection{Sampler}
+\label{app:mcmc-sampler}
 
-Each eval injection (\cref{app:evaluation-injections}) is sampled jointly, one ensemble over all
-$8S$ parameters of its sources, with responses of \PriorsNarrowR{} bins in the narrow band and
-\PriorsFullR{} in the full band, in double precision. Each source moves in
+Each eval window (\cref{app:evaluation-injections}) is sampled jointly, one ensemble over all $8S$
+parameters of its sources, with responses of \PriorsNarrowR{} bins in the narrow band and \PriorsFullR{} in
+the full band, in double precision. Each source moves in
 $(\ln f_0, \ln\fdot, \ln\Amp, \alpha, \delta, \psi, \cos\iota, \phi_0)$ under the training prior
 (\cref{app:priors}), with one extra cut, $\log_{10}\fdot$ at most \McmcFdotSigmas{} standard
 deviations above its mean given $f_0$ (prior mass \num{\McmcFdotCutMass}). The sampler is a
 parallel-tempered ensemble sampler with differential-evolution \citep{terbraak2006markov} and
 stretch moves \citep{goodman2010ensemble,foreman2013emcee}, \McmcTemps{} temperatures up to
-\McmcTempMax{} \citep{vousden2016dynamic}, started from the injection's Fisher draws
-(\cref{app:evaluation-fisher}); the cold draws are relabelled to the injected sources
-(\cref{eq:evaluation-matching}) and folded onto the injection's branch of the $(\psi,\phi_0)$
-symmetries (\cref{eq:psi-phi-symmetry}) before any width is taken (\cref{tab:mcmc-settings}).
+\McmcTempMax{} \citep{vousden2016dynamic} (\cref{tab:mcmc-settings}). The cold draws are relabelled to the
+injected sources (\cref{eq:evaluation-matching}) and folded onto the window's branch of the
+$(\psi,\phi_0)$ symmetries (\cref{eq:psi-phi-symmetry}) before any width is taken.
 
 \begin{table}[t]
   \centering
@@ -38,40 +36,22 @@ symmetries (\cref{eq:psi-phi-symmetry}) before any width is taken (\cref{tab:mcm
     \toprule
     Likelihood & \cref{eq:loglik}, all sources of the window \\
     Dimension & \McmcJointDim{} (\McmcSlots{} sources) \\
-    Injections & \McmcInjections \\
+    Windows & \McmcInjections \\
     Walkers per temperature & \McmcWalkers \\
     Temperatures & \McmcTemps, up to \McmcTempMax \\
     Burn-in / kept iterations & \McmcBurn{} / \McmcKeep \\
     Thinning & \McmcThin \\
     Seeds / chains & \McmcSeeds{} / \McmcChains \\
-    Draws per injection & \McmcKeepDraws \\
+    Draws per window & \McmcKeepDraws \\
     Start & Fisher draws \\
     \bottomrule
   \end{tabular}
 \end{table}
 
+\subsection{Initialisation from a Fisher forecast}
+\label{app:fisher}
 
-Over the six references the largest split $\hat R$ \citep{gelman1992inference} is
-\ResultsMcmcRhatMax{} (\ResultsMcmcRhatNarrowMax{} on the narrow band) and the smallest \ac{ess}
-\ResultsMcmcEssMin{}; the full-band chains sit above the usual $\hat R<1.01$ for their worst
-parameter. Longer chains of the narrow band with four sources, \McmcConvSeeds{} seeds on
-injections \McmcConvRuns, show that the loud sources are settled once read without labels, while
-two things drift below $\snr=7$: sources under $\snr=3$ widen towards the prior, and sources at
-$\snr=3$--7 are slowly lost. The reference is therefore sound at $\snr\ge7$, somewhat narrow for
-invisible sources, and an upper bound on how often a source at $\snr=3$--7 is localised. On the
-verification binary of \citet{strub2022bayesian} the sampler reproduces the published posterior and
-\ac{snr} gain (\cref{app:noise-validation}).
-
-
-On \McmcJointCores{} \acs{cpu} cores a joint chain of \num{400000} iterations takes
-\qtyrange{\McmcCostNarrowFourLo}{\McmcCostNarrowFourHi}{\hour} for a narrow-band window with four
-sources, \qtyrange{\McmcCostNarrowEightLo}{\McmcCostNarrowEightHi}{\hour} with eight, and about
-\qtyrange{\McmcCostFullSixteenLo}{\McmcCostFullSixteenHi}{\hour} for a full-band window with sixteen
-(doubled from \num{200000}-iteration chains), against a fraction of a second for the flow
-(\cref{app:fm-sampling}).
-
-Every eval injection also gets a Fisher forecast, a cheap Gaussian used only as a cross-check of the
-chains and the flow (\cref{app:results}), centred at the truth $\theta^\star$ with precision
+The chains start from draws of a Gaussian centred at the truth $\theta^\star$, with precision
 \begin{equation}
   \Gamma = \frac1{N_{\rm F}}\sum_{r=1}^{N_{\rm F}}\nabla^2_\theta\bigl[-\log L(\theta; d_r)\bigr]_{\theta^\star}
   + \Lambda,
@@ -83,28 +63,34 @@ the Hessian of \cref{eq:loglik} averaged over noise realisations $d_r$, which is
 poorly measured directions at the prior's width. It is drawn with $\log\fdot$ in place of $\fdot$, and each
 eigenvalue is floored at the prior's precision along its eigenvector. Being unimodal and Gaussian, it misses
 the exact symmetries of \cref{eq:psi-phi-symmetry} and the curved amplitude--inclination degeneracy, and where
-the data barely constrain a parameter it returns the prior's width: $\fdot$ for most of the narrow band, and
-the faint sources of the full band, whose $\log\fdot$ draws it does not bound (we do not use them).
+the data barely constrain a parameter it returns the prior's width. It is not a stand-in for the posterior:
+from \ac{snr} \McmcFisherMidSnr{} up its median width per parameter is within
+\McmcFisherHighMedianLo--\McmcFisherHighMedianHi{} times the chains', but below \ac{snr}
+\McmcFisherFaintSnr{} the chains spread a faint source's $f_0$ over much of the window, as the prior does, and
+the forecast does not.
 
-The forecast's $f_0$ width is never below the ideal width of \cref{eq:evaluation-ideal-width}: a median
-\EvaluationFisherRatioNarrow{} times it in the narrow band, where the chirp is barely measured, and
-\EvaluationFisherRatioFull{} in the full band, where a measured chirp costs up to the factor
-\EvaluationStartFactor{} of a start-of-observation $f_0$. On the full band the Fisher width is therefore the
-sharper yardstick.
+\subsection{Convergence}
+\label{app:mcmc-convergence}
 
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics{figures/mcmc.pdf}
-  \caption{Fisher widths over the joint \ac{mcmc} widths of the six references, per band (panels) and
-  source count (colours): the median over the sources in each \ac{snr} bin of the $f_0$ ratio (solid) and of
-  the median ratio of the six parameters other than $f_0$ and $\fdot$ (dashed); the shaded band is
-  \McmcFisherLo--\McmcFisherHi. From \ac{snr} \McmcFisherMidSnr{} up the forecast sits in the band.}
-  \label{fig:mcmc-widths}
-\end{figure}
+Over the six references the largest split $\hat R$ \citep{gelman1992inference} is
+\ResultsMcmcRhatMax{} (\ResultsMcmcRhatNarrowMax{} on the narrow band) and the smallest \ac{ess}
+\ResultsMcmcEssMin{}; the full-band chains sit above the usual $\hat R<1.01$ for their worst
+parameter. Longer chains of the narrow band with four sources, \McmcConvSeeds{} seeds on
+windows \McmcConvRuns, show that the loud sources are settled once read without labels, while
+two things drift below $\snr=7$: sources under $\snr=3$ widen towards the prior, and sources at
+$\snr=3$--7 are slowly lost. The reference is therefore sound at $\snr\ge7$, somewhat narrow for
+invisible sources, and an upper bound on how often a source at $\snr=3$--7 is localised. For the
+problems with the most parameters the faint sources stay near their Fisher start, which
+\cref{app:results-mcmc} takes into account when reading the width ratios. On the verification binary of
+\citet{strub2022bayesian} the sampler reproduces the published posterior and \ac{snr} gain
+(\cref{app:noise-validation}).
 
-Against the chains (\cref{fig:mcmc-widths}), from \ac{snr} \McmcFisherHighSnr{} up the forecast's median width
-per parameter is \McmcFisherHighMedianLo--\McmcFisherHighMedianHi{} times theirs, and from \ac{snr}
-\McmcFisherMidSnr{} up it is a fair proxy. Below \ac{snr} \McmcFisherFaintSnr{} it is no proxy: the chains
-spread a faint source's $f_0$ over much of the window, as the prior does, and the forecast does not. Between
-\ac{snr} \McmcFisherFaintSnr{} and \McmcFisherMidSnr{} on the full band it is \McmcFisherFullMidLo--\McmcFisherFullMidHi{}
-times wider in $f_0$, partly because the reference is too narrow there (\cref{app:results-mcmc}).
+\subsection{Cost}
+\label{app:mcmc-cost}
+
+On \McmcJointCores{} \acs{cpu} cores a joint chain of \num{400000} iterations takes
+\qtyrange{\McmcCostNarrowFourLo}{\McmcCostNarrowFourHi}{\hour} for a narrow-band window with four
+sources, \qtyrange{\McmcCostNarrowEightLo}{\McmcCostNarrowEightHi}{\hour} with eight, and about
+\qtyrange{\McmcCostFullSixteenLo}{\McmcCostFullSixteenHi}{\hour} for a full-band window with sixteen
+(doubled from \num{200000}-iteration chains), against a fraction of a second for the flow
+(\cref{app:fm-sampling}).

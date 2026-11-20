@@ -8,8 +8,9 @@
 % measured chain times are not those of an optimised pipeline). Numbers from
 % paper/scripts/numbers_amortisation.py, figures from fig_amortisation.py.
 
-Training is paid once per band, sampling once per window. This appendix asks how much training a
-fit needs, and after how many windows that training is repaid.
+Training is paid once per band, sampling once per window. This appendix shows how the fit depends on
+the training time and after how many windows the training is repaid by the cheaper sampling, which backs
+the cost claim of \cref{sec:experiments}.
 
 \paragraph{Fit against training time.}
 Each cooldown fork is the same run trained for a shorter schedule (\cref{app:training-loop}): the
@@ -22,8 +23,8 @@ epochs, \AmortisationNarrowShortHours\,h, already give $f_0$ widths
 widths fall from \AmortisationFullShortRatio{} after \AmortisationFullShortHours\,h to
 \AmortisationFullLongRatio{} after \AmortisationFullLongHours\,h. The loss falls with training time on every
 configuration up to 40 epochs, apart from one step on the full band with $S=4$, and the coverage
-stays close to its nominal level throughout: shorter training gives wider posteriors, not
-miscalibrated ones. \textcolor{red}{TODO(trex): check the coverage claim against
+stays close to its nominal level throughout, so shorter training gives wider posteriors whose
+coverage is unchanged. \textcolor{red}{TODO(trex): check the coverage claim against
 fig:amortisation-quality c once built from source-count.json.} The more sources a window holds,
 the more training the same width costs. \Cref{tab:results-forks} lists the values.
 
@@ -62,10 +63,10 @@ on the narrow band and \num{\AmortisationFullPasses} on the full band. A single 
 training if a chain takes more than \qty{\AmortisationNarrowPassMinutes}{\minute} per window on the
 narrow band, or \qty{\AmortisationFullPassMinutes}{\minute} on the full band. If a chain takes an
 hour, the flow breaks even after \AmortisationNarrowHourWindows{} and
-\AmortisationFullHourWindows{} windows. A global fit is cheaper still to amortise than one pass
-suggests: it revisits each window at every iteration as the neighbouring signals change, and starts
-again with each data release, while the flow's training is reused as long as the noise model and
-the priors hold (\cref{sec:followups}).
+\AmortisationFullHourWindows{} windows. One pass understates the saving for a global fit, which
+revisits each window at every iteration as the neighbouring signals change and starts again with each
+data release, while the flow's training is reused as long as the noise model and the priors hold
+(\cref{sec:followups}).
 
 \begin{figure}[t]
   \centering
