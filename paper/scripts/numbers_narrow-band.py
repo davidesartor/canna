@@ -1,17 +1,25 @@
-"""The numbers in sections/narrow-band.tex: the frequency bands set by the response width, from the response-span report."""
+"""The numbers in sections/narrow-band.tex: the frequency bands set by the response width (reports/prior/response-span)
+and how many sources a window of each band's width holds (reports/prior/source-count, as numbers_rates.py)."""
 
+import importlib.util
 import json
 import math
 
 import numpy as np
 import yaml
+from scipy.special import ndtr
 
 import style
 
+from canna.lisa.physics import SKY_CATALOGUE_SOURCES
+from canna.lisa.problem import WINDOW_RESPONSES
+
 SPAN = style.REPO / "reports/prior/response-span/data"
+COUNT = style.REPO / "reports/prior/source-count"
 BANDS = style.REPO / "src/canna/lisa/configs/band"
 F0_BINS = 40
-BAND_R = (32, 64, 128)
+BAND_R = (16, 32, 64, 128, 256)
+BAND_NAMES = ("LowTail", "LowFreq", "Core", "HighFreq", "HighTail")
 VISIBLE_SNR = 7
 KEEP, SHARE = 1.0, 0.999
 
@@ -31,7 +39,10 @@ def quantile(a: np.ndarray, w: np.ndarray, y: float) -> float:
 
 def two_figures(x: float) -> str:
     """x to two significant figures, without an exponent."""
-    return f"{x:.{max(0, 1 - math.floor(math.log10(abs(x))))}f}"
+    if x == 0:
+        return "0"
+    digits = 1 - math.floor(math.log10(abs(x)))
+    return f"{round(x, digits):.{max(0, digits)}f}"
 
 
 span = json.loads((SPAN / "response-span.json").read_text())
@@ -53,7 +64,7 @@ bins = np.clip(np.digitize(np.log10(f0), edges) - 1, 0, F0_BINS - 1)
 need = [pow2(quantile(width[bins == b], w[bins == b], SHARE)) for b in range(F0_BINS)]
 
 # band edges: the lowest f0 bin needing more than each R, from which every higher bin does too
-first_over = [next(b for b in range(F0_BINS) if need[b] > r) for r in BAND_R]
+first_over = [next(b for b in range(F0_BINS) if need[b] > r) for r in BAND_R[:-1]]
 assert all(min(need[b:]) > r for b, r in zip(first_over, BAND_R))
 band_edges = [
     span["f0_range"][0],
@@ -67,22 +78,53 @@ visible = w * (snr >= VISIBLE_SNR)
 visible = visible / visible.sum()
 share = lambda weights, f, lo, hi: 100 * weights[(f >= lo) & (f < hi)].sum()
 
-names = ("One", "Two", "Three", "Four")
 numbers = {
     "NarrowBandKeepPercent": f"{100 * KEEP:g}",
     "NarrowBandSharePercent": f"{100 * SHARE:g}",
     "NarrowBandVisibleSnr": f"{VISIBLE_SNR}",
     "NarrowBandTopR": f"{need[-1]}",
 }
-for name, r, lo, hi in zip(names, (*BAND_R, None), band_edges, band_edges[1:]):
+for name, r, lo, hi in zip(BAND_NAMES, BAND_R, band_edges, band_edges[1:]):
     numbers |= {
         f"NarrowBand{name}LowMhz": f"{lo * 1e3:.2g}",
         f"NarrowBand{name}HighMhz": f"{hi * 1e3:.2g}",
         f"NarrowBand{name}Catalogue": two_figures(share(catalogue, z["f0"], lo, hi)),
         f"NarrowBand{name}Visible": two_figures(share(visible, f0, lo, hi)),
+        f"NarrowBand{name}R": f"{r}",
     }
-    if r is not None:
-        numbers[f"NarrowBand{name}R"] = f"{r}"
+# where even the top band's R falls short, and the visible share it loses bins of
+over_top = 10 ** edges[next(b for b in range(F0_BINS) if need[b] > BAND_R[-1])]
+numbers["NarrowBandOverTopMhz"] = f"{over_top * 1e3:.2g}"
+numbers["NarrowBandOverTopVisible"] = two_figures(share(visible, f0, over_top, band_edges[-1]))
+# sources and visible ones in a window of 4R bins across each band, by the binomial law of numbers_rates.py
+spec = importlib.util.spec_from_file_location("source_count_page", COUNT / "scripts/build_page.py")
+page = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(page)
+d = json.loads((COUNT / "data/source-count.json").read_text())
+c = np.load(COUNT / "data/source-count.npz")
+count_edges = np.linspace(*np.log10(d["f0_range"]), page.F0_BINS + 1)
+count_x = (count_edges[:-1] + count_edges[1:]) / 2
+count_bins = np.clip(np.digitize(np.log10(c["f0"]), count_edges) - 1, 0, page.F0_BINS - 1)
+count_weight = np.bincount(count_bins, c["f0_weight"], page.F0_BINS)
+reach = ndtr((c["mean_log_a"] - np.log10(VISIBLE_SNR / c["snr_unit"])) / d["amp_std"])
+reaching_visible = np.bincount(count_bins, c["f0_weight"] * reach, page.F0_BINS) / count_weight
+for name, r, lo, hi in zip(BAND_NAMES, BAND_R, band_edges, band_edges[1:]):
+    centres = np.linspace(math.log10(lo), math.log10(hi), 200)
+    width_bins = WINDOW_RESPONSES * r
+    mean_all = SKY_CATALOGUE_SOURCES * page.window_share(
+        centres, width_bins, count_x, np.ones(page.F0_BINS), d["t_obs"], d["f0_range"]
+    )
+    mean_visible = SKY_CATALOGUE_SOURCES * page.window_share(
+        centres, width_bins, count_x, reaching_visible, d["t_obs"], d["f0_range"]
+    )
+    numbers |= {
+        f"NarrowBand{name}Window": f"{width_bins}",
+        f"NarrowBand{name}AllLo": two_figures(mean_all.min()),
+        f"NarrowBand{name}AllHi": two_figures(mean_all.max()),
+        f"NarrowBand{name}VisibleLo": two_figures(mean_visible.min()) if mean_visible.min() >= 0.01 else "0",
+        f"NarrowBand{name}VisibleHi": two_figures(mean_visible.max()),
+    }
+
 numbers["NarrowBandNarrowVisible"] = two_figures(
     share(visible, f0, *narrow["f0_range"])
 )

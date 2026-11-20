@@ -12,7 +12,9 @@ import style
 SPAN = style.REPO / "reports/prior/response-span/data"
 BANDS = style.REPO / "src/canna/lisa/configs/band"
 F0_BINS = 40
-BAND_R = (32, 64, 128)
+BAND_R = (16, 32, 64, 128, 256)
+BAND_NAMES = ("low tail", "low freq", "core", "high freq", "high tail")
+GUIDE_R = tuple(2**k for k in range(3, 10))
 VISIBLE_SNR = 7
 KEEP, SHARE = 1.0, 0.999
 # the (log10 f0, log10 width) density, as on the report's page: cells per axis, one-cell smoothing, contour masses
@@ -51,7 +53,7 @@ bins = np.clip(np.digitize(np.log10(f0), edges) - 1, 0, F0_BINS - 1)
 need = np.array(
     [pow2(quantile(width[bins == b], w[bins == b], SHARE)) for b in range(F0_BINS)]
 )
-first_over = [int(np.argmax(need > r)) for r in BAND_R]
+first_over = [int(np.argmax(need > r)) for r in BAND_R[:-1]]
 band_edges = [
     10 ** log_range[0],
     *(10 ** edges[b] for b in first_over),
@@ -62,13 +64,13 @@ band_mhz = np.array(band_edges) * 1e3
 fig, (ax_width, ax_share) = plt.subplots(
     2,
     1,
-    figsize=(style.COLUMN, 3.6),
+    figsize=(style.COLUMN, 3.9),
     sharex=True,
     height_ratios=(1.5, 1),
     layout="constrained",
 )
 for ax in (ax_width, ax_share):
-    for lo, hi, shade in zip(band_mhz, band_mhz[1:], (True, False, True, False)):
+    for lo, hi, shade in zip(band_mhz, band_mhz[1:], (True, False, True, False, True)):
         if shade:
             ax.axvspan(lo, hi, color=style.FILL, lw=0, zorder=0)
 
@@ -102,22 +104,14 @@ ax_width.contour(
     zorder=1.2,
 )
 
-# each band's R, and the top band's per-f0 need
+# every power-of-two R as a guide, each band's R in ink, and the top band's per-f0 need
+for r in GUIDE_R:
+    ax_width.axhline(r, color=style.MUTED, lw=0.5, ls=(0, (2, 2)), zorder=1.5)
+    style.direct_label(ax_width, band_mhz[0], r, rf"$R={r}$", dx=2, dy=1, ha="left", va="bottom", fontsize=5.5)
 for r, lo, hi in zip(BAND_R, band_mhz, band_mhz[1:]):
     ax_width.plot([lo, hi], [r, r], color=style.INK, lw=1.0, zorder=2)
-    style.direct_label(
-        ax_width,
-        math.sqrt(lo * hi),
-        r,
-        rf"$R={r}$",
-        dx=0,
-        dy=3,
-        ha="center",
-        va="bottom",
-    )
-top = slice(first_over[-1], F0_BINS)
 ax_width.stairs(
-    need[top],
+    need[first_over[-1] :],
     10 ** edges[first_over[-1] :] * 1e3,
     color=style.INK,
     lw=1.0,
@@ -168,31 +162,32 @@ style.direct_label(
     rf"SNR $\geq$ {VISIBLE_SNR}",
     dx=-6,
 )
-for lo, hi in zip(band_mhz, band_mhz[1:]):
+for name, lo, hi in zip(BAND_NAMES, band_mhz, band_mhz[1:]):
     inside = (f0 >= lo / 1e3) & (f0 < hi / 1e3)
     ax_share.annotate(
-        f"{100 * visible_w[inside].sum() / visible_w.sum():.2g}%",
+        f"{name}\n{100 * visible_w[inside].sum() / visible_w.sum():.2g}%",
         (math.sqrt(lo * hi), 0.97),
         xycoords=("data", "axes fraction"),
         ha="center",
         va="top",
-        fontsize=6.3,
+        fontsize=5.8,
+        linespacing=1.0,
         color=style.BLUE_RAMP[5],
     )
-# the narrow band, trained on one device
+# the narrow run, one device on the core band and the top of the low-freq one
 narrow = yaml.safe_load((BANDS / "narrow.yaml").read_text())["problem"]["f0_range"]
 ax_share.annotate(
     "",
-    (narrow[0] * 1e3, 0.84),
-    (narrow[1] * 1e3, 0.84),
+    (narrow[0] * 1e3, 0.70),
+    (narrow[1] * 1e3, 0.70),
     xycoords=("data", "axes fraction"),
     arrowprops=dict(arrowstyle="|-|", color=style.ORANGE, lw=1.0, shrinkA=0, shrinkB=0, mutation_scale=2),
 )
-style.direct_label(ax_share, narrow[0] * 1e3, 0.84 * 1.35 * (visible / visible.sum() / dex).max(), "narrow band", dx=-3, color=style.ORANGE)
+style.direct_label(ax_share, narrow[0] * 1e3, 0.70 * 1.6 * (visible / visible.sum() / dex).max(), "narrow run", dx=-3, color=style.ORANGE)
 
 ax_share.set(
     xlim=tuple(10**log_range * 1e3),
-    ylim=(0, 1.35 * (visible / visible.sum() / dex).max()),
+    ylim=(0, 1.6 * (visible / visible.sum() / dex).max()),
     xlabel=r"$f_0$ [mHz]",
     ylabel="share per dex",
 )

@@ -174,11 +174,12 @@ the prior's share $p(f, w)$ of $f_0$ in it, so it holds $n\sim\operatorname{Bin}
 the sources reaching $\snr\ge\RatesVisibleSnr$ alone in the window follow the same law with $p$
 thinned by $P(\snr\ge\RatesVisibleSnr\mid f_0)$, the amplitude integrated out in closed form
 (reports/prior/source-count). \qty{\RatesVisibleShare}{\percent} of the catalogue's sources are
-visible in this sense. A narrow-band window of \RatesNarrowWindow{} bins holds on average
-\numrange{\RatesNarrowAllLo}{\RatesNarrowAllHi} sources and \numrange{\RatesNarrowVisibleLo}{\RatesNarrowVisibleMax}
-visible ones, the most at \qty{\RatesNarrowBusiestMhz}{\milli\hertz}, \RatesNarrowVisibleTop{} at the
-band's top; a full-band window of \RatesFullWindow{} bins holds up to \num{\RatesFullAllHi} sources and
-\RatesFullVisibleMax{} visible ones, near \qty{\RatesFullBusiestMhz}{\milli\hertz}. The $S\le16$ slots
+visible in this sense. \Cref{tab:narrow-band-bands} gives the counts in each of the five bands of
+\cref{sec:narrow-band}, at its own window length; over the whole band, a window of the full run's
+\RatesFullWindow{} bins holds up to \num{\RatesFullAllHi} sources and \RatesFullVisibleMax{} visible
+ones, near \qty{\RatesFullBusiestMhz}{\milli\hertz}, and one of the narrow run's \RatesNarrowWindow{}
+bins \numrange{\RatesNarrowAllLo}{\RatesNarrowAllHi} sources and
+\numrange{\RatesNarrowVisibleLo}{\RatesNarrowVisibleMax} visible ones. The $S\le16$ slots
 of our runs are therefore far below the source count of a real window at a few millihertz: what
 they test is how a joint amortised posterior scales with the number of overlapping sources
 (\cref{app:results}), not a complete model of the Galactic foreground, which a real analysis must

@@ -4,9 +4,10 @@
 % =======================================================================================
 % Rewritten 2026-11-19 (user): the response width R sets the highest frequency kept with high
 % fidelity and the tensor shapes, so the band is split into bands of one R each, trained one per
-% device; four bands by R alone (32, 64, 128, more); the visible sources sit in the R = 64 band,
-% which is the narrow band, trained on one device as a simplified scenario; the full band is one
-% device over the whole band at R = 128, a scalability check rather than the intended scheme.
+% device. 2026-11-20 (user): five bands where R doubles (R = 16, 32, 64, 128, 256: low tail, low
+% freq, core, high freq, high tail); the narrow band is not a simplified problem but the core
+% subproblem (32 < R <= 64), one device of the divided scheme; the full band is the whole
+% distribution, and each band is described on its own.
 % Numbers from paper/scripts/numbers_narrow-band.py (reports/prior/response-span). Labels kept:
 % sec:narrow-band-span, sec:narrow-band-prior, sec:narrow-band-bands, tab:forward-model-bands.
 
@@ -24,10 +25,11 @@ above-noise power for a share $y$ of the sources that have any (\cref{app:forwar
 The median such source needs \ForwardModelSpanMedian{} bins, and $R=\ForwardModelSpanNeedAll$ keeps
 every above-noise bin of \qty{99.9}{\percent} of them over the whole band. The need grows with
 frequency: keeping every above-noise bin of \qty{\NarrowBandSharePercent}{\percent} of the sources
-at a given $f_0$ takes $R=\NarrowBandOneR$ up to \qty{\NarrowBandOneHighMhz}{\milli\hertz},
-\NarrowBandTwoR{} up to \qty{\NarrowBandTwoHighMhz}{\milli\hertz}, \NarrowBandThreeR{} up to
-\qty{\NarrowBandThreeHighMhz}{\milli\hertz} and \NarrowBandTopR{} at
-\qty{\NarrowBandFourHighMhz}{\milli\hertz}. Choosing $R$ thus chooses the highest frequency whose
+at a given $f_0$ takes $R=\NarrowBandLowTailR$ up to \qty{\NarrowBandLowTailHighMhz}{\milli\hertz},
+and doubles at \qty{\NarrowBandLowFreqHighMhz}{\milli\hertz}, \qty{\NarrowBandCoreHighMhz}{\milli\hertz},
+\qty{\NarrowBandHighFreqHighMhz}{\milli\hertz} and, above $R=\NarrowBandHighTailR$, again at
+\qty{\NarrowBandOverTopMhz}{\milli\hertz}, reaching \NarrowBandTopR{} at
+\qty{\NarrowBandHighTailHighMhz}{\milli\hertz}. Choosing $R$ thus chooses the highest frequency whose
 sources are represented with high fidelity and high probability (\cref{fig:narrow-band}a).
 
 \paragraph{One band per device.}
@@ -40,68 +42,78 @@ that band's $R$, and the gradients of one network are summed across devices. Eve
 stratified over the whole spectrum by construction. How many bands to use and how wide to make them
 depends on $R$, and also on how many visible sources a window holds at each frequency, which sets
 the number of sources $S$ the flow must resolve. We let $R$ alone decide, and cut the band where it
-doubles, into the four bands of \cref{tab:narrow-band-bands}.
+doubles, into the five bands of \cref{tab:narrow-band-bands}: a low tail, a low-frequency band, the
+core, a high-frequency band and a high tail. Each is a subproblem of its own, with its own window
+length, source density and loudness, and the network trained on all of them is judged over the whole
+distribution and on each band separately.
 
-\begin{table}[t]
+\begin{table*}[t]
 \caption{The band divided where the response width doubles: the $R$ that keeps every above-noise
-bin of \qty{\NarrowBandSharePercent}{\percent} of the sources at each $f_0$, and each band's share of
-the catalogue's sources and of the visible ones ($\snr\ge\NarrowBandVisibleSnr$).}
+bin of \qty{\NarrowBandSharePercent}{\percent} of the sources at each $f_0$, each band's share of
+the catalogue's sources and of the visible ones ($\snr\ge\NarrowBandVisibleSnr$), and the mean
+number of sources, all and visible, in a window of $\ForwardModelWindowResponses{}R$ bins across the
+band (\cref{eq:gw-rates}).}
 \label{tab:narrow-band-bands}
 \centering
 \small
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}crrr@{}}
+\begin{tabular}{@{}lcrrrcc@{}}
 \toprule
-$f_0$ [mHz] & $R$ & catalogue [\%] & visible [\%] \\
+band & $f_0$ [mHz] & $R$ & catal.\ [\%] & vis.\ [\%] & sources & visible \\
 \midrule
-\numrange{\NarrowBandOneLowMhz}{\NarrowBandOneHighMhz} & \NarrowBandOneR & \NarrowBandOneCatalogue & \NarrowBandOneVisible \\
-\numrange{\NarrowBandTwoLowMhz}{\NarrowBandTwoHighMhz} & \NarrowBandTwoR & \NarrowBandTwoCatalogue & \NarrowBandTwoVisible \\
-\numrange{\NarrowBandThreeLowMhz}{\NarrowBandThreeHighMhz} & \NarrowBandThreeR & \NarrowBandThreeCatalogue & \NarrowBandThreeVisible \\
-\numrange{\NarrowBandFourLowMhz}{\NarrowBandFourHighMhz} & \numrange{256}{\NarrowBandTopR} & \NarrowBandFourCatalogue & \NarrowBandFourVisible \\
+low tail & \numrange{\NarrowBandLowTailLowMhz}{\NarrowBandLowTailHighMhz} & \NarrowBandLowTailR & \NarrowBandLowTailCatalogue & \NarrowBandLowTailVisible & \numrange{\NarrowBandLowTailAllLo}{\NarrowBandLowTailAllHi} & \numrange{\NarrowBandLowTailVisibleLo}{\NarrowBandLowTailVisibleHi} \\
+low freq & \numrange{\NarrowBandLowFreqLowMhz}{\NarrowBandLowFreqHighMhz} & \NarrowBandLowFreqR & \NarrowBandLowFreqCatalogue & \NarrowBandLowFreqVisible & \numrange{\NarrowBandLowFreqAllLo}{\NarrowBandLowFreqAllHi} & \numrange{\NarrowBandLowFreqVisibleLo}{\NarrowBandLowFreqVisibleHi} \\
+core & \numrange{\NarrowBandCoreLowMhz}{\NarrowBandCoreHighMhz} & \NarrowBandCoreR & \NarrowBandCoreCatalogue & \NarrowBandCoreVisible & \numrange{\NarrowBandCoreAllLo}{\NarrowBandCoreAllHi} & \numrange{\NarrowBandCoreVisibleLo}{\NarrowBandCoreVisibleHi} \\
+high freq & \numrange{\NarrowBandHighFreqLowMhz}{\NarrowBandHighFreqHighMhz} & \NarrowBandHighFreqR & \NarrowBandHighFreqCatalogue & \NarrowBandHighFreqVisible & \numrange{\NarrowBandHighFreqAllLo}{\NarrowBandHighFreqAllHi} & \numrange{\NarrowBandHighFreqVisibleLo}{\NarrowBandHighFreqVisibleHi} \\
+high tail & \numrange{\NarrowBandHighTailLowMhz}{\NarrowBandHighTailHighMhz} & \numrange{\NarrowBandHighTailR}{\NarrowBandTopR} & \NarrowBandHighTailCatalogue & \NarrowBandHighTailVisible & \numrange{\NarrowBandHighTailAllLo}{\NarrowBandHighTailAllHi} & \numrange{\NarrowBandHighTailVisibleLo}{\NarrowBandHighTailVisibleHi} \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/narrow-band.pdf}
-  \caption{The band divided where the response width doubles (shaded and white strips;
-  \cref{tab:narrow-band-bands}). (a)~Sources with power above the noise, by $f_0$ and by the bins
-  that hold all of it; contours hold \qtylist{50;90;99}{\percent} of them. Lines: each band's $R$,
-  which keeps every above-noise bin of \qty{\NarrowBandSharePercent}{\percent} of the sources at each
-  $f_0$; in the top band that $R$ (dashed) climbs to \NarrowBandTopR{}. (b)~Share per dex of $f_0$
-  of the catalogue's sources (grey) and of the visible ones, $\snr\ge\NarrowBandVisibleSnr$ (blue),
-  with each band's share of the visible ones, and the narrow band (orange).}
+  \caption{The band divided where the response width doubles, into five bands (shaded and white
+  strips; \cref{tab:narrow-band-bands}). (a)~Sources with power above the noise, by $f_0$ and by the
+  bins that hold all of it; contours hold \qtylist{50;90;99}{\percent} of them. Dotted lines: $R$ from
+  8 to 512; solid: each band's $R$, which keeps every above-noise bin of
+  \qty{\NarrowBandSharePercent}{\percent} of the sources at each $f_0$; in the high tail that $R$
+  (dashed) climbs to \NarrowBandTopR{}. (b)~Share per dex of $f_0$ of the catalogue's sources (grey)
+  and of the visible ones, $\snr\ge\NarrowBandVisibleSnr$ (blue), with each band's share of the
+  visible ones, and the $f_0$ range of the narrow run (orange).}
   \label{fig:narrow-band}
 \end{figure}
 
 \paragraph{Where the visible sources are.}
 \label{sec:narrow-band-prior}
-The catalogue puts almost all its sources in the lowest band, where they are faint: the
-conditional mean amplitude reaches that of a source at $\snr=\PriorsVisibleSnr$ only above
-\qty{\PriorsAmpCrossMhz}{\milli\hertz} (\cref{fig:priors}a). The visible sources are its loud tail,
-and \qty{\NarrowBandTwoVisible}{\percent} of them fall in the second band, at $R=\NarrowBandTwoR$
-(\cref{tab:narrow-band-bands}, \cref{fig:narrow-band}b). Even within a band, windows centred on the catalogue's $f_0$
+The catalogue puts \qty{\NarrowBandLowTailCatalogue}{\percent} of its sources in the low tail,
+where they are faint: the conditional mean amplitude reaches that of a source at
+$\snr=\PriorsVisibleSnr$ only above \qty{\PriorsAmpCrossMhz}{\milli\hertz} (\cref{fig:priors}a).
+The visible sources are its loud tail, and \qty{\NarrowBandCoreVisible}{\percent} of them fall in
+the core, at $R=\NarrowBandCoreR$, \qty{\NarrowBandLowFreqVisible}{\percent} in the low-frequency
+band and \qty{\NarrowBandHighFreqVisible}{\percent} in the high-frequency band
+(\cref{tab:narrow-band-bands}, \cref{fig:narrow-band}b). The bands differ in kind: low-tail windows
+hold thousands of sources and almost never a visible one, core windows the most visible ones, and
+high-tail windows few sources, loud ones, with the widest responses. Even within a band, windows centred on the catalogue's $f_0$
 marginal would mostly hold no visible source, so training places its windows by
 \cref{eq:priors-window}, with weight the catalogue's $f_0$ marginal times the chance that a source
 there is visible, and \qty{\PriorsUniformWindowsPercent}{\percent} of them log-uniformly
 (\cref{app:priors-window}). The weights choose which windows training sees, not
 what their sources are, so the posterior given a window is unchanged.
 
-\paragraph{The narrow band.}
+\paragraph{The trained configurations.}
 \label{sec:narrow-band-bands}
-We study the band that holds the bulk of the visible sources as a simplified scenario: one device,
-one band, $R=\ForwardModelNarrowR{}$. The narrow band runs from
+We train two configurations (\cref{tab:forward-model-bands}). The \emph{narrow} run is the core
+subproblem on its own device, at $R=\ForwardModelNarrowR{}$, the width the core needs. It runs from
 \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, its lower edge taken down into
-the first band, whose sources $R=\ForwardModelNarrowR$ holds with room to spare; it holds
-\qty{\NarrowBandNarrowVisible}{\percent} of the visible sources, and there the visible sources
-overlap: a window of \PriorsNarrowW{} bins holds on average
-\numrange{\RatesNarrowAllLo}{\RatesNarrowAllHi} sources, \numrange{\RatesNarrowVisibleLo}{\RatesNarrowVisibleMax}
-of them visible (\cref{sec:gw-rates}). The full band runs one device over the whole band at
-$R=\ForwardModelFullR{}$, as a check that the method scales rather than as the intended scheme: the
-larger $R$ costs compute in every window, and above \qty{\NarrowBandThreeHighMhz}{\milli\hertz},
-\qty{\NarrowBandFourVisible}{\percent} of the visible sources, it still loses outer bins
-(\cref{sec:results-full}). \Cref{tab:forward-model-bands} lists both configurations.
+the low-frequency band, whose sources $R=\ForwardModelNarrowR$ holds with room to spare, and holds
+\qty{\NarrowBandNarrowVisible}{\percent} of the visible sources, which overlap there most
+(\cref{tab:narrow-band-bands}). The \emph{full} run covers the whole distribution with one device at
+$R=\ForwardModelFullR{}$, the width of the high-frequency band: it is wider than the lower bands need,
+which costs compute in every window, and in the high tail, \qty{\NarrowBandHighTailVisible}{\percent}
+of the visible sources, it loses outer bins (\cref{sec:results-full}). Dividing it into the five
+bands, one device each, is the intended scheme; the full run shows what one network learns over the
+whole distribution, and the narrow run what the core subproblem reaches with a device to itself.
 
 \begin{table}[t]
 \caption{The two trained configurations, which share the priors and the window layout: response

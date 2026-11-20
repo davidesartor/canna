@@ -5,7 +5,7 @@
 % Restructured 2026-11-19 (user): retitled (was The Gravitational-Wave Problem); the Global-Fit Problem
 % subsection (sec:gw-globalfit, tab:gw-globalfit) moved to sec:background-gw, except its last
 % paragraph (the scope of our experiment), now in the intro below; the Training Set subsection is in
-% sec:method, the two bands in sec:narrow-band.
+% sec:method, the bands in sec:narrow-band.
 % Restructured 2026-11-18 after Delmond et al. (arXiv:2606.29039), Secs. II-A to II-D, III-A and III-C:
 % section intro; Waveforms (signal, response, noise; details in app:forward-model and app:noise);
 % Priors and Source Counts (the former Priors and Rates subsections, merged); The Bayesian Inversion
@@ -301,10 +301,11 @@ sources, $n_{\rm vis}$ of them visible,
   \label{eq:gw-rates}
 \end{equation}
 with $\operatorname{Bin}$ the binomial law and $P_{\rm vis}(f_0) = P\bigl(\snr\ge\RatesVisibleSnr\mid f_0\bigr)$,
-the amplitude integrated out given $f_0$ (\cref{eq:priors-source}). A narrow-band window of
-\RatesNarrowWindow{} bins holds on average \numrange{\RatesNarrowAllLo}{\RatesNarrowAllHi} sources and
-\numrange{\RatesNarrowVisibleLo}{\RatesNarrowVisibleMax} visible ones, a full-band window of
-\RatesFullWindow{} bins up to \num{\RatesFullAllHi} and \RatesFullVisibleMax{} (\cref{app:priors}).
+the amplitude integrated out given $f_0$ (\cref{eq:priors-source}). A window holds on average up to
+\num{\NarrowBandLowTailAllHi} sources in the low tail of the band, almost none of them visible, up to
+\num{\NarrowBandCoreVisibleHi} visible ones in its core, and
+\numrange{\NarrowBandHighTailAllLo}{\NarrowBandHighTailAllHi} in its high tail, each band at its own
+window length (\cref{tab:narrow-band-bands}, \cref{app:priors}).
 We instead fix the number of sources per window: every window holds exactly $S_w = S$, with $S$ set
 per run from 2 to 16 (\cref{app:results}). We impose it when we simulate the window, whose width is
 fixed: its $S$ sources are drawn independently from the catalogue prior truncated to its interior

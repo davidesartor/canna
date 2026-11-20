@@ -98,8 +98,9 @@
   ordered in frequency remove the polarisation, phase and labelling copies of each source; a
   Gaussian frame read from the data brings posteriors decades narrower than the prior to widths of
   order one; and the data are encoded once per window, so every draw reuses them. Dividing the
-  band by the width of the sources' responses fixes the shapes of the network and lets each part
-  train on its own device. On \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz},
+  band where the width of the sources' responses doubles gives five subproblems of fixed shapes, each
+  trained on its own device. On the core subproblem,
+  \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz},
   \FlowMatchingCostDraws{} draws take \qty{\FlowMatchingCostNarrow}{\second} on one GPU, against
   \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} for a joint \ac{mcmc} chain of the same
   window.
@@ -109,8 +110,8 @@
 % Main text (reorganised 2026-11-09 and 2026-11-18; order set 2026-11-19 (user)): abstract;
 % introduction (motivation, contributions); background and related work (Bayesian inversion,
 % diffusion and large-scale generation, GW inference, brief, with app:related as the long version);
-% the LISA GB problem; network and training; the narrow-band problem (prior vs visible sources,
-% response span growing with frequency, the two bands); experimental results; conclusions and
+% the LISA GB problem; network and training; dividing the band (response span growing with frequency,
+% five bands by R, prior vs visible sources, the two trained configurations); experimental results; conclusions and
 % discussion; acknowledgements; appendices. Main-text sections may stay brief and point to an
 % appendix. New material goes to the appendices first.
 \input{sections/introduction}
