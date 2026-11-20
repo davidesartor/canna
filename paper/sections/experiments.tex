@@ -2,93 +2,60 @@
 \section{Experimental Results}
 \label{sec:experiments}\label{sec:results}
 % =======================================================================================
-% 2026-11-19 (user): retitled (was Experiments and Results); the subsection Narrow Band Problem is now
-% Narrow Band, since sec:narrow-band carries that title.
-% Moved 2026-11-09 from the former sections/validation.tex (validating without the truth, mocks,
-% references) and sections/results.tex. The results of the source-count runs are drafted in app:results
-% (tab:results-runs, tab:results-widths, tab:results-forks, fig:results): pick what moves here.
+% Numbers: scripts/numbers_results.py, numbers_evaluation.py, numbers_mcmc.py, numbers_flow-matching.py.
+% The full tables and figures are in app:results; this section keeps the reading of each.
 
-Results for the size-B network (\cref{sec:method-network}) on the two trained configurations
-(\cref{sec:narrow-band-bands}): the full run over the whole band, and the narrow run on the core
-subproblem, full-B and narrow-B, under the protocol of \cref{sec:validation}; full tables are in
-\cref{app:results}.
+We train the size-B network (\cref{sec:method-network}) on the two configurations of
+\cref{sec:narrow-band-bands}, the narrow band with $S={}$\ResultsNarrowCounts{} sources per window
+and the full band with $S={}$\ResultsFullCounts, one training run each (\cref{app:results-runs}).
 
-% Moved 2026-11-09 from sec:inversion (formerly the head of sections/validation.tex).
 \subsection{Validating Without the Truth}
 \label{sec:validation}
 
-A joint posterior over $8S$ parameters has no closed form, and a reference
-\ac{mcmc} costs hours per window, so it exists only for the eval injections (\cref{app:mcmc}). The standard checks are rank
-statistics: \ac{sbc} ranks each true parameter among posterior draws over many simulations
-\citep{talts2018validating,modrak2023simulation}, and \ac{tarp} ranks the truth's distance to
-random points \citep{lemos2023sampling}. Both are necessary conditions, and both pass flows that
-are far from the posterior. We check every test on posteriors whose errors are known before
-reading a trained flow with it (\cref{app:evaluation}).
-% updated 2026-11-09: "over \RelatedWorkParameters{} parameters" (S = 4) -> "8S"; "a reference MCMC
-% exists only for a few windows" -> every eval injection of every run has joint chains (app:mcmc).
+A joint posterior over $8S$ parameters has no closed form, so we score each model in two passes
+(\cref{app:evaluation}). The \emph{validation pass} ranks the truth among
+\ResultsValidationDraws{} draws for each of \ResultsValidationInjections{} windows simulated from the
+prior, in the flow coordinates and in data space (\ac{sbc}, \ac{tarp}, and ranks of the overlap
+and the log-likelihood). The \emph{reference pass} compares the flow with joint \ac{mcmc} on
+\EvaluationInjections{} evaluation windows (\cref{app:mcmc}): the ratio of the flow's to the chains'
+width, $1.4826\,\MAD$ of the draws, and the Jensen--Shannon (JS) divergence of the marginals. A
+source is \emph{found} when the flow's $f_0$ width is below one bin, and an $f_0$ draw is
+\emph{off-peak} when it lies more than five chain widths and half a bin from the chains' median.
 
-\paragraph{A toy with an exact posterior.} On a linear-Gaussian toy with the problem's structure we
-plant one error at a time (\cref{tab:evaluation-power}). A posterior that returns the prior, one
-that takes a phase or the sky from the prior, and one that shuffles parameters between draws all
-keep every one-dimensional rank uniform: the coordinate ranks reject them at their size,
-\EvaluationPowerPhaseCoord{} at a significance level of \qty{\EvaluationPowerAlpha}{\percent}, and \ac{tarp}
-at most at \EvaluationPowerTarpBlind. Ranks of data-space quantities, the overlap of each source's
-signal with the data and the window's log-likelihood, catch all three with power near one, and so
-does the energy score.
+Neither pass alone is sufficient. On mock posteriors with known defects the coordinate ranks accept
+a posterior that returns the prior or shuffles parameters between draws, and coverage after
+relabelling reads a width floor on loud sources as conservative (\cref{tab:evaluation-power,tab:evaluation-mocks}).
+Data-space ranks catch the first two; only a width ratio against a reference shows the third. The
+Gaussian mock is not a clean null, so a flow's data-space ranks are read against its offset.
 
-\subsection{Protocol}
-\label{sec:experiments-protocol}
+The reference holds only where the chains have converged. For the narrow band with $S=8$ and the
+full band with $S=16$ the chains started from Fisher draws never leave that start for faint
+sources: below $\snr=\ResultsInvisibleSnr$ their $f_0$ widths are \ResultsNarrowEightFaintMcmcPrior{}
+and \ResultsFullSixteenFaintMcmcPrior{} of the prior's, against \ResultsNarrowEightFaintFlowPrior{}
+and \ResultsFullSixteenFaintFlowPrior{} for the flow. We therefore compare from $\snr=7$ up, where
+prior-started chains confirm the reference for $S=8$; for the full band with $S=16$ they come out
+wider, so its ratios up to $\snr\approx20$ are upper bounds on the flow's excess width
+(\cref{app:results-mcmc}).
 
-\paragraph{Mock posteriors on the real problem.} We then run the whole evaluation, scorecard,
-validation and reference comparison, on mock posteriors built from the Fisher matrix: a Gaussian
-centred on the linearised maximum a posteriori, and copies made too wide, too narrow, biased,
-equal to the prior, with phases from the prior, or with widths that stop shrinking above an
-\ac{snr} (\cref{app:evaluation-mocks}, \cref{tab:evaluation-mocks}). Three lessons carry over to
-the results. Coverage of the truth after relabelling is optimistic: the prior mock covers
-\EvaluationMockPriorCover{} at the \qty{68}{\percent} level. The Gaussian mock is not a clean null,
-so a flow's $p$-values are read against the Gaussian mock's on the same test. And a width floor on
-loud sources reads as conservative coverage; only the width ratio and the per-stratum ranks show it.
-
-\paragraph{References.} For widths the reference is joint \ac{mcmc} (\cref{app:mcmc}): for every
-eval injection, chains over all $8S$ parameters of its sources on the window
-likelihood, whose marginals are the flow's target. Every
-source also gets the ideal width of a sinusoid at its \ac{snr} (\cref{eq:evaluation-ideal-width})
-and a Fisher forecast (\cref{app:evaluation-fisher}). The ideal width ignores the measured chirp,
-so on loud full-band sources the calibrated Gaussian mock is \EvaluationMockFisherIdealFull{} times
-wider than it, and the Fisher width is the sharper reference there.
-
-% added 2026-11-20 (user): TODOs for the user.
 \textcolor{red}{TODO(Giorgio): a heatmap of the \acs{sbc} as a function of frequency and \acs{snr}.}
 
-% 2026-11-20 (user): the overlapping-windows TODO moved to the follow-ups (sec:followups).
-\textcolor{red}{TODO(Giorgio): at low \acs{snr}, is the \acs{mcmc} overconfident? Compare the \acs{mcmc} and flow widths there.}
-
-\textcolor{red}{TODO(Giorgio): \acs{sbc} for the \acs{mcmc}.}
-
-% 2026-11-19 (user): the former \subsection{Results} split into the narrow and the full band.
 \subsection{Narrow Band}
 \label{sec:results-main}\label{sec:results-narrow}
 
-\Cref{tab:results-summary} summarises the six problems, the narrow band's three source counts here and the
-full band's in \cref{sec:results-full}.
+With two sources per window the flow's posteriors match the joint chains, and the match degrades
+as sources are added (\cref{tab:results-summary,fig:results}).
 
-% updated 2026-11-19 (user): the better of the 64-epoch run and its e32 fork per problem (paper/scripts/e64.py,
-% SELECTED); was 2026-11-18 the 64-epoch main run (e64) of every problem; numbers_results.py from
-% data/runs/js-divergence-main.json (import_js.py main) and data/runs/sbc-main.json (import_sbc.py).
 \begin{table*}[t]
 \centering
-\caption{Summary of the six problems, for the model reported for each (\cref{app:results-runs}). Model: the
-64-epoch main run, its fork cooled from epoch 32 (e32) or, for full $S=4$, the continuation from epoch 44 (t44),
-with the epoch evaluated in brackets. Windows: eval windows with
-joint \acs{mcmc} / prior windows of the \acs{sbc}. JS: Jensen--Shannon divergence in bits between the
-flow's and the chains' one-dimensional marginals (\cref{eq:evaluation-js}), median over the sources at
-$\snr=7$--15 and $\snr\ge15$ of the mean over the eight coordinates, as in \cref{tab:results-js}; 0 for equal marginals,
-\ResultsSummaryFloor{} from sampling noise alone. \acs{sbc}: share of true coordinates inside the
-central \qty{68}{\percent} of the draws, and the smallest $\gamma$-test $p$-value over the eight
-coordinates (\cref{app:results-validation}), for the flow on the prior windows and for the joint \acs{mcmc}
-on the eval windows.}
-% updated 2026-11-19 (user: align text and tables): JS median over the sources as tab:results-js (was the
-% mean, e.g. full S=4 0.19 here against 0.074 there), p_min with three decimals as tab:results-validation.
+\caption{Summary of the six models. Model: the 64-epoch main run, its fork cooled from epoch 32
+(e32) or the continuation from epoch 44 (t44), with the epoch evaluated in brackets
+(\cref{app:results-runs}). Windows: evaluation windows with joint \acs{mcmc} / prior windows of the
+\acs{sbc}. JS: Jensen--Shannon divergence in bits between the flow's and the chains'
+one-dimensional marginals, median over the sources at $\snr=7$--15 and $\snr\ge15$ of the mean over
+the eight coordinates (\cref{tab:results-js}); \ResultsSummaryFloor{} from sampling noise alone.
+\acs{sbc}: share of true coordinates inside the central \qty{68}{\percent} of the draws and the
+smallest $\gamma$-test $p$-value over the eight coordinates, for the flow on the prior windows and
+for the joint \acs{mcmc} on the evaluation windows (\cref{app:results-validation}).}
 \label{tab:results-summary}
 \small
 \begin{tabular}{@{}lrlcrrrrrr@{}}
@@ -101,40 +68,89 @@ problem & $S$ & model & windows & 7--15 & $\ge15$ & 68\% & $p_{\min}$ & 68\% & $
 \bottomrule
 \end{tabular}
 \end{table*}
-% updated 2026-11-19: the n4-full row is the Student-t continuation 261103-n4-full-B-t44 (app:results-runs).
 
-\paragraph{Widths.} \textcolor{red}{TODO(move from \cref{app:results-mcmc}): flow over \acs{mcmc} width
-per parameter against \acs{snr}, narrow band, $S=2$, 4, 8 (\cref{tab:results-widths}, \cref{fig:results}).}
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/results.pdf}
+\caption{(a), (b)~Flow over joint-\ac{mcmc} width of $f_0$ and of the right ascension against the
+source \ac{snr}, for the models of \cref{tab:results-widths}. (c)~The
+eval-catalogue loss of the cooldown forks against the epoch at which their cooldown starts, and of the
+main runs at theirs (\cref{app:results-forks}); the full band with $S=4$ has no cooled main run (its Student-t continuation's
+logged loss does not compare, \cref{app:fm-frame}).}
+\label{fig:results}
+\end{figure*}
 
-\paragraph{Calibration.} \textcolor{red}{TODO(move from \cref{app:results-validation}): coordinate,
-\acs{tarp} and data-space rank $p$-values per \acs{snr} stratum (\cref{tab:results-validation}), beside
-the Gaussian mock's on the same injections; proper score skill. Coverage after relabelling is in
-\cref{app:results-mcmc}. Narrow band.}
-% updated 2026-11-11: the validation pass of the source-count runs is back (app:results-validation).
+At $\snr=7$--40 and $S=2$ every width ratio lies in
+\ResultsNarrowTwoWidthLo--\ResultsNarrowTwoWidthHi, and the off-peak share of loud $f_0$ draws,
+\qty{\ResultsNarrowTwoOff}{\percent}, is close to the chains' own \qty{\ResultsNarrowTwoMcmcOff}{\percent}.
+With $S=8$ the $f_0$ width is \ResultsNarrowEightFzeroLow{} times the chains' at $\snr=7$--15,
+\qty{\ResultsNarrowEightFoundLow}{\percent} of those sources are found and
+\qty{\ResultsNarrowEightOff}{\percent} of the loud draws are off-peak. Below $\snr=7$ the flow
+returns the prior, as do the chains. The sky is the weakest parameter, with an excess that grows
+with the \ac{snr} at every $S$ (\cref{fig:results}b). The JS divergence ranks the models the same
+way (\cref{app:results-js}).
 
-\paragraph{Joint posteriors.} \textcolor{red}{TODO(move from \cref{app:results-corners}): one of the
-corner plots of flow, joint \acs{mcmc} and Fisher draws on a close pair of similar \acs{snr}
-(\cref{fig:corner-narrow-4}, say), whose draws, in order of $f_0$, are relabelled to the injections only
-for display.}
-% updated 2026-11-13: the corner plots exist (app:results-corners).
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/corner-narrow-4.pdf}
+\caption{Flow, joint \ac{mcmc} (filled) and Fisher (dashed) on one eval window of the
+narrow band, $S=4$: \qty{68}{\percent} and \qty{95}{\percent} contours of two sources' $f_0$, $\ln\Amp$ and right
+ascension, offsets from the truth (\cref{app:results-corners}). The legend names the window, the two
+sources' \acp{snr} and their separation.}
+\label{fig:corner-narrow-4}
+\end{figure*}
 
-\paragraph{Cost.} \FlowMatchingCostDraws{} draws of a narrow-band window take
-\qty{\FlowMatchingCostNarrow}{\second} on one \ac{gpu} (\cref{fig:fm-cost}); a joint \ac{mcmc}
-chain of a narrow-band eval injection takes \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} on
-\McmcJointCores{} \ac{cpu} cores (\cref{app:mcmc-cost}).
-% updated 2026-11-09: References paragraph, "all \RelatedWorkParameters{} parameters" (S = 4) -> "all 8S".
-In both bands the widths settle by 32 to 64 steps (\cref{app:evaluation-sampler}).
-% updated 2026-11-13: sampler sweep on the source-count runs.
+\Cref{fig:corner-narrow-4} shows the trend in one window with $S=4$, chosen by rule (the
+closest pair of sources at $\snr\ge15$ with \acp{snr} within a factor of two): the flow keeps the
+core of each source where the chains have it, and a few per cent of the lower source's $f_0$
+draws sit on its neighbour. The windows of the other models are in \cref{app:results-corners}.
 
-\subsection{Full Frequencies}
+\subsection{Full Band}
 \label{sec:results-full}
 
-\paragraph{Widths.} \textcolor{red}{TODO(move from \cref{app:results-mcmc}): flow over \acs{mcmc} width
-per parameter against \acs{snr}, full band, $S=4$, 8, 16 (\cref{tab:results-widths}, \cref{fig:results});
-where the flow stays wider than the \acs{mcmc}: loud sources and the sky.}
+On the full band the flow is close to the chains for faint sources but does not yet resolve the
+loud ones. At $\snr=15$--40 its $f_0$ widths are \ResultsFullFourFzeroMid{} to
+\ResultsFullSixteenFzeroMid{} times the chains' for $S=4$ to 16; above $\snr=40$ they are
+\ResultsFullFourFzeroLoud{} to \ResultsFullSixteenFzeroLoud{} times, and only
+\qty{\ResultsFullSixteenFoundLoud}{\percent} of the loud sources are found for $S=16$
+(\qty{\ResultsFullFourFoundLoud}{\percent} for $S=4$).
 
-\paragraph{Calibration.} \textcolor{red}{TODO(move from \cref{app:results-validation}): as for the
-narrow band (\cref{tab:results-validation}), full band.}
+The misses are at high frequency. Above \qty{\ResultsFullSplitMhz}{\milli\hertz} lie
+\qty{\ResultsFullSixteenLoudHighShare}{\percent} of the loud sources for $S=16$ but
+\qty{\ResultsFullSixteenUnfoundHighShare}{\percent} of those not found, and the excess is mostly the
+flow's refinement of its frame: read from the data alone, the frame is wide by design on loud
+sources, and the flow narrows it \ResultsFullSixteenContractLow-fold below that frequency but only
+\ResultsFullSixteenContractHigh-fold above (\cref{app:results-mcmc}). These sources have the widest
+responses, some beyond the $R$ of this configuration (\cref{sec:narrow-band-bands}), and the prior
+produces few of them, so training sees few examples. A device per subband
+(\cref{sec:narrow-band}) stratifies every batch over the spectrum and is one candidate cure.
 
-\paragraph{Cost.} \FlowMatchingCostDraws{} draws of a full-band window take
-\qty{\FlowMatchingCostFull}{\second} on one \ac{gpu} (\cref{fig:fm-cost}).
+\subsection{Calibration}
+\label{sec:results-calibration}
+
+Coverage is nominal in all six problems, yet the data disagree with every flow slightly. After
+relabelling, every model covers \ResultsCoverSixtyEightLo--\ResultsCoverSixtyEightHi{} of the true
+coordinates at the \qty{68}{\percent} level, even where the loud full-band $f_0$ widths are several
+times the chains': as the mocks predicted, coverage does not see excess width.
+
+The data-space ranks do (\cref{tab:results-validation}, \cref{fig:results-rank-ecdf}). With
+\ResultsValidationInjections{} windows the $\gamma$ test \citep{sailynoja2022graphical} rejects even
+the Gaussian mock, so we read the offset of the mean rank from one half, positive when the truth
+fits the data better than the draws do. Every flow's log-likelihood offset exceeds its mock's by
+\ResultsLikeExcessLo{} to \ResultsLikeExcessHi, and its overlap offset is \ResultsFlowOverlapOffsetLo{}
+to \ResultsFlowOverlapOffsetHi{} against the mock's \ResultsMockOverlapOffsetLo{} to
+\ResultsMockOverlapOffsetHi, the narrow band with $S=2$ included although its marginals have the
+chains' widths. No single group of coordinates carries the offset: a draw with a displaced $f_0$
+carries a phase that partly makes up for it, so each draw is a coherent fit displaced from the truth
+along a direction that mixes the groups (\cref{app:results-validation}). Whether another chart or
+loss removes the offset is open.
+
+\subsection{Cost of a Posterior}
+\label{sec:results-cost}
+
+A posterior costs a fraction of a second. \FlowMatchingCostDraws{} draws of a narrow-band window take
+\qty{\FlowMatchingCostNarrow}{\second} on one \ac{gpu} and of a full-band window
+\qty{\FlowMatchingCostFull}{\second} (\cref{fig:fm-cost}), with the widths settled by 32 to 64
+sampler steps (\cref{app:evaluation-sampler}). A joint \ac{mcmc} chain of one evaluation window takes
+\qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} on \McmcJointCores{} \ac{cpu} cores
+(\cref{app:mcmc-cost}).
