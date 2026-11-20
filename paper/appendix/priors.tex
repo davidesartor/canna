@@ -11,6 +11,25 @@ window. This appendix states both, the exact symmetries of the likelihood they l
 stream of simulated windows the network trains on. \Cref{fig:priors} shows the prior;
 \cref{tab:priors-bands} collects what differs between the two bands.
 
+% moved 2026-11-19 (user) from sec:gw-priors (was Figure 2 of the main text).
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/priors.pdf}
+  \caption{The prior over a window; lines are closed forms, filled steps and dots are
+  \num{\PriorsPriorWindows} windows per band centred on the catalogue's $f_0$ marginal. (a)~$\log_{10}f_0$ of the drawn
+  sources (filled) against the catalogue marginal truncated to each band (lines), and of the
+  full band's visible sources, $\snr\ge\PriorsVisibleSnr$ (dashed). (b)~Sky, \cref{eq:priors-sky}, in the
+  equal-area galactic $(l, \sin b)$: shading is the log density per steradian, contours enclose
+  the marked share of the sources. (c)~Chirp drift over the observation, in frequency bins, in
+  the full band: a sample of the sources (light), every visible one (dark), and the conditional
+  mean of \cref{eq:priors-conditional} with its $\pm1\sigma$ residual (grey). Dashed: the narrow
+  band's top and one bin. (d)~Where the window centres fall: on the catalogue's
+  $f_0$ marginal (dashed) and by \cref{eq:priors-window} as in training (solid), per band. (e)~Amplitude, as in (c); dashed is the amplitude at which a
+  source of mean-square sky and orientation reaches $\snr=\PriorsVisibleSnr$. (f)~\ac{snr} of each
+  source alone in its window, per band; dashed at $\snr=\PriorsVisibleSnr$.}
+  \label{fig:priors}
+\end{figure*}
+
 \subsection{The Window}
 \label{app:priors-window}
 

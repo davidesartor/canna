@@ -189,7 +189,7 @@ with weights $w$, bulge widths $\sigma_{l,b}$ and disc scales $\lambda_{l,b}$ fi
 catalogue (\cref{app:priors-sources}), and $\mathcal{L}_c(x;\lambda)\propto e^{-|x|/\lambda}$ a
 Laplace density truncated to $|x|\le c$; it is rotated to the equatorial $(\alpha,\delta)$ of the
 response. The orientation is isotropic: $\psi$ and $\phi_0$ uniform, $\cos\iota$ uniform.
-\Cref{fig:priors} shows the prior over a window, and \cref{fig:prior-corner} in \cref{app:priors-sources} its joint law of
+\Cref{fig:priors} in \cref{app:priors} shows the prior over a window, and \cref{fig:prior-corner} in \cref{app:priors-sources} its joint law of
 $(\Amp, f_0, \fdot, \alpha, \delta)$ over each band.
 
 % updated 2026-11-09: was "S=\PriorsSources sources" (S = 4); the runs use S = 2 to 16.
@@ -215,23 +215,7 @@ $\phi_0$ & $\Unif(0, 2\pi)$ \\
 \end{tabular}
 \end{table}
 
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/priors.pdf}
-  \caption{The prior over a window; lines are closed forms, filled steps and dots are
-  \num{\PriorsPriorWindows} windows per band centred on the catalogue's $f_0$ marginal. (a)~$\log_{10}f_0$ of the drawn
-  sources (filled) against the catalogue marginal truncated to each band (lines), and of the
-  full band's visible sources, $\snr\ge\PriorsVisibleSnr$ (dashed). (b)~Sky, \cref{eq:priors-sky}, in the
-  equal-area galactic $(l, \sin b)$: shading is the log density per steradian, contours enclose
-  the marked share of the sources. (c)~Chirp drift over the observation, in frequency bins, in
-  the full band: a sample of the sources (light), every visible one (dark), and the conditional
-  mean of \cref{eq:priors-conditional} with its $\pm1\sigma$ residual (grey). Dashed: the narrow
-  band's top and one bin. (d)~Where the window centres fall: on the catalogue's
-  $f_0$ marginal (dashed) and by \cref{eq:priors-window} as in training (solid), per band. (e)~Amplitude, as in (c); dashed is the amplitude at which a
-  source of mean-square sky and orientation reaches $\snr=\PriorsVisibleSnr$. (f)~\ac{snr} of each
-  source alone in its window, per band; dashed at $\snr=\PriorsVisibleSnr$.}
-  \label{fig:priors}
-\end{figure*}
+% fig:priors moved 2026-11-19 (user) to app:priors; sec:narrow-band has fig:narrow-band instead.
 
 \subsection{Likelihood, Windows and Source Counts}
 \label{sec:gw-slicing}\label{sec:gw-factorisation}
