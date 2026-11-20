@@ -12,14 +12,13 @@ from style import plt
 
 import numbers_results as nr  # noqa: E402  (rebuilds numbers/results.tex as a side effect)
 
-CONFIG_STYLE = {
-    ("narrow", 2): (style.BLUE, "-", "narrow, 2"),
-    ("narrow", 4): (style.AQUA, "-", "narrow, 4"),
-    ("narrow", 8): (style.VIOLET, "-", "narrow, 8"),
-    ("full", 4): (style.ORANGE, (0, (4, 2)), "full, 4"),
-    ("full", 8): (style.RED, (0, (4, 2)), "full, 8"),
-    ("full", 16): (style.YELLOW, (0, (4, 2)), "full, 16"),
+# hue is the band, lightness the source count: darker with more sources
+COUNTS = {"narrow": (2, 4, 8), "full": (4, 8, 16)}
+SHADES = {
+    "narrow": ("#f5b08f", style.ORANGE, "#9c3a12"),
+    "full": (style.BLUE_RAMP[1], style.BLUE_RAMP[3], style.BLUE_RAMP[5]),
 }
+MODELS = [(band, n, color) for band in COUNTS for n, color in zip(COUNTS[band], SHADES[band])]
 BANDS = ("0-7", "7-15", "15-40", ">=40")
 BAND_LABELS = ("<7", "7–15", "15–40", "≥40")
 
@@ -27,24 +26,26 @@ style.setup()
 fig, axes = plt.subplots(1, 3, figsize=(style.FULL, 2.3), layout="constrained")
 x = np.arange(len(BANDS))
 
-for ax, column, title in ((axes[0], "f0 [bins]", "$f_0$"), (axes[1], "lon", r"$\alpha$")):
-    for (band, n), (color, ls, name) in CONFIG_STYLE.items():
+for ax, column, title in ((axes[0], "f0 [bins]", "Width of $f_0$"), (axes[1], "lon", r"Width of $\alpha$")):
+    for band, n, color in MODELS:
         if nr.selected(band, n) is None:  # e64 not landed (full S=4)
             continue
         ev = nr.selected(band, n)["evals"][-1]
         y = [nr.row(ev, b, "vs_mcmc")["width_ratio"][column] if nr.row(ev, b, "vs_mcmc") else np.nan for b in BANDS]
-        ax.plot(x, y, color=color, ls=ls, marker="o", ms=2.8, mec="white", mew=0.5, lw=1.0, label=name)
+        ax.plot(x, y, color=color, marker="o", label=f"{band}, $S = {n}$")
     ax.axhline(1.0, **style.GUIDE)
     ax.set_yscale("log")
+    ax.set_yticks([1, 2, 5, 10, 20], ["1", "2", "5", "10", "20"])
+    ax.set_yticks([], minor=True)
     ax.set_xticks(x, BAND_LABELS)
     ax.set_xlabel("source SNR")
-    ax.set_title(f"flow / MCMC width, {title}", loc="left")
-axes[0].set_ylabel("width ratio")
+    ax.set_title(title)
+axes[0].set_ylabel("flow / MCMC width")
 axes[1].sharey(axes[0])
-axes[0].legend(frameon=False, fontsize=6, ncol=2, loc="upper left")
+axes[0].legend(ncol=2, loc="upper left")
 
 ax = axes[2]
-for (band, n), (color, ls, name) in CONFIG_STYLE.items():
+for band, n, color in MODELS:
     fam = {r["fork_epoch"]: r for r in nr.family(band, n)}
     if not fam:
         continue
@@ -52,13 +53,13 @@ for (band, n), (color, ls, name) in CONFIG_STYLE.items():
     pts = [(e if e is not None else 0.8 * r["epochs_planned"], r["evals"][-1]["catalog_at_eval"])
            for e, r in fam.items() if e is not None or r["epochs_done"] == r["epochs_planned"]]
     pts.sort()
-    ax.plot(*zip(*pts), color=color, ls=ls, marker="o", ms=2.8, mec="white", mew=0.5, lw=1.0)
+    ax.plot(*zip(*pts), color=color, marker="o")
 ax.set_xscale("log", base=2)
 ax.set_xticks([4, 8, 16, 32, 51.2], ["4", "8", "16", "32", "51 (main)"])
 ax.minorticks_off()
 ax.set_xlabel("cooldown starts at epoch")
 ax.set_ylabel("eval-catalogue NLL")
-ax.set_title("longer runs", loc="left")
+ax.set_title("Longer runs")
 
 for ax, letter in zip(axes, "abc"):
     style.panel_label(ax, letter)
