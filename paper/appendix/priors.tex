@@ -35,7 +35,7 @@ $\fdot$ in \unit{\hertz\per\second},
 Other population models of the Galaxy's double white dwarfs
 \citep{toonen2012supernova,korol2020populations,georgousi2022gravitational,thiele2023applying}
 differ in their binary physics \citep{toubiana2024interacting,boileau2025gravitational}; refitting
-changes only $\mu_\pi$ and $\Sigma_\pi$. Most sources barely drift: the full band's median drift over
+changes only $\mu_\pi$ and $\Sigma_\pi$. \Cref{fig:prior-corner} shows the prior over each band. Most sources barely drift: the full band's median drift over
 the observation is \PriorsFullDriftMedian{} of a bin, and \qty{\PriorsFullDriftOver}{\percent} of its
 sources drift by more than one. The sky is a mixture of a bulge, a thick and a thin disc and an
 isotropic floor in galactic longitude $l$ and $\sin b$,
@@ -55,14 +55,12 @@ plane (\cref{fig:priors}b).
 % moved 2026-11-18 (user) from sec:gw-priors.
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=0.62\textwidth]{figures/prior-corner.pdf}
-  \caption{The per-source prior over each band, with the sky independent of the band (\cref{eq:priors-source,eq:priors-sky}):
-  amplitude, frequency and drift in $\log_{10}$, and the equatorial sky $(\alpha, \delta)$, from
-  \num{\PriorCornerDraws} draws per band with $f_0$ truncated to the band. Contours enclose
-  \qty{\PriorCornerInner}{\percent} and \qty{\PriorCornerOuter}{\percent} of the draws (one and two standard deviations in two
-  dimensions); diagonals are normalised marginals. The sky is drawn independently of the band, so its
-  panels coincide; it is concentrated toward the galactic centre at
-  (\ang{\PriorsCentreRa}, \ang{\PriorsCentreDec}) and along the plane.}
+  \includegraphics{figures/prior-corner.pdf}
+  \caption{The per-source prior over each band (\cref{eq:priors-source}): amplitude, frequency and
+  drift in $\log_{10}$, from \num{\PriorCornerDraws} draws per band with $f_0$ truncated to the
+  band. Contours enclose \qty{\PriorCornerInner}{\percent} and \qty{\PriorCornerOuter}{\percent} of
+  the draws (one and two standard deviations in two dimensions); diagonals are normalised
+  marginals. The sky does not depend on the band (\cref{fig:priors}b).}
   \label{fig:prior-corner}
 \end{figure*}
 

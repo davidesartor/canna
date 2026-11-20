@@ -1,9 +1,10 @@
-"""figures/chart.pdf: what the chart does to amplitude and inclination, and the prior in flow coordinates."""
+"""figures/chart.pdf: where the chart puts the inclinations, the SNR law it rests on, and the prior in flow coordinates."""
 
 import json
 
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.ticker import MaxNLocator
 
 import style
 from canna.lisa import config
@@ -14,7 +15,7 @@ from style import plt
 BANDS = {"narrow": style.ORANGE, "full": style.BLUE}
 LABELS = [
     r"$x_f$",
-    r"$x_{\dot f}$",
+    r"$x_{\dot{f}}$",
     r"$x_l$",
     r"$x_b$",
     r"Re $z_+$",
@@ -65,18 +66,21 @@ flow = {band: flow_coordinates(band) for band in ("narrow", "full")}
 scatter = {k: np.asarray(v) for k, v in prior["polarization"]["narrow"]["scatter"].items()}
 
 # chart radii of the recorded sources; cos(iota) is the stored sin of the complement
-amplitude_in_units = 10 ** scatter["log_amp"]
 cos_iota = scatter["sin_iota"]
 z_plus, z_minus = scatter["rp"], scatter["rm"]
-kappa = scatter["snr"] / amplitude_in_units
+kappa = scatter["snr"] / 10 ** scatter["log_amp"]
 
 style.setup()
 inclination_cmap = LinearSegmentedColormap.from_list("inclination", style.BLUE_RAMP[1:])
-fig = plt.figure(figsize=(style.FULL, 3.3), layout="constrained")
-top, bottom = fig.subfigures(2, 1, height_ratios=[1.75, 1.0])
-axes = top.subplots(1, 3)
+fig = plt.figure(figsize=(style.FULL, 2.35), layout="constrained")
+left, right = fig.subfigures(1, 2, width_ratios=[1.5, 1.0])
+ax_radii, ax_kappa = left.subplots(1, 2)
+
+# (a) the sources in the chart's warped helicity radii, coloured by inclination
 order = np.argsort(np.abs(cos_iota))
-dots = dict(
+mappable = ax_radii.scatter(
+    z_plus[order],
+    z_minus[order],
     c=np.abs(cos_iota)[order],
     cmap=inclination_cmap,
     vmin=0,
@@ -85,58 +89,40 @@ dots = dict(
     lw=0,
     rasterized=True,
 )
-
-# (a) amplitude and inclination as drawn
-ax = axes[0]
-mappable = ax.scatter(amplitude_in_units[order], cos_iota[order], **dots)
-ax.set(
-    xscale="log",
-    xlabel=r"$\mathcal{A}/u(f_w)$",
-    ylabel=r"$\cos\iota$",
-    ylim=(-1.05, 1.05),
-)
-style.panel_label(ax, "a")
-
-# (b) the same sources in the chart's warped helicity radii
-ax = axes[1]
-ax.scatter(z_plus[order], z_minus[order], **dots)
 low = min(np.quantile(z_plus, 0.001), np.quantile(z_minus, 0.001)) / 1.5
 reach = max(z_plus.max(), z_minus.max()) * 1.5
-ax.plot([low, reach], [low, reach], **style.GUIDE)
-ax.set(
+ax_radii.plot([low, reach], [low, reach], **style.GUIDE)
+ax_radii.set(
     xscale="log",
     yscale="log",
     xlim=(low, reach),
     ylim=(low, reach),
-    aspect="equal",
     xlabel=r"$|z_+| = \mathrm{asinh}|\zeta_+|$",
     ylabel=r"$|z_-|$",
 )
-top.colorbar(
-    mappable, ax=axes[:2], label=r"$|\cos\iota|$", shrink=0.8, aspect=25, pad=0.01
-)
-style.panel_label(ax, "b")
+left.colorbar(mappable, ax=ax_radii, label=r"$|\cos\iota|$", shrink=0.8, aspect=25, pad=0.02)
+ax_radii.set_title("Helicity radii")
+style.panel_label(ax_radii, "a")
 
-# (c) SNR per unit amplitude against inclination, with the sky-averaged law
-ax = axes[2]
+# (b) SNR per unit amplitude against inclination, with the sky-averaged law
 grid = np.linspace(-1, 1, 201)
 sky_constant = prior["f0-fdot-amplitude"]["narrow"]["sky_average"]["galactic"]["C_low"]
 law = np.sqrt(sky_constant * (1 + 6 * grid**2 + grid**4) / 3.2)
-ax.scatter(
-    cos_iota, kappa, color=style.BLUE_RAMP[2], s=2.5, lw=0, rasterized=True
-)
-ax.plot(grid, law, color=style.INK, lw=1.0)
-ax.set(
+ax_kappa.scatter(cos_iota, kappa, color=style.BLUE_RAMP[2], s=2.5, lw=0, rasterized=True)
+ax_kappa.plot(grid, law, color=style.INK, lw=1.0)
+ax_kappa.set(
     xlabel=r"$\cos\iota$",
     ylabel=r"$\kappa = \rho\,u(f_w)/\mathcal{A}$",
     xlim=(-1.02, 1.02),
     ylim=(0, None),
 )
-style.panel_label(ax, "c")
+ax_kappa.set_title("SNR per unit amplitude")
+style.panel_label(ax_kappa, "b")
 
-# (d) the prior's marginal of each flow coordinate, per band
-marginal_axes = bottom.subplots(1, 8, sharey=False)
-for j, ax in enumerate(marginal_axes):
+# (c) the prior's marginal of each flow coordinate, per band; the helicity parts on a log scale
+marginal_axes = right.subplots(2, 4)
+for j, ax in enumerate(marginal_axes.flat):
+    peak = 0.0
     for band, color in BANDS.items():
         coord = flow[band][j]
         edges, counts = (
@@ -146,6 +132,7 @@ for j, ax in enumerate(marginal_axes):
         width = edges[1] - edges[0]
         total = counts.sum() + coord["hist"]["outside"]
         ax.stairs(counts / total / width, edges, color=color, lw=0.9)
+        peak = max(peak, (counts / total / width).max())
         if "reference" in coord["hist"] and band == "full":
             centres = (edges[1:] + edges[:-1]) / 2
             ax.plot(
@@ -155,17 +142,28 @@ for j, ax in enumerate(marginal_axes):
                 lw=0.6,
                 ls="--",
             )
-    ax.set_ylim(bottom=0)
+    if j < 4:
+        ax.set_ylim(0, 1.25 * peak)
+    else:
+        ax.set(yscale="log", ylim=(1e-4 * peak, 3 * peak))
     ax.set_yticks([])
-    ax.set_xlabel(LABELS[j])
+    ax.set_yticks([], minor=True)
+    ax.grid(False)
+    ax.spines["left"].set_visible(False)
+    # 8 pt keeps the dot of the drift subscript visible
+    ax.set_xlabel(LABELS[j], labelpad=1.5, fontsize=8)
     ax.tick_params(axis="x", labelsize=5.5)
-style.panel_label(marginal_axes[0], "d")
-marginal_axes[0].legend(
-    [plt.Line2D([], [], color=c) for c in BANDS.values()],
-    list(BANDS),
-    loc="lower center",
-    fontsize=5.5,
-    handlelength=1.0,
+    ax.xaxis.set_major_locator(MaxNLocator(3, symmetric=True))
+marginal_axes[0, 0].set_xticks([-1, 0, 1])
+right.legend(
+    [plt.Line2D([], [], color=c) for c in BANDS.values()]
+    + [plt.Line2D([], [], color=style.INK, lw=0.6, ls="--")],
+    [f"{band} band" for band in BANDS] + ["closed form"],
+    loc="outside upper center",
+    ncol=3,
+    handlelength=1.2,
 )
+marginal_axes[0, 0].set_title("Prior marginals")
+style.panel_label(marginal_axes[0, 0], "c", x=-0.1, y=1.1)
 
 style.save(fig, "chart")

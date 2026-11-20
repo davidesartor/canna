@@ -90,12 +90,13 @@ $\phi_0$ & $\Unif(0, 2\pi)$ \\
   \centering
   \includegraphics[width=\textwidth]{figures/priors.pdf}
   \caption{The per-source prior is broad and mostly below the noise. (a)~$(\log_{10}f_0, \log_{10}\fdot, \log_{10}\Amp)$ over the full band,
-  \num{\ChartPriorDraws} sources in windows centred on the catalogue's $f_0$ marginal: inner and outer
-  regions of the prior (grey) and of the sources with $\snr\ge\PriorsVisibleSnr$ (black), and the
-  line $\snr=\PriorsVisibleSnr$ (dashed), which averages over the other parameters, so sources
+  \num{\ChartPriorDraws} sources in windows centred on the catalogue's $f_0$ marginal: regions
+  enclosing \qty{\PriorCornerInner}{\percent} and \qty{\PriorCornerOuter}{\percent} of the prior
+  (blue) and of the sources with $\snr\ge\PriorsVisibleSnr$ (red), and the line
+  $\snr=\PriorsVisibleSnr$ (grey), which averages over the other parameters, so sources
   that reach it through a favourable sky or orientation also lie below it. (b)~The sky,
   \cref{eq:priors-sky}, in ecliptic coordinates $(\lambda, \beta)$: the bulge, the thick and the thin
-  disc, each shaded over three decades of its density. (c)~The orientation: the orbit (black, dashed
+  disc, each shaded over three decades of its density. (c)~The orientation: the orbit (blue, dashed
   below the sky plane) is inclined by $\iota$ to the sky plane $(x, y)$; its line of nodes is at
   $\psi$ from $x$, and $\phi_0$ is the phase along the orbit at the start of the observation.}
   \label{fig:priors}

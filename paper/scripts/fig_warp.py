@@ -132,7 +132,7 @@ for name, color in LOSSES.items():
         widths, quadrature, ls="none", marker="o", ms=3.4, mfc="none", mec=color, mew=0.8
     )
     style.direct_label(
-        ax, 3e-3, asymptotes[name][np.searchsorted(fine, 3e-3)], name, dx=0, dy=4, ha="left", va="bottom", color=color
+        ax, 3e-3, asymptotes[name][np.searchsorted(fine, 3e-3)], name, dx=-2, dy=4, ha="right", va="bottom", color=color
     )
 style.direct_label(
     ax,
@@ -154,7 +154,7 @@ ax = axes[1]
 true = np.logspace(-7, 0.5, 31)
 ax.axhline(1, **style.GUIDE)
 ax.axvline(1, **style.GUIDE)
-style.direct_label(ax, 1, 0.97, "frame", dx=3, ha="left", va="top", xycoords=ax.get_xaxis_transform())
+style.direct_label(ax, 1, 0.5, "frame", dx=-3, ha="right", xycoords=ax.get_xaxis_transform())
 for n_steps, color in STEP_COUNTS.items():
     ratio = [sampled_width(w, n_steps) for w in true]
     ax.loglog(true, ratio, color=color)

@@ -9,7 +9,8 @@ from style import plt
 
 COST = style.REPO / "reports/benchmarks/sampling-cost/data"
 SIZES = ("XS", "S", "B", "L", "XL")
-DRAWS = {256: style.BLUE, 1024: style.AQUA}
+DRAWS = (256, 1024)
+FLOW, MCMC = style.ORANGE, style.BLUE
 TIME_TICKS = {
     0.1: "0.1 s",
     1: "1 s",
@@ -35,50 +36,32 @@ params = {
 x = np.array(list(params.values()))
 
 style.setup()
-fig, ax = plt.subplots(figsize=(style.COLUMN, 2.4), layout="constrained")
+fig, ax = plt.subplots(figsize=(style.COLUMN, 2.5), layout="constrained")
 
-# flow, best of three windows: the full band as a line, the narrow band as rings around it
-for draws, color in DRAWS.items():
-    full = np.array([best[f"full-{s}", draws] for s in SIZES])
-    narrow = np.array([best[f"narrow-{s}", draws] for s in SIZES])
-    ax.plot(x, full, color=color, marker="o", ms=2.6, mec="white", mew=0.5, zorder=3)
-    ax.plot(
-        x, narrow, ls="none", marker="o", ms=5, mfc="none", mec=color, mew=0.7, zorder=3
-    )
-    style.direct_label(ax, x[-1], full[-1], f"flow, {draws} draws", dx=5, color=color)
+# flow, best of three windows: the full band filled, the narrow band hollow
+for draws in DRAWS:
+    for band, face in (("full", FLOW), ("narrow", "white")):
+        t = np.array([best[f"{band}-{s}", draws] for s in SIZES])
+        ax.plot(x, t, color=FLOW, marker="o", ms=3.2, mfc=face, mec=FLOW, mew=0.8, lw=1.0, zorder=3, label=f"flow, {band} band")
+    above = draws == max(DRAWS)
+    style.direct_label(ax, x[1], t[1], f"{draws} draws", dx=0, dy=7 if above else -7, ha="center", va="bottom" if above else "top")
 
 # the reference: median and range over the joint chains, one per injection (window)
 seconds = np.array([chain["seconds"] for chain in mcmc["joint"]])
-mcmc_median = np.median(seconds)
-ax.axhspan(seconds.min(), seconds.max(), color=style.FILL, zorder=0)
-ax.axhline(mcmc_median, color=style.INK2, lw=0.9, zorder=1)
+ax.axhspan(seconds.min(), seconds.max(), color=MCMC, alpha=0.15, lw=0, zorder=0)
+ax.axhline(np.median(seconds), color=MCMC, lw=1.0, zorder=1)
 style.direct_label(
-    ax, x[0], seconds.max(), "MCMC, one window, 2 CPU cores", dx=0, dy=2, va="bottom"
+    ax, x[0] / 1.2, seconds.max(), "joint MCMC", dx=0, dy=3, va="bottom", color=MCMC
 )
 
-# the gap at the B size, 256 draws
-flow_b = best["full-B", 256]
-ax.annotate(
-    "",
-    (params["B"], mcmc_median),
-    (params["B"], flow_b),
-    arrowprops=dict(arrowstyle="<->", color=style.INK2, lw=0.7, shrinkA=3, shrinkB=1),
-)
-style.direct_label(
-    ax,
-    params["B"],
-    np.sqrt(mcmc_median * flow_b),
-    rf"$\times 10^{{{np.log10(mcmc_median / flow_b):.1f}}}$",
-)
-style.direct_label(
-    ax, 0.99, 0.03, "lines: full band, rings: narrow band", dx=0, ha="right", va="bottom", xycoords="axes fraction"
-)
+handles, labels = ax.get_legend_handles_labels()
+ax.legend(handles[:2], labels[:2], loc="center left", bbox_to_anchor=(0.0, 0.5))
 
 ax.set_xscale("log")
 ax.set_xticks(x, [f"{s}\n{p:.0f}M" for s, p in params.items()])
 ax.set_xticks([], minor=True)
 ax.set_xlabel("model size (parameters)")
-ax.set_xlim(x[0] / 1.3, x[-1] * 3.4)
+ax.set_xlim(x[0] / 1.3, x[-1] * 1.3)
 ax.set_yscale("log")
 ax.set_yticks(list(TIME_TICKS), list(TIME_TICKS.values()))
 ax.set_yticks([], minor=True)

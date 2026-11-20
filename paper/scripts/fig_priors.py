@@ -164,9 +164,9 @@ for r in range(3):
             ax.set_ylabel(names[r], fontsize=6, labelpad=1)
 axes[0, 2].legend(
     handles=[
-        Patch(color=PRIOR_SHADES[1], label="prior, 39 / 86%"),
-        plt.Line2D([], [], color=style.RED, lw=1.0, label=rf"SNR $\geq$ {VISIBLE_SNR:.0f}, 39 / 86%"),
-        plt.Line2D([], [], color=style.INK2, lw=0.9, label=rf"SNR $=$ {VISIBLE_SNR:.0f}"),
+        Patch(color=PRIOR_SHADES[1], label="prior"),
+        plt.Line2D([], [], color=style.RED, lw=1.0, label=rf"visible, SNR $\geq$ {VISIBLE_SNR:.0f}"),
+        plt.Line2D([], [], color=style.INK2, lw=0.9, label=rf"SNR $=$ {VISIBLE_SNR:.0f} on average"),
     ],
     loc="upper right",
     fontsize=5.5,

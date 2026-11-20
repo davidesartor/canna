@@ -235,13 +235,13 @@ posterior $10^4$ times narrower, the velocity loss's excess is \FlowMatchingChec
   \caption{The Gaussian model of one coordinate. The bars mark the ideal $f_0$ widths $w/s_0$ of
   each band over its \ac{snr} range, with $s_0$ the prior's width. (a)~Excess loss of a model $w_m$
   wide when the true posterior is $10^4$ times narrower, under the velocity loss (grey) and the
-  endpoint likelihood of \cref{eq:loss} (black): quadrature of \cref{eq:fm-excess,eq:fm-excess-nll}
+  endpoint likelihood of \cref{eq:loss} (blue): quadrature of \cref{eq:fm-excess,eq:fm-excess-nll}
   (rings) against \cref{eq:fm-sensitivity-uniform,eq:fm-sensitivity-nll} (lines). The velocity
   loss's reward for narrowing vanishes linearly with the width; the likelihood's stays the same at
   every width. (b)~Width the sampler of \cref{app:fm-sampling} returns, run on the exact mean
   $\E[x_1\mid x_s]$, over the true width. With \FlowMatchingOdeSteps{} steps from the prior's scale
   it collapses well inside the narrow band's range and over all of the full band's, and more steps
-  only move the collapse to narrower widths (red, darker with more steps); in a calibrated frame the width is $s_0$ (dashed line), where
+  only move the collapse to narrower widths (darker with more steps); in a calibrated frame the width is $s_0$ (dashed line), where
   the sampler is exact.}
   \label{fig:fm-sensitivity}
 \end{figure*}
@@ -305,7 +305,7 @@ the posterior's tail across the boundary of the ordered region (\cref{app:chart-
   \centering
   \includegraphics{figures/sampling-cost.pdf}
   \caption{Wall time to draw posterior samples of one window, against model size: the flow on
-  one A100 (red; full band solid, narrow band dashed; best of three windows), and the joint
+  one A100 (orange; full band filled markers, narrow band hollow; best of three windows), and the joint
   \ac{mcmc} reference over all sources of a window on \McmcJointCores{} CPU cores (blue; median
   and range over the chains, one per injection).}
   \label{fig:fm-cost}

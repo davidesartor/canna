@@ -1,8 +1,9 @@
-"""figures/prior-corner.pdf: the per-source prior of each band, (log10 A, log10 f0, log10 fdot, RA, Dec), as a corner plot.
+"""figures/prior-corner.pdf: the per-source prior of each band, (log10 A, log10 f0, log10 fdot), as a corner plot.
 
 Draws come from the samplers the simulator uses (canna.lisa.physics.sample_sources, sample_sky), f0 truncated to each
 band's f0_range; they are saved to data/prior-corner/<band>.npz beside the figure (data/ stays local), and a rerun
 with the files present only restyles. Contours enclose 39% and 86% (1 and 2 sigma in 2-D); no points are drawn.
+The cached sky columns are not plotted: the sky does not depend on the band.
 """
 
 import corner
@@ -23,6 +24,7 @@ BANDS = {"full": style.BLUE, "narrow": style.ORANGE}  # full first: the narrow b
 LEVELS = (1 - np.exp(-0.5), 1 - np.exp(-2.0))
 LABELS = [r"$\log_{10}\mathcal{A}$", r"$\log_{10}f_0$ [Hz]", r"$\log_{10}\dot f$ [Hz/s]", r"$\alpha$ [deg]", r"$\delta$ [deg]"]
 DATA = style.PAPER / "data/prior-corner"
+SOURCE_COLUMNS = 3
 
 
 def draws(band: str, seed: int) -> np.ndarray:
@@ -41,19 +43,18 @@ def draws(band: str, seed: int) -> np.ndarray:
 
 
 style.setup()
-samples = {band: draws(band, seed) for seed, band in enumerate(BANDS)}
+samples = {band: draws(band, seed)[:, :SOURCE_COLUMNS] for seed, band in enumerate(BANDS)}
 # both bands inside every range: the union of their 0.1-99.9% quantiles
 ranges = [
     (min(np.quantile(s[:, i], 0.001) for s in samples.values()), max(np.quantile(s[:, i], 0.999) for s in samples.values()))
-    for i in range(3)
+    for i in range(SOURCE_COLUMNS)
 ]
-ranges += [(0, 360), (-90, 90)]
-fig = plt.figure(figsize=(0.72 * style.FULL, 0.72 * style.FULL))
+fig = plt.figure(figsize=(0.5 * style.FULL, 0.5 * style.FULL))
 for band, color in BANDS.items():
     corner.corner(
         samples[band],
         fig=fig,
-        labels=LABELS,
+        labels=LABELS[:SOURCE_COLUMNS],
         range=ranges,
         bins=40,
         smooth=1.0,
@@ -68,11 +69,9 @@ for band, color in BANDS.items():
         labelpad=0.08,
     )
 for ax in fig.axes:
-    ax.tick_params(labelsize=6.5)
-    ax.xaxis.label.set_size(7.5)
-    ax.yaxis.label.set_size(7.5)
+    ax.grid(False)
 handles = [plt.Line2D([], [], color=c, lw=1.2) for c in BANDS.values()]
-fig.legend(handles, ["full band", "narrow band"], loc="upper right", bbox_to_anchor=(0.97, 0.97), frameon=False, fontsize=8)
+fig.legend(handles, [f"{band} band" for band in BANDS], loc="upper right", bbox_to_anchor=(0.97, 0.97), fontsize=7)
 style.save(fig, "prior-corner")
 style.save_numbers("prior-corner", {
     "PriorCornerDraws": f"{len(samples['full'])}",

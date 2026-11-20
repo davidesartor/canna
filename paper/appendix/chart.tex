@@ -121,7 +121,7 @@ the band, not an exact \acs{snr}.
 
 \paragraph{Signal-to-noise per unit amplitude.}
 In these units the \ac{snr} of a source is $\snr = \kappa\,\Amp/u(\fw)$, and $\kappa$ is set almost
-entirely by the inclination (\cref{fig:chart}c): averaged over the sky,
+entirely by the inclination (\cref{fig:chart}b): averaged over the sky,
 $\snr^2\propto\lvert\zeta_+\rvert^2+\lvert\zeta_-\rvert^2\propto 1+6\cos^2\iota+\cos^4\iota$, so
 \begin{equation}
   \kappa^2 \approx C\,\frac{1+6\cos^2\iota+\cos^4\iota}{16/5},
@@ -182,14 +182,14 @@ undefined phase there. Since $\operatorname{asinh}(r)/r$ is an even analytic fun
 the warp $\zeta\mapsto\operatorname{asinh}\lvert\zeta\rvert\,\zeta/\lvert\zeta\rvert$ is a
 diffeomorphism of $\mathbb C$, the origin included, with inverse
 $z\mapsto\sinh\lvert z\rvert\,z/\lvert z\rvert$. The prior has much of its mass there
-(\cref{fig:chart}b,d).
+(\cref{fig:chart}a,c).
 
 \paragraph{Amplitude and inclination.}
 Away from edge-on one helicity dominates,
 $\lvert\zeta_-\rvert/\lvert\zeta_+\rvert = \bigl((1+\cos\iota)/(1-\cos\iota)\bigr)^2$, and the
 data measure the dominant amplitude much better than the weak one. In $(\Amp,\cos\iota)$ this
-gives the familiar curved degeneracy, a distant face-on source against a nearer inclined one
-(\cref{fig:chart}a). In the chart the same posterior is a compact blob in the dominant helicity's
+gives the familiar curved degeneracy, a distant face-on source against a nearer inclined one.
+In the chart the same posterior is a compact blob in the dominant helicity's
 plane and a roughly isotropic blob around the origin in the weak one's, whose radius is set by
 the noise: the chart straightens the banana by construction.
 
@@ -210,15 +210,14 @@ uniform and independent of the other parameters under the prior, as $\phi_0$ is.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/chart.pdf}
-  \caption{The helicity chart on prior draws. (a)~Amplitude in noise units against inclination
-  for narrow-band sources; colour is $\lvert\cos\iota\rvert$ throughout (a,~b). The prior draws
-  amplitude and inclination independently, most sources far below one noise unit. (b)~The same
-  sources as the radii of the two helicity amplitudes. Face-on sources lie far from the diagonal,
-  their weak helicity orders of magnitude below the dominant one. (c)~\ac{snr}
-  per unit amplitude against inclination, with the sky-averaged law \cref{eq:chart-kappa}.
-  (d)~The prior's marginal in each of the \ChartCoords{} flow coordinates, full band solid and
-  narrow band dashed, with the closed-form marginal in grey where it exists. The $z_\pm$ spike at zero: most sources lie far below one noise
-  unit.}
+  \caption{The helicity chart on prior draws. (a)~Narrow-band sources by the radii of their two
+  helicity amplitudes, coloured by $\lvert\cos\iota\rvert$. Face-on sources lie far from the
+  diagonal, their weak helicity orders of magnitude below the dominant one. (b)~\ac{snr} per unit
+  amplitude of the same sources against inclination, with the sky-averaged law
+  \cref{eq:chart-kappa} (line). (c)~The prior's marginal in each of the \ChartCoords{} flow
+  coordinates, narrow band orange and full band blue, with the full band's closed-form marginal
+  dashed where it exists. The $z_\pm$ densities are on a logarithmic axis; their spike at zero is
+  the many sources far below one noise unit.}
   \label{fig:chart}
 \end{figure*}
 
@@ -233,7 +232,7 @@ frame of \cref{app:fm-frame} is an affine map per coordinate, so a straight path
 straight path in the chart. Neither training nor sampling evaluates a density of the prior, and
 the chart's Jacobian never enters.
 
-The pushed-forward prior is not simple, but it is well scaled (\cref{fig:chart}d): $x_f$ is close
+The pushed-forward prior is not simple, but it is well scaled (\cref{fig:chart}c): $x_f$ is close
 to uniform, the drift and sky coordinates have standard deviations between \ChartUnitStdLow{} and
 \ChartUnitStdHigh{}, and no pair of the \ChartCoords{} coordinates is correlated by more than
 $\lvert r\rvert = \ChartMaxCorr{}$ over \ChartPriorDraws{} prior sources per band. The helicity

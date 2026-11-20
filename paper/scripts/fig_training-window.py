@@ -69,22 +69,23 @@ for s, color in enumerate(SOURCE_COLORS):
     ax.step(at, amplitude, where="mid", color=color, lw=0.9)
     peak = int(np.argmax(amplitude))
     peaks.append((at[peak], amplitude[peak], rho[s]))
-# label each peak; a label close after an unraised one is raised 10 pt so the two don't collide
+# each SNR centred above its peak; a label close after an unraised one is raised so the two don't collide
 previous, raised = -np.inf, True
 for x, y, snr in sorted(peaks):
-    raised = not raised and x - previous < 0.12 * problem.window_bins
+    raised = not raised and x - previous < 0.15 * problem.window_bins
     style.direct_label(
-        ax, x, y, rf"$\rho = {snr:.2g}$", dx=2, dy=(3 if y > 1 else -6) + (10 if raised else 0)
+        ax, x, y, rf"$\rho = {snr:.2g}$", dx=0, dy=3 + (8 if raised else 0), ha="center", va="bottom",
+        bbox=dict(boxstyle="square,pad=0.1", fc="white", ec="none"),
     )
     previous = x
 ax.set(
     xlim=(0, problem.window_bins),
     yscale="log",
-    ylim=(min(1e-2, min(y for _, y, _ in peaks) / 10), None),
+    ylim=(min(1e-2, min(y for _, y, _ in peaks) / 10), 8 * max(y for _, y, _ in peaks)),
     xlabel="frequency bin in window",
     ylabel=r"$|\tilde h_{A}| / \sqrt{P_A}$",
 )
-style.direct_label(ax, problem.window_bins, 1.0, "noise rms", dx=-2, dy=3, ha="right")
+style.direct_label(ax, problem.window_bins, 1.0, "noise rms", dx=-2, dy=3, ha="right", va="bottom")
 
 style.save(fig, "training-window")
 # the plotted curves, in data/ (local only), so restyling never re-simulates

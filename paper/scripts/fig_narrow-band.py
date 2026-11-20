@@ -14,7 +14,6 @@ BANDS = style.REPO / "src/canna/lisa/configs/band"
 F0_BINS = 40
 BAND_R = (16, 32, 64, 128, 256)
 BAND_NAMES = ("low tail", "low freq", "core", "high freq", "high tail")
-GUIDE_R = tuple(2**k for k in range(3, 10))
 VISIBLE_SNR = 7
 KEEP, SHARE = 1.0, 0.999
 # the (log10 f0, log10 width) density, as on the report's page: cells per axis, one-cell smoothing, contour masses
@@ -104,12 +103,22 @@ ax_width.contour(
     zorder=1.2,
 )
 
-# every power-of-two R as a guide, each band's R in ink, and the top band's per-f0 need
-for r in GUIDE_R:
-    ax_width.axhline(r, color=style.MUTED, lw=0.5, ls=(0, (2, 2)), zorder=1.5)
-    style.direct_label(ax_width, band_mhz[0], r, rf"$R={r}$", dx=2, dy=1, ha="left", va="bottom", fontsize=5.5)
+# each subband's R, labelled on its segment, and the top subband's per-f0 need
 for r, lo, hi in zip(BAND_R, band_mhz, band_mhz[1:]):
-    ax_width.plot([lo, hi], [r, r], color=style.INK, lw=1.0, zorder=2)
+    ax_width.plot([lo, hi], [r, r], color=style.INK, lw=1.2, solid_capstyle="butt", zorder=2)
+    # the top subband's label goes below its segment, clear of the climbing need
+    below = r == BAND_R[-1]
+    style.direct_label(
+        ax_width,
+        math.sqrt(lo * hi),
+        r,
+        rf"$R = {r}$",
+        dx=0,
+        dy=-2.5 if below else 2.5,
+        ha="center",
+        va="top" if below else "bottom",
+        color=style.INK,
+    )
 ax_width.stairs(
     need[first_over[-1] :],
     10 ** edges[first_over[-1] :] * 1e3,
@@ -125,6 +134,8 @@ ax_width.set(
     ylim=(2, 2600),
     ylabel="bins above the noise",
 )
+ax_width.set_yticks([2**k for k in range(2, 12, 2)], [str(2**k) for k in range(2, 12, 2)])
+ax_width.set_yticks([], minor=True)
 ax_width.set_title("Response width against $f_0$")
 style.panel_label(ax_width, "a")
 
@@ -174,7 +185,7 @@ for name, lo, hi in zip(BAND_NAMES, band_mhz, band_mhz[1:]):
         linespacing=1.0,
         color=style.BLUE_RAMP[5],
     )
-# the narrow run, one device on the core band and the top of the low-freq one
+# the narrow band of the experiments: the core subband and the top of the low-freq one
 narrow = yaml.safe_load((BANDS / "narrow.yaml").read_text())["problem"]["f0_range"]
 ax_share.annotate(
     "",
@@ -183,7 +194,7 @@ ax_share.annotate(
     xycoords=("data", "axes fraction"),
     arrowprops=dict(arrowstyle="|-|", color=style.ORANGE, lw=1.0, shrinkA=0, shrinkB=0, mutation_scale=2),
 )
-style.direct_label(ax_share, narrow[0] * 1e3, 0.70 * 1.6 * (visible / visible.sum() / dex).max(), "narrow run", dx=-3, color=style.ORANGE)
+style.direct_label(ax_share, narrow[0] * 1e3, 0.70 * 1.6 * (visible / visible.sum() / dex).max(), "narrow band", dx=-3, color=style.ORANGE)
 
 ax_share.set(
     xlim=tuple(10**log_range * 1e3),
