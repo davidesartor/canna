@@ -20,10 +20,11 @@ and attend to the data and to each other.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/architecture.pdf}
-  \caption{The network. The source stream (blue) has one token per source slot, in order of $f_0$;
-  the data stream (grey) has one token per \NetworkPatch{} frequency bins of the window, and runs
-  with one frame register per slot, which the frame head reads; the sink tokens (violet) join the
-  source stream. Conditioning (orange, dashed) modulates every normalisation and residual gate:
+  \caption{The network: four streams, each with its own normalisations, attention projections and
+  feed-forward. The source stream (blue) has one token per source slot, in order of $f_0$, and the
+  sink stream (violet) \NetworkSinksWord{} tokens; they attend jointly. The data stream (grey) has
+  one token per \NetworkPatch{} frequency bins of the window, and the register stream (green) one
+  frame register per slot, which the frame head reads; they attend jointly. Conditioning (orange, dashed) modulates every normalisation and residual gate:
   $\nu$ from the flow time and the window in the source stream and head, $\nu_f$ from the window
   alone in the data stream, the registers and the frame head. The data side never reads the
   sources, so its keys and values and the frame are computed once per observation and serve every

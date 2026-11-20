@@ -25,12 +25,15 @@ for script in "${scripts[@]}"; do
     if log=$($PY "$script" 2>&1); then echo ok; else echo FAILED; echo "$log"; failed+=("$script"); fi
 done
 
-# the TikZ network diagram, only when its source changed (xelatex output is not byte-stable)
-if [[ ../figures/src/architecture.tex -nt ../figures/architecture.pdf ]]; then
-    (cd ../figures/src && xelatex -interaction=nonstopmode -halt-on-error architecture.tex > /dev/null \
-        && mv architecture.pdf .. && rm -f architecture.aux architecture.log)
-    echo "architecture.tex          ok"
-fi
+# the TikZ diagrams, only when a source changed (xelatex output is not byte-stable)
+for src in ../figures/src/*.tex; do
+    name=$(basename "$src" .tex)
+    if [[ $src -nt ../figures/$name.pdf ]]; then
+        (cd ../figures/src && xelatex -interaction=nonstopmode -halt-on-error "$name.tex" > /dev/null \
+            && mv "$name.pdf" .. && rm -f "$name.aux" "$name.log")
+        printf '%-26sok\n' "$name.tex"
+    fi
+done
 
 if ((pdf)); then
     (cd .. && SOURCE_DATE_EPOCH= latexmk -interaction=nonstopmode -halt-on-error main.tex > /dev/null) \
