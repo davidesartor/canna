@@ -5,11 +5,19 @@
 % 8S parameters"; "the narrow band below 3 mHz" -> "1-3 mHz". The contributions still cite the old
 % section names through kept labels (sec:method-chart is in sec:method, sec:validation in
 % sec:experiments; since 2026-11-19 sec:inversion is the first subsection of sec:background).
+% 2026-11-19 (user): opening sentences on GW science (LIGO, PTA) and LISA; the three difficulties restated as
+% parameters, unknown number of sources, no reference posteriors; contributions rewritten to the user's five
+% points; the closing paragraph is only the outline of the sections.
 % =======================================================================================
 
-\Ac{lisa} will observe millions of \acp{gb} in the Milky Way, quasi-monochromatic sources
+Gravitational waves have opened a new window on the Universe: ground-based interferometers observe
+the mergers of compact binaries \citep{abbott2016observation}, and pulsar timing arrays have found
+evidence for a nanohertz background \citep{agazie2023nanograv,antoniadis2023second}. The space-based
+\ac{lisa}, due for launch in 2035, will open the millihertz band, home to massive black-hole
+binaries, extreme mass-ratio inspirals and the compact binaries of our own Galaxy
+\citep{amaro2017lisa,colpi2024lisa}. It will observe millions of \acp{gb} in the Milky Way, quasi-monochromatic sources
 between \qtyrange{\RelatedWorkFzeroLow}{\RelatedWorkFzeroHigh}{\milli\hertz}, and resolve thousands of
-them \citep{nelemans2001gravitational,korol2017prospects,amaro2017lisa,colpi2024lisa,karnesis2021characterization}. Below a few millihertz
+them \citep{nelemans2001gravitational,korol2017prospects,karnesis2021characterization}. Below a few millihertz
 their signals overlap: a source spreads over several frequency bins through the instrument's
 orbit and its own chirp, and neighbours share bins, so their parameters must be inferred jointly
 (\cref{fig:related-crowding}). The reference method is a global fit, a trans-dimensional \ac{mcmc}
@@ -25,38 +33,35 @@ We bring the amortised route to the global fit's unit of work: the joint posteri
 $S$ sources in a frequency window, $8S$ parameters under
 the full instrument response, for windows anywhere in the band, drawn by conditional flow
 matching \citep{lipman2023flow,liu2023flow,albergo2023building,dax2023flow} with no likelihood
-evaluation. Three difficulties stand in the way. The posterior is multimodal by symmetry: each
-source has four copies under its polarisation and phase, and the sources of a window can be
-exchanged. Its widths span orders of magnitude, from the prior for a quiet source to a small
-fraction of a bin in frequency for a loud one, and a flow run on the prior's scale and sampled on
-a uniform grid cannot resolve the narrow end. And with no reference posterior for most windows, the usual calibration
-checks pass flows that are plainly wrong.
+evaluation. The difficulties are three. The number of parameters is very large: eight per source,
+for thousands of resolvable sources, inferred jointly wherever their signals overlap. The exact
+number of sources is unknown: a window holds sources above and below the noise, and which of them
+the data resolve is part of the answer. And reference posteriors are lacking: a joint chain exists
+only for a few windows, and without one the usual calibration checks pass flows that are plainly
+wrong.
 
 \paragraph{Contributions.}
 \begin{itemize}
-  \item A flat chart of eight coordinates per source in which the signal is linear in one complex
-    amplitude per helicity, so a source's four equivalent copies become one mode and the flow
-    runs on straight paths (\cref{sec:method-chart}).
-  \item Sources as slots in order of frequency, each with a Gaussian frame the network reads off
-    the data alone, around the prior's moments, so the flow transports order-one widths for loud
-    and quiet sources alike (\cref{sec:method-chart,sec:method-fm}).
-  \item A flow-matching recipe for posteriors that are narrow at the end of the path: Gaussian
-    likelihoods of the frame and of the endpoint in it, whose reward for narrowing is relative to
-    each source's own width, and an analysis of what the sampler resolves with and without the
-    frame (\cref{sec:method-fm}).
-  \item A one-way transformer whose data stream depends on the observation alone, so it is encoded
-    once per window and reused by every draw and every sampler step, trained on batches simulated
-    on the device (\cref{sec:method-network}).
-  \item A validation protocol checked on known answers: a toy with an exact posterior, where ranks
-    of the parameters miss phase, sky and dependence errors that ranks of data-space quantities
-    catch, and a ladder of mock posteriors run through the whole evaluation
-    (\cref{sec:validation}).
+  \item Joint posteriors for thousands of \acp{gb} at once, under broad catalogue priors rather than
+    narrow boxes around each source: one network, run over every window of a band in parallel, returns
+    each window's joint posterior, and their product is the band's (\cref{sec:gw-slicing}). It is a
+    first proof of concept of an amortised approach that scales to the full global fit.
+  \item Broad frequency bands: one network, conditioned on the window's centre, serves the whole band
+    from \qtyrange{\PriorsFullLowMhz}{\PriorsFullHighMhz}{\milli\hertz}, where the responses widen with
+    frequency (\cref{sec:gw-windows,sec:narrow-band}).
+  \item A way to handle an unknown number of sources: a fixed number of slots per window, most of them
+    below the noise, for which the flow returns the prior when the data do not resolve them; runs with
+    2 to 16 sources per window measure how the joint posterior scales (\cref{sec:gw-rates}).
+  \item A flow-matching recipe: a chart in which each source's four equivalent copies become one mode,
+    slots in order of frequency, each with a Gaussian frame read off the data, so the flow transports
+    order-one widths for loud and quiet sources alike, and a one-way transformer that encodes the data
+    once per window (\cref{sec:method}).
+  \item Bayesian validation checks tested on known answers: on a toy with an exact posterior, ranks of
+    data-space quantities catch phase, sky and dependence errors that parameter ranks miss, and mock
+    posteriors are run through the whole evaluation (\cref{sec:validation}).
 \end{itemize}
-We train on two bands, the narrow band, \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, with windows
-of \PriorsNarrowW{} bins and the full band up to \qty{\PriorsFullHighMhz}{\milli\hertz} with windows
-of \PriorsFullW{} bins, and compare against joint and per-source \ac{mcmc} chains
-(\cref{sec:results}). \Cref{sec:background} reviews the literature we build on, with the detailed
-comparison in \cref{app:related}; \cref{sec:gw} states the \ac{gb} problem, \cref{sec:method} our
-network and its training, and \cref{sec:narrow-band} the two bands.
-% updated 2026-11-19 (user): roadmap for the new section order; was "\Cref{app:related} covers the
-% related work."
+\Cref{sec:background} reviews the literature we build on, with the detailed comparison in
+\cref{app:related}. \Cref{sec:gw} states the \ac{gb} problem: the waveforms, the priors, the
+likelihood, its windows and the number of sources per window. \Cref{sec:method} describes the network
+and its training, \cref{sec:narrow-band} the narrow and the full band, \cref{sec:experiments} the
+validation protocol and the results on both, and \cref{sec:conclusions} concludes with the follow-ups.

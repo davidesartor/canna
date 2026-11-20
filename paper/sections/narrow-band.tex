@@ -79,13 +79,13 @@ $f_0$ [mHz] & $R$ & catalogue [\%] & visible [\%] \\
 \label{sec:narrow-band-prior}
 The catalogue puts almost all its sources in the lowest band, where they are faint: the
 conditional mean amplitude reaches that of a source at $\snr=\PriorsVisibleSnr$ only above
-\qty{\PriorsAmpCrossMhz}{\milli\hertz} (\cref{fig:priors}e). The visible sources are its loud tail,
+\qty{\PriorsAmpCrossMhz}{\milli\hertz} (\cref{fig:priors}a). The visible sources are its loud tail,
 and \qty{\NarrowBandTwoVisible}{\percent} of them fall in the second band, at $R=\NarrowBandTwoR$
 (\cref{tab:narrow-band-bands}, \cref{fig:narrow-band}b). Even within a band, windows centred on the catalogue's $f_0$
 marginal would mostly hold no visible source, so training places its windows by
 \cref{eq:priors-window}, with weight the catalogue's $f_0$ marginal times the chance that a source
 there is visible, and \qty{\PriorsUniformWindowsPercent}{\percent} of them log-uniformly
-(\cref{fig:priors}d, \cref{app:priors-window}). The weights choose which windows training sees, not
+(\cref{app:priors-window}). The weights choose which windows training sees, not
 what their sources are, so the posterior given a window is unchanged.
 
 \paragraph{The narrow band.}

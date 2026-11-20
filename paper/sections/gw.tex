@@ -16,18 +16,13 @@
 % tokens of the former Network subsection; 2026-11-10 the equations, tab:priors-source, fig:priors and
 % fig:noise-psd were MOVED here (fig:noise-psd moved back to app:noise 2026-11-18) from app:priors, app:forward-model and app:noise (labels unchanged).
 
+% 2026-11-19 (user): outline trimmed.
 In this section we set out the inference problem the flow solves. Within the global fit of the
 \ac{lisa} data (\cref{sec:gw-globalfit}), our experiment addresses the \acp{gb} alone, in stationary
-noise of known spectrum and with no other sources in the data. It is a first step towards an
-amortised global fit: the same technique can be extended to the other signals and to more realistic
-noise and data, with gaps and glitches (\cref{sec:followups}). \Cref{sec:gw-waveforms} follows
-the signal of a \ac{gb} from the polarisations the binary emits, through the response of the
-\ac{lisa} constellation, to the three \ac{tdi} channels and the noise they carry; the full response, the noise
-model and the checks of our simulator against published references are in
-\cref{app:forward-model,app:noise}. \Cref{sec:gw-priors} gives the prior over the sources of a
-frequency window, a stretch of $K$ consecutive Fourier bins with centre frequency $\fw$.
-\Cref{sec:gw-slicing} writes the likelihood and the posterior, shows why they factorise window by
-window, and how many sources a window holds.
+noise of known spectrum and with no other sources in the data, a first step towards an amortised
+global fit (\cref{sec:followups}). We describe the signal and noise (\cref{sec:gw-waveforms}), the
+prior over the sources of a frequency window (\cref{sec:gw-priors}), and the likelihood, which
+factorises window by window (\cref{sec:gw-slicing}).
 
 \subsection{Waveforms}
 \label{sec:gw-data}\label{sec:gw-waveforms}
@@ -46,7 +41,8 @@ observer is
 with $t$ the time, $\hat{\mathbf k}$ the direction of propagation, set by the sky position in
 right ascension $\alpha$ and declination $\delta$, $\mathbf x(t)$ the observer's position, $c$ the
 speed of light and $e^{+,\times}_{ij}$ the polarisation tensors of the source frame, which is the
-frame of the \ac{ssb} rotated by the polarisation angle $\psi$ about $\hat{\mathbf k}$ (\cref{app:forward-model-waveform}). For a circular binary with a constant
+frame of the \ac{ssb} rotated by the polarisation angle $\psi$ about $\hat{\mathbf k}$, so they depend
+on $\alpha$, $\delta$ and $\psi$ (\cref{app:forward-model-waveform}). For a circular binary with a constant
 frequency derivative,
 \begin{equation}
 \begin{aligned}
@@ -68,14 +64,14 @@ and the amplitude by the chirp mass and the distance (\cref{eq:forward-model-amp
 simulator keeps $\fdot$ and $\Amp$ free, with the prior of \cref{sec:gw-priors}.
 
 \paragraph{Response.}
-Over an observation time $\Tobs=\qty{\ForwardModelTobsYears}{\year}$ the constellation's orbit
-modulates a source in amplitude and Doppler-shifts it, so in the frequency domain it occupies a few
-bins of width $1/\Tobs$ to a few hundred around $f_0$. We simulate the responses of the six laser
+Over an observation time $\Tobs=\qty{\ForwardModelTobsYears}{\year}$ the frequency bins have width
+$\Delta f = 1/\Tobs$. We simulate the responses of the six laser
 links between the three spacecraft \citep{finn2009response,cornish2009alternative} with the
 heterodyned fast response \citep{cornish2007tests,jaxgb} on equal, constant arms
 \citep{lisaorbits} (\cref{app:forward-model-link,app:forward-model-heterodyne}). Laser frequency noise
 is cancelled by forming from them the \ac{tdi}~1.5 Michelson combinations $X$, $Y$, $Z$
-\citep{tinto2021time} (\cref{app:forward-model-tdi}), and from these the noise-orthogonal channels
+\citep{tinto2021time} (\cref{app:forward-model-tdi}), which for simplicity we also form on
+equilateral orbits, with equal and constant arms, and from these the noise-orthogonal channels
 \citep{prince2002lisa}
 \begin{equation}
   A = \frac{Z-X}{\sqrt2},\quad E = \frac{X-2Y+Z}{\sqrt6},\quad T = \frac{X+Y+Z}{\sqrt3}.
@@ -114,18 +110,14 @@ of bins, stands little above the noise in the data.
 % updated 2026-11-09 (moving the definition of theta to the section's head): "modulates it" -> "modulates a source".
 
 % moved 2026-11-18 from app:forward-model.
-\begin{figure*}[t]
+% 2026-11-19 (user): one column, narrow band, the sources' responses only.
+\begin{figure}[t]
   \centering
-  \includegraphics[width=\textwidth]{figures/training-window.pdf}
-  \caption{One training window per band (\cref{app:priors-window}); the full-band one is the first
-  drawn that holds a source with $\snr\ge\PriorsVisibleSnr{}$. (a, b) The network's input in the
-  real part of channel $A$ (\cref{sec:gw-windows}; grey) with the noiseless signal whitened the
-  same way (black); the noise has unit variance. (c, d) Each source's $A$ response alone, in
-  units of the noise's root-mean-square per bin, labelled with its \acs{snr}; shading marks the guard bands,
-  which hold no $f_0$, only the responses' wings. In both bands the Doppler and chirp terms spread a
-  response over tens of bins, most of them below the noise.}
+  \includegraphics[width=\columnwidth]{figures/training-window.pdf}
+  \caption{\acs{tdi}-1.5 representation, in channel $A$, of the \acp{gb} of one narrow-band window: each
+  source's response, in units of the noise's root-mean-square per bin, labelled with its \acs{snr}.}
   \label{fig:forward-model-window}
-\end{figure*}
+\end{figure}
 
 \subsection{Priors}
 \label{sec:gw-priors}
@@ -162,17 +154,7 @@ Gaussian is not a fully realistic population, but it follows the catalogue close
 \end{equation}
 with $\Normal$ the Gaussian, its mean $\mu_\pi$ and covariance $\Sigma_\pi$ in
 \cref{app:priors-sources}, and $f_0$ truncated to the window
-(\cref{eq:priors-interior}). Given $f_0$, the drift and amplitude are Gaussian with means linear in
-$\log_{10}f_0$,
-\begin{equation}
-\begin{aligned}
-  \log_{10}\fdot \mid f_0 &\sim \Normal\bigl(\PriorsInterceptFdot + \PriorsSlopeFdot\log_{10}f_0,\ \PriorsResidualFdot^2\bigr),\\
-  \log_{10}\Amp \mid f_0 &\sim \Normal\bigl(\PriorsInterceptAmp + \PriorsSlopeAmp\log_{10}f_0,\ \PriorsResidualAmp^2\bigr),
-\end{aligned}
-  \label{eq:priors-conditional}
-\end{equation}
-the drift's slope close to the $11/3$ of a chirp driven by radiation reaction
-(\cref{eq:forward-model-fdot}). Population models of the Galaxy's double white dwarfs
+(\cref{eq:priors-interior}). Population models of the Galaxy's double white dwarfs
 \citep{nelemans2001gravitational,toonen2012supernova,korol2017prospects,korol2020populations,georgousi2022gravitational,thiele2023applying}
 differ in their binary physics
 \citep{biscoveanu2023probing,toubiana2024interacting,boileau2025gravitational,delfavero2025recovering};
@@ -189,7 +171,7 @@ with weights $w$, bulge widths $\sigma_{l,b}$ and disc scales $\lambda_{l,b}$ fi
 catalogue (\cref{app:priors-sources}), and $\mathcal{L}_c(x;\lambda)\propto e^{-|x|/\lambda}$ a
 Laplace density truncated to $|x|\le c$; it is rotated to the equatorial $(\alpha,\delta)$ of the
 response. The orientation is isotropic: $\psi$ and $\phi_0$ uniform, $\cos\iota$ uniform.
-\Cref{fig:priors} in \cref{app:priors} shows the prior over a window, and \cref{fig:prior-corner} in \cref{app:priors-sources} its joint law of
+\Cref{fig:priors} shows the prior, and \cref{fig:prior-corner} in \cref{app:priors-sources} its joint law of
 $(\Amp, f_0, \fdot, \alpha, \delta)$ over each band.
 
 % updated 2026-11-09: was "S=\PriorsSources sources" (S = 4); the runs use S = 2 to 16.
@@ -204,10 +186,8 @@ window $w$.}
 \toprule
 parameter & prior \\
 \midrule
-$(f_0, \fdot, \Amp)$ & catalogue Gaussian in their logarithms, \cref{eq:priors-source} \\
-\quad $f_0$ & its marginal, truncated to the window's interior, \cref{eq:priors-interior} \\
-\quad $(\fdot, \Amp)\mid f_0$ & its conditional, \cref{eq:priors-conditional}, on $(0, \infty)^2$, uncut \\
-$(\alpha, \delta)$ & bulge, two discs and a floor in galactic $(l, \sin b)$, \cref{eq:priors-sky} \\
+$(f_0, \fdot, \Amp)$ & $(\log_{10}f_0, \log_{10}\fdot, \log_{10}\Amp)\sim\Normal(\mu_\pi, \Sigma_\pi)$, \cref{eq:priors-source} \\
+$(\alpha, \delta)$ & bulge + disc, \cref{eq:priors-sky} \\
 $\psi$ & $\Unif(0, 2\pi)$ \\
 $\iota\in[0,\pi]$ & $\cos\iota\sim\Unif(-1, 1)$ \\
 $\phi_0$ & $\Unif(0, 2\pi)$ \\
@@ -215,7 +195,21 @@ $\phi_0$ & $\Unif(0, 2\pi)$ \\
 \end{tabular}
 \end{table}
 
-% fig:priors moved 2026-11-19 (user) to app:priors; sec:narrow-band has fig:narrow-band instead.
+% 2026-11-20 (user): redrawn in three panels (scripts/fig_priors.py): corner of (f0, fdot, A), sky, orientation.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/priors.pdf}
+  \caption{The per-source prior. (a)~$(\log_{10}f_0, \log_{10}\fdot, \log_{10}\Amp)$ over the full band,
+  \num{32768} sources in windows centred on the catalogue's $f_0$ marginal: the \qty{39}{\percent} and
+  \qty{86}{\percent} regions of the prior (blue) and of the sources with $\snr\ge\PriorsVisibleSnr$ (red), and the
+  line $\snr=\PriorsVisibleSnr$ (grey). The line averages over all the other parameters (sky, orientation, and
+  the parameter not shown, at its conditional mean), so sources that reach $\snr\ge\PriorsVisibleSnr$ through a
+  favourable sky or orientation also lie below it. (b)~The sky, \cref{eq:priors-sky}, in ecliptic coordinates $(\lambda, \beta)$, those of \ac{lisa}'s orbit: the bulge,
+  the thick and the thin disc, each shaded over three decades of its density. (c)~The orientation: the orbit (blue, dashed below the sky plane) is inclined by $\iota$, the angle
+  between its normal $\hat L$ and the line of sight $z$, to the sky plane $(x, y)$; its line of nodes is at
+  $\psi$ from $x$, and $\phi_0$ is the phase along the orbit at the start of the observation.}
+  \label{fig:priors}
+\end{figure*}
 
 \subsection{Likelihood, Windows and Source Counts}
 \label{sec:gw-slicing}\label{sec:gw-factorisation}
@@ -307,7 +301,7 @@ sources, $n_{\rm vis}$ of them visible,
   \label{eq:gw-rates}
 \end{equation}
 with $\operatorname{Bin}$ the binomial law and $P_{\rm vis}(f_0) = P\bigl(\snr\ge\RatesVisibleSnr\mid f_0\bigr)$,
-the amplitude integrated out given $f_0$ (\cref{eq:priors-conditional}). A narrow-band window of
+the amplitude integrated out given $f_0$ (\cref{eq:priors-source}). A narrow-band window of
 \RatesNarrowWindow{} bins holds on average \numrange{\RatesNarrowAllLo}{\RatesNarrowAllHi} sources and
 \numrange{\RatesNarrowVisibleLo}{\RatesNarrowVisibleMax} visible ones, a full-band window of
 \RatesFullWindow{} bins up to \num{\RatesFullAllHi} and \RatesFullVisibleMax{} (\cref{app:priors}).
