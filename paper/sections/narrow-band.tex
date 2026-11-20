@@ -9,7 +9,7 @@
 % subproblem (32 < R <= 64), one device of the divided scheme; the full band is the whole
 % distribution, and each band is described on its own.
 % Numbers from paper/scripts/numbers_narrow-band.py (reports/prior/response-span). Labels kept:
-% sec:narrow-band-span, sec:narrow-band-prior, sec:narrow-band-bands, tab:forward-model-bands.
+% sec:narrow-band-span, sec:narrow-band-prior, sec:narrow-band-bands; tab:forward-model-bands dropped 2026-11-20 (user).
 
 \paragraph{How many bins a response needs.}
 \label{sec:narrow-band-span}
@@ -45,27 +45,38 @@ the number of sources $S$ the flow must resolve. We let $R$ alone decide, and cu
 doubles, into the five bands of \cref{tab:narrow-band-bands}: a low tail, a low-frequency band, the
 core, a high-frequency band and a high tail. Each is a subproblem of its own, with its own window
 length, source density and loudness, and the network trained on all of them is judged over the whole
-distribution and on each band separately.
+distribution and on each band separately. How many sources does that fit? A window of $W=\ForwardModelWindowResponses{}R/\Tobs$ in frequency
+with $K$ visible sources has at most $\min(K,S)$ of them fitted, so over the band a network of $S$ slots
+per window fits
+\begin{equation}
+  N_S = \int \frac{\mathrm{d}f}{W(f)} \sum_k \min(k,S)\,p\bigl(K=k\mid f\bigr)
+  \label{eq:narrow-band-fitted}
+\end{equation}
+visible sources, with $p(K=k\mid f)$ the law of \cref{eq:gw-rates}: \num{\NarrowBandFittedFour} at
+$S=4$, \num{\NarrowBandFittedEight} at $S=8$ and \num{\NarrowBandFittedSixteen} at $S=16$, of the
+\num{\NarrowBandVisibleTotal} visible sources in the band, against the \numrange{5100}{12000} \acp{gb}
+the global fits of \cref{tab:gw-globalfit} return. Filling every slot would give $S$ times the
+\num{\NarrowBandMiddleWindows} windows that tile the three bands between the tails.
 
 \begin{table*}[t]
 \caption{The band divided where the response width doubles: the $R$ that keeps every above-noise
 bin of \qty{\NarrowBandSharePercent}{\percent} of the sources at each $f_0$, each band's share of
 the catalogue's sources and of the visible ones ($\snr\ge\NarrowBandVisibleSnr$), and the mean
 number of sources, all and visible, in a window of $\ForwardModelWindowResponses{}R$ bins across the
-band (\cref{eq:gw-rates}).}
+band (\cref{eq:gw-rates}), and the number of such windows that tile the band without overlap.}
 \label{tab:narrow-band-bands}
 \centering
 \small
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lcrrrcc@{}}
+\begin{tabular}{@{}lcrrrccr@{}}
 \toprule
-band & $f_0$ [mHz] & $R$ & catal.\ [\%] & vis.\ [\%] & sources & visible \\
+band & $f_0$ [mHz] & $R$ & catal.\ [\%] & vis.\ [\%] & sources & visible & windows \\
 \midrule
-low tail & \numrange{\NarrowBandLowTailLowMhz}{\NarrowBandLowTailHighMhz} & \NarrowBandLowTailR & \NarrowBandLowTailCatalogue & \NarrowBandLowTailVisible & \numrange{\NarrowBandLowTailAllLo}{\NarrowBandLowTailAllHi} & \numrange{\NarrowBandLowTailVisibleLo}{\NarrowBandLowTailVisibleHi} \\
-low freq & \numrange{\NarrowBandLowFreqLowMhz}{\NarrowBandLowFreqHighMhz} & \NarrowBandLowFreqR & \NarrowBandLowFreqCatalogue & \NarrowBandLowFreqVisible & \numrange{\NarrowBandLowFreqAllLo}{\NarrowBandLowFreqAllHi} & \numrange{\NarrowBandLowFreqVisibleLo}{\NarrowBandLowFreqVisibleHi} \\
-core & \numrange{\NarrowBandCoreLowMhz}{\NarrowBandCoreHighMhz} & \NarrowBandCoreR & \NarrowBandCoreCatalogue & \NarrowBandCoreVisible & \numrange{\NarrowBandCoreAllLo}{\NarrowBandCoreAllHi} & \numrange{\NarrowBandCoreVisibleLo}{\NarrowBandCoreVisibleHi} \\
-high freq & \numrange{\NarrowBandHighFreqLowMhz}{\NarrowBandHighFreqHighMhz} & \NarrowBandHighFreqR & \NarrowBandHighFreqCatalogue & \NarrowBandHighFreqVisible & \numrange{\NarrowBandHighFreqAllLo}{\NarrowBandHighFreqAllHi} & \numrange{\NarrowBandHighFreqVisibleLo}{\NarrowBandHighFreqVisibleHi} \\
-high tail & \numrange{\NarrowBandHighTailLowMhz}{\NarrowBandHighTailHighMhz} & \numrange{\NarrowBandHighTailR}{\NarrowBandTopR} & \NarrowBandHighTailCatalogue & \NarrowBandHighTailVisible & \numrange{\NarrowBandHighTailAllLo}{\NarrowBandHighTailAllHi} & \numrange{\NarrowBandHighTailVisibleLo}{\NarrowBandHighTailVisibleHi} \\
+low tail & \numrange{\NarrowBandLowTailLowMhz}{\NarrowBandLowTailHighMhz} & \NarrowBandLowTailR & \NarrowBandLowTailCatalogue & \NarrowBandLowTailVisible & \numrange{\NarrowBandLowTailAllLo}{\NarrowBandLowTailAllHi} & \numrange{\NarrowBandLowTailVisibleLo}{\NarrowBandLowTailVisibleHi} & \num{\NarrowBandLowTailWindows} \\
+low freq & \numrange{\NarrowBandLowFreqLowMhz}{\NarrowBandLowFreqHighMhz} & \NarrowBandLowFreqR & \NarrowBandLowFreqCatalogue & \NarrowBandLowFreqVisible & \numrange{\NarrowBandLowFreqAllLo}{\NarrowBandLowFreqAllHi} & \numrange{\NarrowBandLowFreqVisibleLo}{\NarrowBandLowFreqVisibleHi} & \num{\NarrowBandLowFreqWindows} \\
+core & \numrange{\NarrowBandCoreLowMhz}{\NarrowBandCoreHighMhz} & \NarrowBandCoreR & \NarrowBandCoreCatalogue & \NarrowBandCoreVisible & \numrange{\NarrowBandCoreAllLo}{\NarrowBandCoreAllHi} & \numrange{\NarrowBandCoreVisibleLo}{\NarrowBandCoreVisibleHi} & \num{\NarrowBandCoreWindows} \\
+high freq & \numrange{\NarrowBandHighFreqLowMhz}{\NarrowBandHighFreqHighMhz} & \NarrowBandHighFreqR & \NarrowBandHighFreqCatalogue & \NarrowBandHighFreqVisible & \numrange{\NarrowBandHighFreqAllLo}{\NarrowBandHighFreqAllHi} & \numrange{\NarrowBandHighFreqVisibleLo}{\NarrowBandHighFreqVisibleHi} & \num{\NarrowBandHighFreqWindows} \\
+high tail & \numrange{\NarrowBandHighTailLowMhz}{\NarrowBandHighTailHighMhz} & \numrange{\NarrowBandHighTailR}{\NarrowBandTopR} & \NarrowBandHighTailCatalogue & \NarrowBandHighTailVisible & \numrange{\NarrowBandHighTailAllLo}{\NarrowBandHighTailAllHi} & \numrange{\NarrowBandHighTailVisibleLo}{\NarrowBandHighTailVisibleHi} & \num{\NarrowBandHighTailWindows} \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -103,7 +114,7 @@ what their sources are, so the posterior given a window is unchanged.
 
 \paragraph{The trained configurations.}
 \label{sec:narrow-band-bands}
-We train two configurations (\cref{tab:forward-model-bands}). The \emph{narrow} run is the core
+We train two configurations. The \emph{narrow} run is the core
 subproblem on its own device, at $R=\ForwardModelNarrowR{}$, the width the core needs. It runs from
 \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, its lower edge taken down into
 the low-frequency band, whose sources $R=\ForwardModelNarrowR$ holds with room to spare, and holds
@@ -115,20 +126,3 @@ of the visible sources, it loses outer bins (\cref{sec:results-full}). Dividing 
 bands, one device each, is the intended scheme; the full run shows what one network learns over the
 whole distribution, and the narrow run what the core subproblem reaches with a device to itself.
 
-\begin{table}[t]
-\caption{The two trained configurations, which share the priors and the window layout: response
-width $R$, window length $K$ and interior in bins, number of distinct windows, $f_0$ range, and share
-of $\log f_0$ over \qtyrange{\ForwardModelBandLow}{\ForwardModelBandHigh}{\milli\hertz}.}
-\label{tab:forward-model-bands}
-\centering
-\small
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}lrrrrcr@{}}
-\toprule
-band & $R$ & $K$ & interior & windows & $f_0$ [mHz] & share \\
-\midrule
-narrow & \ForwardModelNarrowR{} & \ForwardModelNarrowK{} & \ForwardModelNarrowInterior{} & \num{\ForwardModelNarrowWindows} & \numrange{\ForwardModelNarrowLow}{\ForwardModelNarrowTop} & \qty{\ForwardModelNarrowFraction}{\percent} \\
-full & \ForwardModelFullR{} & \ForwardModelFullK{} & \ForwardModelFullInterior{} & \num{\ForwardModelFullWindows} & \numrange{\ForwardModelFullLow}{\ForwardModelFullTop} & \qty{\ForwardModelFullFraction}{\percent} \\
-\bottomrule
-\end{tabular}
-\end{table}

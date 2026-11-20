@@ -8,6 +8,7 @@ import math
 import numpy as np
 import yaml
 from scipy.special import ndtr
+from scipy.stats import binom
 
 import style
 
@@ -108,6 +109,9 @@ count_bins = np.clip(np.digitize(np.log10(c["f0"]), count_edges) - 1, 0, page.F0
 count_weight = np.bincount(count_bins, c["f0_weight"], page.F0_BINS)
 reach = ndtr((c["mean_log_a"] - np.log10(VISIBLE_SNR / c["snr_unit"])) / d["amp_std"])
 reaching_visible = np.bincount(count_bins, c["f0_weight"] * reach, page.F0_BINS) / count_weight
+SLOTS = (4, 8, 16)
+windows = {}  # disjoint windows of 4R bins that tile each band
+fitted = {slots: 0.0 for slots in SLOTS} | {"all": 0.0}  # visible sources a flow of S slots per window can fit, over the band
 for name, r, lo, hi in zip(BAND_NAMES, BAND_R, band_edges, band_edges[1:]):
     centres = np.linspace(math.log10(lo), math.log10(hi), 200)
     width_bins = WINDOW_RESPONSES * r
@@ -117,13 +121,28 @@ for name, r, lo, hi in zip(BAND_NAMES, BAND_R, band_edges, band_edges[1:]):
     mean_visible = SKY_CATALOGUE_SOURCES * page.window_share(
         centres, width_bins, count_x, reaching_visible, d["t_obs"], d["f0_range"]
     )
+    windows[name] = (hi - lo) * d["t_obs"] / width_bins
+    # integral over f of the window density times E[min(K, S)], K ~ binomial visible sources in the window
+    f = 10**centres
+    for slots in SLOTS:
+        fill = sum(binom.sf(j, SKY_CATALOGUE_SOURCES, mean_visible / SKY_CATALOGUE_SOURCES) for j in range(slots))
+        fitted[slots] += np.trapezoid(fill * d["t_obs"] / width_bins, f)
+    fitted["all"] += np.trapezoid(mean_visible * d["t_obs"] / width_bins, f)
     numbers |= {
         f"NarrowBand{name}Window": f"{width_bins}",
+        f"NarrowBand{name}Windows": f"{windows[name]:.0f}",
         f"NarrowBand{name}AllLo": two_figures(mean_all.min()),
         f"NarrowBand{name}AllHi": two_figures(mean_all.max()),
         f"NarrowBand{name}VisibleLo": two_figures(mean_visible.min()) if mean_visible.min() >= 0.01 else "0",
         f"NarrowBand{name}VisibleHi": two_figures(mean_visible.max()),
     }
+# windows tiling the bands between the tails, and the visible sources S slots per window fit (eq:narrow-band-fitted)
+middle_windows = sum(windows[name] for name in BAND_NAMES[1:-1])
+numbers["NarrowBandMiddleWindows"] = f"{middle_windows:.0f}"
+for word, slots in zip(("Four", "Eight", "Sixteen"), SLOTS):
+    numbers[f"NarrowBandFitted{word}"] = f"{fitted[slots]:.0f}"
+numbers["NarrowBandVisibleTotal"] = f"{fitted['all']:.0f}"
+print({name: round(n) for name, n in windows.items()}, {s: round(x) for s, x in fitted.items()})
 
 numbers["NarrowBandNarrowVisible"] = two_figures(
     share(visible, f0, *narrow["f0_range"])
