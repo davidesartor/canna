@@ -1,78 +1,56 @@
 % =======================================================================================
 \section{Conclusions and Discussion}
-\label{sec:conclusions}\label{sec:limitations}
-% 2026-11-19 (user): retitled (was Conclusions).
-% Moved 2026-11-09 from the former sections/limitations.tex. New material in the appendices: the
-% source rates of a real window (app:priors) and the results of the source-count runs (app:results).
-% updated 2026-11-09: "exactly \RelatedWorkSourcesWord{} detectable sources" -> "exactly $S$".
-% 2026-11-18 (user): the former app:forward-model-limits ("What the Simulator Leaves Out") dropped
-% and its items moved here as proposed follow-ups (label sec:followups).
+\label{sec:conclusions}
 % =======================================================================================
 
-We have shown that conditional flow matching returns joint posteriors of overlapping \acp{gb}
-under the full instrument response, across the \ac{lisa} band, in a fraction of a second per
-window. The chart, the frequency order and the frame turn a posterior multimodal by symmetry into one a
-flow on straight paths can learn, and the one-way network makes each draw cost only the source
-stream. Validation needs tests in data space and known-answer mocks: without them, flows that
-ignore the data pass.
+Conditional flow matching returns joint posteriors of overlapping \acp{gb} under the full
+instrument response, with no likelihood evaluation and in a fraction of a second per window. The
+chart, the frequency order and the frame turn a posterior that is multimodal by symmetry and
+decades narrower than its prior into one that a flow on straight paths can learn, and the one-way
+network makes each draw cost only the source side. On the core subproblem with two sources per
+window the posteriors have the widths of a joint \ac{mcmc}; they widen as sources are added, and
+over the whole band the loudest sources are not yet resolved.
 
-The flow is checked on data from its own prior; out-of-distribution windows are
-probed in \cref{app:evaluation-sampler}: the flow tolerates sources past its prior but turns confident and
-wrong when the noise is louder than its own \ac{psd}.
-% updated 2026-11-13: robustness outcome (narrow band, S = 4).
-The sampler's uniform grid collapses posteriors much narrower than the frame (\cref{fig:fm-sensitivity}), so a
-frame far too wide would show as widths that change with the number of steps; they are read where
-they no longer do. Our validation tests are necessary
-% updated 2026-11-16 (stale fact): the mock fails every test at 1000 injections (app:results-validation)
-conditions; at a thousand injections the Gaussian mock fails all of them, and only the reference chains
-give widths, for a few windows. \textcolor{red}{TODO(move from \cref{app:results}): where the flow stays wider than the
-\acs{mcmc}: loud full-band sources and the sky.}
+\paragraph{Limitations.}
+\label{sec:limitations}
+The flow falls short of the chains where the posterior is narrowest. In the narrow band its $f_0$
+widths reach \ResultsNarrowEightFzeroLow{} times the chains' with eight sources per window, and the
+sky two to three times above $\snr=40$. In the full band the $f_0$ of sources above $\snr=40$ is
+\ResultsFullFourFzeroLoud{} to \ResultsFullSixteenFzeroLoud{} times too wide, and with $S=16$ only
+\qty{\ResultsFullSixteenFoundLoud}{\percent} of them are found. The misses lie above
+\qty{\ResultsFullSplitMhz}{\milli\hertz}, where training sees few loud sources and the flow refines
+its frame least (\cref{sec:results-full}). In every model the drawn signals fit the data slightly
+worse than the true one, which the marginal widths do not show (\cref{sec:results-calibration}).
+
+The evidence has limits of its own. Our tests are necessary conditions; only the reference chains
+give widths, they exist for \EvaluationInjections{} windows per model, and for the faint sources of
+the largest problems they are themselves unreliable (\cref{sec:validation}). Every result comes from
+one training run per configuration, so the run-to-run spread is not measured; a second seed, the
+narrow band with $S=2$ first, would show which differences are real (\cref{app:results-forks}).
+Out of distribution, the flow tolerates sources past its prior but turns confident and wrong when
+the noise is louder than its assumed \ac{psd} (\cref{app:evaluation-sampler}). Finally, the
+simulator is simpler than real \ac{lisa} data, and it generates the training data, the test windows
+and the reference chains' likelihood alike. Its simplifications therefore limit realism, not the
+consistency of the comparison.
 
 \paragraph{Proposed follow-ups.}
 \label{sec:followups}
-Our simulator is deliberately simpler than real \ac{lisa} data. The same simulator generates the
-training data, the test injections and the likelihood of the reference \ac{mcmc} (\cref{app:mcmc}),
-so its simplifications limit realism, not the consistency of the comparison. Lifting them, roughly
-in the order a global fit would need them, is the work that follows:
-\begin{itemize}
-  \item windows of adaptive length, a realistic number of sources per window, varying from window
-  to window with the density of the Galaxy, and sources that straddle a window's edge or leak in
-  from a neighbouring window: every window now has a fixed length and holds exactly $S$ binaries,
-  mostly below the noise, and nothing else. A tiling whose window length follows the Doppler spread
-  of the responses, which grows with $f_0$, and keeps the number of sources per window small should
-  simplify the analysis, at high frequencies in particular, where the Galaxy is sparse and the
-  sources are loud. Windows also overlap, a stride of \ForwardModelWindowStride{} bins apart, so on real
-  data a source lies in the interior of several windows and is inferred in each; how to combine these
-  posteriors into one per source, probably by post-processing the windows' draws, is part of the
-  follow-up. Using the posteriors inside a global fit, which infers the number of sources
-  and updates overlapping segments in turn \citep{littenberg2020global}, needs all three;
-  \item the confusion foreground of the unresolved binaries
-  \citep{timpano2006characterizing,karnesis2021characterization} and the other source classes;
-  \item gaps in the data \citep{baghi2019gravitational,dey2021effect}, and noise that is estimated
-  with the sources rather than known, non-stationary, and with glitches (\cref{app:noise});
-  \item realistic orbits in place of the equal-arm ones, with unequal, time-varying arms, the
-  emitter's position taken at emission rather than at reception, and \ac{tdi} generation 2 in place of
-  generation 1.5 (\cref{app:forward-model-tdi});
-  \item the cubic phase of $\ddot f = \tfrac{11}{3}\fdot^2/f_0$, which JaxGB drops: the frequency now
-  evolves linearly, which is negligible in the narrow band and matters most at the top of the full band;
-  \item responses longer than $R$ bins, since the widest sources of the full band now lose their
-  outermost bins above the noise (\cref{app:forward-model-heterodyne}).
-\end{itemize}
-% added 2026-11-18 (user): realistic orbits and gaps next; stress the expected robustness against MCMC
-We will add realistic orbits and gaps first. \emph{We expect the network to be very robust to both,
-and this is one of the main advantages of a simulation-based approach over \ac{mcmc}.} The network
-needs only a simulator, never a likelihood: orbits, gaps and glitches enter by simulating them in the
-training data, and the network learns their effect on the posterior from examples. A sampler instead
-needs that effect written into its likelihood. Gaps break the stationarity that makes the
-frequency-domain likelihood diagonal (\cref{eq:loglik}), so an exact likelihood correlates
-frequency bins and is costly to evaluate, and any effect the likelihood leaves out or approximates
-(an orbit model, a gap's taper, an unmodelled glitch) biases the chains' posteriors
-\citep{baghi2019gravitational,dey2021effect}. As long as the training simulations contain these effects, the
-cost of the network's draws does not change, and neither does the way its posteriors are checked
-(\cref{app:evaluation}).
+The first step is to add realistic orbits, with unequal and time-varying arms and \ac{tdi}
+generation 2 (\cref{app:forward-model-tdi}), and data gaps \citep{baghi2019gravitational,dey2021effect}.
+The network needs only a simulator, so we expect both to enter through the training simulations,
+with no change to the cost of a draw or to how its posteriors are checked, whereas a sampler needs each effect
+written into its likelihood. Gaps break the stationarity that makes the likelihood of
+\cref{eq:loglik} diagonal, and whatever the likelihood leaves out biases the chains
+\citep{baghi2019gravitational,dey2021effect}.
 
-% added 2026-11-19 (user): the second seed, moved here from a red TODO of app:results-forks.
-Every result here comes from one training run per band and source count, so the spread from run to run
-is not measured. Retraining with other seeds, the narrow band with $S=2$ first (about 32 hours on an
-A100), would show which differences between runs, such as those of a few hundredths of a nat between the
-64-epoch runs and their forks (\cref{app:results-forks}), are real.
+The second step is the window. Every window now has a fixed length and holds exactly $S$ binaries,
+mostly below the noise. A global fit needs a number of sources that follows the density of the
+Galaxy, a length that follows the width of the responses, and sources that straddle an edge or leak
+in from a neighbour; windows also overlap, a stride of \ForwardModelWindowStride{} responses apart,
+so each source is inferred in several and their posteriors must be combined
+\citep{littenberg2020global}. Beyond these come the confusion foreground of the unresolved binaries
+\citep{timpano2006characterizing,karnesis2021characterization} and the other source classes, noise
+that is estimated with the sources and is non-stationary with glitches (\cref{app:noise}), the cubic
+phase of $\ddot f = \tfrac{11}{3}\fdot^2/f_0$, which matters most at the top of the band, and
+responses longer than $R$ bins, which the widest sources of the full band now lose
+(\cref{app:forward-model-heterodyne}).

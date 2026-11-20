@@ -1,67 +1,64 @@
 % =======================================================================================
 \section{Introduction}
 \label{sec:introduction}
-% updated 2026-11-09 (stale facts only): "the four sources ..., 32 parameters" -> "the S sources ...,
-% 8S parameters"; "the narrow band below 3 mHz" -> "1-3 mHz". The contributions still cite the old
-% section names through kept labels (sec:method-chart is in sec:method, sec:validation in
-% sec:experiments; since 2026-11-19 sec:inversion is the first subsection of sec:background).
-% 2026-11-19 (user): opening sentences on GW science (LIGO, PTA) and LISA; the three difficulties restated as
-% parameters, unknown number of sources, no reference posteriors; contributions rewritten to the user's five
-% points; the closing paragraph is only the outline of the sections.
 % =======================================================================================
 
-Gravitational waves have opened a new window on the Universe: ground-based interferometers observe
-the mergers of compact binaries \citep{abbott2016observation}, and pulsar timing arrays have found
-evidence for a nanohertz background \citep{agazie2023nanograv,antoniadis2023second}. The space-based
-\ac{lisa}, due for launch in 2035, will open the millihertz band, home to massive black-hole
-binaries, extreme mass-ratio inspirals and the compact binaries of our own Galaxy
-\citep{amaro2017lisa,colpi2024lisa}. It will observe millions of \acp{gb} in the Milky Way, quasi-monochromatic sources
-between \qtyrange{\RelatedWorkFzeroLow}{\RelatedWorkFzeroHigh}{\milli\hertz}, and resolve thousands of
-them \citep{nelemans2001gravitational,korol2017prospects,karnesis2021characterization}. Below a few millihertz
-their signals overlap: a source spreads over several frequency bins through the instrument's
-orbit and its own chirp, and neighbours share bins, so their parameters must be inferred jointly
-(\cref{fig:related-crowding}). The reference method is a global fit, a trans-dimensional \ac{mcmc}
-over every resolvable source \citep{littenberg2020global,littenberg2023prototype,katz2024efficient,strub2024global,deng2025modular}.
-It is the standard for what the data support, but even a joint chain over one of our windows takes
-\qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour}, and it has to run again on every new stretch
-of data. Amortised estimators learn the posterior once and
-then return it in a fraction of a second, but for \acp{gb} they have so far treated one source,
-two ordered sources in a narrow band, or a factorised set of toy signals
+The space-based \ac{lisa}, due for launch in 2035, will open the millihertz band of gravitational
+waves \citep{amaro2017lisa,colpi2024lisa}. Its most numerous sources are the compact binaries of
+our own Galaxy: millions of quasi-monochromatic \acp{gb} between
+\qtyrange{\RelatedWorkFzeroLow}{\RelatedWorkFzeroHigh}{\milli\hertz}, of which thousands will be
+resolved \citep{nelemans2001gravitational,korol2017prospects,karnesis2021characterization}. Below a
+few millihertz their signals overlap: the instrument's orbit and the source's own chirp spread each
+signal over several frequency bins, neighbours share bins, and their parameters must be inferred
+jointly (\cref{fig:related-crowding}).
+
+The reference method is the global fit, a trans-dimensional \ac{mcmc} over every resolvable
+source \citep{littenberg2020global,littenberg2023prototype,katz2024efficient,strub2024global,deng2025modular}.
+It is the standard for what the data support, but a joint chain over one of our frequency
+windows alone takes \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour}, and the whole fit runs
+again on every new stretch of data. Amortised estimators learn the posterior once and then return
+it in a fraction of a second. For \acp{gb} they have so far treated one source, two ordered sources
+in a narrow band, or a factorised set of toy signals
 \citep{korsakova2024neural,houba2025slotflow,delmond2026neural} (\cref{tab:related-closest}).
 
-We bring the amortised route to the global fit's unit of work: the joint posterior of the
-$S$ sources in a frequency window, $8S$ parameters under
-the full instrument response, for windows anywhere in the band, drawn by conditional flow
-matching \citep{lipman2023flow,liu2023flow,albergo2023building,dax2023flow} with no likelihood
-evaluation. The difficulties are three. The number of parameters is very large: eight per source,
-for thousands of resolvable sources, inferred jointly wherever their signals overlap. The exact
-number of sources is unknown: a window holds sources above and below the noise, and which of them
-the data resolve is part of the answer. And reference posteriors are lacking: a joint chain exists
-only for a few windows, and without one the usual calibration checks pass flows that are plainly
-wrong.
+We bring the amortised route to the global fit's unit of work: the joint posterior of the $S$
+sources of a frequency window, $8S$ parameters under the full instrument response, for windows
+anywhere in the band. A conditional flow-matching model
+\citep{lipman2023flow,liu2023flow,albergo2023building,dax2023flow} draws it with no likelihood
+evaluation. Three things make this hard. A window holds many sources, most of them below the noise,
+so the posterior is high-dimensional and its sources are only partly resolved. Each source's
+posterior has symmetries, several equivalent copies in phase and polarisation and one mode per
+labelling, that a flow on straight paths cannot learn. And the posteriors of loud sources are
+decades narrower than the prior, so a flow that starts from the prior must cross orders of
+magnitude in width. Reference posteriors are also scarce, since a joint chain exists for only a few
+windows, and without one the usual calibration checks pass flows that are plainly wrong.
 
 \paragraph{Contributions.}
 \begin{itemize}
-  \item Joint posteriors for thousands of \acp{gb} at once, under broad catalogue priors rather than
-    narrow boxes around each source: one network, run over every window of a band in parallel, returns
-    each window's joint posterior, and their product is the band's (\cref{sec:gw-slicing}). It is a
-    first proof of concept of an amortised approach that scales to the full global fit.
-  \item Broad frequency bands: one network, conditioned on the window's centre, serves the whole band
-    from \qtyrange{\PriorsFullLowMhz}{\PriorsFullHighMhz}{\milli\hertz}, where the responses widen with
-    frequency (\cref{sec:gw-windows,sec:narrow-band}).
-  \item A way to handle an unknown number of sources: a fixed number of slots per window, most of them
-    below the noise, for which the flow returns the prior when the data do not resolve them; runs with
-    2 to 16 sources per window measure how the joint posterior scales (\cref{sec:gw-rates}).
-  \item A flow-matching recipe: a chart in which each source's four equivalent copies become one mode,
-    slots in order of frequency, each with a Gaussian frame read off the data, so the flow transports
-    order-one widths for loud and quiet sources alike, and a one-way transformer that encodes the data
-    once per window (\cref{sec:method}).
-  \item Bayesian validation checks tested on known answers: on a toy with an exact posterior, ranks of
-    data-space quantities catch phase, sky and dependence errors that parameter ranks miss, and mock
-    posteriors are run through the whole evaluation (\cref{sec:validation}).
+  \item \emph{Joint posteriors of overlapping \acp{gb} from the flow alone}, with $S$ from two to
+    sixteen sources per window under broad catalogue priors, for windows anywhere in the band
+    from \qtyrange{\PriorsFullLowMhz}{\PriorsFullHighMhz}{\milli\hertz}
+    (\cref{sec:gw-slicing,sec:narrow-band}). Runs with increasing $S$ measure how the joint
+    posterior scales.
+  \item \emph{Coordinates without the posterior's symmetries.} A flat chart of eight coordinates
+    per source folds each source's equivalent copies into one mode, and slots ordered in frequency
+    remove the labelling modes (\cref{sec:method-chart}).
+  \item \emph{A data-dependent Gaussian frame and an endpoint likelihood loss.} The frame is read
+    off the data for each slot, so the flow transports order-one widths for loud and quiet sources
+    alike (\cref{sec:method-fm}).
+  \item \emph{A one-way multi-stream transformer} that encodes the data once per window, so every
+    draw and every sampler step reuses it (\cref{sec:method-network}).
+  \item \emph{Subbands of fixed shapes.} Dividing the band where the width of the sources'
+    responses doubles gives five subproblems, each trained on its own device (\cref{sec:narrow-band}).
+  \item \emph{Validation on known answers.} A toy with an exact posterior shows that ranks of
+    data-space quantities catch phase, sky and dependence errors that parameter ranks miss, and
+    mock posteriors are run through the whole evaluation (\cref{sec:validation}).
 \end{itemize}
-\Cref{sec:background} reviews the literature we build on, with the detailed comparison in
-\cref{app:related}. \Cref{sec:gw} states the \ac{gb} problem: the waveforms, the priors, the
-likelihood, its windows and the number of sources per window. \Cref{sec:method} describes the network
-and its training, \cref{sec:narrow-band} how the band divides into five subproblems by response width
-and the two trained configurations, \cref{sec:experiments} the validation protocol and the results on both, and \cref{sec:conclusions} concludes with the follow-ups.
+
+On the core subproblem, \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, with
+two sources per window, the flow's widths are within
+\ResultsNarrowTwoWidthLo--\ResultsNarrowTwoWidthHi{} times those of a joint \ac{mcmc} for sources
+at a \ac{snr} of 7 to 40, and \FlowMatchingCostDraws{} draws take
+\qty{\FlowMatchingCostNarrow}{\second} on one \ac{gpu}. The posteriors widen as sources are added,
+and over the whole band the loud sources above \qty{\ResultsFullSplitMhz}{\milli\hertz} are not yet
+resolved; we report both (\cref{sec:experiments,sec:conclusions}).
