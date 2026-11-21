@@ -16,12 +16,12 @@ The reference method is the global fit, a trans-dimensional \ac{mcmc} over every
 source \citep{littenberg2020global,littenberg2023prototype,katz2024efficient,strub2024global,deng2025modular}.
 It is the standard for what the data support, but a joint chain over one of our frequency
 windows alone takes \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour}, and the whole fit runs
-again on every new stretch of data. Amortised estimators learn the posterior once and then return
-it in a fraction of a second. For \acp{gb} they have so far treated one source, two ordered sources
+again on every new stretch of data. \Ac{sbi} learns the posterior once and then returns
+it in a fraction of a second. For \acp{gb} it has so far treated one source, two ordered sources
 in a narrow band, or a factorised set of toy signals
 \citep{korsakova2024neural,houba2025slotflow,delmond2026neural} (\cref{tab:related-closest}).
 
-We bring the amortised route to the global fit's unit of work: the joint posterior of the $S$
+We bring \acs{sbi} to the global fit's unit of work: the joint posterior of the $S$
 sources of a frequency window, $8S$ parameters under the full instrument response, for windows
 anywhere in the band. A conditional flow-matching model
 \citep{lipman2023flow,liu2023flow,albergo2023building,dax2023flow} draws it with no likelihood

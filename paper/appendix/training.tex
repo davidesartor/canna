@@ -49,7 +49,7 @@ Precision & backbone & bfloat16 compute, float32 weights \\
 A batch holds \TrainingBatch{} $(Z_0, t)$ samples: \TrainingObservations{} simulated observations,
 each with its own centre frequency $\fw$ and sources (\cref{app:priors}), and \TrainingDraws{} draws
 of the base point and time per observation. The data stream of an observation is encoded once and
-shared by its draws (\cref{app:network}), so the draws amortise both the simulation and the
+shared by its draws (\cref{app:network}), so the draws share the cost of both the simulation and the
 encoding. The times are stratified over the whole batch, one per stratum of \TrainingBatch{} equal
 strata (\cref{app:fm-clock}).
 

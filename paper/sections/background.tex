@@ -17,7 +17,7 @@ to about $10^6$ \ac{cpu} hours, and every new dataset or change of model pays th
 \begin{table*}[t]
 \caption{\Acp{gb} returned and cost, by approach. One-shot: global fits of the Sangria data set (one
 year, about $3\times10^7$ injected \acp{gb}, about $10^4$ above \acs{snr} 7), as each work reports
-them, time being training and then sampling per posterior; \acs{cpu} hours for GLASS are its \num{7488} \acsp{cpu} times its five days, Erebor's figure counts \acs{gpu} hours on four A100s, and Gee-Moo's run had not fully converged. Amortised:
+them, time being training and then sampling per posterior; \acs{cpu} hours for GLASS are its \num{7488} \acsp{cpu} times its five days, Erebor's figure counts \acs{gpu} hours on four A100s, and Gee-Moo's run had not fully converged. \acs{sbi}:
 no work has fitted a band, so we give the sources per posterior (\cref{tab:related-closest}) and
 the training reported; \acs{gpu} hours for SlotFlow are its four \acsp{gpu} times \qty{190}{\hour}
 (it also states \num{305}), and Mao et al.'s range spans their 30- and 90-day models. Ours:
@@ -39,7 +39,7 @@ Erebor \citep{katz2024efficient} & \num{12000} (\num{8000} confident) & 4 A100, 
 \citet{strub2024global} & \num{5100} (half a year) & \acs{cpu} cluster & \num{700} \\
 Gee-Moo \citep{deng2025modular} & \num{9542} (\num{7620} identified) & \num{1000} cores, \qty{20}{\hour} & ${\sim}2\times10^4$ \\
 \midrule
-\tabgroup{amortised}
+\tabgroup{SBI}
 \citet{delmond2026neural} & 1; 2 as a proof of concept & 1 A100, ${\sim}1$ week; $<\qty{1}{\second}$ per posterior & ${\sim}170$ \acs{gpu} h \\
 \citet{mao2025robust} & 1, with 3 free parameters & 1 L40S, \numrange{3}{5.5}\,h & \numrange{3}{5.5} \acs{gpu} h \\
 SlotFlow \citep{houba2025slotflow} & up to 10 sinusoids, no response & 4 GH200, \qty{190}{\hour}; \qty{13}{\milli\second} per draw & ${\sim}760$ \acs{gpu} h \\
@@ -50,12 +50,12 @@ this work, $S=16$ & \num{\NarrowBandFittedSixteen} (at most) & 1 A100, \ResultsF
 \end{tabular}
 \end{table*}
 
-\paragraph{Amortised posterior estimation.}
+\paragraph{Simulation-based inference.}
 \label{sec:inversion}\label{sec:background-generative}
 Given data $d$, a prior $\pi(\theta)$ and a likelihood $p(d\mid\theta)$, the posterior is
 $p(\theta\mid d)\propto p(d\mid\theta)\,\pi(\theta)$. Samplers such as \ac{mcmc} and nested
 sampling \citep{skilling2006nested} evaluate the likelihood many times and start again for every
-dataset. Simulation-based inference \citep{cranmer2020frontier} instead trains a conditional density
+dataset. \Ac{sbi} \citep{cranmer2020frontier} instead trains a conditional density
 estimator on simulated pairs $(\theta,d)$; in \ac{npe} the estimator models the posterior itself
 \citep{papamakarios2016fast,greenberg2019automatic}. Training needs only a simulator, and the
 posterior of a new dataset costs only network evaluations, but nothing guarantees the estimate. It
@@ -67,16 +67,16 @@ Flow matching, rectified flows and stochastic interpolants
 network learns the velocity that carries a simple base distribution to the data along prescribed
 paths, and a sample solves an ordinary differential equation. Its quality depends on what the
 network predicts, how the loss is weighted along the path and how the sampler spaces its steps
-\citep{karras2022elucidating,kingma2023understanding}. For posteriors it entered simulation-based
-inference as \ac{fmpe} \citep{dax2023flow}. A posterior differs from an image in that its width
+\citep{karras2022elucidating,kingma2023understanding}. For posteriors it entered \acs{sbi}
+as \ac{fmpe} \citep{dax2023flow}. A posterior differs from an image in that its width
 matters and can be orders of magnitude below the prior's, which is where our objective departs from
 standard \ac{fmpe} (\cref{sec:method-fm}). Our network is a multimodal diffusion transformer
 \citep{peebles2023scalable,esser2024scaling} with the data and the sources as its two streams
 (\cref{sec:method-network}).
 
-\paragraph{Amortised inference for gravitational waves.}
+\paragraph{\Acs{sbi} for gravitational waves.}
 \label{sec:background-gw-npe}\label{sec:background-gb}
-Amortised posteriors are established for the compact binaries of ground-based detectors
+\Acs{sbi} is established for the compact binaries of ground-based detectors
 \citep{green2020gravitational,gabbard2022bayesian,dax2021real,dax2025real}, with importance sampling to
 the exact posterior \citep{dax2023neural}, and for \ac{lisa}'s massive black-hole binaries
 \citep{du2024advancing,liang2024rapid,spadaro2026accurate}. Overlapping signals have been analysed

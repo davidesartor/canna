@@ -5,8 +5,8 @@
 % sec:background is the main-text summary of this appendix.
 
 This appendix compares our work with the prior work that bears on its claims: the
-likelihood-based and amortised inference of \acp{gb} (\cref{tab:related-closest}), how crowded
-our windows are against what earlier amortised work tested (\cref{fig:related-crowding}), and the
+likelihood-based and simulation-based inference of \acp{gb} (\cref{tab:related-closest}), how crowded
+our windows are against what earlier \acs{sbi} work tested (\cref{fig:related-crowding}), and the
 methods from which each ingredient of ours is taken or departs (\cref{tab:related-ingredients}).
 It supports \cref{sec:background}.
 
@@ -27,7 +27,7 @@ posterior sample. \emph{Reference}: what the posteriors are checked against; P--
 \newcommand{\rwgroup}[1]{\multicolumn{7}{@{}l}{\textsc{#1}}\\[1pt]}
 \begin{tabular}{@{}L{2.9cm}L{2.8cm}CCCL{3.9cm}L{1.8cm}@{}}
 \toprule
-work & sources per posterior & joint & amortised & likelihood & signal, data and prior & reference \\
+work & sources per posterior & joint & \acs{sbi} & likelihood & signal, data and prior & reference \\
 \midrule
 \rwgroup{likelihood-based}
 \ac{rjmcmc} global fit \citep{littenberg2020global,katz2024efficient,strub2024global}
@@ -41,7 +41,7 @@ flows as priors and proposals \citep{korsakova2024neural,sasli2026learned}
   & inside the global fit's sampler
   & its chains \\
 \midrule
-\rwgroup{amortised}
+\rwgroup{SBI}
 \citet{delmond2026neural}, \ac{nsf}
   & 1; 2 as a proof of concept, ordered by $f_0$
   & 2 only & \rwyes & \rwno
@@ -80,8 +80,8 @@ Neural density estimators enter it as fitted priors, proposals and compact catal
 fitted to one source's chains \citep{korsakova2024neural}; \citet{sasli2026learned} show on
 non-\ac{gb} benchmarks that learned birth proposals help once the fit has equilibrated rather than
 while it is assembled. We use the sampler only as a reference (\cref{app:evaluation,app:mcmc}), a
-joint \ac{mcmc} over all \McmcJointDim{} parameters of each evaluation injection. An amortised
-window posterior could in turn serve a global fit as a proposal or as the initial state of its
+joint \ac{mcmc} over all \McmcJointDim{} parameters of each evaluation injection. A window
+posterior from \acs{sbi} could in turn serve a global fit as a proposal or as the initial state of its
 chains.
 
 \paragraph{The global-fit problem.}
@@ -108,7 +108,7 @@ pipeline of \citet{strub2024global} are \ac{cpu} samplers, Erebor runs on \acp{g
 \citep{lisapriors}, with at most five \acp{gb} per segment for Gee-Moo where Erebor allows fifteen to
 twenty.
 
-\subsection{Amortised Posteriors for Galactic Binaries}
+\subsection{Simulation-Based Inference for Galactic Binaries}
 \label{app:related-amortised}
 
 \citet{delmond2026neural} train a neural spline flow on the frequency-domain $A$ and $E$ data
@@ -212,7 +212,7 @@ validation
 \subsection{Methods We Build On}
 \label{app:related-methods}
 Beyond \acp{gb}, \cref{tab:related-ingredients} sets each ingredient of our recipe against its
-closest precedents. Two points need more than a table row. Amortised posteriors are established
+closest precedents. Two points need more than a table row. \Acs{sbi} is established
 for ground-based detectors \citep{chua2020learning,green2020gravitational,green2021complete,gabbard2022bayesian,dax2021real,dax2025real}
 and for \ac{lisa}'s massive black-hole binaries \citep{du2024advancing,liang2024rapid,spadaro2026accurate}, but
 their overlapping-signal analyses cover pairs
@@ -228,7 +228,7 @@ from a per-event optimisation where our frame comes from the network.
 papers before moving any of it to the main text.}
 Neural posterior estimation now runs in production alerts \citep{marx2026likelihood}, and a GPU
 nested sampler returns binary-neutron-star posteriors from the prior in minutes
-\citep{yallup2026abinitio}. For one source, speed alone is a weakening argument for amortisation; the
+\citep{yallup2026abinitio}. For one source, speed alone is a weakening argument for \acs{sbi}; the
 joint posterior of many overlapping sources, whose chains take hours (\cref{app:mcmc-cost}), is where
 it still pays. \citet{kolmus2024tuning} find that the accuracy of neural posterior estimation follows
 how densely the training prior covers each region, which bears on our catalogue prior, where loud
