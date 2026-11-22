@@ -1,6 +1,6 @@
 """The six joint references in use (reports/mcmc/data/eval-<problem id>.npz, `mcmc pack`): per eval injection 1024 pooled
-cold draws of the joint chains, 256 Fisher draws, the truth and the chains' diagnostics, sources by f0. Shared by
-numbers_mcmc.py and fig_mcmc.py.
+cold draws of the joint chains, 256 Fisher draws, the truth and the chains' diagnostics, sources by f0. Used by
+numbers_mcmc.py.
 
 Widths are 1.4826 MAD of the draws folded onto the truth's (psi, phi0) branch (mcmc.fold), f0 in bins. The drift column
 is taken in fdot itself, not ln fdot, for the widths: Fisher draws can put fdot below zero."""
