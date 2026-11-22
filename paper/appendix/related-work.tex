@@ -224,19 +224,21 @@ from a per-event optimisation where our frame comes from the network.
 
 \subsection{Recent Work}
 \label{app:related-recent}
-\textcolor{red}{TODO(right before submission): each claim in this subsection follows the paper's abstract; read the
-papers before moving any of it to the main text.}
-Neural posterior estimation now runs in production alerts \citep{marx2026likelihood}, and a GPU
-nested sampler returns binary-neutron-star posteriors from the prior in minutes
-\citep{yallup2026abinitio}. For one source, speed alone is a weakening argument for \acs{sbi}; the
-joint posterior of many overlapping sources, whose chains take hours (\cref{app:mcmc-cost}), is where
-it still pays. \citet{kolmus2024tuning} find that the accuracy of neural posterior estimation follows
-how densely the training prior covers each region, which bears on our catalogue prior, where loud
-sources are rare (\cref{app:priors}). Around the \ac{gb} problem, autoencoders learn the confusion
-foreground \citep{cain2026manifold,cain2026global}, a continuous-time trans-dimensional sampler targets the
-global fit \citep{astorino2026samsara}, and sequential inference suffices where sources couple
-weakly, as extreme mass-ratio inspirals and massive black-hole binaries do
-\citep{agrawal2026untangling}, unlike overlapping \acp{gb}. Fast wavelet-domain templates
-\citep{cornish2026time,vajpeyi2026explicit} could replace our heterodyned simulator, and consistency
-models \citep{schmitt2024consistency} would cut our \FlowMatchingOdeSteps{} sampler steps to a few; we
+% 2026-11-22: each claim below was checked against the paper's full text (arXiv HTML), not only its abstract.
+Neural posterior estimation is now deployed in production for the follow-up of low-latency alerts
+\citep{marx2026likelihood}, and a GPU nested sampler returns binary-neutron-star posteriors from an
+uninformed prior in minutes \citep{yallup2026abinitio}. For one source, speed alone is a weakening
+argument for \acs{sbi}; the joint posterior of many overlapping sources, whose chains take hours
+(\cref{app:mcmc-cost}), is where it still pays. \citet{kolmus2024tuning} find that the accuracy of
+neural posterior estimation follows how many similar samples the training prior supplies for each
+region, which bears on our catalogue prior, where loud sources are rare (\cref{app:priors}). Around
+the \ac{gb} problem, autoencoders trained on simulated confusion-limited segments learn a latent
+representation of the foreground that helps flag resolvable sources
+\citep{cain2026manifold,cain2026global}, a continuous-time trans-dimensional sampler is motivated by
+the global fit \citep{astorino2026samsara}, and sequential inference is adequate where sources
+couple weakly, as found for extreme mass-ratio inspirals and massive black-hole binaries in
+simulated data \citep{agrawal2026untangling}, unlike overlapping \acp{gb}. Fast wavelet-domain
+templates \citep{cornish2026time} with a differentiable wavelet transform
+\citep{vajpeyi2026explicit} could replace our heterodyned simulator, and consistency models
+\citep{schmitt2024consistency} would cut our \FlowMatchingOdeSteps{} sampler steps to a few; we
 have tried neither.
