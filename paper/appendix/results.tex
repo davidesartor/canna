@@ -263,14 +263,15 @@ the mock's moves by \ResultsOverlapModuliFaintMockLo{} to \ResultsOverlapModuliF
 \subsection{Joint Posteriors on Crowded Windows}
 \label{app:results-corners}
 
-\Cref{fig:corner-narrow-2,fig:corner-narrow-4,fig:corner-narrow-8,fig:corner-full-4,fig:corner-full-8,fig:corner-full-16}
+\Cref{fig:corner-narrow-2,fig:corner-narrow-4-pair,fig:corner-narrow-8,fig:corner-full-4,fig:corner-full-8,fig:corner-full-16}
 show one eval window for the model of each band and source count. The window is chosen by rule,
 not by eye: the closest pair of sources at $\snr\ge15$ with \acp{snr} within a factor two (the
 closest pair at $\snr\ge7$ if there is none). Each plot shows $f_0$, $\ln\Amp$ and right ascension
 of both sources as offsets from the truth, the sources in $f_0$ order and folded in $(\psi,\phi_0)$;
 the axes span the central \qty{96}{\percent} of the flow and the chains together, so a few far-tail
 draws fall outside. The legend gives the window, the two \acp{snr} and their separation.
-\Cref{fig:corner-narrow-4} is in the main text.
+The corner of the main text (\cref{fig:corner-narrow-4}) is chosen differently: all four sources of the
+window, among those whose four sources are visible, where the flow overlaps the chains best.
 
 \begin{figure*}[p]
 \centering
@@ -280,6 +281,16 @@ widths in every parameter. The pair is far apart, since that problem has no clos
 Flow, joint \ac{mcmc} (filled) and Fisher (dashed), \qty{68}{\percent} and
 \qty{95}{\percent} contours.}
 \label{fig:corner-narrow-2}
+\end{figure*}
+
+% added 2026-11-22 (user): the closest-pair corner of S=4, formerly in the main text.
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/corner-narrow-4.pdf}
+\caption{Narrow band, $S=4$: the flow keeps the core of each source where the chains have it, and a few
+per cent of the lower source's $f_0$ draws sit on its neighbour. Contours as in
+\cref{fig:corner-narrow-2}.}
+\label{fig:corner-narrow-4-pair}
 \end{figure*}
 
 \begin{figure*}[p]

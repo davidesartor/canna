@@ -15,6 +15,12 @@
 % 2026-11-22: preprint mode for arXiv. Blind review: no option, anonymise the code link, self-citations
 % in the third person, acknowledgements commented out. Camera-ready: [accepted].
 \usepackage[preprint]{icml2026}
+% 2026-11-22 (user): no corresponding author; the style prints an AUTHORERR in its place, so drop that text.
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd{\printAffiliationsAndNotice}{{\bf AUTHORERR: Missing \textbackslash{}icmlcorrespondingauthor.}}{}{}{%
+  \PackageWarning{main}{could not remove the missing-corresponding-author error}}
+\makeatother
 \let\addcontentsline\outlineaddcontentsline
 
 \usepackage{amsmath}
@@ -70,17 +76,12 @@
     with Flow Matching}
 
   \begin{icmlauthorlist}
-    \icmlauthor{Riccardo Ali}{cam}
-    \icmlauthor{Giorgio Mentasti}{apc}
     \icmlauthor{Davide Sartor}{umass}
+    \icmlauthor{Giorgio Mentasti}{apc}
   \end{icmlauthorlist}
 
   \icmlaffiliation{umass}{University of Massachusetts Amherst, Amherst, MA, USA}
-  \icmlaffiliation{cam}{University of Cambridge, Cambridge, UK}
   \icmlaffiliation{apc}{Universit\'e Paris Cit\'e, CNRS, Astroparticule et Cosmologie, F-75013 Paris, France}
-
-  \icmlcorrespondingauthor{Giorgio Mentasti}{giorgio@apc.in2p3.fr}
-  \icmlcorrespondingauthor{Davide Sartor}{dsartor@umass.edu}
 
   \icmlkeywords{flow matching, simulation-based inference, gravitational waves, LISA,
     simulation-based inference, label switching, transformers}

@@ -82,18 +82,21 @@ way (\cref{app:results-js}).
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/corner-narrow-4.pdf}
-\caption{Flow, joint \ac{mcmc} (filled) and Fisher (dashed) on one eval window of the
-narrow band, $S=4$: \qty{68}{\percent} and \qty{95}{\percent} contours of two sources' $f_0$, $\ln\Amp$ and right
-ascension, offsets from the truth (\cref{app:results-corners}). The legend names the window, the two
-sources' \acp{snr} and their separation.}
+\includegraphics[width=\textwidth]{figures/corner-narrow-4-alt.pdf}
+\caption{Flow and joint \ac{mcmc} (filled) on one eval window of the narrow band, $S=4$:
+\qty{68}{\percent} and \qty{95}{\percent} contours of the eight parameters with the four sources' draws
+pooled, so each source is one cluster; crosses and dotted lines mark the truths. $f_0$ is in bins from
+the window start, the sky in ecliptic coordinates, and $\psi$, $\phi_0$ are folded onto the copy nearest
+the truth. The legend names the window and the sources' \acp{snr}.}
 \label{fig:corner-narrow-4}
 \end{figure*}
 
-\Cref{fig:corner-narrow-4} shows the trend in one window with $S=4$, chosen by rule (the
-closest pair of sources at $\snr\ge15$ with \acp{snr} within a factor of two): the flow keeps the
-core of each source where the chains have it, and a few per cent of the lower source's $f_0$
-draws sit on its neighbour. The windows of the other models are in \cref{app:results-corners}.
+% changed 2026-11-22 (user): all four GBs of the best-overlapping window, no Fisher (scripts/fig_corner-alt.py);
+% the closest-pair corner of S=4 moved to app:results-corners as fig:corner-narrow-4-pair.
+\Cref{fig:corner-narrow-4} shows all four sources of one window with $S=4$, the one among those whose four
+sources are visible where the flow overlaps the chains best: the flow places every source where the
+chains have it, with their widths and correlations. The closest loud pair of the same model and the
+windows of the other models, chosen by rule, are in \cref{app:results-corners}.
 
 \subsection{Full Band}
 \label{sec:results-full}
