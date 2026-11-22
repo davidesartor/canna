@@ -73,8 +73,10 @@ for s, color in enumerate(SOURCE_COLORS):
 previous, raised = -np.inf, True
 for x, y, snr in sorted(peaks):
     raised = not raised and x - previous < 0.15 * problem.window_bins
+    # a label that would land on the noise line sits just above it instead
+    label_y = 1.0 if 0.2 < y < 1.0 else y
     style.direct_label(
-        ax, x, y, rf"$\rho = {snr:.2g}$", dx=0, dy=3 + (8 if raised else 0), ha="center", va="bottom",
+        ax, x, label_y, rf"$\rho = {snr:.2g}$", dx=0, dy=3 + (8 if raised else 0), ha="center", va="bottom",
         bbox=dict(boxstyle="square,pad=0.1", fc="white", ec="none"),
     )
     previous = x
