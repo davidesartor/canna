@@ -107,8 +107,9 @@ def smooth(h: np.ndarray) -> np.ndarray:
     return h
 
 
-fig = plt.figure(figsize=(style.FULL, 2.55))
-sub_a, sub_b, sub_c = fig.subfigures(1, 3, width_ratios=[1.0, 1.25, 0.95], wspace=0.0)
+FIG_H = 2.85
+fig = plt.figure(figsize=(style.FULL, FIG_H))
+sub_a, sub_b, sub_c = fig.subfigures(1, 3, width_ratios=[1.15, 1.2, 0.95], wspace=0.0)
 
 # (a) corner ----------------------------------------------------------------------------------------------
 names = [r"$\log_{10} f_0$", r"$\log_{10}\dot f$", r"$\log_{10}\mathcal{A}$"]
@@ -120,7 +121,9 @@ for i in (1, 2):  # widen to every visible source
 pad = 0.04 * (hi - lo)
 lo, hi = lo - pad, hi + pad
 axes = sub_a.subplots(3, 3, gridspec_kw=dict(hspace=0.08, wspace=0.08))
-sub_a.subplots_adjust(left=0.2, right=0.97, bottom=0.17, top=0.93)
+# a square corner (2026-11-22, user: not squeezed): the grid as tall as it is wide
+a_width = style.FULL * 1.15 / (1.15 + 1.2 + 0.95)
+sub_a.subplots_adjust(left=0.2, right=0.97, bottom=0.17, top=min(0.93, 0.17 + 0.77 * a_width / FIG_H))
 for r in range(3):
     for c in range(3):
         ax = axes[r, c]
@@ -169,6 +172,7 @@ axes[0, 2].legend(
         plt.Line2D([], [], color=style.INK2, lw=0.9, label=rf"SNR $=$ {VISIBLE_SNR:.0f} on average"),
     ],
     loc="upper right",
+    bbox_to_anchor=(1.0, 1.08),
     fontsize=5.5,
     frameon=False,
     handlelength=1.4,
@@ -233,7 +237,7 @@ ax.legend(
 style.panel_label(ax, "b", x=0.0, y=1.06)
 
 # (c) orientation -----------------------------------------------------------------------------------------
-def draw_orientation(ax, azim=-105, elev=20, psi_deg=30, iota_deg=55, phi0_deg=75):
+def draw_orientation(ax, azim=65, elev=20, psi_deg=30, iota_deg=35, phi0_deg=75):
     """The orbit inclined by iota to the sky plane, psi to its line of nodes, phi0 along it; below the sky plane dashed."""
     psi, iota, phi0 = map(math.radians, (psi_deg, iota_deg, phi0_deg))
     ez = np.array([0, 0, 1.0])
@@ -253,7 +257,6 @@ def draw_orientation(ax, azim=-105, elev=20, psi_deg=30, iota_deg=55, phi0_deg=7
     sq = S * np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]])
     ax.plot_trisurf(sq[:, 0], sq[:, 1], sq[:, 2], color="#e4e4e8", alpha=0.55, shade=False, zorder=0)
     ax.plot(*np.vstack([sq, sq[:1]]).T, color=style.AXIS, lw=0.5, zorder=0.5)
-    ax.text(*(np.array([-S, S, 0]) * 0.92), "sky plane", fontsize=5, color=style.INK2, zorder=0.6)
     # the orbit: below the sky plane dashed and drawn first, its plane tinted, above the sky plane solid
     t = np.linspace(0, 2 * math.pi, 361)
     orbit = R * (np.cos(t)[:, None] * node + np.sin(t)[:, None] * in_orbit)
@@ -264,38 +267,33 @@ def draw_orientation(ax, azim=-105, elev=20, psi_deg=30, iota_deg=55, phi0_deg=7
     ax.plot_trisurf(disc[:, 0], disc[:, 1], disc[:, 2], triangles=tri, color=style.BLUE_RAMP[1], alpha=0.35,
                     shade=False, zorder=2)
     ax.plot(*np.where(~below[:, None], orbit, np.nan).T, color=style.BLUE, lw=1.2, zorder=3)
-    ax.text(*(R * (math.cos(4.4) * node + math.sin(4.4) * in_orbit) * 1.18), "orbit", fontsize=5.5, color=style.BLUE,
-            zorder=3.1)
     # line of nodes: where the two planes meet
-    ax.plot(*np.stack([-S * node, S * node]).T, color=style.INK, lw=0.7, zorder=3.2)
-    ax.text(*(-S * node * 1.02 + np.array([0, 0, -0.12])), "line of nodes", fontsize=5, color=style.INK2,
-            ha="center", zorder=3.3)
+    ax.plot(*np.stack([-S * node, S * node]).T, color=style.INK, lw=0.7, ls=(0, (3, 2)), zorder=3.2)
     # axes
     for v, lab, length in ((np.array([1.0, 0, 0]), r"$x$", 1.7), (np.array([0, 1.0, 0]), r"$y$", 1.7),
-                           (ez, r"$z$, to observer", 1.75)):
-        on_top = lab == r"$y$"  # y runs behind L-hat in this view: draw it over, label to its right
-        ax.quiver(0, 0, 0, *(length * v), color=style.INK2, lw=0.7, arrow_length_ratio=0.07, zorder=4.5 if on_top else 4)
-        nudge = np.array([0.22, 0.0, -0.08]) if on_top else np.zeros(3)
-        ax.text(*((length + 0.12) * v + nudge), lab, fontsize=6, color=style.INK2, zorder=4.6)
+                           (ez, r"$z$", 1.75)):
+        # 2026-11-22 (user): viewed with x to the left and y to the right, both towards the viewer
+        ax.quiver(0, 0, 0, *(length * v), color=style.INK2, lw=0.7, arrow_length_ratio=0.07, zorder=4)
+        ax.text(*((length + 0.12) * v), lab, fontsize=6, color=style.INK2, zorder=4.6)
     ax.quiver(0, 0, 0, *(1.3 * normal), color=style.BLUE, lw=1.0, arrow_length_ratio=0.1, zorder=4.2)
     ax.text(*(1.42 * normal), r"$\hat L$", fontsize=6.5, color=style.BLUE, zorder=4.3)
     # iota between z and L; psi from x to the line of nodes, in the sky plane
     perp = in_sky
-    ax.plot(*arc(ez, perp, 0, iota, 0.6).T, color=style.ORANGE, lw=1.0, zorder=5)
-    ax.text(*(0.4 * (math.cos(iota / 2) * ez + math.sin(iota / 2) * perp)), r"$\iota$", fontsize=7.5,
+    ax.plot(*arc(ez, perp, 0, iota, 0.95).T, color=style.ORANGE, lw=1.0, zorder=5)
+    ax.text(*(1.1 * (math.cos(iota / 2) * ez + math.sin(iota / 2) * perp)), r"$\iota$", fontsize=7.5,
             color=style.ORANGE, zorder=5.1)
     ax.plot(*arc(np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), 0, psi, 1.25).T, color=style.ORANGE, lw=1.0, zorder=5)
-    ax.text(*(1.38 * np.array([math.cos(psi / 2), math.sin(psi / 2), 0])), r"$\psi$", fontsize=7.5,
+    ax.text(*(1.5 * np.array([math.cos(psi / 2), math.sin(psi / 2), 0]) + np.array([0, 0, -0.12])), r"$\psi$", fontsize=7.5,
             color=style.ORANGE, zorder=5.1)
     # phi0: along the orbit from the ascending node to the binary at the start of the observation
     path = arc(node, in_orbit, 0, phi0, R)
     ax.plot(*path.T, color=style.GREEN, lw=1.6, zorder=6)
     ax.quiver(*path[-6], *(path[-1] - path[-6]), color=style.GREEN, lw=1.6, arrow_length_ratio=1.0, zorder=6)
     ax.scatter(*path[-1], s=12, color=style.INK, zorder=7, depthshade=False)
-    ax.text(*(1.2 * R * (math.cos(phi0 / 2) * node + math.sin(phi0 / 2) * in_orbit)), r"$\phi_0$", fontsize=7.5,
+    ax.text(*(1.4 * R * (math.cos(phi0 / 2) * node + math.sin(phi0 / 2) * in_orbit)), r"$\phi_0$", fontsize=7.5,
             color=style.GREEN, zorder=7.1)
     ax.view_init(elev=elev, azim=azim)
-    ax.set_box_aspect((1, 1, 0.85))
+    ax.set_box_aspect((1, 1, 0.85), zoom=1.15)
     ax.set(xlim=(-S, S), ylim=(-S, S), zlim=(-1.0, 1.7))
     ax.set_axis_off()
 

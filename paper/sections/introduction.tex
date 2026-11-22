@@ -25,13 +25,7 @@ We bring \acs{sbi} to the global fit's unit of work: the joint posterior of the 
 sources of a frequency window, $8S$ parameters under the full instrument response, for windows
 anywhere in the band. A conditional flow-matching model
 \citep{lipman2023flow,liu2023flow,albergo2023building,dax2023flow} draws it with no likelihood
-evaluation. Three things make this hard. A window holds many sources, most of them below the noise,
-so the posterior is high-dimensional and its sources are only partly resolved. Each source's
-posterior has symmetries, several equivalent copies in phase and polarisation and one mode per
-labelling, that a flow on straight paths cannot learn. And the posteriors of loud sources are
-decades narrower than the prior, so a flow that starts from the prior must cross orders of
-magnitude in width. Reference posteriors are also scarce, since a joint chain exists for only a few
-windows, and without one the usual calibration checks pass flows that are plainly wrong.
+evaluation.
 
 \paragraph{Contributions.}
 \begin{itemize}
@@ -43,9 +37,6 @@ windows, and without one the usual calibration checks pass flows that are plainl
   \item \emph{Coordinates without the posterior's symmetries.} A flat chart of eight coordinates
     per source folds each source's equivalent copies into one mode, and slots ordered in frequency
     remove the labelling modes (\cref{sec:method-chart}).
-  \item \emph{A data-dependent Gaussian frame and an endpoint likelihood loss.} The frame is read
-    off the data for each slot, so the flow transports order-one widths for loud and quiet sources
-    alike (\cref{sec:method-fm}).
   \item \emph{A one-way multi-stream transformer} that encodes the data once per window, so every
     draw and every sampler step reuses it (\cref{sec:method-network}).
   \item \emph{Subbands of fixed shapes.} Dividing the band where the width of the sources'
@@ -55,10 +46,3 @@ windows, and without one the usual calibration checks pass flows that are plainl
     mock posteriors are run through the whole evaluation (\cref{sec:validation}).
 \end{itemize}
 
-On the core subproblem, \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz}, with
-two sources per window, the flow's widths are within
-\ResultsNarrowTwoWidthLo--\ResultsNarrowTwoWidthHi{} times those of a joint \ac{mcmc} for sources
-at a \ac{snr} of 7 to 40, and \FlowMatchingCostDraws{} draws take
-\qty{\FlowMatchingCostNarrow}{\second} on one \ac{gpu}. The posteriors widen as sources are added,
-and over the whole band the loud sources above \qty{\ResultsFullSplitMhz}{\milli\hertz} are not yet
-resolved; we report both (\cref{sec:experiments,sec:conclusions}).
