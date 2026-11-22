@@ -54,14 +54,28 @@ that is estimated with the sources and is non-stationary with glitches (\cref{ap
 phase of $\ddot f = \tfrac{11}{3}\fdot^2/f_0$, which matters most at the top of the band, and
 responses longer than $R$ bins, which the widest sources of the full band now lose
 (\cref{app:forward-model-heterodyne}).
-% added 2026-11-20 (user): one seed per configuration, from the open items.
-Last, every result here comes from one training run per configuration: a second seed, the narrow band
-with $S=2$ first (about 32 A100 hours), would measure the run-to-run spread and show which differences
-between models are real (\cref{app:results-forks}).
-% added 2026-11-21 (user): Student-t frame, from the open items.
-The Student-t frame loss (\cref{app:fm-frame}) gave the best full-band model, but was tried only on the
-full band with $S=4$; whether it helps the other problems is open.
-% added 2026-11-22 (user): the loud high-frequency misses of the full band, from the open items.
-On the full band the flow misses loud sources above about \qty{\ResultsFullSplitMhz}{\milli\hertz}, which the
-prior produces rarely (\cref{sec:results-full}); a device per subband, which stratifies every batch over the
-spectrum, would test whether more training examples there close the gap.
+% 2026-11-22: the second-seed sentence dropped here, the limitations paragraph already says it.
+
+% added 2026-11-22 (user): three follow-ups on the training recipe (slot order, frame, window prior);
+% the Student-t frame and the loud high-frequency misses from the open items are folded into them.
+Three changes to the training recipe come next. The first is the slot order. Slots in order of $f_0$
+(\cref{sec:method-chart}) give each slot a fixed share of the window, whether or not a source there is
+visible; in order of \ac{snr}, the first slots would hold the visible sources and the last ones the
+faint sources whose posterior is the prior, which suits a number of sources that changes from window
+to window. The price is a labelling problem of its own: two sources of similar \ac{snr} can swap slots
+from one noise draw to the next, and the posterior would again hold both labellings.
+
+The second is the frame, fitted by a weighted Gaussian likelihood (\cref{eq:fm-frame-loss}),
+in which one entry whose frame collapses far below its error can fill a clipped step on its own
+(\cref{app:fm-frame}). The Student-t loss bounds those steps and gave the best full-band model, but
+was tried only on the full band with $S=4$; whether it, or another bound on the frame's steps, helps
+the other problems is open.
+
+The third is the window prior. Training centres most windows where visible sources are common
+(\cref{eq:priors-window}), so the edges of the band see few training windows, and calibration measured
+over the whole band may look worse there for lack of examples rather than of capacity. On the full
+band the flow misses loud sources above about \qty{\ResultsFullSplitMhz}{\milli\hertz}, which the prior
+produces rarely (\cref{sec:results-full}). Centring windows log-uniformly, or moving the weights of
+\cref{eq:priors-window} towards log-uniform, would cover the band evenly and test whether more
+examples there close the gap; a device per subband, which stratifies every batch over the spectrum,
+is another way to the same test.
