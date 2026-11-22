@@ -2,49 +2,55 @@
 \section{Architecture and Training}
 \label{sec:architecture}
 % =======================================================================================
-% 2026-11-22 (user): split from the former Method section, with more on the MMDiT and its place
-% in the diffusion literature, and a subsection on the embeddings.
+% 2026-11-22 (user): split from the former Method section; restructured as why an MMDiT, the four
+% streams with one-way attention and caching, the embeddings, and training as an approach.
 
 The flow of \cref{sec:flow} asks one network for two outputs: the frame of a window from its data
-alone, and the endpoint of every source given a point on the path. The first is a regression on a
-sequence, and the second is the task of a diffusion model, to denoise a few tokens under a
-condition that is itself a long sequence. We take the network from that literature and change it
-where a posterior differs from an image.
+alone, and the endpoint of every source given a point on the path. The second is the task of a
+diffusion model, to denoise a few tokens under a condition that is itself a long sequence, and we
+take the network from that literature.
 
-\subsection{A One-Way Multimodal Diffusion Transformer}
+\subsection{Why a Multimodal Diffusion Transformer}
 \label{sec:method-network}\label{sec:gw-tokens}
 
-\paragraph{Diffusion transformers.}
-The network of a diffusion or flow model
-\citep{sohl2015deep,ho2020denoising,song2021score,lipman2023flow} takes a noised sample, its
-position on the path and a condition. The diffusion transformer of \citet{peebles2023scalable} cuts
-the sample into patch tokens and runs a transformer over them. The time and the class label are not
-tokens: they shift and scale every layer normalisation, and gate residual branches that start as
-the identity. The \ac{mmdit} of \citet{esser2024scaling}, built for text-to-image rectified flows
-\citep{liu2023flow}, extends this to a condition that is a sequence. The text tokens and the
-image tokens keep their own weights, as two streams, and meet in one attention over both
-sequences, so each modality reads the other in every block.
+Diffusion and flow models \citep{sohl2015deep,ho2020denoising,song2021score,lipman2023flow} have
+converged on transformers. The diffusion transformer of \citet{peebles2023scalable} runs over patch
+tokens of the sample and carries the time and the class not as tokens but by modulating every layer
+normalisation, with gated residual branches that start as the identity; its quality grows steadily
+with size. The \ac{mmdit} of \citet{esser2024scaling}, built for text-to-image rectified flows
+\citep{liu2023flow}, extends it to a condition that is itself a sequence: text and image tokens
+keep their own weights, as two streams, and meet in one joint attention in every block; its
+authors scale it to eight billion parameters with steadily improving samples. We adopt it for both properties, the multimodality and
+the scaling.
 
-Our problem has the same shape. The sample is the set of sources, $S$ tokens of eight coordinates
-each, and the condition is the data, a longer sequence of tokens (\cref{sec:method-embeddings}).
-The \ac{mmdit} fits it in three respects. Separate weights let the data stream, which holds
-whitened spectra, and the source stream, which holds coordinates, be built differently. Joint
-attention lets every source read the data and the other sources in one operation, which is what
-a joint posterior of overlapping sources needs. And the conditioning by modulation carries the flow
-time and the window to every layer without spending a token on them.
+Our problem has the same shape. The condition is the data, a long sequence of spectral tokens, and
+the sample is the set of sources, one token per source. Separate weights let each modality be
+processed in its own way, and joint attention lets every source read the data and the other
+sources in one operation, which is what a joint posterior of overlapping sources needs. Modelling
+the sources as a stream of tokens has two further consequences. Every map is shared across source
+tokens, so the source side has no fixed size: the same network takes any number of sources, and a
+window whose number of sources varies, the trans-dimensional case of the global fit, needs no change
+to it. And the source side is permutation-equivariant by construction, as in set transformers
+\citep{zaheer2017deep,lee2019set}. Here we break that symmetry on purpose, since the posterior is
+learned with the sources ordered (\cref{sec:method-chart}): the order reaches the network only
+through each slot's frame, not through the architecture.
 
-\paragraph{Four streams.}
-\Cref{fig:network-architecture} shows the network. Each stream has its own normalisations,
-attention projections and feed-forward maps. The \emph{data} stream holds the tokens of the
-window. A \emph{register} stream runs beside it, one token per source slot in the sense of
-\citet{darcet2024vision}, and a head reads the slot's frame $(\mu,\log\sigma)$ from its register
-(\cref{app:network-frame}). The \emph{source} stream holds one token per slot, and a head reads
-the endpoint $\hat Z_1$ and $\log\tau$ from it (\cref{app:network-head}). A \emph{sink} stream of
-\NetworkSinksWord{} tokens runs beside the sources and gives their attention somewhere to go other
-than the data \citep{xiao2024efficient,darcet2024vision}. The conditioning vectors modulate every
-normalisation and gate every residual branch, as in \citet{peebles2023scalable}: $\nu_f$, from the
-window alone, in the data and register streams, and $\nu$, from the flow time and the window, in
-the source and sink streams.
+\subsection{Four Streams and One-Way Attention}
+\label{sec:method-streams}
+
+\paragraph{Streams.}
+\Cref{fig:network-architecture} shows the network. It has four streams, each with its own
+normalisations, attention projections and feed-forward maps. The \emph{data} stream holds the
+tokens of the window. A \emph{register} stream runs beside it with one token per source slot, in
+the sense of \citet{darcet2024vision}: the registers gather from the data what each slot needs,
+and a head reads the slot's frame $(\mu,\log\sigma)$ from them (\cref{app:network-frame}). The
+\emph{source} stream holds one token per slot, from which a head reads the endpoint $\hat Z_1$ and
+$\log\tau$ (\cref{app:network-head}). A \emph{sink} stream of \NetworkSinksWord{} learned tokens
+runs beside the sources. The conditioning vectors modulate every normalisation and gate every
+residual branch: $\nu_f$, from the window alone, in the data and register streams, and $\nu$, from
+the flow time and the window, in the source and sink streams. The split follows what each output
+depends on. The frame is a function of the data alone, so it is read from the data side; the
+endpoint depends on the flow time and the sources' current point, so it is read from the source side.
 
 \begin{figure*}[t]
   \centering
@@ -62,7 +68,7 @@ the source and sink streams.
   \label{fig:network-architecture}
 \end{figure*}
 
-\paragraph{One-way attention.}
+\paragraph{One-way attention and caching.}
 A window is a long sequence but holds few sources, and a posterior needs many draws, each followed
 over many sampler steps. In the \ac{mmdit} the text stream reads the image tokens and the time, so
 the whole network runs again at every step. Ours reads in one direction. With queries $q$, keys
@@ -76,14 +82,21 @@ block computes
   \label{eq:network-oneway}
 \end{equation}
 so the data and the registers attend to each other only, and the sources and the sinks attend to
-everything (\cref{eq:network-block}). The data side is conditioned on the window alone, never on
-the flow time or the sources. Its keys and values in every block and the frame therefore depend on
-$(y,\fw)$ only: they are computed once per window and serve every draw and every sampler step. In
-size B, encoding a full-band window costs \NetworkEncodeOverDecodeFull{} times one evaluation of
-the source side on the cache (\cref{app:network-blocks}), and a draw takes
-\NetworkSampleEvals{} such evaluations. \Cref{tab:network-sizes} gives the sizes; all results use
-size B, with \NetworkBBlocks{} blocks of width \NetworkBWidth{} and \num{\NetworkBTotalFull}
-parameters.
+everything (\cref{eq:network-block}). The data side never sees the flow time or the sources, so its
+keys and values in every block, and the frame, depend on $(y,\fw)$ alone. They are computed once
+per window and cached, like the prompt of a language model, and every draw and every sampler step
+runs only the source side on the cache. The data side, which holds most of the tokens, is therefore
+paid once per posterior, not once per network evaluation (\cref{app:network-blocks});
+\cref{tab:network-sizes} gives the sizes.
+
+\paragraph{Sinks.}
+One-way attention has a price: the data can no longer be processed in the light of the current
+sources, since nothing on the data side reads them. The sinks restore a limited form of it. They sit
+on the source side, so they read the data, the registers and the sources, and the sources read them
+back; a sink can therefore gather the part of the data that matters for the current draw and pass
+it to every source in the next block. Their number is small and fixed, so they cost little and keep
+the cache intact. They are optional, and also give the sources' attention somewhere to go other than
+the data \citep{xiao2024efficient,darcet2024vision}.
 
 \subsection{Embeddings}
 \label{sec:method-embeddings}
@@ -95,35 +108,46 @@ resolution in every embedding. \Cref{tab:network-embeddings} lists what each tok
 and \cref{app:network} gives the details.
 
 \paragraph{Data tokens.}
-The window is cut into patches of \NetworkPatch{} consecutive frequency bins, one token each:
-\NetworkTokensNarrow{} tokens in the narrow band and \NetworkTokensFull{} in the full band. An
+The window is cut into patches of \NetworkPatch{} consecutive frequency bins, one token each. An
 inverse Fourier transform over the patch turns its bins into as many time samples per channel, an
-\ac{stft} with the tokens as its bands (\cref{eq:network-stft}). The transform is critically
-sampled and untapered, so it is invertible and keeps the noise white. In it a source's sub-bin
-frequency is a phase slope over the samples, its initial phase the intercept, and the annual
-modulation that carries its sky position a slow evolution in time. Whitened samples of loud
-sources are far above the unit noise, so each complex sample enters as a compressed amplitude,
-$\operatorname{asinh}\lvert\check y\rvert$, and a gated phase,
-$\check y/\sqrt{1+\lvert\check y\rvert^2}$, mapped linearly to the token
-(\cref{app:network-input}).
+\ac{stft} with the tokens as its bands (\cref{eq:network-stft}). We choose it over raw bins because
+it is critically sampled and untapered, so it is invertible and keeps the noise white, and because
+it puts each source parameter in a simple form: the sub-bin frequency becomes a phase slope over
+the samples, the initial phase its intercept, and the annual modulation that carries the sky
+position a slow evolution in time. Whitened samples of loud sources are far above the unit noise,
+so each complex sample enters as a compressed amplitude, $\operatorname{asinh}\lvert\check y\rvert$,
+and a gated phase, $\check y/\sqrt{1+\lvert\check y\rvert^2}$, which keep loud and faint sources in
+the same numerical range (\cref{app:network-input}).
 
 \paragraph{Source tokens.}
 A source token is a linear map of the slot's current point in the frame, $Z_s$, the same point in
-the flow coordinates, $X=\mu+\sigma Z_s$, the higher harmonics of its two helicity phases, and its
-frame $(\mu,\log\sigma)$, which it reads through a stop-gradient (\cref{app:network-sources}). The
-token carries no label of its slot and every map is shared across sources, as in set transformers
-\citep{zaheer2017deep,lee2019set}; a source is told apart by its frame and its frequency.
+the flow coordinates, $X=\mu+\sigma Z_s$, the higher harmonics of its two helicity phases, which give
+the network functions of the phases that vanish with the amplitude, and its frame
+$(\mu,\log\sigma)$, read through a stop-gradient so that the flow cannot train the frame
+(\cref{app:network-sources}). The token carries no label of its slot: a source is told apart by its
+frame and its frequency.
 
-\paragraph{Frequency.}
-Whitening and windowing remove the absolute frequency, on which the width of a source's response
-and the prior's drift depend. It enters three times as sinusoids with octave-spaced periods, from
-\NetworkFreqFinest{} of a bin up to past twice the top of the band: the edges of each data token,
-the $f_0$ of each source token, and the edges of the window in $\nu_f$. Inside the attention,
-rotary embeddings \citep{su2024roformer,miyato2024gta} turn the queries, keys and values of the
-data and source tokens by their frequency, a data token's centre and a source's $f_0$. A score
-then depends on how far apart two tokens are in frequency, so a source finds the data near its own
-$f_0$ wherever the window lies in the band (\cref{app:network-positions}). The registers and the
-sinks are learned vectors without a position.
+\paragraph{Global frequency.}
+Whitening and windowing remove the absolute frequency from the data, yet the width of a source's
+response, the prior's drift and the amplitude a source needs to be seen all depend on it. Each
+window is local, but one network serves the whole band, so the absolute frequency has to be given
+back explicitly. It enters as sinusoids with octave-spaced periods, from \NetworkFreqFinest{} of a
+bin up to past twice the top of the band, in three places: the edges of each data token, the $f_0$
+of each source token, and the edges of the window in $\nu_f$, which conditions every layer. The
+finest periods resolve a source's position inside a bin; the coarsest tell the network where in the
+band it is.
+
+\paragraph{Rotary attention.}
+Where a source sits relative to the data matters more than where it sits in the band. Inside the
+attention, rotary embeddings \citep{su2024roformer,miyato2024gta} turn the queries, keys and values
+of the data and source tokens by their frequency, a data token's centre and a source's $f_0$, and
+turn each output back by the query's own angle. A score then depends only on how far apart two
+tokens are in frequency, and a value arrives relative to its query. A source thus finds the data near
+its own $f_0$, and its neighbours by their distance in bins, with the same weights wherever the window
+lies in the band, instead of learning where each absolute position sits. The rotation uses absolute
+frequencies reduced modulo each period in double precision, so periods shorter than a token still
+resolve frequency inside a patch (\cref{app:network-positions}). The registers and the sinks carry no
+position.
 
 \paragraph{Flow time.}
 The time enters $\nu$ as sinusoids of $s$ and of $\log_{10}(1-s)$, the latter clipped at
@@ -133,25 +157,22 @@ structure of a narrow posterior forms (\cref{app:network-conditioning}).
 \subsection{Training}
 \label{sec:method-training}\label{sec:gw-training}
 
-Every training window is simulated afresh, on the device and inside the compiled training step, so
-no window is seen twice (\cref{app:priors-training}). A window starts from a centre $\fw$. Centres
-drawn from the catalogue's $f_0$ marginal would mostly hold no visible source, so we weight the
-marginal by the chance that a source there is visible (\cref{eq:priors-window}) and draw
-\qty{\PriorsUniformWindowsPercent}{\percent} of the centres log-uniformly over the band, so that
-training also sees windows with nothing to resolve. The weights choose which windows training sees,
-not what their sources are, so the posterior given a window is unchanged (\cref{app:priors-window}).
-The window then receives $S$ sources drawn from $\pi_w$ (\cref{eq:priors-window-prior}), their
-$R$-bin responses and a noise draw (\cref{eq:noise-data}), and is whitened; the sources enter the
-flow coordinates in order of $f_0$. Unlike \citet{delmond2026neural}, who precompute a bank of
-responses and keep sources with an \ac{snr} between 10 and 100, we apply no cut: most of a window's
-sources lie below the noise, and for them the flow must return the prior. The simulation takes
-\qty{\PriorsNarrowDrawShare}{\percent} of a training step in the narrow band and
-\qty{\PriorsFullDrawShare}{\percent} in the full band (\cref{tab:priors-bands}).
+Training needs only the simulator. Every window is simulated afresh, on the device and inside the
+compiled training step, so no window is seen twice and the training set is the prior itself
+(\cref{app:priors-training}). A window starts from a centre $\fw$. Centres drawn from the
+catalogue's $f_0$ marginal would mostly hold no visible source, so we weight the marginal by the
+chance that a source there is visible and draw a share of the centres log-uniformly over the band,
+so that training also sees windows with nothing to resolve (\cref{eq:priors-window}). The weights
+choose which windows training sees, not what their sources are, so the posterior given a window is
+unchanged (\cref{app:priors-window}). The window then receives $S$ sources from the prior, their
+responses and a noise draw, and is whitened; the sources enter the flow coordinates in order of
+$f_0$. Unlike \citet{delmond2026neural}, who precompute a bank of responses and keep sources within
+an \ac{snr} range, we apply no cut: most of a window's sources lie below the noise, and for them the
+flow must return the prior.
 
-A batch holds \TrainingObservations{} windows, each with \TrainingDraws{} draws of time and base
-point that share its cached data side (\cref{app:training-batch}). The optimiser is Muon
-\citep{jordan2024muon,liu2025muon} for the hidden weight matrices and AdamW for the rest, with a
-linear warmup, a constant learning rate and a cooldown to zero \citep{hagele2024scaling}
-(\cref{app:training}). Each run trains on one A100 \ac{gpu}, for \ResultsNarrowHours\,h on the
-narrow band and \ResultsFullHours\,h on the full band (\cref{tab:results-runs}), and is evaluated at
-the checkpoint with the lowest loss on held-out windows (\cref{app:evaluation-weights}).
+Each window in a batch is paired with several draws of time and base point, which share its cached
+data side (\cref{app:training-batch}), so the encoding is paid once per window in training as in
+sampling. The optimiser is Muon \citep{jordan2024muon,liu2025muon} for the hidden weight matrices and
+AdamW for the rest, with a warmup, a constant learning rate and a cooldown to zero
+\citep{hagele2024scaling}, and the model is evaluated at the checkpoint with the lowest loss on
+held-out windows (\cref{app:training,app:evaluation-weights}).
