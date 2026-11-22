@@ -1,4 +1,10 @@
-"""What cutting a response to R bins costs: leakage between bins, falling with R."""
+"""What cutting a response to R bins costs: the truncation card of reports/diagnostics/forward-model.
+
+Redone 2026-11-22 (user) after that report's "What does truncating the response cost?" card: (a) each source's relative
+error against its signed offset from the nearest bin centre, (b) the median and 16-84% band over a ladder of R, the
+band's own R dashed. The data are the ones the report page embeds (1024 of 4096 prior sources per band, the ladder
+quantiles over all 4096); they are cached in data/figures/forward-model.json so restyling never needs the page.
+"""
 
 import json
 
@@ -6,80 +12,58 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import style
-from canna.lisa import config
-from canna.lisa.problem import LisaGB
 
-REPORT = style.REPO / "reports/diagnostics/forward-model/data"
+PAGE = style.REPO / "reports/diagnostics/forward-model/forward-model.html"
+CACHE = style.PAPER / "data/figures/forward-model.json"
 BANDS = {"narrow": style.ORANGE, "full": style.BLUE}
 
 
+def report_data() -> dict:
+    """The truncation data the report page embeds, cached beside the paper's figure data."""
+    if not CACHE.exists():
+        html = PAGE.read_text()
+        page, _ = json.JSONDecoder().raw_decode(html[html.index('{"bands"') :])
+        out = {band: page["bands"][band]["truncation"] for band in BANDS}
+        out["reference_points"] = page["reference_points"]
+        CACHE.parent.mkdir(parents=True, exist_ok=True)
+        CACHE.write_text(json.dumps(out))
+    return json.loads(CACHE.read_text())
+
+
 style.setup()
-configs = {name: config.load(f"{name}-B").problem for name in BANDS}
-problems = {name: LisaGB(**cfg) for name, cfg in configs.items()}
-points = json.loads((REPORT / "response-points.json").read_text())
-sources = np.load(REPORT / "response-points.npz")
+data = report_data()
+fig, (ax_offset, ax_ladder) = plt.subplots(1, 2, figsize=(0.7 * style.FULL, 2.2), layout="constrained")
 
-fig, (ax_offset, ax_ladder) = plt.subplots(
-    1, 2, figsize=(0.7 * style.FULL, 2.2), layout="constrained"
-)
-
-# (a) each source's truncation error against its distance from a bin centre
+# (a) each source's truncation error against its signed offset from the nearest bin centre
 for name, color in BANDS.items():
+    t = data[name]
     ax_offset.plot(
-        np.abs(sources[f"{name}_bin_offset"]),
-        sources[f"{name}_rel"],
-        color=color,
-        marker="o",
-        ms=1.6,
-        mew=0,
-        alpha=0.35,
-        ls="none",
-        rasterized=True,
+        t["bin_offset"], t["rel"], color=color, marker="o", ms=1.6, mew=0, alpha=0.45, ls="none", rasterized=True
     )
-    ax_offset.plot([], [], color=color, marker="o", ms=3, ls="none", label=f"{name} band")
+    ax_offset.plot([], [], color=color, marker="o", ms=3, ls="none", label=f"{name} band, $R = {t['response_points']}$")
 ax_offset.set(
     yscale="log",
-    xlim=(0, 0.5),
-    xlabel=r"$|f_0 T_{\rm obs} - q|$ [bins]",
-    ylabel="relative error per source",
+    xlim=(-0.5, 0.5),
+    xlabel=r"$f_0 T_{\rm obs} - \mathrm{rint}(f_0 T_{\rm obs})$ [bins]",
+    ylabel="relative error of the response",
 )
-ax_offset.legend(loc="lower right")
+ax_offset.legend(loc="lower right", fontsize=5.5)
 ax_offset.set_title("Error against bin offset")
 style.panel_label(ax_offset, "a")
 
-# (b) median relative error over a ladder of R, the band's own R ringed
+# (b) median and 16-84% of the relative error over a ladder of R, the band's own R dashed
 for name, color in BANDS.items():
-    ladder = np.asarray(points[f"{name}_ladder_points"])
-    median = np.asarray(points[f"{name}_ladder_rel_median"])
-    ax_ladder.loglog(ladder, median, color=color, marker="o", ms=3)
-    own = ladder == problems[name].response_points
-    ax_ladder.plot(
-        ladder[own],
-        median[own],
-        marker="o",
-        ms=7,
-        mfc="none",
-        mec=color,
-        mew=0.8,
-        ls="none",
-    )
-half_power = ladder.astype(float) ** -0.5
-ax_ladder.loglog(ladder, half_power * median[-1] / half_power[-1], **style.GUIDE)
-style.direct_label(
-    ax_ladder,
-    ladder[2],
-    (half_power * median[-1] / half_power[-1])[2],
-    r"$\propto R^{-1/2}$",
-    dx=-2,
-    dy=-7,
-    ha="right",
-)
-ax_ladder.plot([], [], marker="o", ms=7, mfc="none", mec=style.INK2, mew=0.8, ls="none", label="the band's own $R$")
-ax_ladder.legend(loc="upper right")
+    t = data[name]
+    ladder = np.asarray(t["ladder_points"], float)
+    lo, med, hi = (np.asarray(q) for q in t["ladder_q"])
+    ax_ladder.fill_between(ladder, lo, hi, color=color, alpha=0.18, lw=0)
+    ax_ladder.loglog(ladder, med, color=color, marker="o", ms=2.6, label=rf"{name}: $\propto R^{{{t['ladder_slope']:.2f}}}$")
+    ax_ladder.axvline(t["response_points"], color=color, lw=1.0, ls=(0, (4, 2.5)), zorder=1.6, alpha=0.9)
+ax_ladder.legend(loc="upper right", fontsize=5.5)
 ax_ladder.set(
     xlabel=r"response points $R$",
-    ylabel="median relative error",
-    xlim=(ladder[0] / 2.2, ladder[-1] * 1.5),
+    ylabel="relative error of the response",
+    xlim=(ladder[0] / 1.3, ladder[-1] * 1.3),
 )
 ax_ladder.set_title("Error against $R$")
 style.panel_label(ax_ladder, "b")

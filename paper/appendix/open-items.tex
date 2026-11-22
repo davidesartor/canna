@@ -6,48 +6,20 @@
 \section*{\textcolor{red}{Open Items (draft only, delete before submission)}}
 \label{app:open-items}
 {\color{red}
-\paragraph{Analysis.}
+\paragraph{To do right before submission.}
 \begin{itemize}
-  \item The overlap offset is no single parameter group (\cref{app:results-validation}, 2026-11-18): draws
-    trade $f_0$ against phase. Whether a different chart or loss would remove that is open.
-  \item The full band misses loud sources above about \qty{10}{\milli\hertz}, mostly because the flow
-    refines the frame only 2--4-fold there (14--17-fold below) (\cref{app:results-mcmc}). Framed (2026-11-17): the prior
-    produces few such sources for training; the cure is left to a follow-up.
-  \item The joint-MCMC references of narrow $S=8$ and full $S=16$ never left their Fisher start for
-    faint sources (\cref{app:results-mcmc}). The prior-started chains (2026-11-16) confirm the
-    references from $\snr=7$ up, and bracket $\snr=3$--7 without settling it, so rerunning the
-    references with prior starts would not help; the appendix now scores $\snr<3$ against the prior and
-    reports the bracket at $\snr=3$--7 (not in the main text for now). Full $S=16$'s prior-started
-    chains landed 2026-11-18: same picture below $\snr=7$, but at $\snr\ge7$ they are 1.2--1.7 times wider
-    than the reference and still widening, so full $S=16$'s loud ratios are upper bounds
-    (\cref{app:results-mcmc}). Settling it would need longer prior-started chains (about 40 CPU hours each).
-
-\end{itemize}
-
-\paragraph{Writing.}
-\begin{itemize}
-  \item Main text restructured 2026-11-20 (no page limit, for arXiv): the waveform and window
-    algebra are in \cref{app:forward-model} and the prior's fits in \cref{app:priors};
-    \cref{sec:narrow-band} precedes \cref{sec:method} and holds the source counts and the slots
-    (\cref{sec:gw-rates}); \cref{sec:method} runs coordinates, flow matching, architecture,
-    training, with \cref{fig:network-architecture} in the main text in place of the schematic;
-    calibration and cost are read once for all six models
-    (\cref{sec:results-calibration,sec:results-cost}). Still to decide: a results sentence in the
-    abstract.
-  \item \Cref{sec:background-generative}: add references on large-scale multimodal generation beyond
-    images; the sentence that asked for them was dropped from the main text until they exist.
-  \item Figures: \texttt{fig\_results.py} was recoloured 2026-11-20 (hue for the band, lightness for
-    the source count) but \cref{fig:results} is still its previous render; re-render it where the
-    run data lives.
+  \item Read the papers of \cref{app:related-recent} before moving any of its claims to the main text
+    (red TODO there).
+  \item Decide whether the abstract gets a results sentence.
   \item Review every \texttt{\% updated 2026-11-09} marker (stale facts fixed in moved text) and
     keep or revert each.
   \item Check the references marked ``from memory, not yet checked'' in \texttt{references.bib}
     (the method references of the training recipe) against arXiv, like the rest.
-  \item Before submission: blind mode, anonymised code link, self-citations in the third person,
+  \item Blind mode: anonymise the code link in Software and Data and the author block (\texttt{[preprint]}
+    $\to$ blind), self-citations in the third person,
     and the acknowledgements commented out for review (back at camera-ready).
-  \item Consistency pass done 2026-11-17 (notation, sky frames, British
-    spelling, band names: \texttt{narrow-B}/\texttt{full-B} are band and network size, XS--XL sizes only);
-    redo after the main-text moves. The Notation appendix was removed 2026-11-18: every symbol and
-    acronym is now defined where it first appears.
+  \item Redo the consistency pass of 2026-11-17 (notation, sky frames, British spelling, band names:
+    \texttt{narrow-B}/\texttt{full-B} are band and network size, XS--XL sizes only) after the main-text
+    moves; every symbol and acronym is defined where it first appears.
 \end{itemize}
 }

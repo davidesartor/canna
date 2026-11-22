@@ -49,9 +49,11 @@ for band, n, color in MODELS:
     fam = {r["fork_epoch"]: r for r in nr.family(band, n)}
     if not fam:
         continue
-    # a main run that stopped early (full-4 diverged before its cooldown) has no cooled point
+    # a main run that stopped early (full-4 diverged before its cooldown) has no cooled point, and full-4's
+    # Student-t continuation (t44) logs a loss that does not compare with the Gaussian forks' (2026-11-22)
     pts = [(e if e is not None else 0.8 * r["epochs_planned"], r["evals"][-1]["catalog_at_eval"])
-           for e, r in fam.items() if e is not None or r["epochs_done"] == r["epochs_planned"]]
+           for e, r in fam.items()
+           if e is not None or (r["epochs_done"] == r["epochs_planned"] and not r["run"].endswith("-t44"))]
     pts.sort()
     ax.plot(*zip(*pts), color=color, marker="o")
 ax.set_xscale("log", base=2)

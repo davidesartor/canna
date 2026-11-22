@@ -22,10 +22,10 @@ epochs, \AmortisationNarrowShortHours\,h, already give $f_0$ widths
 \AmortisationNarrowLongRatio{} after \AmortisationNarrowLongHours\,h; on the full band the same
 widths fall from \AmortisationFullShortRatio{} after \AmortisationFullShortHours\,h to
 \AmortisationFullLongRatio{} after \AmortisationFullLongHours\,h. The loss falls with training time on every
-configuration up to 40 epochs, apart from one step on the full band with $S=4$, and the coverage
-stays close to its nominal level throughout, so shorter training gives wider posteriors whose
-coverage is unchanged. \textcolor{red}{TODO(trex): check the coverage claim against
-fig:amortisation-quality c once built from source-count.json.} The more sources a window holds,
+configuration up to 40 epochs, apart from one step on the full band with $S=4$, and the
+\qty{68}{\percent} coverage stays between 0.67 and 0.72 at every training time
+(\cref{fig:amortisation-quality}c), so shorter training gives wider posteriors whose coverage is
+unchanged. The more sources a window holds,
 the more training the same width costs. \Cref{tab:results-forks} lists the values.
 
 \begin{figure}[t]
