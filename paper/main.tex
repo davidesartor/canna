@@ -12,7 +12,9 @@
 \let\outlineaddcontentsline\addcontentsline
 % make hyperref and algorithmic work together
 \newcommand{\theHalgorithm}{\arabic{algorithm}}
-\usepackage{icml2026}  % blind review; [preprint] for arXiv, [accepted] for the camera-ready
+% 2026-11-22: preprint mode for arXiv. Blind review: no option, anonymise the code link, self-citations
+% in the third person, acknowledgements commented out. Camera-ready: [accepted].
+\usepackage[preprint]{icml2026}
 \let\addcontentsline\outlineaddcontentsline
 
 \usepackage{amsmath}
@@ -155,7 +157,5 @@ specifically highlighted here.
 \input{appendix/results}
 \input{appendix/amortisation}
 
-% Draft only, delete before submission.
-\input{appendix/open-items}
 
 \end{document}
