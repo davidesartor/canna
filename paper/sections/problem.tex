@@ -46,15 +46,6 @@ and we call a source \emph{visible} when $\snr\ge\RatesVisibleSnr$. The \ac{snr}
 many bins a response spans, so per bin even a visible source stands little above the noise
 (\cref{fig:forward-model-window}).
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\columnwidth]{figures/training-window.pdf}
-  \caption{An example of four \ac{gb} signals in one narrow-band frequency window, in channel $A$ for
-  two years of observation and normalised by the square root of the noise \acs{psd}, each labelled with
-  its \acs{snr} from \cref{eq:gw-snr} \citep{cutler1994gravitational}.}
-  \label{fig:forward-model-window}
-\end{figure}
-
 The $S_w$ sources of a window $w$ centred on $\fw$, $\Theta_w = (\theta_1,\dots,\theta_{S_w})$, are
 independent draws from one per-source prior $\pi_w(\theta) = \pi(\theta\mid\fw)$,
 \begin{equation}
