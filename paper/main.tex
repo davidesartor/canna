@@ -96,16 +96,18 @@
 % Main text: introduction (motivation, contributions, headline result); background and related work
 % (brief, app:related is the long version); problem (signal, noise, prior, likelihood and windows);
 % subbands (response width R and the five subbands, source counts and slots, the two trained
-% configurations); method (coordinates, flow matching in the frame, architecture, training);
+% configurations); flow (coordinates relative to the window, the frame, the endpoint loss);
+% architecture (the one-way MMDiT, embeddings, training);
 % experiments (validation protocol, narrow band, full band, calibration, cost); conclusions
-% (limitations, follow-ups). Subbands come before the method because the method uses R and the
+% (limitations, follow-ups). Subbands come before the flow because the flow and the network use R and the
 % two configurations.
 % Main-text sections stay brief and point to an appendix. New material goes to the appendices first.
 \input{sections/introduction}
 \input{sections/background}
 \input{sections/problem}
 \input{sections/subbands}
-\input{sections/method}
+\input{sections/flow}
+\input{sections/architecture}
 \input{sections/experiments}
 \input{sections/conclusions}
 

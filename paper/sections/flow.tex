@@ -1,16 +1,19 @@
 % =======================================================================================
-\section{Method}
-\label{sec:method}
+\section{Flow in Relative Coordinates}
+\label{sec:flow}\label{sec:method}
 % =======================================================================================
+% 2026-11-22 (user): the former Method section is split into this section and sec:architecture.
 
 We train one conditional generative model of the window posterior $p(\Theta_w\mid y,\fw)$ of
-\cref{eq:gw-factorisation} over all windows of a band. Three ideas let it work when posteriors are
-decades narrower than the prior: coordinates in which the posterior has no symmetry
-(\cref{sec:method-chart}), a flow that runs in a Gaussian frame the network reads off the data and
-is trained on an endpoint likelihood (\cref{sec:method-fm}), and a one-way network that encodes the
-data once per window (\cref{sec:method-network}).
+\cref{eq:gw-factorisation} over all windows of a band. A loud source's posterior is decades
+narrower than its prior and a quiet source's is the prior, so no absolute scale suits both, and
+the flow works in relative quantities throughout. Its coordinates are relative to the window and
+its noise, and carry none of the posterior's symmetries (\cref{sec:method-chart}). Its variable
+is relative to a Gaussian frame that the network reads off the data (\cref{sec:method-frame}).
+Its loss measures each error relative to the spread the data leave (\cref{sec:method-fm}).
+\Cref{sec:architecture} describes the network and its training.
 
-\subsection{Flow Coordinates}
+\subsection{Coordinates Relative to the Window}
 \label{sec:method-chart}\label{sec:gw-chart}
 
 The likelihood is invariant under $(\psi,\phi_0)\to(\psi+\pi/2,\phi_0+\pi)$, which gives each source
@@ -46,8 +49,8 @@ plane, where one of $z_\pm$ vanishes, and not at a coordinate pole. Every coordi
 without a periodic direction, so the flow's paths are straight lines (\cref{app:chart-flat}).
 \Cref{app:chart-helicity} derives these properties.
 
-\subsection{Flow Matching in the Frame}
-\label{sec:method-fm}
+\subsection{A Frame Relative to the Data}
+\label{sec:method-frame}
 
 A loud source's posterior is a small fraction of a bin wide in $f_0$, decades narrower than the
 prior, while a quiet source's is the prior. A Gaussian model of one coordinate
@@ -57,7 +60,6 @@ prior of width $s_0$, whatever the true width $w\ll w_m$, so it barely rewards t
 narrowing. A sampler with uniform steps on the prior's scale returns the narrowest posteriors
 collapsed.
 
-\paragraph{Frame.}
 The network first reads from the data alone a Gaussian \emph{frame} for each slot, a mean $\mu$
 and a standard deviation $\sigma$ per coordinate (\cref{eq:fm-frame}). It is trained on the
 Gaussian likelihood of the window's true sources $X_1$ in the flow coordinates, so that it learns
@@ -72,7 +74,9 @@ In the frame the posterior of $Z_1$ has a mean near zero and a width near one fo
 the flow transports order-one widths along its whole path and spends its capacity on what a
 Gaussian per coordinate misses: correlations, tails and multiple modes.
 
-\paragraph{Endpoint loss.}
+\subsection{A Loss Relative to the Posterior Width}
+\label{sec:method-fm}
+
 Given $Z_s$ and $s$ the network predicts, per coordinate, the mean $\hat Z_1$ and the log standard
 deviation $\log\tau$ of a Gaussian over the endpoint $Z_1$. Its velocity is the one that reaches
 the mean in the remaining path,
@@ -105,70 +109,3 @@ the true width: $\Delta L_{\rm nll}\simeq\ln(w_m^2/w^2)+w^2/w_m^2-1$ depends on 
 through $w_m/w$. The frame brings the width to the order of one in $Z$, where the uniform sampler
 is exact in the model. Draws use \FlowMatchingOdeSteps{} midpoint steps of $\vnet$ and are mapped
 back by $X=\mu+\sigma Z$ (\cref{app:fm-sampling}). \Cref{app:fm} gives the derivations.
-
-\subsection{Architecture}
-\label{sec:method-network}\label{sec:gw-tokens}
-
-A window is a long time series per channel but holds few sources, and a posterior needs many
-draws, each followed over many sampler steps. A network that reads the data afresh at every step
-pays for the data every time, and the same network must also produce the frame from the data
-alone.
-
-One multi-stream transformer \citep{peebles2023scalable,esser2024scaling} gives both the frame and
-the endpoint (\cref{fig:network-architecture}). The data side reads the window as a \ac{stft}, one
-token per \NetworkPatch{} bins holding their time samples in the three channels
-(\cref{eq:network-stft}): \NetworkTokensNarrow{} tokens in the narrow band and
-\NetworkTokensFull{} in the full band. A \emph{register} token per slot runs alongside the data
-tokens, and a head reads the slot's frame from it (\cref{app:network-frame}). The source side
-holds one token per slot, embedded from the slot's current coordinates and its frame, together with
-attention sinks \citep{xiao2024efficient,darcet2024vision}; a head predicts $\hat Z_1$ and
-$\log\tau$. Rotary embeddings in frequency \citep{su2024roformer} place each source at its $f_0$
-and each data token at its centre frequency.
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/architecture.pdf}
-  \caption{The network: four streams, each with its own normalisations, attention projections and
-  feed-forward. The source stream (blue) has one token per source slot, in order of $f_0$, and the
-  sink stream (violet) \NetworkSinksWord{} tokens; they attend jointly. The data stream (grey) has
-  one token per \NetworkPatch{} frequency bins of the window, and the register stream (green) one
-  frame register per slot, which the frame head reads; they attend jointly. Conditioning (orange, dashed) modulates every normalisation and residual gate:
-  $\nu$ from the flow time and the window in the source stream and head, $\nu_f$ from the window
-  alone in the data stream, the registers and the frame head. The data side never reads the
-  sources, so its keys and values and the frame are computed once per observation and serve every
-  draw and sampler step. Rotary positions place each source at its $f_0$ and each data token at its
-  centre frequency.}
-  \label{fig:network-architecture}
-\end{figure*}
-
-Attention is one-way. The data side is conditioned on the window alone, never on the flow's time
-or on the sources, so its keys and values and the frame are computed once per window and serve
-every draw and every sampler step. Only the source side attends to everything and depends on the
-time. \Cref{app:network} gives the embeddings and \cref{tab:network-sizes} the
-sizes; all results use size B, \num{\NetworkBTotalFull} parameters.
-
-\subsection{Training}
-\label{sec:method-training}\label{sec:gw-training}
-
-Every training window is simulated afresh, on the device and inside the compiled training step, so
-no window is seen twice (\cref{app:priors-training}). A window starts from a centre $\fw$. Centres
-drawn from the catalogue's $f_0$ marginal would mostly hold no visible source, so we weight the
-marginal by the chance that a source there is visible (\cref{eq:priors-window}) and draw
-\qty{\PriorsUniformWindowsPercent}{\percent} of the centres log-uniformly over the band, so that
-training also sees windows with nothing to resolve. The weights choose which windows training sees,
-not what their sources are, so the posterior given a window is unchanged (\cref{app:priors-window}).
-The window then receives $S$ sources drawn from $\pi_w$ (\cref{eq:priors-window-prior}), their
-$R$-bin responses and a noise draw (\cref{eq:noise-data}), and is whitened; the sources enter the
-flow coordinates in order of $f_0$. Unlike \citet{delmond2026neural}, who precompute a bank of
-responses and keep sources with an \ac{snr} between 10 and 100, we apply no cut: most of a window's
-sources lie below the noise, and for them the flow must return the prior. The simulation takes
-\qty{\PriorsNarrowDrawShare}{\percent} of a training step in the narrow band and
-\qty{\PriorsFullDrawShare}{\percent} in the full band (\cref{tab:priors-bands}).
-
-A batch holds \TrainingObservations{} windows, each with \TrainingDraws{} draws of time and base
-point that share its cached data side (\cref{app:training-batch}). The optimiser is Muon
-\citep{jordan2024muon,liu2025muon} for the hidden weight matrices and AdamW for the rest, with a
-linear warmup, a constant learning rate and a cooldown to zero \citep{hagele2024scaling}
-(\cref{app:training}). Each run trains on one A100 \ac{gpu}, for \ResultsNarrowHours\,h on the
-narrow band and \ResultsFullHours\,h on the full band (\cref{tab:results-runs}), and is evaluated at
-the checkpoint with the lowest loss on held-out windows (\cref{app:evaluation-weights}).
