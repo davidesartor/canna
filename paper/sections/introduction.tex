@@ -22,6 +22,34 @@ their parameters must be inferred jointly (\cref{fig:related-crowding}).
   \label{fig:forward-model-window}
 \end{figure}
 
+% 2026-11-22 (user): Table 1 placed in the introduction so that it lands on page 2.
+\begin{table*}[t]
+\caption{\Acp{gb} returned and cost of the global fits of the Sangria data set (top), of \acs{sbi}
+for \acp{gb} (middle) and of this work (bottom).}
+\label{tab:gw-globalfit}
+\centering
+\small
+\newcommand{\tabgroup}[1]{\multicolumn{4}{@{}l}{\textsc{#1}}\\[1pt]}
+\begin{tabular}{@{}llll@{}}
+\toprule
+pipeline & \acp{gb} returned & hardware, time & \acs{cpu} hours \\
+\midrule
+GLASS \citep{littenberg2023prototype} & -- & \num{7488} \acsp{cpu}, \qty{5}{\day} & ${\sim}10^6$ \\
+Erebor \citep{katz2024efficient} & \num{12000} (\num{8000} confident) & 4 A100, \qty{7}{\day} & ${\sim}700$ \acs{gpu} h \\
+\citet{strub2024global} & \num{5100} (half a year) & \acs{cpu} cluster & \num{700} \\
+Gee-Moo \citep{deng2025modular} & \num{9542} (\num{7620} identified) & \num{1000} cores, \qty{20}{\hour} & ${\sim}2\times10^4$ \\
+\midrule
+\tabgroup{SBI}
+\citet{delmond2026neural} & 1; 2 as a proof of concept & 1 A100, ${\sim}1$ week; $<\qty{1}{\second}$ per posterior & ${\sim}170$ \acs{gpu} h \\
+\citet{mao2025robust} & 1, with 3 free parameters & 1 L40S, \numrange{3}{5.5}\,h & \numrange{3}{5.5} \acs{gpu} h \\
+SlotFlow \citep{houba2025slotflow} & up to 10 sinusoids, no response & 4 GH200, \qty{190}{\hour}; \qty{13}{\milli\second} per draw & ${\sim}760$ \acs{gpu} h \\
+\midrule
+\tabgroup{ours}
+this work, $S=16$ & \num{\NarrowBandFittedSixteen} (at most) & 1 A100, \ResultsFullHours\,h; \AmortisationFullFlowSeconds\,s per window & \ResultsFullHours{} \acs{gpu} h \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
 The reference method is the global fit, a trans-dimensional \ac{mcmc} over every resolvable
 source \citep{littenberg2020global,littenberg2023prototype,katz2024efficient,strub2024global,deng2025modular}.
 It is the standard for what the data support, but a joint chain over one of our frequency

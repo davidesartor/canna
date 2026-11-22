@@ -35,20 +35,19 @@ consistency of the comparison.
 
 \paragraph{Proposed follow-ups.}
 \label{sec:followups}
-The first step is to add realistic orbits, with unequal and time-varying arms and \ac{tdi}
-generation 2 (\cref{app:forward-model-tdi}), and data gaps \citep{baghi2019gravitational,dey2021effect}.
-The network needs only a simulator, so we expect both to enter through the training simulations,
-with no change to the cost of a draw or to how its posteriors are checked, whereas a sampler needs each effect
-written into its likelihood. Gaps break the stationarity that makes the likelihood of
+The first step is realistic orbits, with unequal and time-varying arms and \ac{tdi} generation 2
+(\cref{app:forward-model-tdi}), and data gaps. We expect both to enter through the training
+simulations, with no change to the cost of a draw or to how its posteriors are checked. A sampler
+needs each effect written into its likelihood: gaps break the stationarity that makes
 \cref{eq:loglik} diagonal, and whatever the likelihood leaves out biases the chains
 \citep{baghi2019gravitational,dey2021effect}.
 
-The second step is the window. Every window now has a fixed length and holds exactly $S$ binaries,
-mostly below the noise. A global fit needs a number of sources that follows the density of the
-Galaxy, a length that follows the width of the responses, and sources that straddle an edge or leak
-in from a neighbour; windows also overlap, a stride of \ForwardModelWindowStride{} responses apart,
-so each source is inferred in several and their posteriors must be combined
-\citep{littenberg2020global}. Beyond these come the confusion foreground of the unresolved binaries
+The second step is the window, which now has a fixed length and exactly $S$ binaries. A global fit
+needs a number of sources that follows the density of the Galaxy, a length that follows the width
+of the responses, and sources that straddle an edge or leak in from a neighbour; windows also
+overlap, a stride of \ForwardModelWindowStride{} responses apart, so each source is inferred in
+several and their posteriors must be combined \citep{littenberg2020global}. Beyond these come the
+confusion foreground of the unresolved binaries
 \citep{timpano2006characterizing,karnesis2021characterization} and the other source classes, noise
 that is estimated with the sources and is non-stationary with glitches (\cref{app:noise}), the cubic
 phase of $\ddot f = \tfrac{11}{3}\fdot^2/f_0$, which matters most at the top of the band, and
@@ -58,24 +57,32 @@ responses longer than $R$ bins, which the widest sources of the full band now lo
 
 % added 2026-11-22 (user): three follow-ups on the training recipe (slot order, frame, window prior);
 % the Student-t frame and the loud high-frequency misses from the open items are folded into them.
-Three changes to the training recipe come next. The first is the slot order. Slots in order of $f_0$
-(\cref{sec:method-chart}) give each slot a fixed share of the window, whether or not a source there is
-visible; in order of \ac{snr}, the first slots would hold the visible sources and the last ones the
-faint sources whose posterior is the prior, which suits a number of sources that changes from window
-to window. The price is a labelling problem of its own: two sources of similar \ac{snr} can swap slots
-from one noise draw to the next, and the posterior would again hold both labellings.
+Three changes to the training recipe come next. \emph{Slot order.} Slots in order of $f_0$
+(\cref{sec:method-chart}) give each slot a fixed share of the window, whether or not a source there
+is visible. In order of \ac{snr}, the first slots would hold the visible sources and the last ones
+the prior, which suits a varying number of sources, but two sources of similar \ac{snr} can swap
+slots between noise draws, and the posterior would again hold both labellings.
 
-The second is the frame, fitted by a weighted Gaussian likelihood (\cref{eq:fm-frame-loss}),
-in which one entry whose frame collapses far below its error can fill a clipped step on its own
-(\cref{app:fm-frame}). The Student-t loss bounds those steps and gave the best full-band model, but
-was tried only on the full band with $S=4$; whether it, or another bound on the frame's steps, helps
-the other problems is open.
+\emph{Frame loss.} In the frame's weighted Gaussian likelihood (\cref{eq:fm-frame-loss}), one entry
+whose frame collapses far below its error can fill a clipped step on its own
+(\cref{app:fm-frame}). A Student-t loss bounds those steps and gave the best full-band model, but
+was tried only on the full band with $S=4$.
 
-The third is the window prior. Training centres most windows where visible sources are common
-(\cref{eq:priors-window}), so the edges of the band see few training windows, and calibration measured
-over the whole band may look worse there for lack of examples rather than of capacity. On the full
-band the flow misses loud sources above about \qty{\ResultsFullSplitMhz}{\milli\hertz}, which the prior
-produces rarely (\cref{sec:results-full}). Centring windows log-uniformly, or moving the weights of
-\cref{eq:priors-window} towards log-uniform, would cover the band evenly and test whether more
-examples there close the gap; a device per subband, which stratifies every batch over the spectrum,
-is another way to the same test.
+\emph{Window prior.} Training centres most windows where visible sources are common
+(\cref{eq:priors-window}), so the edges of the band see few windows, and the loud sources the flow
+misses above about \qty{\ResultsFullSplitMhz}{\milli\hertz} are ones the prior rarely produces
+(\cref{sec:results-full}). Moving the weights of \cref{eq:priors-window} towards log-uniform, or a
+device per subband, which stratifies every batch over the spectrum, would test whether more
+examples close the gap.
+
+% added 2026-11-22 (user): two longer-term extensions, other source classes as streams and the population jointly.
+Two extensions reach beyond the \acp{gb}. \emph{Other source classes.} The architecture already
+treats sources as one token stream among the data and frame streams
+(\cref{sec:method-streams}); massive black-hole binaries, extreme mass-ratio inspirals and other
+classes would each enter as a stream of their own, with their own parameter embeddings, attending
+to the same data and to each other, so the posterior of one class accounts for the others as a
+global fit does. \emph{Population.} The prior is now fixed, fitted once to a simulated catalogue
+(\cref{eq:priors-window-prior}). Making its parameters, such as the shape of the Galaxy and the
+distribution of $f_0$, $\fdot$ and $\Amp$, random variables drawn per training window, and inferring
+them jointly with the sources, would turn the flow into a hierarchical model that learns the
+population from the resolved binaries rather than assuming it.

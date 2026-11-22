@@ -6,6 +6,20 @@
 We address the \acp{gb} of the \ac{lisa} data alone, in stationary noise of known spectrum, a first
 step towards a global fit by \acs{sbi} (\cref{sec:followups}).
 
+% 2026-11-22 (user): Figure 3 placed here so that it lands on page 4.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/narrow-band.pdf}
+  \caption{The band is divided where the response width doubles into five subbands (shaded
+  and white strips; \cref{tab:narrow-band-bands}). (a)~Response width: sources with power above the noise, by $f_0$ and by the
+  bins that hold all of it; contours hold \qtylist{50;90;99}{\percent} of them. Solid segments: each subband's $R$, which keeps every above-noise bin of
+  \qty{\NarrowBandSharePercent}{\percent} of the sources at each $f_0$; in the high tail that $R$
+  (dashed) climbs to \NarrowBandTopR{}. (b)~Where the sources are: share per dex of $f_0$ of the catalogue's sources (grey)
+  and of the visible ones, $\snr\ge\NarrowBandVisibleSnr$ (blue), with each subband's share of the
+  visible ones; the bracket marks the $f_0$ range of the narrow band (orange).}
+  \label{fig:narrow-band}
+\end{figure}
+
 \subsection{Signal, Noise and Prior}
 \label{sec:gw-data}\label{sec:gw-waveforms}\label{sec:gw-priors}
 
@@ -76,22 +90,6 @@ $\phi_0$ & $\Unif(0, 2\pi)$ \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/priors.pdf}
-  \caption{A visual representation of the \ac{gb} parameters and their priors. (a)~$(\log_{10}f_0, \log_{10}\fdot, \log_{10}\Amp)$ over the full band,
-  \num{\ChartPriorDraws} sources in windows centred on the catalogue's $f_0$ marginal: regions
-  enclosing \qty{\PriorCornerInner}{\percent} and \qty{\PriorCornerOuter}{\percent} of the prior
-  (blue) and of the sources with $\snr\ge\PriorsVisibleSnr$ (red), and the line
-  $\snr=\PriorsVisibleSnr$ (grey), which averages over the other parameters, so sources
-  that reach it through a favourable sky or orientation also lie below it. (b)~The sky,
-  \cref{eq:priors-sky}, in ecliptic coordinates $(\lambda, \beta)$: the bulge, the thick and the thin
-  disc. (c)~The orientation: the orbit (blue, dashed
-  below the sky plane) is inclined by $\iota$ to the sky plane $(x, y)$, with $z$ towards the observer; its line of nodes
-  (black, dashed) is at $\psi$ from $x$, and $\phi_0$ is the phase along the orbit at the start of the observation.}
-  \label{fig:priors}
-\end{figure*}
 
 \subsection{Likelihood and Windows}
 \label{sec:gw-slicing}\label{sec:gw-factorisation}\label{sec:gw-windows}

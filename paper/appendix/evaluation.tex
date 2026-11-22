@@ -5,7 +5,8 @@
 This appendix defines how the flows of \cref{app:results} are judged, in support of \cref{sec:validation}. The
 \emph{reference pass} compares the flow with joint \ac{mcmc} chains (\cref{app:mcmc}) on fixed windows and uses the
 truth to pair draws with sources, so it is descriptive. The \emph{validation pass} never sees the truth or a chain: it
-ranks the truth among the draws on windows simulated from the prior, and is the only test of calibration. We show on
+ranks the truth among the draws on windows simulated from the prior, and is the only test of calibration
+(\cref{tab:evaluation-passes}). We show on
 posteriors with known errors that its tests detect what they should (\cref{app:evaluation-sensitivity}), then give the
 sampler settings and out-of-distribution checks.
 

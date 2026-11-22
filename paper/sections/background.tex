@@ -4,6 +4,23 @@
 % =======================================================================================
 % Brief by design: app:related is the long comparison.
 
+% 2026-11-22 (user): Figure 2 placed here so that it lands on page 3.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/priors.pdf}
+  \caption{A visual representation of the \ac{gb} parameters and their priors. (a)~$(\log_{10}f_0, \log_{10}\fdot, \log_{10}\Amp)$ over the full band,
+  \num{\ChartPriorDraws} sources in windows centred on the catalogue's $f_0$ marginal: regions
+  enclosing \qty{\PriorCornerInner}{\percent} and \qty{\PriorCornerOuter}{\percent} of the prior
+  (blue) and of the sources with $\snr\ge\PriorsVisibleSnr$ (red), and the line
+  $\snr=\PriorsVisibleSnr$ (grey), which averages over the other parameters, so sources
+  that reach it through a favourable sky or orientation also lie below it. (b)~The sky,
+  \cref{eq:priors-sky}, in ecliptic coordinates $(\lambda, \beta)$: the bulge, the thick and the thin
+  disc. (c)~The orientation: the orbit (blue, dashed
+  below the sky plane) is inclined by $\iota$ to the sky plane $(x, y)$, with $z$ towards the observer; its line of nodes
+  (black, dashed) is at $\psi$ from $x$, and $\phi_0$ is the phase along the orbit at the start of the observation.}
+  \label{fig:priors}
+\end{figure*}
+
 \paragraph{The global fit.}
 \label{sec:background-gw}\label{sec:gw-globalfit}
 The \ac{lisa} data hold every source at once, so they are analysed by a global fit: a
@@ -13,33 +30,6 @@ and the noise
 On a simulated year of data, current pipelines return \numrange{5000}{12000} \acp{gb} for \num{700}
 to about $10^6$ \ac{cpu} hours, and every new dataset or change of model pays that cost again
 (\cref{tab:gw-globalfit}, \cref{app:related-globalfit}).
-
-\begin{table*}[t]
-\caption{\Acp{gb} returned and cost of the global fits of the Sangria data set (top), of \acs{sbi}
-for \acp{gb} (middle) and of this work (bottom).}
-\label{tab:gw-globalfit}
-\centering
-\small
-\newcommand{\tabgroup}[1]{\multicolumn{4}{@{}l}{\textsc{#1}}\\[1pt]}
-\begin{tabular}{@{}llll@{}}
-\toprule
-pipeline & \acp{gb} returned & hardware, time & \acs{cpu} hours \\
-\midrule
-GLASS \citep{littenberg2023prototype} & -- & \num{7488} \acsp{cpu}, \qty{5}{\day} & ${\sim}10^6$ \\
-Erebor \citep{katz2024efficient} & \num{12000} (\num{8000} confident) & 4 A100, \qty{7}{\day} & ${\sim}700$ \acs{gpu} h \\
-\citet{strub2024global} & \num{5100} (half a year) & \acs{cpu} cluster & \num{700} \\
-Gee-Moo \citep{deng2025modular} & \num{9542} (\num{7620} identified) & \num{1000} cores, \qty{20}{\hour} & ${\sim}2\times10^4$ \\
-\midrule
-\tabgroup{SBI}
-\citet{delmond2026neural} & 1; 2 as a proof of concept & 1 A100, ${\sim}1$ week; $<\qty{1}{\second}$ per posterior & ${\sim}170$ \acs{gpu} h \\
-\citet{mao2025robust} & 1, with 3 free parameters & 1 L40S, \numrange{3}{5.5}\,h & \numrange{3}{5.5} \acs{gpu} h \\
-SlotFlow \citep{houba2025slotflow} & up to 10 sinusoids, no response & 4 GH200, \qty{190}{\hour}; \qty{13}{\milli\second} per draw & ${\sim}760$ \acs{gpu} h \\
-\midrule
-\tabgroup{ours}
-this work, $S=16$ & \num{\NarrowBandFittedSixteen} (at most) & 1 A100, \ResultsFullHours\,h; \AmortisationFullFlowSeconds\,s per window & \ResultsFullHours{} \acs{gpu} h \\
-\bottomrule
-\end{tabular}
-\end{table*}
 
 \paragraph{Simulation-based inference.}
 \label{sec:inversion}\label{sec:background-generative}

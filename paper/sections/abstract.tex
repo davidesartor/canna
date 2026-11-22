@@ -1,15 +1,5 @@
-% Rewritten 2026-11-20 (user): short, about half a column; replaces the long 2026-10-11 draft.
-  \Ac{lisa} will resolve thousands of \acp{gb} whose signals overlap in frequency, so their
-  parameters must be inferred jointly, which a \ac{mcmc} global fit does at great cost and must
-  repeat for every new stretch of data. We train a conditional flow-matching model once per band
-  that returns the joint posterior of the binaries in a frequency window, under the full
-  instrument response and broad priors. A flat chart of eight coordinates per source and slots
-  ordered in frequency remove the polarisation, phase and labelling copies of each source; a
-  Gaussian frame read from the data brings posteriors decades narrower than the prior to widths of
-  order one; and the data are encoded once per window, so every draw reuses them. Dividing the
-  band where the width of the sources' responses doubles gives five subproblems of fixed shapes, each
-  trained on its own device. On the core subproblem,
-  \qtyrange{\PriorsNarrowLowMhz}{\PriorsNarrowHighMhz}{\milli\hertz},
-  \FlowMatchingCostDraws{} draws take \qty{\FlowMatchingCostNarrow}{\second} on one GPU, against
-  \qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} for a joint \ac{mcmc} chain of the same
-  window.
+  \Ac{lisa} will observe millions of \acp{gb} at once, thousands of them resolvable, with signals that overlap in frequency. Separating them requires a global fit, a joint inference of all sources, which today takes \ac{mcmc} samplers hours to days on a cluster and is repeated for each new stretch of data. 
+  We adapt recent advances in large-scale diffusion models, flow matching with a multimodal transformer, to learn the joint posterior once and then draw from it in a fraction of a second. 
+  We evaluate our approach on a realistic simulator, with full instrument response and noise, priors fitted to a simulated Galactic catalogue, and sources sampled anywhere in the entire \qtyrange{\PriorsFullLowMhz}{\PriorsFullHighMhz}{\milli\hertz} frequency band.
+  We demonstrate that the approach is scalable to up to \num{\NarrowBandFittedSixteen} sources fitted simultaneously, evaluating calibration and coverage w.r.t. the \ac{mcmc} baseline.
+  The results show that this approach could be realistically scaled to tackle the full global fit problem.

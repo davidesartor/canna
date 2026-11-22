@@ -13,6 +13,23 @@ is relative to a Gaussian frame that the network reads off the data (\cref{sec:m
 Its loss measures each error relative to the spread the data leave (\cref{sec:method-fm}).
 \Cref{sec:architecture} describes the network and its training.
 
+% 2026-11-22 (user): Figure 4 placed here so that it lands on page 6.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/architecture.pdf}
+  \caption{The network: four streams, each with its own normalisations, attention projections and
+  feed-forward. The source stream (blue) has one token per source slot, in order of $f_0$, and the
+  sink stream (violet) \NetworkSinksWord{} tokens; they attend jointly. The data stream (grey) has
+  one token per \NetworkPatch{} frequency bins of the window, and the register stream (green) one
+  frame register per slot, which the frame head reads; they attend jointly. Conditioning (orange, dashed) modulates every normalisation and residual gate:
+  $\nu$ from the flow time and the window in the source stream and head, $\nu_f$ from the window
+  alone in the data stream, the registers and the frame head. The data side never reads the
+  sources, so its keys and values and the frame are computed once per observation and serve every
+  draw and sampler step. Rotary positions place each source at its $f_0$ and each data token at its
+  centre frequency.}
+  \label{fig:network-architecture}
+\end{figure*}
+
 \subsection{Coordinates Relative to the Window}
 \label{sec:method-chart}\label{sec:gw-chart}
 
@@ -52,13 +69,11 @@ without a periodic direction, so the flow's paths are straight lines (\cref{app:
 \subsection{A Frame Relative to the Data}
 \label{sec:method-frame}
 
-A loud source's posterior is a small fraction of a bin wide in $f_0$, decades narrower than the
-prior, while a quiet source's is the prior. A Gaussian model of one coordinate
-(\cref{prop:fm-sensitivity}, \cref{fig:fm-sensitivity}) shows what this does to standard
-\ac{fmpe}. The velocity loss pays an excess of order $s_0 w_m$ for a model $w_m$ wide against a
-prior of width $s_0$, whatever the true width $w\ll w_m$, so it barely rewards the last decades of
-narrowing. A sampler with uniform steps on the prior's scale returns the narrowest posteriors
-collapsed.
+Standard \ac{fmpe} fails on posteriors a small fraction of a bin wide in $f_0$, as a Gaussian model
+of one coordinate shows (\cref{prop:fm-sensitivity}, \cref{fig:fm-sensitivity}). The velocity loss
+pays an excess of order $s_0 w_m$ for a model $w_m$ wide against a prior of width $s_0$, whatever
+the true width $w\ll w_m$, so it barely rewards the last decades of narrowing, and a sampler with
+uniform steps on the prior's scale returns the narrowest posteriors collapsed.
 
 The network first reads from the data alone a Gaussian \emph{frame} for each slot, a mean $\mu$
 and a standard deviation $\sigma$ per coordinate (\cref{eq:fm-frame}). It is trained on the
@@ -71,8 +86,8 @@ $Z=(X-\mu)/\sigma$, from a standard normal $Z_0$ to $Z_1=(X_1-\mu)/\sigma$ along
   \label{eq:fm-path}
 \end{equation}
 In the frame the posterior of $Z_1$ has a mean near zero and a width near one for every source, so
-the flow transports order-one widths along its whole path and spends its capacity on what a
-Gaussian per coordinate misses: correlations, tails and multiple modes.
+the flow spends its capacity on what a Gaussian per coordinate misses: correlations, tails and
+multiple modes.
 
 \subsection{A Loss Relative to the Posterior Width}
 \label{sec:method-fm}
@@ -102,8 +117,8 @@ source, a velocity loss divided by its own irreducible part,
 \end{equation}
 because the factors of $1-s$ cancel (\cref{app:fm-loss}).
 
-Dividing by the irreducible variance makes every source count the same: a source the data pin down
-weighs as much as one whose posterior is its prior, with no weights over time or coordinates. In the
+A source the data pin down therefore weighs as much as one whose posterior is its prior, with no
+weights over time or coordinates. In the
 Gaussian model the likelihood pays $2$ for every e-fold by which the model is too wide, whatever
 the true width: $\Delta L_{\rm nll}\simeq\ln(w_m^2/w^2)+w^2/w_m^2-1$ depends on the widths only
 through $w_m/w$. The frame brings the width to the order of one in $Z$, where the uniform sampler
