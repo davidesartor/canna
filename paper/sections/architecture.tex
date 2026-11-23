@@ -81,7 +81,7 @@ wide requires frequency at sub-bin resolution in every embedding (\cref{tab:netw
 
 \paragraph{Data tokens.}
 The window is cut into patches of \NetworkPatch{} consecutive frequency bins, one token each. An
-inverse Fourier transform over the patch turns its bins into as many time samples per channel, an
+inverse Fourier transform over the patch turns its bins into as many time samples per channel, \rev{a}
 \ac{stft} with the tokens as its bands (\cref{eq:network-stft}). It is critically sampled and
 untapered, so it is invertible and keeps the noise white, and it puts each source parameter in a
 simple form: the sub-bin frequency is a phase slope over the samples, the initial phase its
@@ -136,8 +136,8 @@ the truth. The legend names the window and the sources' \acp{snr}.}
 \centering
 \caption{Summary of the six models. Model: the 64-epoch main run, its fork cooled from epoch 32
 (e32) or the continuation from epoch 44 (t44), with the epoch evaluated in brackets
-(\cref{app:results-runs}). Windows: evaluation windows with joint \acs{mcmc} / prior windows of the
-\acs{sbc}. JS: Jensen--Shannon divergence in bits between the flow's and the chains'
+(\cref{app:results-runs}). \rev{Every model is scored on the same \EvaluationInjections{} evaluation windows with
+joint \acs{mcmc} and \ResultsValidationInjections{} prior windows of the \acs{sbc}.} JS: Jensen--Shannon divergence in bits between the flow's and the chains'
 one-dimensional marginals, median over the sources at $\snr=7$--15 and $\snr\ge15$ of the mean over
 the eight coordinates (\cref{tab:results-js}); \ResultsSummaryFloor{} from sampling noise alone.
 \acs{sbc}: share of true coordinates inside the central \qty{68}{\percent} of the draws and the
@@ -145,11 +145,11 @@ smallest $\gamma$-test $p$-value over the eight coordinates, for the flow on the
 for the joint \acs{mcmc} on the evaluation windows (\cref{app:results-validation}).}
 \label{tab:results-summary}
 \small
-\begin{tabular}{@{}lrlcrrrrrr@{}}
+\begin{tabular}{@{}lrlrrrrrr@{}}
 \toprule
- & & & & \multicolumn{2}{c}{JS} & \multicolumn{2}{c}{\acs{sbc} flow} & \multicolumn{2}{c}{\acs{sbc} \acs{mcmc}} \\
-\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(l){9-10}
-problem & $S$ & model & windows & 7--15 & $\ge15$ & 68\% & $p_{\min}$ & 68\% & $p_{\min}$ \\
+ & & & \multicolumn{2}{c}{JS} & \multicolumn{2}{c}{\acs{sbc} flow} & \multicolumn{2}{c}{\acs{sbc} \acs{mcmc}} \\
+\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(l){8-9}
+problem & $S$ & model & 7--15 & $\ge15$ & 68\% & $p_{\min}$ & 68\% & $p_{\min}$ \\
 \midrule
 \ResultsSummaryRows
 \bottomrule

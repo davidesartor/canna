@@ -5,7 +5,8 @@
 % Numbers: scripts/numbers_results.py, numbers_evaluation.py, numbers_mcmc.py, numbers_flow-matching.py.
 % The full tables and figures are in app:results; this section keeps the reading of each.
 
-We train the size-B network (\cref{sec:method-network}) on the two configurations of
+We train the size-B network \rev{(\NetworkBBlocks{} blocks of width \NetworkBWidth{} with \NetworkBHeads{} heads, about 133\,M
+parameters; \cref{tab:network-sizes})} on the two configurations of
 \cref{sec:narrow-band-bands}, the narrow band with $S={}$\ResultsNarrowCounts{} sources per window
 and the full band with $S={}$\ResultsFullCounts, one training run each (\cref{app:results-runs}).
 
@@ -94,8 +95,7 @@ flow's refinement of its frame: read from the data alone, the frame is wide by d
 sources, and the flow narrows it \ResultsFullSixteenContractLow-fold below that frequency but only
 \ResultsFullSixteenContractHigh-fold above (\cref{app:results-mcmc}). These sources have the widest
 responses, some beyond the $R$ of this configuration (\cref{sec:narrow-band-bands}), and the prior
-produces few of them, so training sees few examples. A device per subband
-(\cref{sec:narrow-band}) stratifies every batch over the spectrum and is one candidate cure.
+produces few of them, so training sees few examples\rev{; \cref{sec:followups} proposes how to give it more}.
 
 \subsection{Calibration}
 \label{sec:results-calibration}
@@ -117,6 +117,16 @@ carries a phase that partly makes up for it, so each draw is a coherent fit disp
 along a direction that mixes the groups (\cref{app:results-validation}). Whether another chart or
 loss removes the offset is open.
 
+% added 2026-11-20 (user): SBC by frequency and SNR (scripts/import_sbc_heatmap.py, fig_sbc-heatmap.py);
+% 2026-11-23 (user, final read): moved here from its own subsection after the cost, with its finding.
+\rev{\paragraph{By frequency and \acs{snr}.}}\label{sec:results-sbc-heatmap}
+Coverage and $p_{\min}$ in \cref{tab:results-summary} pool every source of a problem, but the posterior's
+difficulty changes with frequency and loudness. \Cref{fig:sbc-heatmap} splits the \acs{sbc} of each model by
+both, each source binned by its draws' median $f_0$ and \acs{snr}, which depend on the data alone: binning by
+the true values would condition on the truth, and even exact posteriors would fail. \rev{Of the 100 cells
+with enough sources, 14 have $p_{\min}<0.01$, against about 8 expected for exact posteriors, and 3 fall
+below the test's resolution of 0.001. They follow no pattern in frequency, \acs{snr} or coordinate, so
+binning reveals no region where the flow is miscalibrated beyond the pooled offset above.}
 \subsection{Cost of a Posterior}
 \label{sec:results-cost}
 
@@ -124,15 +134,8 @@ A posterior costs a fraction of a second. \FlowMatchingCostDraws{} draws of a na
 \qty{\FlowMatchingCostNarrow}{\second} on one \ac{gpu} and of a full-band window
 \qty{\FlowMatchingCostFull}{\second} (\cref{fig:fm-cost}), with the widths settled by 32 to 64
 sampler steps (\cref{app:evaluation-sampler}). A joint \ac{mcmc} chain of one evaluation window takes
-\qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} on \McmcJointCores{} \ac{cpu} cores
+\qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} on \McmcJointCores{} \ac{cpu} cores\rev{ in the narrow band, and about
+\qtyrange{\McmcCostFullSixteenLo}{\McmcCostFullSixteenHi}{\hour} in the full band with $S=16$}
 (\cref{app:mcmc-cost}).
 
-% added 2026-11-20 (user): SBC by frequency and SNR (scripts/import_sbc_heatmap.py, fig_sbc-heatmap.py).
-\subsection{Calibration by Frequency and \acs{snr}}
-\label{sec:results-sbc-heatmap}
-
-Coverage and $p_{\min}$ in \cref{tab:results-summary} pool every source of a problem, but the posterior's
-difficulty changes with frequency and loudness. \Cref{fig:sbc-heatmap} splits the \acs{sbc} of each model by
-both, each source binned by its draws' median $f_0$ and \acs{snr}, which depend on the data alone: binning by
-the true values would condition on the truth, and even exact posteriors would fail.
 

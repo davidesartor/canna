@@ -5,7 +5,7 @@
 
 The space-based \ac{lisa}, due for launch in 2035, will open the millihertz band of gravitational
 waves \citep{amaro2017lisa,colpi2024lisa}. Its most numerous sources are the compact binaries of
-our own Galaxy: millions of quasi-monochromatic \acp{gb} between
+our own Galaxy: millions of quasi-monochromatic \acp{gb} \rev{from}
 \qtyrange{\RelatedWorkFzeroLow}{\RelatedWorkFzeroHigh}{\milli\hertz}, of which thousands will be
 resolved \citep{nelemans2001gravitational,korol2017prospects,karnesis2021characterization}. Below a
 few millihertz their signals overlap (\cref{fig:forward-model-window}): the instrument's orbit and
@@ -32,7 +32,7 @@ for \acp{gb} (middle) and of this work (bottom).}
 \newcommand{\tabgroup}[1]{\multicolumn{4}{@{}l}{\textsc{#1}}\\[1pt]}
 \begin{tabular}{@{}llll@{}}
 \toprule
-pipeline & \acp{gb} returned & hardware, time & \acs{cpu} hours \\
+pipeline & \acp{gb} returned & hardware, time & \rev{compute} \\
 \midrule
 GLASS \citep{littenberg2023prototype} & -- & \num{7488} \acsp{cpu}, \qty{5}{\day} & ${\sim}10^6$ \\
 Erebor \citep{katz2024efficient} & \num{12000} (\num{8000} confident) & 4 A100, \qty{7}{\day} & ${\sim}700$ \acs{gpu} h \\
@@ -78,7 +78,7 @@ evaluation.
   \item \emph{A one-way multi-stream transformer} that encodes the data once per window, so every
     draw and every sampler step reuses it (\cref{sec:method-network}).
   \item \emph{Subbands of fixed shapes.} Dividing the band where the width of the sources'
-    responses doubles gives five subproblems, each trained on its own device (\cref{sec:narrow-band}).
+    responses doubles gives five subproblems (\cref{sec:narrow-band}).
   \item \emph{Validation on known answers.} A toy with an exact posterior shows that ranks of
     data-space quantities catch phase, sky and dependence errors that parameter ranks miss, and
     mock posteriors are run through the whole evaluation (\cref{sec:validation}).

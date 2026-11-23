@@ -35,13 +35,13 @@ $(\psi,\phi_0)$ symmetries (\cref{eq:psi-phi-symmetry}) before any width is take
   \begin{tabular}{@{}ll@{}}
     \toprule
     Likelihood & \cref{eq:loglik}, all sources of the window \\
-    Dimension & \McmcJointDim{} (\McmcSlots{} sources) \\
+    Dimension & \rev{$8S$: 16 to 128 ($S=2$ to 16)} \\
     Windows & \McmcInjections \\
     Walkers per temperature & \McmcWalkers \\
     Temperatures & \McmcTemps, up to \McmcTempMax \\
     Burn-in / kept iterations & \McmcBurn{} / \McmcKeep \\
     Thinning & \McmcThin \\
-    Seeds / chains & \McmcSeeds{} / \McmcChains \\
+    Seeds / chains & \McmcSeeds{} / \McmcChains\rev{, \McmcChainsAll{} over the six problems} \\
     Draws per window & \McmcKeepDraws \\
     Start & Fisher draws \\
     \bottomrule
@@ -82,8 +82,7 @@ $\snr=3$--7 are slowly lost. The reference is therefore sound at $\snr\ge7$, som
 invisible sources, and an upper bound on how often a source at $\snr=3$--7 is localised. For the
 problems with the most parameters the faint sources stay near their Fisher start, which
 \cref{app:results-mcmc} takes into account when reading the width ratios. On the verification binary of
-\citet{strub2022bayesian} the sampler reproduces the published posterior and \ac{snr} gain
-(\cref{app:noise-validation}).
+\citet{strub2022bayesian} the sampler reproduces the published \rev{\ac{snr} (\cref{app:noise-validation}) and posterior}.
 
 \subsection{Cost}
 \label{app:mcmc-cost}

@@ -176,7 +176,7 @@ maps are separate matrices, so that the optimiser orthogonalises each on its own
 The data and the registers never read the sources, the sinks or $t$, so their keys and values in
 every block and the registers' outputs depend on $(y,\fw)$ alone. One encoding of an observation
 therefore gives its frame and serves all \NetworkDraws{} base draws that share it in training, and
-in sampling all \NetworkSampleEvals{} evaluations along every draw's path (\cref{app:fm-sampling}).
+in sampling all \rev{$2K_t=\FlowMatchingEvaluations{}$} evaluations along every draw's path (\cref{app:fm-sampling}).
 In size B, encoding a full-band window takes \NetworkEncodeGflopFull{} GFLOP of matrix products,
 \NetworkEncodeOverDecodeFull{} times one evaluation on the cache (\NetworkDecodeGflopFull{} GFLOP),
 and the cache holds \qty{\NetworkCacheMibFull}{\mebi\byte} in bfloat16; a narrow window takes
@@ -284,9 +284,12 @@ whitened value above \NetworkBfUnity{} can move it by a unit of noise, and the l
 \NetworkSnrTop{}. In bfloat16 on Ampere or newer GPUs the data stream's self-attention runs as a
 fused flash-attention kernel \citep{dao2022flashattention}.
 
-Evaluating the trained models with a float32 backbone barely changes them: the median $f_0$ width
+Evaluating the trained models with a float32 backbone \rev{changes them little against their gap to the
+chains. In the separate re-evaluation of \cref{app:results-mcmc}, whose bfloat16 values differ from those of
+\cref{tab:results-widths},} the median $f_0$ width
 relative to the joint chains' at $\snr=15$--40 goes from \ResultsNarrowFourFpBfMid{} to
 \ResultsNarrowFourFpThirtyTwoMid{} (narrow band, $S=4$) and from \ResultsFullEightFpBfMid{} to
 \ResultsFullEightFpThirtyTwoMid{} (full band, $S=8$), and on loud full-band sources below
 \qty{10}{\milli\hertz} from \ResultsFullEightFpBfLoud{} to \ResultsFullEightFpThirtyTwoLoud. The
-bfloat16 backbone is therefore not what keeps the loud sources wide.
+bfloat16 backbone is therefore not what keeps the loud sources wide\rev{, though at $\snr=15$--40 on the full band it
+accounts for about a sixth of the width}.

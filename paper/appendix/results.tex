@@ -155,14 +155,14 @@ reference's on these sources.
 flow's one-dimensional marginals from the joint chains', median over the sources of each band of source
 \ac{snr} ($n$ sources), for the models of \cref{tab:results-widths}. Mean: median over the sources of
 the mean over the eight coordinates. Draws relabelled to the truth, $(\psi,\phi_0)$ folded, $\alpha$
-and $\delta$ equatorial. Two samples of one distribution give \ResultsJsFloorMedian{} (median) and
+and $\delta$ equatorial\rev{, $\fdot$ in units of $\qty{1}{\hertz\per\second}$}. Two samples of one distribution give \ResultsJsFloorMedian{} (median) and
 \ResultsJsFloorHigh{} (95th percentile); two Gaussians give \ResultsJsGaussWidthTwo{} at a width ratio
 of 2 and \ResultsJsGaussWidthTen{} at 10.}
 \label{tab:results-js}
 \small
 \begin{tabular}{@{}llrrrrrrrrrr@{}}
 \toprule
-model & \acs{snr} & $n$ & $f_0$ & $\ln\fdot$ & $\ln\Amp$ & $\alpha$ & $\delta$ & $\psi$ & $\sin\iota$ & $\phi_0$ & mean \\
+model & \acs{snr} & $n$ & $f_0$ & \rev{$\log\fdot$} & \rev{$\log\Amp$} & $\alpha$ & $\delta$ & $\psi$ & $\sin\iota$ & $\phi_0$ & mean \\
 \midrule
 \ResultsJsRows
 \bottomrule
@@ -181,11 +181,11 @@ reference is stuck. From $\snr=7$ the narrow band with two sources has a mean of
 (\ResultsJsGaussOffsetHalf) or with widths 1.5 apart (\ResultsJsGaussWidthOneHalf), and the mean
 rises with $S$, mostly through $f_0$. That is about the \num{0.05} that \citet{delmond2026neural}
 report for one source in their low-frequency bands, though their estimator, and so its floor, is not
-stated. On the full band above $\snr=40$ the divergences of $f_0$,
-$\ln\fdot$ and the right ascension reach \ResultsJsFullFourLoudFzero, \ResultsJsFullEightLoudFzero{}
-and \ResultsJsFullSixteenLoudFzero, \ResultsJsFullFourLoudFdot, \ResultsJsFullEightLoudFdot{} and
-\ResultsJsFullSixteenLoudFdot, and \ResultsJsFullFourLoudSky, \ResultsJsFullEightLoudSky{} and
-\ResultsJsFullSixteenLoudSky{} for $S=4$, 8 and 16, in line with the excess widths of
+stated. On the full band above $\snr=40$ the divergences \rev{for $S=4$, 8 and 16 reach
+\ResultsJsFullFourLoudFzero{}, \ResultsJsFullEightLoudFzero{} and \ResultsJsFullSixteenLoudFzero{} in $f_0$,
+\ResultsJsFullFourLoudFdot{}, \ResultsJsFullEightLoudFdot{} and \ResultsJsFullSixteenLoudFdot{} in $\log\fdot$, and
+\ResultsJsFullFourLoudSky{}, \ResultsJsFullEightLoudSky{} and \ResultsJsFullSixteenLoudSky{} in the right ascension},
+in line with the excess widths of
 \cref{tab:results-widths}, for a Gaussian ten times too wide gives \ResultsJsGaussWidthTen. As for
 the widths, full $S=16$'s divergences from $\snr=7$ to about 20 are upper bounds
 (\cref{app:results-mcmc}).
@@ -231,8 +231,8 @@ every problem, the flows' larger, the narrow band with $S=2$ included.
 \paragraph{Which parameters carry the offset.}
 To find the parameter, every draw of the validation pass had one group of its flow coordinates set
 to the truth's (the frequencies $x_f, x_{\fdot}$; the sky $l, b$; the phases $\arg z_\pm$; the
-moduli $|z_\pm|$) before its overlap was ranked again, for each model and for its mock. No group is
-the one. Setting the frequencies or the sky to the truth leaves the mock's offset where it was
+moduli $|z_\pm|$) before its overlap was ranked again, for each model and for its mock. \rev{No single group
+carries the offset.} Setting the frequencies or the sky to the truth leaves the mock's offset where it was
 (\ResultsOverlapFixMockFreqSkyLo{} to \ResultsOverlapFixMockFreqSkyHi), but raises the flow's, to
 \ResultsOverlapFixFlowLo--\ResultsOverlapFixFlowHi{} with the frequencies, the sky or the phases;
 the phases raise the mock's too, by \ResultsOverlapFixMockPhasesLo{} to
@@ -267,6 +267,7 @@ the mock's moves by \ResultsOverlapModuliFaintMockLo{} to \ResultsOverlapModuliF
 show one eval window for the model of each band and source count. The window is chosen by rule,
 not by eye: the closest pair of sources at $\snr\ge15$ with \acp{snr} within a factor two (the
 closest pair at $\snr\ge7$ if there is none). Each plot shows $f_0$, $\ln\Amp$ and right ascension
+\rev{(equatorial, the simulator's frame, where \cref{fig:corner-narrow-4} uses ecliptic coordinates)}
 of both sources as offsets from the truth, the sources in $f_0$ order and folded in $(\psi,\phi_0)$;
 the axes span the central \qty{96}{\percent} of the flow and the chains together, so a few far-tail
 draws fall outside. The legend gives the window, the two \acp{snr} and their separation.

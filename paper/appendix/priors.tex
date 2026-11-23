@@ -36,7 +36,7 @@ Other population models of the Galaxy's double white dwarfs
 \citep{toonen2012supernova,korol2020populations,georgousi2022gravitational,thiele2023applying}
 differ in their binary physics \citep{toubiana2024interacting,boileau2025gravitational}; refitting
 changes only $\mu_\pi$ and $\Sigma_\pi$. \Cref{fig:prior-corner} shows the prior over each band. Most sources barely drift: the full band's median drift over
-the observation is \PriorsFullDriftMedian{} of a bin, and \qty{\PriorsFullDriftOver}{\percent} of its
+the observation is \rev{\num{\PriorsFullDriftMedian}} of a bin, and \qty{\PriorsFullDriftOver}{\percent} of its
 sources drift by more than one. The sky is a mixture of a bulge, a thick and a thin disc and an
 isotropic floor in galactic longitude $l$ and $\sin b$,
 \begin{equation}
@@ -103,14 +103,14 @@ so they do not change the posterior the flow learns.
 \caption{The two bands. Every other prior is shared. Source and window shares are over
 \num{\PriorsPriorWindows} windows per band centred on the catalogue's $f_0$ marginal, and
 \num{\PriorsCutWindows} centred by \cref{eq:priors-window} (training); a source is visible at
-$\snr\ge\PriorsVisibleSnr$ alone in its window. Training figures are for the default configuration of the
-B network at the batch of \cref{app:priors-training}; the runs of \cref{app:results} set their own
-step counts (\cref{tab:results-runs}); the simulation share is the time spent drawing a batch
+$\snr\ge\PriorsVisibleSnr$ alone in its window. \rev{Steps, windows and sources seen are those of the reported runs of the
+B network (\cref{tab:results-runs}), at the batch of \cref{app:priors-training}}; the simulation share is the time spent drawing a batch
 inside one training step on an \PriorsNarrowStepChip{} (narrow band) and an \PriorsFullStepChip{} (full band).}
 \label{tab:priors-bands}
 \centering
-\small
-\begin{tabular}{lrr}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.4\columnwidth}rr@{}}
 \toprule
  & narrow & full \\
 \midrule
@@ -122,9 +122,10 @@ visible sources & \qty{\PriorsNarrowVisible}{\percent} & \qty{\PriorsFullVisible
 windows with a visible source, catalogue / training & \qty{\PriorsNarrowWithVisible}{\percent} / \qty{\PriorsNarrowTrainingWithVisible}{\percent} & \qty{\PriorsFullWithVisible}{\percent} / \qty{\PriorsFullTrainingWithVisible}{\percent} \\
 chirp drift above one bin & \qty{\PriorsNarrowDriftOver}{\percent} of sources & \qty{\PriorsFullDriftOver}{\percent} of sources \\
 \midrule
-training steps & \num{\PriorsNarrowSteps} & \num{\PriorsFullSteps} \\
-windows / sources seen & $\num{\PriorsNarrowObservations}$ / $\num{\PriorsNarrowSourcesSeen}$ & $\num{\PriorsFullObservations}$ / $\num{\PriorsFullSourcesSeen}$ \\
-simulation share of a step & \qty{\PriorsNarrowDrawShare}{\percent} (\qty{\PriorsNarrowDrawMs}{\milli\second} of \qty{\PriorsNarrowStepMs}{\milli\second}) & \qty{\PriorsFullDrawShare}{\percent} (\qty{\PriorsFullDrawMs}{\milli\second} of \qty{\PriorsFullStepMs}{\milli\second}) \\
+training steps & \rev{\numrange{1.41e6}{1.79e6}} & \rev{\numrange{2.11e6}{3.20e6}} \\
+\rev{windows seen} & \rev{\numrange{0.9e8}{1.2e8}} & \rev{\numrange{1.4e8}{2.0e8}} \\
+\rev{sources seen} & \rev{\numrange{2.3e8}{7.2e8}} & \rev{\numrange{8.2e8}{2.2e9}} \\
+simulation share of a step & \qty{\PriorsNarrowDrawShare}{\percent} (\rev{\num{\PriorsNarrowDrawMs}~of~\qty{\PriorsNarrowStepMs}{\milli\second}}) & \qty{\PriorsFullDrawShare}{\percent} (\rev{\num{\PriorsFullDrawMs}~of~\qty{\PriorsFullStepMs}{\milli\second}}) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -154,7 +155,7 @@ flow coordinates, $S\times\PriorsCoords{}$, sources in order of $f_0$ (\cref{eq:
 is paired with \PriorsDraws{} standard normal base points $Z_0$ with their own flow times $t$
 (\cref{eq:loss}, \cref{app:fm}), drawn inside the compiled training step, so a batch of
 \num{\PriorsBatch} pairs is $\PriorsObservationsPerStep{}$ windows. A run sees
-$\num{\PriorsFullObservations}$ to $\num{\PriorsNarrowObservations}$ independent windows
-(\cref{tab:priors-bands}), so overfitting is not a concern and comparisons between runs are
+\rev{$\num{0.9e8}$ to $\num{2.0e8}$} independent windows
+(\cref{tab:priors-bands}\rev{, \cref{tab:results-runs}}), so overfitting is not a concern and comparisons between runs are
 comparisons of optimisation. The simulation takes \qty{\PriorsNarrowDrawShare}{\percent} of a step in
 the narrow band and \qty{\PriorsFullDrawShare}{\percent} in the full band.

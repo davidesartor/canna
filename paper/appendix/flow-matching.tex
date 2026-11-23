@@ -307,7 +307,8 @@ the posterior's tail across the boundary of the ordered region (\cref{app:chart-
   \caption{Wall time to draw posterior samples of one window, against model size: the flow on
   one A100 (orange; full band filled markers, narrow band hollow; best of three windows), and the joint
   \ac{mcmc} reference over all sources of a window on \McmcJointCores{} CPU cores (blue; median
-  and range over the chains, one per injection).}
+  and range over the chains, one per injection). \rev{Measured on an earlier revision of the network, whose sizes had the parameter counts on the
+  axis; \cref{tab:network-sizes} gives those of the reported network.}}
   \label{fig:fm-cost}
 \end{figure}
 
@@ -319,8 +320,9 @@ draws and almost independent of the band, since the network evaluations dominate
 encoded once (\cref{fig:fm-cost}). Across sizes, \FlowMatchingCostDraws{} draws take
 \qty{\FlowMatchingCostSmallest}{\second} (XS) to \qty{\FlowMatchingCostLargest}{\second} (full-band XL). The \ac{mcmc}
 reference (\cref{app:mcmc}) runs one chain per injection over all the sources of its window, and a
-chain takes \qtyrange{\FlowMatchingMcmcWindowLow}{\FlowMatchingMcmcWindowHigh}{\hour} on two CPU
-cores. The flow is about $10^{\FlowMatchingMcmcGapDecades{}}$ times faster per window. The hardware
+chain takes \rev{\qtyrange{\McmcCostJointLo}{\McmcCostJointHi}{\hour} on two CPU cores in the narrow band and about
+\qtyrange{\McmcCostFullSixteenLo}{\McmcCostFullSixteenHi}{\hour} in the full band with sixteen sources
+(\cref{app:mcmc-cost}). The flow is about $10^{4.8}$ to $10^{5.8}$ times faster per window.} The hardware
 differs, so the ratio is a wall-time comparison, not one of compute; and the flow's cost is paid
 once more in training (\cref{app:training}).
 

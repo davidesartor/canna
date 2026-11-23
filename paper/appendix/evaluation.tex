@@ -37,8 +37,8 @@ sampler settings and out-of-distribution checks.
 The eval windows sit at \EvaluationInjections{} centre frequencies $\fw$, one log-uniform draw in each of
 \EvaluationInjections{} equal bins of $\log f_0$, empty windows included. Each holds one prior draw of the run's $S$
 sources (\cref{app:priors}), ordered by $f_0$, with window \acp{snr}
-\EvaluationNarrowSnrLo--\EvaluationNarrowSnrHi{} in the narrow band and \EvaluationFullSnrLo--\EvaluationFullSnrHi{}
-in the full band. Windows and noise are fixed by the seed and band, so every checkpoint, run and chain sees the same data; as a
+\rev{from 1.2 to 98 in the narrow band and from 0 to 380 in the full band, rising with $S$ (median 8.6 to 20 and
+6.8 to 12)}. Windows and noise are fixed by the seed and band, so every checkpoint, run and chain sees the same data; as a
 conditional sample they are never used for calibration.
 
 \paragraph{Relabelling draws to the truth.}
@@ -53,7 +53,7 @@ and for the reference pass each draw $\theta_{1:S}$ is relabelled to the truth $
   \mathbf m(\theta) = \Bigl(\frac{f_0}{f_+ - f_-},\ \log_{10}\Amp,\ \hat n(\alpha,\delta)\Bigr),
   \nonumber
 \end{gather}
-found over the $S! = \EvaluationPermutations$ permutations, with $(f_-, f_+)$ the window's range of $f_0$
+found over the \rev{$S!$ permutations of the sources ($\EvaluationPermutations$ for $S=4$)}, with $(f_-, f_+)$ the window's range of $f_0$
 (\cref{eq:forward-model-window-interior}) and $\hat n$ the unit sky vector. The orientation angles are left out, since
 their symmetries (\cref{eq:psi-phi-symmetry}) make the cost multimodal. Because the truth is used, a posterior too wide
 to separate two sources is sorted back onto them and looks better than it is.
@@ -79,7 +79,7 @@ bins over the visible sources.
       & median over found \\
     Width ratio & $w/w^\star$ (scorecard), $w$ over the chains' width (eval windows), with $w^\star$ of \cref{eq:evaluation-ideal-width}
       & median over found \\
-    Found & $w < \EvaluationFound\bins$: the frequency is pinned to the bin spacing
+    Found & $w <{}$ \rev{one bin}: the frequency is pinned to the bin spacing
       & fraction \\
     Off-peak & an $f_0$ draw more than five chain widths and half a bin from the chains' median
       & fraction of draws \\
@@ -90,8 +90,8 @@ bins over the visible sources.
 \end{table}
 
 Coverage and offset are not a calibration test, since they use the truth, and coverage is optimistic: a flow that returns the prior still puts the truth in its central \qty{68}{\percent}
-interval for a share \EvaluationMockPriorCover{} of the sources in the narrow band and \EvaluationMockPriorCoverFull{}
-in the full band (\cref{tab:evaluation-mocks}), and only its width shows the failure.
+interval for a share \EvaluationMockPriorCover{} of the sources in the narrow band \rev{(\cref{tab:evaluation-mocks})} and \EvaluationMockPriorCoverFull{}
+in the full band \rev{(the same mock, run on the full band)}, and only its width shows the failure.
 
 \paragraph{The ideal width.}
 For a sinusoid of \ac{snr} $\snr$ observed for $\Tobs$ in stationary noise, with the time origin at the centre, the
@@ -165,7 +165,7 @@ quantities catch it \citep{modrak2023simulation}. The likelihood is only a test 
 \begin{table}[t]
   \centering
   \caption{Rank tests of the validation pass. ``Slot'' is per source slot, ``window'' over all
-  \EvaluationJointDim{} coordinates of a window. None needs the truth's labels or a reference posterior.}
+  \rev{$8S$} coordinates of a window. None needs the truth's labels or a reference posterior.}
   \label{tab:evaluation-tests}
   \small
   \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.30\textwidth}l>{\raggedright\arraybackslash}p{0.44\textwidth}@{}}
@@ -202,7 +202,8 @@ computed on its data. A test's rate (\cref{tab:evaluation-power}) is the share o
 \qty{\EvaluationPowerAlpha}{\percent}. The rank tests hold their size. A phase or sky taken from the prior, or
 coordinates shuffled across draws, keep every one-dimensional rank uniform and pass the coordinate ranks, as does most of a
 \qty{\EvaluationPowerMixShare}{\percent} prior admixture; the overlap and the log-likelihood catch all four.
-\Ac{tarp} catches width errors (\EvaluationPowerTarpWidth) but at most \EvaluationPowerTarpBlind{} of the others.
+\Ac{tarp}\rev{, not shown in \cref{tab:evaluation-power}, rejects width errors at rates of} \EvaluationPowerTarpWidth{} but
+\rev{the other errors at} most \EvaluationPowerTarpBlind{}.
 
 \begin{table}[t]
   \centering
@@ -243,7 +244,7 @@ width times \EvaluationMockWide{} and \EvaluationMockNarrow), \emph{biased} ($f_
 (\EvaluationMockScorecardSources{} scorecard sources, \EvaluationMockInjections{} validation windows,
 \EvaluationMockReferenceSources{} eval sources at $\snr\ge\EvaluationMockReferenceSnr$ with joint chains,
 \cref{app:results-mcmc}); the full band, with \EvaluationMockInjectionsFull{} validation windows, agrees. The Gaussian
-mock is also the null of \cref{tab:results-validation}.
+mock is also the \rev{reference} of \cref{tab:results-validation}.
 
 \begin{table*}[t]
   \centering
@@ -297,10 +298,9 @@ Three readings shape how the results are read.
 \subsection{Checkpoint and Sampler Settings}
 \label{app:evaluation-weights}
 
-Every pass evaluates the run's last checkpoint, at the end of the cooldown (\cref{app:training-schedules}). The checkpoint
-with the lowest eval-catalogue loss (\cref{app:training-loop}) is a fallback for a run that degrades late; it is chosen on
-the eval windows, so its results on them are optimistic. The runs of \cref{app:results} were evaluated at that checkpoint
-(\cref{tab:results-runs}), except the full band with $S=4$, whose run diverged: its Student-t continuation is evaluated at
+\rev{Every pass evaluates the run's checkpoint with the lowest eval-catalogue loss (\cref{app:training-loop}),
+which guards against a run that degrades late; it is chosen on the eval windows, so its results on them are
+optimistic. The runs of \cref{app:results} were all evaluated at that checkpoint (\cref{tab:results-runs})}, except the full band with $S=4$, whose run diverged: its Student-t continuation is evaluated at
 its last checkpoint, since its logged loss does not compare across the switch (\cref{app:results-runs}).
 % updated 2026-11-19: was "and is the only usable one of the full-band run with S=4, which diverged" (pre-t44).
 The flow predicts the endpoint $Z_1$ in the frame (\cref{app:fm}), and the sampler takes \EvaluationOdeSteps{} midpoint
@@ -329,11 +329,11 @@ or amplitude past the prior's bulk; the quietest source's amplitude below it; on
 On the narrow band with $S=4$ (\ResultsRobustInjections{} windows, \ResultsRobustDraws{} draws) the flow is robust to its
 prior's edges and fragile to its noise model. With the loudest source past the prior, or the noise halved, the share of
 sources at $\snr\ge7$ whose truth lies within one flow width of its median is \ResultsRobustOtherWithinLo{} to
-\qty{\ResultsRobustOtherWithinHi}{\percent}, against \qty{\ResultsRobustBaseLoudWithin}{\percent} in distribution. With the
+\qty{\ResultsRobustOtherWithinHi}{\percent}, against \qty{\ResultsRobustBaseLoudWithin}{\percent} in distribution\rev{ for the same sources}. With the
 noise doubled the flow, which whitens by its own \ac{psd}, reads noise as signal: its slots claim a median \ac{snr} of
 \ResultsRobustNoiseSlotSnr{} instead of \ResultsRobustBaseSlotSnr, the faint sources' $f_0$ widths shrink to \ResultsRobustNoiseFaintWidth{} of their in-distribution widths while their offsets
 double, and only \qty{\ResultsRobustNoiseFaintWithin}{\percent} cover the truth within one width
-(\qty{\ResultsRobustBaseFaintWithin}{\percent} in distribution): confident and wrong. The full band with $S=8$ shows the same on its loud sources: with the noise doubled
+(\qty{\ResultsRobustBaseFaintWithin}{\percent} \rev{of the faint sources} in distribution): confident and wrong. The full band with $S=8$ shows the same on its loud sources: with the noise doubled
 \qty{\ResultsRobustFullNoiseLoudWithin}{\percent} cover the truth within one width
 (\qty{\ResultsRobustFullBaseLoudWithin}{\percent} in distribution), and the other cases keep
 \ResultsRobustFullOtherWithinLo{} to \qty{\ResultsRobustFullOtherWithinHi}{\percent}.

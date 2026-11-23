@@ -52,8 +52,10 @@ ratio_by_band = {
 }
 ratio = np.concatenate(list(ratio_by_band.values()))
 floored = np.array([i["floored_eigenvalues"] for i in injections])
+# 2026-11-23 (user): min and max over the windows (was the first and last window in f0 order). The paper quotes the
+# range over the six reported evals (appendix/evaluation.tex), which this record of one S does not cover.
 window_snr = {
-    band: [b["injections"][0]["window_snr"], b["injections"][-1]["window_snr"]]
+    band: [min(i["window_snr"] for i in b["injections"]), max(i["window_snr"] for i in b["injections"])]
     for band, b in bands.items()
 }
 source_snr = np.concatenate([i["source_snr"] for i in injections])
@@ -137,7 +139,8 @@ for node in ast.parse((EVAL / "mock-flows/scripts/mock_eval.py").read_text()).bo
 assert tuple(MOCKS.values()) == constants["MOCKS"]
 p_value = lambda p: f"{p:.3f}" if p >= 0.001 else "$<$0.001"
 ratio_text = lambda r: (
-    f"\\num{{{r:.1e}}}".replace("e+0", "e")
+    # 2026-11-23 (user): a plain number, 3500, not 3.5 x 10^3
+    f"\\num{{{float(f'{r:.2g}'):.0f}}}"
     if r >= 1000
     else f"{r:.2f}" if r < 10 else f"{r:.1f}" if r < 100 else f"{r:.0f}"
 )

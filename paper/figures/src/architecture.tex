@@ -72,13 +72,13 @@
     {\textbf{source tokens}\\ linear of $Z$, $X$, $\mu$, $\log\sigma$\\ + Fourier($f_0$)};
   \node[sbox, anchor=west] (semb) at (12, \ys) {\textbf{sink tokens}: $\nu$ + learned};
   \node[cbox, anchor=west] (cemb) at (12, 67)
-    {\textbf{conditioning}\\ $\nu$ from $t$, $\log_{10}(1-t)$, $+\nu_f$\\ $\nu_f$ from the window's $f_0$ range};
+    {\textbf{conditioning}\\ $\nu$ from $s$, $\log_{10}(1-s)$, $+\nu_f$\\ $\nu_f$ from the window's $f_0$ range};
   \node[ybox, anchor=west] (yemb) at (12, \yy)
     {\textbf{data tokens}\\ spectra of $Q$ bins per token\\ linear of amplitude and phase\\
      + Fourier(lowest, highest bin)};
   \node[rbox, anchor=west] (remb) at (12, \yr) {\textbf{frame registers}: $\nu_f$ + learned};
   \node[note, anchor=east, align=right] (xin) at (9, \yx) {$Z_t$\\ $S\times 8$};
-  \node[note, anchor=east, align=right] (cin) at (9, 67) {$t$, $f_w$};
+  \node[note, anchor=east, align=right] (cin) at (9, 67) {$s$, $f_w$};
   \node[note, anchor=east, align=right] (yin) at (9, \yy) {$y$\\ $K\times 6$};
   \draw[arr] (xin) -- (xemb);
   \draw[arr] (cin) -- (cemb);

@@ -31,11 +31,11 @@ so every source's posterior has four exact copies in $(\psi,\phi_0)\in[0,2\pi)^2
 
 \paragraph{Exchangeable sources.}
 The sources are independent and identically distributed and enter the likelihood through their
-sum, so the likelihood is invariant under the $S! = \PriorsPermutations{}$ relabellings: the
+sum, so the likelihood is invariant under the \rev{$S!$ relabellings ($\PriorsPermutations{}$ for $S=\PriorsSources{}$)}: the
 label-switching problem of mixture models \citep{stephens2000dealing,jasra2005markov}, which
 \ac{mcmc} analyses of gravitational-wave sources meet as well \citep{buscicchio2019label}. With
 \cref{eq:psi-phi-symmetry}, every mode of an unordered posterior has
-$\PriorsPermutations{}\times4^{\PriorsSources{}} = \num{\PriorsCopies}$ equivalent copies. The
+\rev{$S!\,4^S$ equivalent copies, $\num{\PriorsCopies}$ for $S=\PriorsSources{}$}. The
 chart folds the phase copies (\cref{app:chart-helicity}), and the slots in order of $f_0$ remove
 the permutations (\cref{app:chart-slots}).
 
@@ -80,7 +80,7 @@ $f_0$, but the coordinate the flow transports does not.
 The chart rotates $(\alpha,\delta)$ to galactic longitude and latitude, $l\in(-\pi,\pi]$ and
 $b\in[-\pi/2,\pi/2]$, and divides each by its standard deviation under the sky prior
 (\cref{eq:priors-sky}), $\sigma_l = \qty{\ChartSigmaL}{\radian}$ (\ang{\ChartSigmaLDeg}) and
-$\sigma_b = \qty{\ChartSigmaB}{\radian}$ (\ang{\ChartSigmaBDeg}). The bulge and disks then sit at the
+$\sigma_b = \qty{\ChartSigmaB}{\radian}$ (\ang{\ChartSigmaBDeg}). The bulge and \rev{discs} then sit at the
 origin with unit scale. The chart's two defects lie where the prior is thinnest: the seam at the
 anticentre, $l=\pm\pi$ ($x_l=\pm\ChartSeamX{}$), which holds \qty{\ChartSeamMass}{\percent} of the prior within
 \ang{\ChartEdgeDeg}, and the galactic poles, $x_b=\pm\ChartPoleX{}$, which hold \qty{\ChartPoleMass}{\percent}
@@ -127,8 +127,8 @@ $\snr^2\propto\lvert\zeta_+\rvert^2+\lvert\zeta_-\rvert^2\propto 1+6\cos^2\iota+
   \kappa^2 \approx C\,\frac{1+6\cos^2\iota+\cos^4\iota}{16/5},
   \label{eq:chart-kappa}
 \end{equation}
-where $16/5$ is the average of the numerator over $\cos\iota$ and $C = \ChartSkyConstant{}$ is the
-mean of $\kappa^2$ over the galactic sky prior. The drawn sources follow \cref{eq:chart-kappa}
+where $16/5$ is the average of the numerator over $\cos\iota$ and $C = \rev{\NoiseCGalactic{}}$ is the
+mean of $\kappa^2$ over the \rev{Galactic} sky prior. The drawn sources follow \cref{eq:chart-kappa}
 within \qty{\ChartKappaLawRms}{\percent} root-mean-square; $\kappa$ runs from \ChartKappaNarrowLow{}
 (edge-on) to \ChartKappaNarrowHigh{} (face-on) in the narrow band and from \ChartKappaFullLow{} to
 \ChartKappaFullHigh{} in the full band (1st and 99th percentiles), where the response departs from

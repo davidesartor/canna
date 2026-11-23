@@ -29,10 +29,10 @@ AdamW (everything else) & peak learning rate & \num{\TrainingAdamRate} \\
 & weight decay & none \\
 \addlinespace
 Schedule & gradient clipping & global norm \TrainingClipNorm{} \\
-& warmup & linear from zero, \num{\TrainingWarmupNarrow} (narrow), \num{\TrainingWarmupFull} (full) steps \\
+& warmup & linear from zero, \rev{\qty{\TrainingWarmupPercent}{\percent} of the run} \\
 & after warmup & constant, then $1-\sqrt{\cdot}$ to zero over the last \qty{\TrainingCooldownPercent}{\percent} \\
-& total steps & per run (\cref{tab:results-runs}); default \num{\TrainingStepsNarrow} (narrow), \num{\TrainingStepsFull} (full) \\
-& epoch & \TrainingEpochSteps{} steps, one checkpoint each \\
+& total steps & per run \rev{(\cref{tab:results-runs}), \numrange{1.4e6}{3.2e6}} \\
+& epoch & \rev{one 64th of the run,} one checkpoint each \\
 \addlinespace
 Batch & samples per step & \TrainingBatch{} $=$ \TrainingObservations{} observations $\times$ \TrainingDraws{} draws of $(Z_0, t)$ \\
 & data & simulated on the device each step, never repeated \\
@@ -54,10 +54,10 @@ encoding. The times are stratified over the whole batch, one per stratum of \Tra
 strata (\cref{app:fm-clock}).
 
 Every batch is simulated on the device inside the step, so no observation is seen twice. The
-simulation takes \qty{\TrainingComputeNarrowBDrawPercent}{\percent} of a narrow-B step and
-\qty{\TrainingComputeFullBDrawPercent}{\percent} of a full-B step on an A100, whereas on
+simulation takes \rev{\qty{\PriorsNarrowDrawShare}{\percent}} of a narrow-B step and
+\rev{\qty{\PriorsFullDrawShare}{\percent} of a full-B step on an A100 (\cref{tab:priors-bands})}, whereas on
 \TrainingDrawCpuCores{} CPU cores the full-band batch alone takes \qty{\TrainingDrawCpuFullSeconds}{\second},
-\TrainingDrawCpuOverStep{} times the whole GPU step. Simulating on the host is therefore not an
+\rev{about 22} times the whole GPU step. Simulating on the host is therefore not an
 option. The gradient can be accumulated over equal micro-batches of whole observations, which
 leaves the mean gradient unchanged; by default the batch is not split.
 
@@ -138,8 +138,7 @@ converged at the planned epoch (\cref{tab:results-forks}).
 \label{app:training-loop}
 
 \paragraph{Epochs.}
-An epoch is \TrainingEpochSteps{} steps (\TrainingEpochsNarrow{} epochs on the narrow band,
-\TrainingEpochsFull{} on the full band) compiled as one program: the simulator, the loss, the
+An epoch is \rev{one 64th of a run, \numrange{22000}{50000} steps (\cref{tab:results-runs}),} compiled as one program: the simulator, the loss, the
 gradient and the optimiser update of all its steps run in one loop on the device.
 
 \paragraph{Eval-catalogue loss.}
@@ -162,8 +161,8 @@ is the checkpoint used for evaluation (\cref{app:evaluation-weights}). Because t
 checkpointed, a resumed run draws the same batches as an uninterrupted one.
 
 \paragraph{Snapshots and cooldown forks.}
-Every \ResultsSnapshotEvery{} epochs a run also keeps a snapshot of its whole state, which the
-rolling checkpoint overwrites. A fork restarts from the snapshot at epoch $k$ with the total cut to
+Every \ResultsSnapshotEvery{} epochs a run also keeps a snapshot of its whole state\rev{, kept apart from the
+rolling checkpoint, which each epoch overwrites}. A fork restarts from the snapshot at epoch $k$ with the total cut to
 $k/(1-c)$ epochs, $c$ the cooldown fraction, so it cools down at once, over $ck/(1-c)$ epochs, as a
 run planned that long from the start would have; the schedule before the cooldown depends only on
 the warmup, which every fork shares with its parent. Forks from epochs \ResultsForkEpochs{} of each
@@ -176,7 +175,7 @@ run give, at the cost of the cooldowns alone, the loss and the posteriors of fou
 Parameters and AdamW's moments are float32. The backbone runs in bfloat16, forward and backward,
 from bfloat16 copies of its float32 weights, while the embeddings, the conditioning \acp{mlp} and
 the heads stay in float32 (\cref{app:network-sizes}); Muon's momentum and orthogonalisation run in
-bfloat16. The bfloat16 backbone makes a step \numrange{\TrainingBackboneSpeedupAMin}{\TrainingBackboneSpeedupAMax}
+bfloat16. The bfloat16 backbone makes a step \rev{\numrange{\TrainingBackboneSpeedupAMin}{\TrainingBackboneSpeedupAMax}}
 times faster than float32 on an A100, more for the larger sizes, whereas bfloat16 attention alone
 gains at most \qty{\TrainingAttentionGainPercent}{\percent}: the dense layers carry the cost.
 
@@ -193,10 +192,11 @@ network; the bfloat16 backbone was not affected.
 an A100. The narrow band's step is the network's. The full band also simulates its observations at
 many more frequency points (\cref{app:forward-model}), a fixed cost per batch that weighs most on
 the small sizes and sets a memory floor, since the whole batch is simulated before it is split into
-micro-batches. A size-B run takes about a day of steps on one A100 in either band:
-\qty{\TrainingComputeNarrowBHours}{\hour} on the narrow band and \qty{\TrainingComputeFullBHours}{\hour} on the full band.
-Every size fits on the A100 without splitting the batch, whereas full-XL does not fit the \qty{80}{\giga\byte} card
-once the trainer's eval pass and checkpointing run beside it.
+micro-batches. \rev{At the default length of \num{\TrainingStepsNarrow} and \num{\TrainingStepsFull} steps} a size-B run takes
+\qty{\TrainingComputeNarrowBHours}{\hour} of steps on one A100 on the narrow band and \rev{\qty{\TrainingComputeFullBHours}{\hour}} on the full band\rev{; the reported
+runs, set to 64 epochs, take \qty{32}{\hour} and \qtyrange{63}{64}{\hour} (\cref{tab:results-runs})}.
+\rev{Every size's step fits on the A100 without splitting the batch; full-XL no longer fits the \qty{80}{\giga\byte} card
+once the trainer's eval pass and checkpointing run beside it.}
 
 \begin{figure}[t]
 \centering
@@ -204,6 +204,7 @@ once the trainer's eval pass and checkpointing run beside it.
 \caption{Cost of every size on one A100 with the bfloat16 backbone, at the default batch of
 \TrainingBatch{} samples; full band blue, narrow band orange. (a)~Training step, simulation
 included. (b)~Planned device memory of the unsplit step, against the card's usable memory and the
-full band's simulated batch alone (dotted).}
+full band's simulated batch alone (dotted). \rev{Measured on an earlier revision of the network, whose sizes had the parameter counts on the
+  axis; \cref{tab:network-sizes} gives those of the reported network.}}
 \label{fig:training-compute}
 \end{figure}

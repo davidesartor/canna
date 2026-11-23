@@ -401,7 +401,8 @@ if mock:
 OVERLAP_DATA = style.PAPER / "data/runs/overlap-groups.json"
 if OVERLAP_DATA.is_file():
     og = json.loads(OVERLAP_DATA.read_text())
-    signed = lambda v: f"{v:+.2f}".replace("-0.00", "+0.00")
+    # 2026-11-23 (user): a typeset minus sign, not a hyphen
+    signed = lambda v: f"{v:+.2f}".replace("-0.00", "+0.00").replace("-", "$-$")
     rng = lambda vals: (signed(min(vals)), signed(max(vals)))
     g = lambda lab, grp, st="all": [c[lab]["groups"][grp][st] for c in og.values()]
     d = lambda lab, grp, st="all": [c[lab]["groups"][grp][st] - c[lab]["groups"]["drawn"][st] for c in og.values()]
@@ -620,8 +621,8 @@ if JS_MAIN.is_file() and SBC_MAIN.is_file():
         js = np.array([x["js"] for x in m["sources"]]).mean(1)  # mean over the eight coordinates
         # 2026-11-19: median over the sources, as tab:results-js (was the mean: full S=4 0.19 here, 0.074 there)
         low, high = np.median(js[(snr >= 7) & (snr < 15)]), np.median(js[snr >= 15])
-        windows = f"{len(np.unique([x['injection'] for x in m['sources']]))} / {s['flow']['windows']}"
-        rows.append(rf"n{n}-{band} & {n} & {e64.model_label(band, n)} & {windows} & {js3(low)} & {js3(high)} & {s['flow']['in68']:.3f} & {pfmt(s['flow']['min_p'])} & {s['mcmc']['in68']:.3f} & {pfmt(s['mcmc']['min_p'])} \\")
+        # 2026-11-23 (user): the windows (128 / 1000 in every row) moved to Table 4's caption
+        rows.append(rf"n{n}-{band} & {n} & {e64.model_label(band, n)} & {js3(low)} & {js3(high)} & {s['flow']['in68']:.3f} & {pfmt(s['flow']['min_p'])} & {s['mcmc']['in68']:.3f} & {pfmt(s['mcmc']['min_p'])} \\")
     numbers["ResultsSummaryRows"] = "\n".join(rows)
     numbers["ResultsSummaryFloor"] = js3(np.median([m['null']['median'] for m in jm.values()]))  # = ResultsJsFloorMedian
 

@@ -36,7 +36,7 @@ carries almost no \ac{snr} in our band. The noise is instrumental only: no Galac
 \end{equation}
 so that the log-likelihood of \cref{eq:loglik} is $-\tfrac12\inner{d-h}{d-h}$ up to a constant and
 $\snr_s = \inner{h(\theta_s)}{h(\theta_s)}^{1/2}$. The simulator matches independent references: over
-\num{\NoiseGeneratorWindows} pure-noise windows $\inner{n}{n}$ follows $\chi^2_{\NoiseGeneratorDof{}}$
+\num{\NoiseGeneratorWindows} pure-noise \rev{test windows of \num{\NoiseGeneratorBins} bins in $A$ and $E$,} $\inner{n}{n}$ follows $\chi^2_{\NoiseGeneratorDof{}}$
 (Kolmogorov--Smirnov $p = \NoiseGeneratorKs{}$), and for the verification binary of
 \citet[Table~VII]{strub2022bayesian} our \acs{snr} is \NoiseStrubSnr{} against their
 \NoiseStrubSnrTheirs{}.
